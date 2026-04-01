@@ -38,6 +38,8 @@ pub mod prelude;
 pub mod prop_helpers;
 pub mod testing;
 
+pub mod animation;
+
 // -- Internal modules used by the plushie binary --
 //
 // These are public so the binary crate can access them, but they are

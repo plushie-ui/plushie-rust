@@ -122,6 +122,10 @@ pub enum CoreEffect {
     /// should follow the OS preference.
     ThemeFollowsSystem,
 
+    /// Nodes removed during a patch that had "exit" props.
+    /// The host should promote these to ghost nodes for exit animations.
+    ExitNodes(Vec<(String, usize, crate::protocol::TreeNode)>),
+
     /// Image operation (create/update/delete in-memory handles).
     ///
     /// # Known ops
@@ -367,7 +371,10 @@ impl<R: PlushieRenderer> Core<R> {
             }
             IncomingMessage::Patch { ops } => {
                 log::debug!("patch received ({} ops)", ops.len());
-                self.tree.apply_patch(ops);
+                let exit_nodes = self.tree.apply_patch(ops);
+                if !exit_nodes.is_empty() {
+                    effects.push(CoreEffect::ExitNodes(exit_nodes));
+                }
                 // Re-check root theme prop in case a patch changed it.
                 if let Some(root) = self.tree.root()
                     && let Some(theme_val) = root.props.get("theme")

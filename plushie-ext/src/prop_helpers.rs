@@ -381,19 +381,25 @@ pub fn value_to_length(val: &Value) -> Option<Length> {
 
 pub fn value_to_horizontal_alignment(s: &str) -> Option<alignment::Horizontal> {
     match s.trim().to_ascii_lowercase().as_str() {
-        "left" | "start" => Some(alignment::Horizontal::Left),
+        "left" => Some(alignment::Horizontal::Left),
         "center" => Some(alignment::Horizontal::Center),
-        "right" | "end" => Some(alignment::Horizontal::Right),
-        _ => None,
+        "right" => Some(alignment::Horizontal::Right),
+        other => {
+            log::warn!("unknown horizontal alignment: {other:?}");
+            None
+        }
     }
 }
 
 pub fn value_to_vertical_alignment(s: &str) -> Option<alignment::Vertical> {
     match s.trim().to_ascii_lowercase().as_str() {
-        "top" | "start" => Some(alignment::Vertical::Top),
+        "top" => Some(alignment::Vertical::Top),
         "center" => Some(alignment::Vertical::Center),
-        "bottom" | "end" => Some(alignment::Vertical::Bottom),
-        _ => None,
+        "bottom" => Some(alignment::Vertical::Bottom),
+        other => {
+            log::warn!("unknown vertical alignment: {other:?}");
+            None
+        }
     }
 }
 
@@ -1002,4 +1008,57 @@ mod tests {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Animated prop helpers
+// ---------------------------------------------------------------------------
+// These check the interpolated_props cache (populated by the TransitionManager)
+// before falling back to the tree's props. Use these in widget render functions
+// for props that can be animated.
+
+/// Get an f32 prop value, checking the animation cache first.
+///
+/// If the TransitionManager is actively interpolating this prop, returns
+/// the current animated value. Otherwise falls back to the tree prop.
+pub fn prop_animated_f32(
+    interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
+    node_id: &str,
+    props: Props<'_>,
+    key: &str,
+) -> Option<f32> {
+    // Check interpolated cache first
+    if let Some(overrides) = interpolated.get(node_id) {
+        if let Some(val) = overrides.get(key) {
+            return val.as_f64().map(|v| f64_to_f32(v));
+        }
+    }
+    // Fall back to tree props (skip descriptor maps)
+    let val = props?.get(key)?;
+    if val.is_object() {
+        // This is likely an animation descriptor -- the renderer hasn't
+        // started animating yet (first frame) or it just completed.
+        // Return None so the widget uses its default.
+        return None;
+    }
+    prop_f32(props, key)
+}
+
+/// Get a color prop value, checking the animation cache first.
+pub fn prop_animated_color(
+    interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
+    node_id: &str,
+    props: Props<'_>,
+    key: &str,
+) -> Option<Color> {
+    if let Some(overrides) = interpolated.get(node_id) {
+        if let Some(val) = overrides.get(key) {
+            return val.as_str().and_then(|s| parse_hex_color(s));
+        }
+    }
+    let val = props?.get(key)?;
+    if val.is_object() {
+        return None;
+    }
+    prop_color(props, key)
 }

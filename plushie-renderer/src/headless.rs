@@ -162,6 +162,8 @@ struct Session<R: PlushieRenderer> {
     last_slide_values: HashMap<String, f64>,
     ui: UiState<R>,
     mode: Mode,
+    /// Renderer-side animation manager.
+    transition_manager: plushie_ext::animation::TransitionManager,
 }
 
 impl<R: PlushieRenderer> Session<R> {
@@ -192,6 +194,7 @@ impl<R: PlushieRenderer> Session<R> {
             last_slide_values: HashMap::new(),
             ui,
             mode,
+            transition_manager: plushie_ext::animation::TransitionManager::new(),
         }
     }
 
@@ -639,6 +642,11 @@ fn handle_message<R: PlushieRenderer>(
                     | CoreEffect::SystemOp { .. }
                     | CoreEffect::SystemQuery { .. } => {}
                     CoreEffect::ThemeFollowsSystem => {}
+                    CoreEffect::ExitNodes(nodes) => {
+                        for (parent_id, index, node) in nodes {
+                            s.transition_manager.ghosts.add_ghost(&parent_id, node, index);
+                        }
+                    }
                 }
             }
 
@@ -651,11 +659,17 @@ fn handle_message<R: PlushieRenderer>(
                     // Clear stale slider tracking -- the entire tree was replaced,
                     // so old node IDs are no longer valid.
                     s.last_slide_values.clear();
+                    s.transition_manager.clear();
                 }
                 if let Some(root) = s.core.tree.root() {
                     s.dispatcher
                         .prepare_all(root, &mut s.core.caches.extension, &s.theme);
                 }
+
+                // Scan tree for animation descriptors.
+                s.transition_manager
+                    .scan_tree(s.core.tree.root());
+
                 let settle_events = s.settle_ui(session_id);
                 for event in settle_events {
                     s.writer.emit(&event).ok();
@@ -828,6 +842,7 @@ fn handle_message<R: PlushieRenderer>(
             s.images = ImageRegistry::new();
             s.theme = Theme::Dark;
             s.last_slide_values.clear();
+            s.transition_manager.clear();
             s.ui.ui_cache = UiCache::default();
             s.ui.cursor = mouse::Cursor::Unavailable;
             s.rebuild_renderer();
@@ -861,6 +876,26 @@ fn handle_message<R: PlushieRenderer>(
             }
         }
         IncomingMessage::AdvanceFrame { timestamp } => {
+            // Advance renderer-side transitions
+            let completions = s.transition_manager.advance_with_timestamp(
+                timestamp,
+                &mut s.core.caches.interpolated_props,
+            );
+
+            // Emit transition_complete events
+            for c in completions {
+                let event = plushie_ext::protocol::OutgoingEvent::generic(
+                    "transition_complete",
+                    c.widget_id.clone(),
+                    Some(serde_json::json!({
+                        "tag": c.tag,
+                        "prop": c.prop_name,
+                    })),
+                );
+                s.writer.emit(&event.with_session(session_id))?;
+            }
+
+            // Emit animation_frame events to SDK
             for entry in s.core.matching_entries(
                 plushie_renderer_lib::constants::SUB_ANIMATION_FRAME,
                 None,

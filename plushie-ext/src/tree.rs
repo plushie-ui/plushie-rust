@@ -74,12 +74,38 @@ impl Tree {
     /// This means a partial failure can leave the tree in an intermediate
     /// state. The host should treat patch sequences as best-effort and
     /// use Snapshot for full-state recovery when needed.
-    pub fn apply_patch(&mut self, ops: Vec<PatchOp>) {
+    /// Applies patch operations and returns any removed nodes that had
+    /// an "exit" prop (for exit animation ghost promotion).
+    pub fn apply_patch(&mut self, ops: Vec<PatchOp>) -> Vec<(String, usize, TreeNode)> {
+        let mut exit_nodes = Vec::new();
         for op in ops {
+            // Check for exit nodes before removal
+            if op.op == "remove_child" {
+                if let Some(root) = self.root.as_ref() {
+                    if let Ok(parent) = navigate(root, &op.path) {
+                        let index = op
+                            .rest
+                            .get("index")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(u64::MAX) as usize;
+                        if index < parent.children.len() {
+                            let child = &parent.children[index];
+                            if child.props.get("exit").is_some() {
+                                exit_nodes.push((
+                                    parent.id.clone(),
+                                    index,
+                                    child.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
             if let Err(e) = self.apply_op(&op) {
                 log::error!("failed to apply patch op {:?}: {}", op.op, e);
             }
         }
+        exit_nodes
     }
 
     fn apply_op(&mut self, op: &PatchOp) -> Result<(), String> {
@@ -277,6 +303,21 @@ fn collect_duplicate_ids(
 }
 
 /// Navigate to a node at the given path of child indices.
+fn navigate<'a>(root: &'a TreeNode, path: &[usize]) -> Result<&'a TreeNode, String> {
+    let mut current = root;
+    for &idx in path {
+        if idx < current.children.len() {
+            current = &current.children[idx];
+        } else {
+            return Err(format!(
+                "path navigation: index {idx} out of bounds (len={})",
+                current.children.len()
+            ));
+        }
+    }
+    Ok(current)
+}
+
 fn navigate_mut<'a>(root: &'a mut TreeNode, path: &[usize]) -> Result<&'a mut TreeNode, String> {
     let mut current = root;
     for &idx in path {

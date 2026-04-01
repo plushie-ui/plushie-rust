@@ -80,6 +80,11 @@ pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
     /// Extension-owned caches. Public so extension authors can
     /// access their own cached state during render/prepare/cleanup.
     pub extension: crate::extensions::ExtensionCaches,
+    /// Interpolated prop values from active renderer-side animations.
+    /// Keyed by widget ID -> prop name -> current value.
+    /// Populated by the TransitionManager on each frame tick.
+    /// Widget render functions check this before falling back to tree props.
+    pub interpolated_props: HashMap<String, serde_json::Map<String, serde_json::Value>>,
 }
 
 impl<R: PlushieRenderer> WidgetCaches<R> {
@@ -98,6 +103,7 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
             themer_themes: HashMap::new(),
             style_overrides: HashMap::new(),
             extension: crate::extensions::ExtensionCaches::new(),
+            interpolated_props: HashMap::new(),
         }
     }
 
@@ -119,6 +125,7 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
         self.qr_code_caches.clear();
         self.themer_themes.clear();
         self.style_overrides.clear();
+        self.interpolated_props.clear();
     }
 
     /// Remove entries whose node IDs are no longer in the live set.
@@ -138,6 +145,8 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
         self.qr_code_caches.retain(|id, _| live_ids.contains(id));
         self.themer_themes.retain(|id, _| live_ids.contains(id));
         self.style_overrides.retain(|id, _| live_ids.contains(id));
+        self.interpolated_props
+            .retain(|id, _| live_ids.contains(id));
     }
 }
 

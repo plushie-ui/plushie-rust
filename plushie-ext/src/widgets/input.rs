@@ -1130,7 +1130,7 @@ pub(crate) fn render_slider<'a, R: PlushieRenderer>(
     if let Some(d) = prop_f64(props, "default") {
         s = s.default(d);
     }
-    if let Some(h) = prop_f32(props, "height") {
+    if let Some(h) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "height") {
         s = s.height(h);
     }
     if let Some(ss) = prop_f64(props, "shift_step") {
@@ -1216,7 +1216,7 @@ pub(crate) fn render_vertical_slider<'a, R: PlushieRenderer>(
     let range = prop_range_f64(props);
     let value = prop_f64(props, "value").unwrap_or(*range.start());
     let step = prop_f64(props, "step");
-    let width = prop_f32(props, "width");
+    let width = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "width");
     let height = prop_length(props, "height", Length::Fill);
     let id = node.id.clone();
     let release_id = node.id.clone();

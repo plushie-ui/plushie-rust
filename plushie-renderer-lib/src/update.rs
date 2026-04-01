@@ -209,7 +209,26 @@ impl App {
 
             // -- System / animation --
             Message::AnimationFrame(instant) => {
-                // Animation frames are global (not window-scoped), use first entry
+                // Advance renderer-side transitions on every frame tick
+                let completions = self.transition_manager.advance_all(
+                    instant,
+                    &mut self.core.caches.interpolated_props,
+                );
+
+                // Emit transition_complete events
+                for c in completions {
+                    let event = OutgoingEvent::generic(
+                        "transition_complete",
+                        c.widget_id.clone(),
+                        Some(serde_json::json!({
+                            "tag": c.tag,
+                            "prop": c.prop_name,
+                        })),
+                    );
+                    let _ = self.emitter.emit_immediate(event);
+                }
+
+                // Forward animation_frame to SDK if subscribed
                 let entries = self.core.matching_entries(SUB_ANIMATION_FRAME, None);
                 if let Some(entry) = entries.first() {
                     let epoch = *self.animation_epoch.get_or_insert(instant);

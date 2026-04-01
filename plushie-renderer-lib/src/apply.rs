@@ -163,6 +163,11 @@ impl App {
                         self.core.default_font,
                     );
                 }
+                CoreEffect::ExitNodes(nodes) => {
+                    for (parent_id, index, node) in nodes {
+                        self.transition_manager.ghosts.add_ghost(&parent_id, node, index);
+                    }
+                }
             }
         }
 
@@ -180,11 +185,16 @@ impl App {
             if is_snapshot {
                 self.dispatcher.clear_poisoned();
                 self.last_slide_values.clear();
+                self.transition_manager.clear();
             }
             if let Some(root) = self.core.tree.root() {
                 self.dispatcher
                     .prepare_all(root, &mut self.core.caches.extension, &self.theme);
             }
+
+            // Scan tree for animation descriptors and start/update animations.
+            self.transition_manager
+                .scan_tree(self.core.tree.root());
         }
 
         Ok(())

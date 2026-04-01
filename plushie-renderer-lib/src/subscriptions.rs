@@ -320,7 +320,11 @@ impl App {
         }
 
         // -- Animation frame subscription --
-        if self.core.has_subscription(SUB_ANIMATION_FRAME) {
+        // Active when the SDK subscribes to animation_frame OR when the
+        // renderer has active transitions/springs (zero-traffic animation).
+        if self.core.has_subscription(SUB_ANIMATION_FRAME)
+            || self.transition_manager.has_active()
+        {
             subs.push(window::frames().map(Message::AnimationFrame));
         }
     }

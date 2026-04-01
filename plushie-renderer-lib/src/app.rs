@@ -65,6 +65,10 @@ pub struct App {
     /// Native and WASM crates each provide their own [`EffectHandler`]
     /// implementation.
     pub effect_handler: Box<dyn EffectHandler>,
+    /// Renderer-side animation manager. Tracks transitions, springs,
+    /// and exit ghosts. Advances on frame ticks and writes interpolated
+    /// values to WidgetCaches.interpolated_props.
+    pub transition_manager: plushie_ext::animation::TransitionManager,
 }
 
 impl App {
@@ -83,6 +87,7 @@ impl App {
             animation_epoch: None,
             emitter: EventEmitter::new(),
             effect_handler,
+            transition_manager: plushie_ext::animation::TransitionManager::new(),
         }
     }
 

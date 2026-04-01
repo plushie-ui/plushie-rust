@@ -513,7 +513,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("cell_size", Number),
             ("error_correction", Str),
             ("cell_color", Color),
-            ("background_color", Color),
+            ("background", Color),
             ("alt", Str),
             ("description", Str),
             ("style", Any),

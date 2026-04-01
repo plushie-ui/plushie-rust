@@ -2108,9 +2108,9 @@ fn apply_opacity_to_color(shape: &Value, mut color: Color) -> Color {
 /// Parse horizontal text alignment from a JSON string value.
 fn parse_canvas_text_align_x(value: Option<&Value>) -> iced::widget::text::Alignment {
     match value.and_then(|v| v.as_str()) {
-        Some("left") | Some("start") => iced::widget::text::Alignment::Left,
+        Some("left") => iced::widget::text::Alignment::Left,
         Some("center") => iced::widget::text::Alignment::Center,
-        Some("right") | Some("end") => iced::widget::text::Alignment::Right,
+        Some("right") => iced::widget::text::Alignment::Right,
         _ => iced::widget::text::Alignment::Default,
     }
 }
@@ -2119,7 +2119,7 @@ fn parse_canvas_text_align_x(value: Option<&Value>) -> iced::widget::text::Align
 fn parse_canvas_text_align_y(value: Option<&Value>) -> alignment::Vertical {
     match value.and_then(|v| v.as_str()) {
         Some("center") => alignment::Vertical::Center,
-        Some("bottom") | Some("end") => alignment::Vertical::Bottom,
+        Some("bottom") => alignment::Vertical::Bottom,
         _ => alignment::Vertical::Top,
     }
 }

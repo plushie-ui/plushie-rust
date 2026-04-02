@@ -234,6 +234,7 @@ fn create_listener(addr: &ListenAddr) -> io::Result<(Listener, String, Option<St
                 Ok((Listener::Tcp(listener), addr.to_string(), None))
             }
         }
+        #[allow(unused_variables)]
         ListenAddr::Unix(path) => {
             #[cfg(unix)]
             {

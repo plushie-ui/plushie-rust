@@ -122,6 +122,12 @@ pub struct TransitionManager {
     pub reduced_motion: bool,
 }
 
+impl Default for TransitionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransitionManager {
     pub fn new() -> Self {
         Self {
@@ -172,14 +178,12 @@ impl TransitionManager {
                 .or_default()
                 .insert(prop_name.clone(), value.to_json());
 
-            if finished {
-                if let Some(tag) = completion_tag(anim) {
-                    completions.push(CompletionEvent {
-                        widget_id: widget_id.clone(),
-                        prop_name: prop_name.clone(),
-                        tag,
-                    });
-                }
+            if finished && let Some(tag) = completion_tag(anim) {
+                completions.push(CompletionEvent {
+                    widget_id: widget_id.clone(),
+                    prop_name: prop_name.clone(),
+                    tag,
+                });
             }
         }
 
@@ -219,14 +223,12 @@ impl TransitionManager {
                 .or_default()
                 .insert(prop_name.clone(), value.to_json());
 
-            if finished {
-                if let Some(tag) = completion_tag(anim) {
-                    completions.push(CompletionEvent {
-                        widget_id: widget_id.clone(),
-                        prop_name: prop_name.clone(),
-                        tag,
-                    });
-                }
+            if finished && let Some(tag) = completion_tag(anim) {
+                completions.push(CompletionEvent {
+                    widget_id: widget_id.clone(),
+                    prop_name: prop_name.clone(),
+                    tag,
+                });
             }
         }
 
@@ -290,12 +292,10 @@ impl TransitionManager {
                 }
 
                 if is_descriptor(value) {
-                    let old_value = self
-                        .current_value(&node.id, key)
-                        .and_then(|v| match v {
-                            AnimValue::Number(n) => Some(*n),
-                            _ => None,
-                        });
+                    let old_value = self.current_value(&node.id, key).and_then(|v| match v {
+                        AnimValue::Number(n) => Some(*n),
+                        _ => None,
+                    });
 
                     if let Some(new_anim) = parse_descriptor(value, old_value) {
                         let target_same = self
@@ -357,13 +357,7 @@ fn advance_single(state: &mut TransitionState, dt: f32) -> (AnimValue, bool) {
             let bez = *bezier;
             let repeat = repeat_mode.clone();
             let auto_rev = *auto_reverse;
-            let (eased_t, cycle_done) = timed::progress(
-                state.elapsed_ms,
-                dur,
-                del,
-                eas,
-                bez,
-            );
+            let (eased_t, cycle_done) = timed::progress(state.elapsed_ms, dur, del, eas, bez);
 
             // Interpolate based on value type
             let value = match (&state.from, &state.to) {
@@ -422,7 +416,7 @@ fn advance_single(state: &mut TransitionState, dt: f32) -> (AnimValue, bool) {
             } else {
                 (value, false)
             }
-        },
+        }
 
         AnimationKind::Spring {
             stiffness,
@@ -495,8 +489,7 @@ fn is_finished(anim: &ActiveAnimation) -> bool {
         ActiveAnimation::Single(s) => s.finished,
         ActiveAnimation::Sequence(seq) => {
             seq.current_step >= seq.steps.len()
-                || (seq.current_step == seq.steps.len() - 1
-                    && seq.steps[seq.current_step].finished)
+                || (seq.current_step == seq.steps.len() - 1 && seq.steps[seq.current_step].finished)
         }
     }
 }
@@ -546,10 +539,7 @@ pub fn is_descriptor(value: &Value) -> bool {
 }
 
 /// Parses a transition descriptor from a prop value.
-pub fn parse_descriptor(
-    value: &Value,
-    old_value: Option<f32>,
-) -> Option<ActiveAnimation> {
+pub fn parse_descriptor(value: &Value, old_value: Option<f32>) -> Option<ActiveAnimation> {
     let obj = value.as_object()?;
     let desc_type = obj.get("type")?.as_str()?;
 
@@ -598,10 +588,7 @@ fn parse_timed(
     } else {
         (easing::resolve(easing_val), None)
     };
-    let delay = obj
-        .get("delay")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0) as f32;
+    let delay = obj.get("delay").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
     let from_val = obj
         .get("from")
         .and_then(parse_anim_value)
@@ -649,18 +636,9 @@ fn parse_spring(
         .get("stiffness")
         .and_then(|v| v.as_f64())
         .unwrap_or(100.0) as f32;
-    let damping = obj
-        .get("damping")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(10.0) as f32;
-    let mass = obj
-        .get("mass")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(1.0) as f32;
-    let velocity = obj
-        .get("velocity")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0) as f32;
+    let damping = obj.get("damping").and_then(|v| v.as_f64()).unwrap_or(10.0) as f32;
+    let mass = obj.get("mass").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+    let velocity = obj.get("velocity").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
     let from = obj
         .get("from")
         .and_then(|v| v.as_f64())

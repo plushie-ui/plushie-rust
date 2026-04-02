@@ -1679,7 +1679,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.18",
- "windows 0.62.2",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -3193,7 +3193,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-ext"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "base64",
  "log",
@@ -3209,7 +3209,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "image",
  "plushie-iced-core",
@@ -3225,7 +3225,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-core"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -3241,7 +3241,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-cryoglyph"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "cosmic-text",
  "etagere",
@@ -3252,7 +3252,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-debug"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "log",
  "plushie-iced-core",
@@ -3261,7 +3261,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-futures"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "futures",
  "log",
@@ -3274,7 +3274,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-graphics"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -3294,7 +3294,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-highlighter"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "plushie-iced-core",
  "two-face",
@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-program"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "plushie-iced-graphics",
  "plushie-iced-runtime",
@@ -3310,7 +3310,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-renderer"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "log",
  "plushie-iced-graphics",
@@ -3321,7 +3321,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-runtime"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "bytes",
  "plushie-iced-core",
@@ -3332,14 +3332,14 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-selector"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "plushie-iced-core",
 ]
 
 [[package]]
 name = "plushie-iced-test"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "nom",
  "plushie-iced-futures",
@@ -3354,7 +3354,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-tiny-skia"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -3370,7 +3370,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-wgpu"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -3390,7 +3390,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-widget"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "log",
  "num-traits",
@@ -3404,7 +3404,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-winit"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -3426,7 +3426,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-renderer"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "arboard",
  "base64",
@@ -3446,7 +3446,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-renderer-lib"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "base64",
  "log",
@@ -3462,7 +3462,7 @@ dependencies = [
 
 [[package]]
 name = "plushie-renderer-wasm"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "console_log",
  "futures",

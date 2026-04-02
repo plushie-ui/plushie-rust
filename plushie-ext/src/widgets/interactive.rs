@@ -189,7 +189,13 @@ pub(crate) fn render_mouse_area<'a, R: PlushieRenderer>(
         let ev_id = node.id.clone();
         let wid = window_id.clone();
         ma = ma.on_middle_release(move |p| {
-            Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "middle_release".into(), p.x, p.y)
+            Message::MouseAreaEvent(
+                wid.clone(),
+                ev_id.clone(),
+                "middle_release".into(),
+                p.x,
+                p.y,
+            )
         });
     }
     if prop_bool_default(props, "on_double_click", false) {
@@ -234,7 +240,14 @@ pub(crate) fn render_mouse_area<'a, R: PlushieRenderer>(
                 mouse::ScrollDelta::Lines { x, y } => (x, y),
                 mouse::ScrollDelta::Pixels { x, y } => (x, y),
             };
-            Message::MouseAreaScroll(scroll_window_id.clone(), ev_id.clone(), dx, dy, position.x, position.y)
+            Message::MouseAreaScroll(
+                scroll_window_id.clone(),
+                ev_id.clone(),
+                dx,
+                dy,
+                position.x,
+                position.y,
+            )
         });
     }
 

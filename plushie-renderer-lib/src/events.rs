@@ -258,7 +258,10 @@ impl App {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::ime_preedit(tag, text.clone(), cursor.clone()), &window_id)
+            maybe_with_window_id(
+                OutgoingEvent::ime_preedit(tag, text.clone(), cursor.clone()),
+                &window_id,
+            )
         })
     }
 

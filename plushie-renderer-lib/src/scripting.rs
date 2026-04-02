@@ -690,25 +690,37 @@ pub fn build_interact_response(
         ("press", _) => {
             let payload_map = payload.as_object();
             let (key, modifiers) = parse_key_and_modifiers(payload_map);
-            with_context_window(vec![OutgoingEvent::scripting_key_press(key, modifiers)], &context_window_id)
+            with_context_window(
+                vec![OutgoingEvent::scripting_key_press(key, modifiers)],
+                &context_window_id,
+            )
         }
         ("release", _) => {
             let payload_map = payload.as_object();
             let (key, modifiers) = parse_key_and_modifiers(payload_map);
-            with_context_window(vec![OutgoingEvent::scripting_key_release(key, modifiers)], &context_window_id)
+            with_context_window(
+                vec![OutgoingEvent::scripting_key_release(key, modifiers)],
+                &context_window_id,
+            )
         }
         ("move_to", _) => {
             let x = payload.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let y = payload.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            with_context_window(vec![OutgoingEvent::scripting_cursor_moved(x, y)], &context_window_id)
+            with_context_window(
+                vec![OutgoingEvent::scripting_cursor_moved(x, y)],
+                &context_window_id,
+            )
         }
         ("type_key", _) => {
             let payload_map = payload.as_object();
             let (key, modifiers) = parse_key_and_modifiers(payload_map);
-            with_context_window(vec![
-                OutgoingEvent::scripting_key_press(key.clone(), modifiers.clone()),
-                OutgoingEvent::scripting_key_release(key, modifiers),
-            ], &context_window_id)
+            with_context_window(
+                vec![
+                    OutgoingEvent::scripting_key_press(key.clone(), modifiers.clone()),
+                    OutgoingEvent::scripting_key_release(key, modifiers),
+                ],
+                &context_window_id,
+            )
         }
         ("paste", Some((window_id, wid))) => {
             let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or("");
@@ -743,7 +755,10 @@ pub fn build_interact_response(
                 .get("delta_y")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0);
-            with_context_window(vec![OutgoingEvent::scripting_scroll(delta_x, delta_y)], &context_window_id)
+            with_context_window(
+                vec![OutgoingEvent::scripting_scroll(delta_x, delta_y)],
+                &context_window_id,
+            )
         }
         ("sort", Some((window_id, wid))) => {
             let column = payload.get("column").and_then(|v| v.as_str()).unwrap_or("");
@@ -778,7 +793,10 @@ pub fn build_interact_response(
                             .with_window_id(window_id),
                     ]
                 } else if plushie_ext::widgets::canvas::canvas_has_on_press(node) {
-                    vec![OutgoingEvent::pointer_press(wid, x, y, &button, "mouse", None, mods).with_window_id(window_id)]
+                    vec![
+                        OutgoingEvent::pointer_press(wid, x, y, &button, "mouse", None, mods)
+                            .with_window_id(window_id),
+                    ]
                 } else {
                     vec![]
                 }
@@ -800,7 +818,10 @@ pub fn build_interact_response(
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
                 if plushie_ext::widgets::canvas::canvas_has_on_press(node) {
-                    vec![OutgoingEvent::pointer_release(wid, x, y, &button, "mouse", None, mods).with_window_id(window_id)]
+                    vec![
+                        OutgoingEvent::pointer_release(wid, x, y, &button, "mouse", None, mods)
+                            .with_window_id(window_id),
+                    ]
                 } else {
                     vec![]
                 }
@@ -825,7 +846,10 @@ pub fn build_interact_response(
                             .with_window_id(window_id.clone()),
                     );
                 }
-                events.push(OutgoingEvent::pointer_move(wid, x, y, "mouse", None, mods).with_window_id(window_id));
+                events.push(
+                    OutgoingEvent::pointer_move(wid, x, y, "mouse", None, mods)
+                        .with_window_id(window_id),
+                );
                 events
             } else {
                 vec![]
@@ -836,17 +860,17 @@ pub fn build_interact_response(
         // is None. Split into canvas_id + element_id, find the canvas node,
         // verify the element exists, and emit a canvas_element_click event.
         ("click", None) => {
-            let raw_id = parse_selector(&selector)
-                .and_then(|sel| match sel {
-                    Selector::Id { widget_id, .. } => Some(widget_id),
-                    _ => None,
-                });
+            let raw_id = parse_selector(&selector).and_then(|sel| match sel {
+                Selector::Id { widget_id, .. } => Some(widget_id),
+                _ => None,
+            });
 
             if let Some(scoped_id) = raw_id.filter(|id| id.contains('/')) {
                 if let Some((canvas_id, element_id)) = scoped_id.split_once('/') {
-                    let window_id = core.tree.root().and_then(|root| {
-                        find_window_id_for_node(root, canvas_id, None)
-                    });
+                    let window_id = core
+                        .tree
+                        .root()
+                        .and_then(|root| find_window_id_for_node(root, canvas_id, None));
 
                     if let Some(window_id) = window_id {
                         let found = core.tree.root().and_then(|root| {
@@ -860,7 +884,9 @@ pub fn build_interact_response(
                         });
 
                         if let Some(node) = found {
-                            if plushie_ext::widgets::canvas::canvas_find_element_by_id(node, element_id) {
+                            if plushie_ext::widgets::canvas::canvas_find_element_by_id(
+                                node, element_id,
+                            ) {
                                 vec![
                                     OutgoingEvent::canvas_element_click(
                                         canvas_id.to_string(),
@@ -872,7 +898,9 @@ pub fn build_interact_response(
                                     .with_window_id(window_id),
                                 ]
                             } else {
-                                log::warn!("canvas element '{element_id}' not found in canvas '{canvas_id}'");
+                                log::warn!(
+                                    "canvas element '{element_id}' not found in canvas '{canvas_id}'"
+                                );
                                 vec![]
                             }
                         } else {

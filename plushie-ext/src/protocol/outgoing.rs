@@ -567,18 +567,12 @@ impl OutgoingEvent {
                 "x": sanitize_f32(x),
                 "y": sanitize_f32(y),
             })),
-            ..Self::bare(
-                "enter",
-                Self::scoped_element_id(&canvas_id, &element_id),
-            )
+            ..Self::bare("enter", Self::scoped_element_id(&canvas_id, &element_id))
         }
     }
 
     pub fn canvas_element_leave(canvas_id: String, element_id: String) -> Self {
-        Self::bare(
-            "exit",
-            Self::scoped_element_id(&canvas_id, &element_id),
-        )
+        Self::bare("exit", Self::scoped_element_id(&canvas_id, &element_id))
     }
 
     pub fn canvas_element_key_press(
@@ -651,10 +645,7 @@ impl OutgoingEvent {
                 "delta_y": sanitize_f32(dy),
             })),
             coalesce: Some(CoalesceHint::Replace),
-            ..Self::bare(
-                "drag",
-                Self::scoped_element_id(&canvas_id, &element_id),
-            )
+            ..Self::bare("drag", Self::scoped_element_id(&canvas_id, &element_id))
         }
     }
 
@@ -664,25 +655,16 @@ impl OutgoingEvent {
                 "x": sanitize_f32(x),
                 "y": sanitize_f32(y),
             })),
-            ..Self::bare(
-                "drag_end",
-                Self::scoped_element_id(&canvas_id, &element_id),
-            )
+            ..Self::bare("drag_end", Self::scoped_element_id(&canvas_id, &element_id))
         }
     }
 
     pub fn canvas_element_focused(canvas_id: String, element_id: String) -> Self {
-        Self::bare(
-            "focused",
-            Self::scoped_element_id(&canvas_id, &element_id),
-        )
+        Self::bare("focused", Self::scoped_element_id(&canvas_id, &element_id))
     }
 
     pub fn canvas_element_blurred(canvas_id: String, element_id: String) -> Self {
-        Self::bare(
-            "blurred",
-            Self::scoped_element_id(&canvas_id, &element_id),
-        )
+        Self::bare("blurred", Self::scoped_element_id(&canvas_id, &element_id))
     }
 
     /// The canvas widget itself gained iced-level focus.
@@ -697,18 +679,12 @@ impl OutgoingEvent {
 
     /// A focusable group gained group-level focus. Uses scoped ID.
     pub fn canvas_group_focused(canvas_id: String, group_id: String) -> Self {
-        Self::bare(
-            "focused",
-            Self::scoped_element_id(&canvas_id, &group_id),
-        )
+        Self::bare("focused", Self::scoped_element_id(&canvas_id, &group_id))
     }
 
     /// A focusable group lost group-level focus. Uses scoped ID.
     pub fn canvas_group_blurred(canvas_id: String, group_id: String) -> Self {
-        Self::bare(
-            "blurred",
-            Self::scoped_element_id(&canvas_id, &group_id),
-        )
+        Self::bare("blurred", Self::scoped_element_id(&canvas_id, &group_id))
     }
 
     /// Renderer-side validation diagnostic.

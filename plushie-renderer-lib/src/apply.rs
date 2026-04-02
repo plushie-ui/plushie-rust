@@ -165,7 +165,9 @@ impl App {
                 }
                 CoreEffect::ExitNodes(nodes) => {
                     for (parent_id, index, node) in nodes {
-                        self.transition_manager.ghosts.add_ghost(&parent_id, node, index);
+                        self.transition_manager
+                            .ghosts
+                            .add_ghost(&parent_id, node, index);
                     }
                 }
             }
@@ -193,8 +195,7 @@ impl App {
             }
 
             // Scan tree for animation descriptors and start/update animations.
-            self.transition_manager
-                .scan_tree(self.core.tree.root());
+            self.transition_manager.scan_tree(self.core.tree.root());
         }
 
         Ok(())

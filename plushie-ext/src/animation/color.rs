@@ -69,7 +69,7 @@ fn hue_lerp(from: Oklch, to: Oklch, t: f32) -> f32 {
 
 /// Attempts to parse a JSON value as a color.
 pub fn parse_color(value: &serde_json::Value) -> Option<Color> {
-    value.as_str().and_then(|s| parse_hex_color(s))
+    value.as_str().and_then(parse_hex_color)
 }
 
 /// Converts a Color back to a hex string for the interpolated props cache.

@@ -222,19 +222,47 @@ pub fn message_to_event(msg: &Message) -> Option<OutgoingEvent> {
             let mods = plushie_ext::protocol::KeyModifiers::default();
             match kind.as_str() {
                 "right_press" => Some(OutgoingEvent::pointer_press(
-                    id.clone(), *x, *y, "right", "mouse", None, mods.clone(),
+                    id.clone(),
+                    *x,
+                    *y,
+                    "right",
+                    "mouse",
+                    None,
+                    mods.clone(),
                 )),
                 "right_release" => Some(OutgoingEvent::pointer_release(
-                    id.clone(), *x, *y, "right", "mouse", None, mods.clone(),
+                    id.clone(),
+                    *x,
+                    *y,
+                    "right",
+                    "mouse",
+                    None,
+                    mods.clone(),
                 )),
                 "middle_press" => Some(OutgoingEvent::pointer_press(
-                    id.clone(), *x, *y, "middle", "mouse", None, mods.clone(),
+                    id.clone(),
+                    *x,
+                    *y,
+                    "middle",
+                    "mouse",
+                    None,
+                    mods.clone(),
                 )),
                 "middle_release" => Some(OutgoingEvent::pointer_release(
-                    id.clone(), *x, *y, "middle", "mouse", None, mods.clone(),
+                    id.clone(),
+                    *x,
+                    *y,
+                    "middle",
+                    "mouse",
+                    None,
+                    mods.clone(),
                 )),
                 "double_click" => Some(OutgoingEvent::pointer_double_click(
-                    id.clone(), *x, *y, "mouse", mods.clone(),
+                    id.clone(),
+                    *x,
+                    *y,
+                    "mouse",
+                    mods.clone(),
                 )),
                 "enter" => Some(OutgoingEvent::pointer_enter(id.clone())),
                 "exit" => Some(OutgoingEvent::pointer_exit(id.clone())),
@@ -283,13 +311,30 @@ pub fn message_to_event(msg: &Message) -> Option<OutgoingEvent> {
             };
             match kind.as_str() {
                 "press" => Some(OutgoingEvent::pointer_press(
-                    id.clone(), *x, *y, button, pointer_type, finger, modifiers.clone(),
+                    id.clone(),
+                    *x,
+                    *y,
+                    button,
+                    pointer_type,
+                    finger,
+                    modifiers.clone(),
                 )),
                 "release" => Some(OutgoingEvent::pointer_release(
-                    id.clone(), *x, *y, button, pointer_type, finger, modifiers.clone(),
+                    id.clone(),
+                    *x,
+                    *y,
+                    button,
+                    pointer_type,
+                    finger,
+                    modifiers.clone(),
                 )),
                 "move" => Some(OutgoingEvent::pointer_move(
-                    id.clone(), *x, *y, pointer_type, finger, modifiers.clone(),
+                    id.clone(),
+                    *x,
+                    *y,
+                    pointer_type,
+                    finger,
+                    modifiers.clone(),
                 )),
                 _ => None,
             }
@@ -306,7 +351,13 @@ pub fn message_to_event(msg: &Message) -> Option<OutgoingEvent> {
             modifiers,
         } => Some(
             OutgoingEvent::pointer_scroll(
-                id.clone(), *x, *y, *delta_x, *delta_y, pointer_type, modifiers.clone(),
+                id.clone(),
+                *x,
+                *y,
+                *delta_x,
+                *delta_y,
+                pointer_type,
+                modifiers.clone(),
             )
             .with_window_id(window_id.clone()),
         ),
@@ -535,7 +586,8 @@ mod tests {
             "enter",
             "exit",
         ] {
-            let msg = Message::MouseAreaEvent("main".into(), "ma1".into(), kind.to_string(), 10.0, 20.0);
+            let msg =
+                Message::MouseAreaEvent("main".into(), "ma1".into(), kind.to_string(), 10.0, 20.0);
             assert!(
                 message_to_event(&msg).is_some(),
                 "mouse area event `{kind}` should map"

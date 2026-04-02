@@ -32,8 +32,8 @@ pub fn advance(
     let new_velocity = state.velocity + acceleration * dt;
     let new_position = state.position + new_velocity * dt;
 
-    let settled =
-        new_velocity.abs() < VELOCITY_THRESHOLD && (new_position - target).abs() < POSITION_THRESHOLD;
+    let settled = new_velocity.abs() < VELOCITY_THRESHOLD
+        && (new_position - target).abs() < POSITION_THRESHOLD;
 
     if settled {
         (

@@ -38,7 +38,8 @@ pub(crate) fn render_text<'a, R: PlushieRenderer>(
 ) -> Element<'a, Message, Theme, R> {
     let props = node.props.as_object();
     let content = prop_str(props, "content").unwrap_or_default();
-    let size = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "size").or(ctx.default_text_size);
+    let size = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "size")
+        .or(ctx.default_text_size);
 
     let mut t = text(content);
     if let Some(s) = size {
@@ -204,7 +205,9 @@ pub(crate) fn render_rich_text<'a, R: PlushieRenderer>(
     let id = node.id.clone();
     let mut rt = rich_text(span_list).width(width).height(height);
 
-    if let Some(sz) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "size").or(ctx.default_text_size) {
+    if let Some(sz) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "size")
+        .or(ctx.default_text_size)
+    {
         rt = rt.size(sz);
     }
     let font = props
@@ -280,13 +283,19 @@ pub(crate) fn render_image<'a, R: PlushieRenderer>(
     if let Some(cf) = content_fit {
         img = img.content_fit(cf);
     }
-    if let Some(r) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "rotation") {
+    if let Some(r) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "rotation")
+    {
         img = img.rotation(Rotation::from(Radians(r.to_radians())));
     }
     if let Some(o) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "opacity") {
         img = img.opacity(o);
     }
-    if let Some(br) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "border_radius") {
+    if let Some(br) = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        props,
+        "border_radius",
+    ) {
         img = img.border_radius(br);
     }
     if let Some(fm_str) = prop_str(props, "filter_method") {
@@ -299,7 +308,8 @@ pub(crate) fn render_image<'a, R: PlushieRenderer>(
     if let Some(expand) = prop_bool(props, "expand") {
         img = img.expand(expand);
     }
-    if let Some(scale) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "scale") {
+    if let Some(scale) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "scale")
+    {
         img = img.scale(scale);
     }
     if let Some(alt) = prop_str(props, "alt") {
@@ -363,7 +373,8 @@ pub(crate) fn render_svg<'a, R: PlushieRenderer>(
     if let Some(cf) = content_fit {
         s = s.content_fit(cf);
     }
-    if let Some(r) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "rotation") {
+    if let Some(r) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "rotation")
+    {
         s = s.rotation(Rotation::from(Radians(r.to_radians())));
     }
     if let Some(o) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "opacity") {
@@ -405,12 +416,14 @@ pub(crate) fn render_markdown<'a, R: PlushieRenderer>(
     };
 
     // Build markdown Settings from props, falling back to theme defaults.
-    let mut settings =
-        if let Some(text_size) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "text_size").or(ctx.default_text_size) {
-            markdown::Settings::with_text_size(text_size, markdown::Style::from(ctx.theme))
-        } else {
-            markdown::Settings::from(ctx.theme)
-        };
+    let mut settings = if let Some(text_size) =
+        prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "text_size")
+            .or(ctx.default_text_size)
+    {
+        markdown::Settings::with_text_size(text_size, markdown::Style::from(ctx.theme))
+    } else {
+        markdown::Settings::from(ctx.theme)
+    };
     if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h1_size") {
         settings.h1_size = Pixels(v);
     }
@@ -420,7 +433,8 @@ pub(crate) fn render_markdown<'a, R: PlushieRenderer>(
     if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h3_size") {
         settings.h3_size = Pixels(v);
     }
-    if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "code_size") {
+    if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "code_size")
+    {
         settings.code_size = Pixels(v);
     }
     if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing") {

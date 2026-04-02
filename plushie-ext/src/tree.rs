@@ -80,24 +80,19 @@ impl Tree {
         let mut exit_nodes = Vec::new();
         for op in ops {
             // Check for exit nodes before removal
-            if op.op == "remove_child" {
-                if let Some(root) = self.root.as_ref() {
-                    if let Ok(parent) = navigate(root, &op.path) {
-                        let index = op
-                            .rest
-                            .get("index")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(u64::MAX) as usize;
-                        if index < parent.children.len() {
-                            let child = &parent.children[index];
-                            if child.props.get("exit").is_some() {
-                                exit_nodes.push((
-                                    parent.id.clone(),
-                                    index,
-                                    child.clone(),
-                                ));
-                            }
-                        }
+            if op.op == "remove_child"
+                && let Some(root) = self.root.as_ref()
+                && let Ok(parent) = navigate(root, &op.path)
+            {
+                let index = op
+                    .rest
+                    .get("index")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(u64::MAX) as usize;
+                if index < parent.children.len() {
+                    let child = &parent.children[index];
+                    if child.props.get("exit").is_some() {
+                        exit_nodes.push((parent.id.clone(), index, child.clone()));
                     }
                 }
             }

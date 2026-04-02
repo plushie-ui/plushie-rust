@@ -23,6 +23,12 @@ pub struct GhostManager {
     ghosts: HashMap<String, Vec<GhostNode>>,
 }
 
+impl Default for GhostManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GhostManager {
     pub fn new() -> Self {
         Self {
@@ -75,10 +81,10 @@ impl GhostManager {
 
     /// Marks a ghost as finished and removes it if all ghosts for the parent are done.
     pub fn mark_finished(&mut self, parent_id: &str, ghost_index: usize) {
-        if let Some(ghosts) = self.ghosts.get_mut(parent_id) {
-            if let Some(ghost) = ghosts.get_mut(ghost_index) {
-                ghost.finished = true;
-            }
+        if let Some(ghosts) = self.ghosts.get_mut(parent_id)
+            && let Some(ghost) = ghosts.get_mut(ghost_index)
+        {
+            ghost.finished = true;
         }
     }
 

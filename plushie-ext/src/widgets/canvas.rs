@@ -2708,7 +2708,10 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
             }
 
             // -- Touch events --
-            iced::Event::Touch(iced::touch::Event::FingerPressed { id: finger, position: touch_pos }) => {
+            iced::Event::Touch(iced::touch::Event::FingerPressed {
+                id: finger,
+                position: touch_pos,
+            }) => {
                 let touch_position = match cursor.position_in(bounds) {
                     Some(_) => Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y),
                     None => return None,
@@ -2753,7 +2756,10 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                 action
             }
 
-            iced::Event::Touch(iced::touch::Event::FingerMoved { id: finger, position: touch_pos }) => {
+            iced::Event::Touch(iced::touch::Event::FingerMoved {
+                id: finger,
+                position: touch_pos,
+            }) => {
                 let touch_position = Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y);
                 let mut action: Option<iced::widget::Action<Message>> = None;
 
@@ -2808,7 +2814,10 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                 action
             }
 
-            iced::Event::Touch(iced::touch::Event::FingerLifted { id: finger, position: touch_pos }) => {
+            iced::Event::Touch(iced::touch::Event::FingerLifted {
+                id: finger,
+                position: touch_pos,
+            }) => {
                 let touch_position = Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y);
                 let mut action: Option<iced::widget::Action<Message>> = None;
 

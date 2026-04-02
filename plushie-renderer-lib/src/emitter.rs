@@ -487,18 +487,10 @@ mod tests {
         let key = CoalesceKey::Widget("ma1".into(), "scroll".into());
         let hint = CoalesceHint::Accumulate(vec!["delta_x".into(), "delta_y".into()]);
 
-        let ev1 = make_event_with_data(
-            "scroll",
-            "ma1",
-            json!({"delta_x": 1.0, "delta_y": 2.0}),
-        );
+        let ev1 = make_event_with_data("scroll", "ma1", json!({"delta_x": 1.0, "delta_y": 2.0}));
         emitter.buffer_event(&key, ev1, &hint);
 
-        let ev2 = make_event_with_data(
-            "scroll",
-            "ma1",
-            json!({"delta_x": 3.0, "delta_y": 4.0}),
-        );
+        let ev2 = make_event_with_data("scroll", "ma1", json!({"delta_x": 3.0, "delta_y": 4.0}));
         emitter.buffer_event(&key, ev2, &hint);
 
         match emitter.pending.get(&key).unwrap() {
@@ -542,7 +534,14 @@ mod tests {
         let events = vec![
             OutgoingEvent::slide("s1".into(), 0.5),
             OutgoingEvent::cursor_moved("t".into(), 1.0, 2.0),
-            OutgoingEvent::pointer_move("m1".into(), 1.0, 2.0, "mouse", None, plushie_ext::protocol::KeyModifiers::default()),
+            OutgoingEvent::pointer_move(
+                "m1".into(),
+                1.0,
+                2.0,
+                "mouse",
+                None,
+                plushie_ext::protocol::KeyModifiers::default(),
+            ),
             OutgoingEvent::resize("s1".into(), 100.0, 200.0),
             OutgoingEvent::pane_resized("p1".into(), "s0".into(), 0.5),
             OutgoingEvent::animation_frame("t".into(), 16000),
@@ -567,7 +566,15 @@ mod tests {
     fn constructors_set_accumulate_hint() {
         let events = vec![
             OutgoingEvent::wheel_scrolled("t".into(), 0.0, -3.0, "line"),
-            OutgoingEvent::pointer_scroll("m1".into(), 0.0, 0.0, 0.0, -3.0, "mouse", plushie_ext::protocol::KeyModifiers::default()),
+            OutgoingEvent::pointer_scroll(
+                "m1".into(),
+                0.0,
+                0.0,
+                0.0,
+                -3.0,
+                "mouse",
+                plushie_ext::protocol::KeyModifiers::default(),
+            ),
         ];
         for event in events {
             assert!(
@@ -588,8 +595,24 @@ mod tests {
             OutgoingEvent::select("p1".into(), "opt".into()),
             OutgoingEvent::paste("i1".into(), "text".into()),
             OutgoingEvent::slide_release("s1".into(), 0.5),
-            OutgoingEvent::pointer_press("c1".into(), 1.0, 2.0, "Left", "mouse", None, plushie_ext::protocol::KeyModifiers::default()),
-            OutgoingEvent::pointer_release("c1".into(), 1.0, 2.0, "Left", "mouse", None, plushie_ext::protocol::KeyModifiers::default()),
+            OutgoingEvent::pointer_press(
+                "c1".into(),
+                1.0,
+                2.0,
+                "Left",
+                "mouse",
+                None,
+                plushie_ext::protocol::KeyModifiers::default(),
+            ),
+            OutgoingEvent::pointer_release(
+                "c1".into(),
+                1.0,
+                2.0,
+                "Left",
+                "mouse",
+                None,
+                plushie_ext::protocol::KeyModifiers::default(),
+            ),
             OutgoingEvent::option_hovered("cb1".into(), "opt".into()),
             OutgoingEvent::cursor_entered("t".into()),
             OutgoingEvent::cursor_left("t".into()),

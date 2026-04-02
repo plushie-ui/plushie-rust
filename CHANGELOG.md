@@ -6,6 +6,97 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-02
+
+### Breaking changes
+
+- **Unified pointer events.** Canvas-specific (`canvas_press`,
+  `canvas_release`, `canvas_move`, `canvas_scroll`) and mouse area
+  specific (`mouse_right_press`, `mouse_middle_press`, `mouse_move`,
+  `mouse_scroll`, `mouse_enter`, `mouse_exit`, `mouse_double_click`)
+  event families replaced with unified device-agnostic families:
+  `press`, `release`, `move`, `scroll`, `enter`, `exit`,
+  `double_click`. All carry `pointer` type, `modifiers` state, and
+  optional `finger` ID for touch.
+
+- **Canvas element events unified.** `canvas_element_enter`/`leave`/
+  `focused`/`blurred`/`drag`/`drag_end`/`key_press`/`key_release`
+  replaced with standard families (`enter`, `exit`, `focused`,
+  `blurred`, `drag`, `drag_end`, `key_press`, `key_release`) using
+  scoped IDs (`"{canvas_id}/{element_id}"`).
+
+- **`mouse_area` widget renamed to `pointer_area`** on the wire.
+
+- **Scrollable viewport event** renamed from `scroll` to `scrolled`
+  on the wire. `scroll` is now the pointer wheel event.
+
+- **`sensor_resize` event** renamed to `resize`.
+
+- **`:start`/`:end` alignment aliases removed.** Use `:left`/`:right`/
+  `:top`/`:bottom`/`:center`. Unknown alignment values log a warning.
+
+- **Subscription wire types renamed.** `on_mouse_move`/`button`/
+  `scroll` and `on_touch` renamed to `on_pointer_move`/`button`/
+  `scroll`/`touch`.
+
+### Added
+
+- **Device awareness on pointer events.** Every pointer event includes
+  `pointer` field (`"mouse"`, `"touch"`, `"pen"`), keyboard `modifiers`
+  state (`{shift, ctrl, alt, logo, command}`), and `finger` ID for
+  touch events.
+
+- **Canvas touch support.** Canvas now handles `FingerPressed`,
+  `FingerMoved`, and `FingerLifted` events with full hit testing, drag,
+  and click detection. Touch events are emitted with `pointer: "touch"`
+  and the finger ID.
+
+- **Modifier state tracking.** Renderer tracks current keyboard
+  modifier state and includes it on all outgoing pointer events.
+
+- **Mock mode canvas element click.** `click("#canvas-id/element-id")`
+  works in mock mode by detecting scoped IDs, finding the canvas,
+  verifying the element exists, and emitting a click event.
+
+- **Renderer-side animation system.** Transitions, springs, and
+  sequences with animatable props across display, layout, and input
+  widgets.
+
+- **Per-window scale_factor support.**
+
+- **Window-scoped subscriptions.** Subscription events include
+  `window_id` for multi-window disambiguation.
+
+- **Widget-targeted scroll commands** for specific scrollable widgets.
+
+- **Effect stubs** for testing (register/unregister via wire protocol).
+
+- **Canvas element key events.** `key_press`/`key_release` on focused
+  elements when `arrow_mode` is `"none"`.
+
+- **Canvas scoped IDs** for all element events.
+
+- **Radio group accessibility role** for canvas elements.
+
+### Fixed
+
+- **Mock mode modifier keys.** Click/toggle actions in mock mode now
+  extract modifiers from the interact payload instead of hardcoding
+  empty modifiers.
+
+- **Mock mode sequential clicks.** Replaced the fragile focus+space
+  approach with direct synthetic event emission. Sequential clicks on
+  different widgets now work reliably.
+
+- **Broken pipe handling.** Ignore broken pipes during hello handshake.
+
+### Changed
+
+- Upgraded to plushie-iced 0.8.1 (mouse_area cursor position callbacks).
+- Renamed `plushie_id` to `window_id` throughout renderer codebase.
+- Generic renderer pipeline with null renderer for mock mode.
+- Extracted shared startup sequence into startup module.
+
 ## [0.5.1] - 2026-03-23
 
 ### Fixed

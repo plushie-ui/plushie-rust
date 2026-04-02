@@ -107,9 +107,7 @@ impl App {
             Message::CursorEntered(iced_id, captured) => {
                 self.handle_cursor_entered(iced_id, captured)
             }
-            Message::CursorLeft(iced_id, captured) => {
-                self.handle_cursor_left(iced_id, captured)
-            }
+            Message::CursorLeft(iced_id, captured) => self.handle_cursor_left(iced_id, captured),
             Message::MouseButtonPressed(button, iced_id, captured) => {
                 self.handle_mouse_button_pressed(button, iced_id, captured)
             }
@@ -135,18 +133,14 @@ impl App {
             }
 
             // -- IME events --
-            Message::ImeOpened(iced_id, captured) => {
-                self.handle_ime_opened(iced_id, captured)
-            }
+            Message::ImeOpened(iced_id, captured) => self.handle_ime_opened(iced_id, captured),
             Message::ImePreedit(text, cursor, iced_id, captured) => {
                 self.handle_ime_preedit(text, cursor, iced_id, captured)
             }
             Message::ImeCommit(text, iced_id, captured) => {
                 self.handle_ime_commit(text, iced_id, captured)
             }
-            Message::ImeClosed(iced_id, captured) => {
-                self.handle_ime_closed(iced_id, captured)
-            }
+            Message::ImeClosed(iced_id, captured) => self.handle_ime_closed(iced_id, captured),
 
             // -- Window lifecycle events --
             Message::WindowCloseRequested(iced_id) => {
@@ -210,10 +204,9 @@ impl App {
             // -- System / animation --
             Message::AnimationFrame(instant) => {
                 // Advance renderer-side transitions on every frame tick
-                let completions = self.transition_manager.advance_all(
-                    instant,
-                    &mut self.core.caches.interpolated_props,
-                );
+                let completions = self
+                    .transition_manager
+                    .advance_all(instant, &mut self.core.caches.interpolated_props);
 
                 // Emit transition_complete events
                 for c in completions {

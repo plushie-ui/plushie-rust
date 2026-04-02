@@ -125,9 +125,7 @@ impl WindowMap {
     // -- Per-window decoration state --
 
     pub fn is_decorated(&self, window_id: &str) -> bool {
-        self.forward
-            .get(window_id)
-            .is_none_or(|(_, s)| s.decorated)
+        self.forward.get(window_id).is_none_or(|(_, s)| s.decorated)
     }
 
     pub fn set_decorated(&mut self, window_id: &str, decorated: bool) {

@@ -60,7 +60,9 @@ pub(crate) fn render_column<'a, R: PlushieRenderer>(
         col = col.padding(p);
     }
 
-    if let Some(mw) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "max_width") {
+    if let Some(mw) =
+        prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "max_width")
+    {
         col = col.max_width(mw);
     }
 
@@ -151,10 +153,17 @@ pub(crate) fn render_container<'a, R: PlushieRenderer>(
         c = c.padding(p);
     }
 
-    if let Some(mw) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "max_width") {
+    if let Some(mw) =
+        prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "max_width")
+    {
         c = c.max_width(mw);
     }
-    if let Some(mh) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "max_height") {
+    if let Some(mh) = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        props,
+        "max_height",
+    ) {
         c = c.max_height(mh);
     }
 
@@ -403,7 +412,9 @@ pub(crate) fn render_keyed_column<'a, R: PlushieRenderer>(
         kc = kc.padding(p);
     }
 
-    if let Some(mw) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "max_width") {
+    if let Some(mw) =
+        prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "max_width")
+    {
         kc = kc.max_width(mw);
     }
 
@@ -426,8 +437,20 @@ pub(crate) fn render_float<'a, R: PlushieRenderer>(
         .map(|c| ctx.render_child(c))
         .unwrap_or_else(|| Space::new().into());
 
-    let tx = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "translate_x").unwrap_or(0.0);
-    let ty = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "translate_y").unwrap_or(0.0);
+    let tx = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        props,
+        "translate_x",
+    )
+    .unwrap_or(0.0);
+    let ty = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        props,
+        "translate_y",
+    )
+    .unwrap_or(0.0);
 
     let mut f =
         iced::widget::float(child).translate(move |_content, _viewport| Vector::new(tx, ty));
@@ -613,7 +636,8 @@ pub(crate) fn render_pane_grid<'a, R: PlushieRenderer>(
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
     let props = node.props.as_object();
-    let spacing = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing").unwrap_or(2.0);
+    let spacing = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing")
+        .unwrap_or(2.0);
     let width = prop_length(props, "width", Length::Fill);
     let height = prop_length(props, "height", Length::Fill);
 

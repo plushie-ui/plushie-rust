@@ -266,22 +266,26 @@ impl<R: PlushieRenderer> Core<R> {
     /// Returns (kind, max_rate) pairs for entries that have a max_rate set.
     /// Used by the emitter rate sync logic.
     pub fn subscription_rates(&self) -> impl Iterator<Item = (&str, u32)> {
-        self.active_subscriptions.iter().flat_map(|(kind, entries)| {
-            entries
-                .iter()
-                .filter_map(|e| e.max_rate.map(|r| (kind.as_str(), r)))
-        })
+        self.active_subscriptions
+            .iter()
+            .flat_map(|(kind, entries)| {
+                entries
+                    .iter()
+                    .filter_map(|e| e.max_rate.map(|r| (kind.as_str(), r)))
+            })
     }
 
     /// Collect all kinds that have at least one entry with a max_rate.
     pub fn subscription_rate_kinds(&self) -> impl Iterator<Item = &str> {
-        self.active_subscriptions.iter().filter_map(|(kind, entries)| {
-            if entries.iter().any(|e| e.max_rate.is_some()) {
-                Some(kind.as_str())
-            } else {
-                None
-            }
-        })
+        self.active_subscriptions
+            .iter()
+            .filter_map(|(kind, entries)| {
+                if entries.iter().any(|e| e.max_rate.is_some()) {
+                    Some(kind.as_str())
+                } else {
+                    None
+                }
+            })
     }
 
     /// Compute a SHA-256 hash of the current tree (serialized as JSON).

@@ -38,10 +38,7 @@ use plushie_ext::image_registry::ImageRegistry;
 use plushie_ext::message::Message;
 use plushie_ext::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
 
-use plushie_renderer_lib::scripting::{
-    interaction_to_iced_events,
-    resolve_widget_id,
-};
+use plushie_renderer_lib::scripting::{interaction_to_iced_events, resolve_widget_id};
 
 fn log_hello_error(err: &io::Error) {
     if err.kind() != io::ErrorKind::BrokenPipe {
@@ -652,7 +649,9 @@ fn handle_message<R: PlushieRenderer>(
                     CoreEffect::ThemeFollowsSystem => {}
                     CoreEffect::ExitNodes(nodes) => {
                         for (parent_id, index, node) in nodes {
-                            s.transition_manager.ghosts.add_ghost(&parent_id, node, index);
+                            s.transition_manager
+                                .ghosts
+                                .add_ghost(&parent_id, node, index);
                         }
                     }
                 }
@@ -675,8 +674,7 @@ fn handle_message<R: PlushieRenderer>(
                 }
 
                 // Scan tree for animation descriptors.
-                s.transition_manager
-                    .scan_tree(s.core.tree.root());
+                s.transition_manager.scan_tree(s.core.tree.root());
 
                 let settle_events = s.settle_ui(session_id);
                 for event in settle_events {
@@ -729,7 +727,11 @@ fn handle_message<R: PlushieRenderer>(
             let use_synthetic = matches!(s.mode, Mode::Mock)
                 && matches!(
                     action.as_str(),
-                    "click" | "toggle" | "select" | "canvas_press" | "canvas_release"
+                    "click"
+                        | "toggle"
+                        | "select"
+                        | "canvas_press"
+                        | "canvas_release"
                         | "canvas_move"
                 )
                 && widget_id.is_some();
@@ -847,10 +849,9 @@ fn handle_message<R: PlushieRenderer>(
         }
         IncomingMessage::AdvanceFrame { timestamp } => {
             // Advance renderer-side transitions
-            let completions = s.transition_manager.advance_with_timestamp(
-                timestamp,
-                &mut s.core.caches.interpolated_props,
-            );
+            let completions = s
+                .transition_manager
+                .advance_with_timestamp(timestamp, &mut s.core.caches.interpolated_props);
 
             // Emit transition_complete events
             for c in completions {
@@ -866,10 +867,10 @@ fn handle_message<R: PlushieRenderer>(
             }
 
             // Emit animation_frame events to SDK
-            for entry in s.core.matching_entries(
-                plushie_renderer_lib::constants::SUB_ANIMATION_FRAME,
-                None,
-            ) {
+            for entry in s
+                .core
+                .matching_entries(plushie_renderer_lib::constants::SUB_ANIMATION_FRAME, None)
+            {
                 s.writer.emit(
                     &plushie_ext::protocol::OutgoingEvent::animation_frame(
                         entry.tag.clone(),

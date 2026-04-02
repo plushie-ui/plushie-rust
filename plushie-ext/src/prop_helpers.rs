@@ -479,6 +479,59 @@ pub fn prop_padding(props: Props<'_>) -> Option<iced::Padding> {
 }
 
 // ---------------------------------------------------------------------------
+// Animated prop helpers
+// ---------------------------------------------------------------------------
+// These check the interpolated_props cache (populated by the TransitionManager)
+// before falling back to the tree's props. Use these in widget render functions
+// for props that can be animated.
+
+/// Get an f32 prop value, checking the animation cache first.
+///
+/// If the TransitionManager is actively interpolating this prop, returns
+/// the current animated value. Otherwise falls back to the tree prop.
+pub fn prop_animated_f32(
+    interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
+    node_id: &str,
+    props: Props<'_>,
+    key: &str,
+) -> Option<f32> {
+    // Check interpolated cache first
+    if let Some(overrides) = interpolated.get(node_id)
+        && let Some(val) = overrides.get(key)
+    {
+        return val.as_f64().map(f64_to_f32);
+    }
+    // Fall back to tree props (skip descriptor maps)
+    let val = props?.get(key)?;
+    if val.is_object() {
+        // This is likely an animation descriptor -- the renderer hasn't
+        // started animating yet (first frame) or it just completed.
+        // Return None so the widget uses its default.
+        return None;
+    }
+    prop_f32(props, key)
+}
+
+/// Get a color prop value, checking the animation cache first.
+pub fn prop_animated_color(
+    interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
+    node_id: &str,
+    props: Props<'_>,
+    key: &str,
+) -> Option<Color> {
+    if let Some(overrides) = interpolated.get(node_id)
+        && let Some(val) = overrides.get(key)
+    {
+        return val.as_str().and_then(parse_hex_color);
+    }
+    let val = props?.get(key)?;
+    if val.is_object() {
+        return None;
+    }
+    prop_color(props, key)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1008,57 +1061,4 @@ mod tests {
             }
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Animated prop helpers
-// ---------------------------------------------------------------------------
-// These check the interpolated_props cache (populated by the TransitionManager)
-// before falling back to the tree's props. Use these in widget render functions
-// for props that can be animated.
-
-/// Get an f32 prop value, checking the animation cache first.
-///
-/// If the TransitionManager is actively interpolating this prop, returns
-/// the current animated value. Otherwise falls back to the tree prop.
-pub fn prop_animated_f32(
-    interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
-    node_id: &str,
-    props: Props<'_>,
-    key: &str,
-) -> Option<f32> {
-    // Check interpolated cache first
-    if let Some(overrides) = interpolated.get(node_id) {
-        if let Some(val) = overrides.get(key) {
-            return val.as_f64().map(|v| f64_to_f32(v));
-        }
-    }
-    // Fall back to tree props (skip descriptor maps)
-    let val = props?.get(key)?;
-    if val.is_object() {
-        // This is likely an animation descriptor -- the renderer hasn't
-        // started animating yet (first frame) or it just completed.
-        // Return None so the widget uses its default.
-        return None;
-    }
-    prop_f32(props, key)
-}
-
-/// Get a color prop value, checking the animation cache first.
-pub fn prop_animated_color(
-    interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
-    node_id: &str,
-    props: Props<'_>,
-    key: &str,
-) -> Option<Color> {
-    if let Some(overrides) = interpolated.get(node_id) {
-        if let Some(val) = overrides.get(key) {
-            return val.as_str().and_then(|s| parse_hex_color(s));
-        }
-    }
-    let val = props?.get(key)?;
-    if val.is_object() {
-        return None;
-    }
-    prop_color(props, key)
 }

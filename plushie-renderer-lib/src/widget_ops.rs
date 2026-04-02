@@ -236,10 +236,8 @@ impl App {
                     .to_string();
 
                 if let Some(state) = self.core.caches.pane_grid_state_mut(&target)
-                    && let (Some(a), Some(b)) = (
-                        find_pane_by_id(state, &a_id),
-                        find_pane_by_id(state, &b_id),
-                    )
+                    && let (Some(a), Some(b)) =
+                        (find_pane_by_id(state, &a_id), find_pane_by_id(state, &b_id))
                 {
                     state.swap(a, b);
                 }
@@ -405,10 +403,7 @@ impl App {
 // ---------------------------------------------------------------------------
 
 /// Find a pane_grid::Pane by its ID string.
-pub fn find_pane_by_id(
-    state: &pane_grid::State<String>,
-    pane_id: &str,
-) -> Option<pane_grid::Pane> {
+pub fn find_pane_by_id(state: &pane_grid::State<String>, pane_id: &str) -> Option<pane_grid::Pane> {
     state
         .panes
         .iter()

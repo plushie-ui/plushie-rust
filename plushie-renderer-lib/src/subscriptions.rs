@@ -49,32 +49,38 @@ impl App {
                         modifiers,
                         text,
                         repeat,
-                    }) => Some(Message::KeyPressed(KeyEventData {
-                        key,
-                        modified_key,
-                        physical_key,
-                        location,
-                        modifiers,
-                        text: text.map(|s| s.to_string()),
-                        repeat,
-                        captured,
-                    }, window)),
+                    }) => Some(Message::KeyPressed(
+                        KeyEventData {
+                            key,
+                            modified_key,
+                            physical_key,
+                            location,
+                            modifiers,
+                            text: text.map(|s| s.to_string()),
+                            repeat,
+                            captured,
+                        },
+                        window,
+                    )),
                     iced::Event::Keyboard(iced::keyboard::Event::KeyReleased {
                         key,
                         modified_key,
                         physical_key,
                         location,
                         modifiers,
-                    }) => Some(Message::KeyReleased(KeyEventData {
-                        key,
-                        modified_key,
-                        physical_key,
-                        location,
-                        modifiers,
-                        text: None,
-                        repeat: false,
-                        captured,
-                    }, window)),
+                    }) => Some(Message::KeyReleased(
+                        KeyEventData {
+                            key,
+                            modified_key,
+                            physical_key,
+                            location,
+                            modifiers,
+                            text: None,
+                            repeat: false,
+                            captured,
+                        },
+                        window,
+                    )),
                     iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) => {
                         Some(Message::ModifiersChanged(mods, window, captured))
                     }
@@ -149,16 +155,19 @@ impl App {
                     repeat,
                 }) = evt
                 {
-                    Some(Message::KeyPressed(KeyEventData {
-                        key,
-                        modified_key,
-                        physical_key,
-                        location,
-                        modifiers,
-                        text: text.map(|s| s.to_string()),
-                        repeat,
-                        captured: status == iced::event::Status::Captured,
-                    }, window))
+                    Some(Message::KeyPressed(
+                        KeyEventData {
+                            key,
+                            modified_key,
+                            physical_key,
+                            location,
+                            modifiers,
+                            text: text.map(|s| s.to_string()),
+                            repeat,
+                            captured: status == iced::event::Status::Captured,
+                        },
+                        window,
+                    ))
                 } else {
                     None
                 }
@@ -175,16 +184,19 @@ impl App {
                     modifiers,
                 }) = evt
                 {
-                    Some(Message::KeyReleased(KeyEventData {
-                        key,
-                        modified_key,
-                        physical_key,
-                        location,
-                        modifiers,
-                        text: None,
-                        repeat: false,
-                        captured: status == iced::event::Status::Captured,
-                    }, window))
+                    Some(Message::KeyReleased(
+                        KeyEventData {
+                            key,
+                            modified_key,
+                            physical_key,
+                            location,
+                            modifiers,
+                            text: None,
+                            repeat: false,
+                            captured: status == iced::event::Status::Captured,
+                        },
+                        window,
+                    ))
                 } else {
                     None
                 }
@@ -322,9 +334,7 @@ impl App {
         // -- Animation frame subscription --
         // Active when the SDK subscribes to animation_frame OR when the
         // renderer has active transitions/springs (zero-traffic animation).
-        if self.core.has_subscription(SUB_ANIMATION_FRAME)
-            || self.transition_manager.has_active()
-        {
+        if self.core.has_subscription(SUB_ANIMATION_FRAME) || self.transition_manager.has_active() {
             subs.push(window::frames().map(Message::AnimationFrame));
         }
     }
@@ -338,7 +348,6 @@ impl App {
 
     /// Check if any of the given subscription keys are registered.
     fn has_any_subscription(&self, keys: &[&str]) -> bool {
-        keys.iter()
-            .any(|k| self.core.has_subscription(*k))
+        keys.iter().any(|k| self.core.has_subscription(k))
     }
 }

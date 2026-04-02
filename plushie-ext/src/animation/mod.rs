@@ -24,9 +24,9 @@ pub mod timed;
 
 use ghost::GhostManager;
 use iced::animation::Easing;
+use iced::time::Instant;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::time::Instant;
 
 /// The value being animated: either a number or a color.
 #[derive(Clone, Debug)]

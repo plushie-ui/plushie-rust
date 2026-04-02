@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-04-02
+
+### Fixed
+
+- Semantic actions (click, toggle, select) now use the synthetic event
+  path in all modes (mock and headless). The iced event injection path
+  was unreliable for toggle and select in headless mode because cursor
+  positioning didn't reliably hit the target widget.
+
+- Mock mode enabled in release builds (requires plushie-iced 0.8.3).
+
+- `iced::time::Instant` used for animation timestamps instead of
+  `std::time::Instant` to avoid type mismatch with crates.io builds.
+
+- Cargo.lock pinned to resolve `gpu-allocator` against `windows` 0.62
+  to avoid version conflict with `wgpu-hal` on Windows builds.
+
+- Unused variable warning on Windows for Unix socket path.
+
+- CI: added release build check and Windows cross-compilation check.
+
 ## [0.6.0] - 2026-04-02
 
 ### Breaking changes

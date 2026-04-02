@@ -717,24 +717,22 @@ fn handle_message<R: PlushieRenderer>(
             // - select: synthetic event (pick_list selection can't be done
             //   via focus+Space since it requires opening a dropdown and
             //   choosing a specific option)
-            // In mock mode, click/toggle go through the synthetic event
-            // path (build_interact_response) which emits events directly
-            // from the tree. This is more reliable than focus+Space which
-            // depends on iced's internal focus tracking.
+            // Semantic actions (click, toggle, select) use the synthetic
+            // event path in ALL modes. The synthetic path emits the correct
+            // semantic event directly from the tree, which is more reliable
+            // than injecting mouse events at widget coordinates. This works
+            // identically in mock and headless modes.
             //
             // Canvas actions also use synthetic construction because
             // canvas_press/release/move coordinates are canvas-relative.
-            let use_synthetic = matches!(s.mode, Mode::Mock)
-                && matches!(
-                    action.as_str(),
-                    "click"
-                        | "toggle"
-                        | "select"
-                        | "canvas_press"
-                        | "canvas_release"
-                        | "canvas_move"
-                )
-                && widget_id.is_some();
+            //
+            // Low-level actions (press, release, type_key, type_text) still
+            // use iced event injection in headless mode since they depend on
+            // cursor position and keyboard state.
+            let use_synthetic = matches!(
+                action.as_str(),
+                "click" | "toggle" | "select" | "canvas_press" | "canvas_release" | "canvas_move"
+            ) && widget_id.is_some();
 
             let iced_events = if use_synthetic {
                 // Handled via synthetic path below.

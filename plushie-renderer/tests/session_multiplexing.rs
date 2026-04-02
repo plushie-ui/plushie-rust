@@ -412,40 +412,17 @@ fn headless_interact_step_round_trip() {
         }),
     );
 
-    // We should receive an interact_step with the click event.
-    let step = stdout.recv();
-    assert_eq!(step["type"], "interact_step");
-    assert_eq!(step["session"], "s1");
-    assert_eq!(step["id"], "i1");
-    assert!(step["events"].is_array());
-    let events = step["events"].as_array().unwrap();
-    assert!(!events.is_empty(), "interact_step should have events");
-    assert_eq!(events[0]["family"], "click");
-    assert_eq!(events[0]["id"], "btn1");
-
-    // Send the snapshot back (the renderer is blocked waiting for it).
-    send(
-        &mut stdin,
-        &serde_json::json!({
-            "session": "s1",
-            "type": "snapshot",
-            "tree": {
-                "id": "main", "type": "window", "props": {}, "children": [
-                    {"id": "root", "type": "column", "props": {}, "children": [
-                        {"id": "btn1", "type": "button", "props": {"label": "Clicked!"}, "children": []}
-                    ]}
-                ]
-            }
-        }),
-    );
-
-    // The final interact_response should arrive with empty events
-    // (the click was already delivered via the step).
+    // Semantic actions (click, toggle, select) use the synthetic path
+    // in all modes. Returns a single interact_response with events.
     let resp = stdout.recv();
     assert_eq!(resp["type"], "interact_response");
     assert_eq!(resp["session"], "s1");
     assert_eq!(resp["id"], "i1");
-    assert!(resp["events"].as_array().unwrap().is_empty());
+    assert!(resp["events"].is_array());
+    let events = resp["events"].as_array().unwrap();
+    assert!(!events.is_empty(), "response should have events");
+    assert_eq!(events[0]["family"], "click");
+    assert_eq!(events[0]["id"], "btn1");
 
     drop(stdin);
     child.wait().unwrap();

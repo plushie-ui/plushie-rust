@@ -44,5 +44,10 @@ jobs:
       - name: Check release build
         run: cargo check --workspace --release
 
+      - name: Check Windows cross-compilation
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cargo check --target x86_64-pc-windows-msvc --release -p plushie-renderer
+
       - name: Check WASM
         run: cargo check --target wasm32-unknown-unknown -p plushie-ext -p plushie-renderer-lib -p plushie-renderer-wasm

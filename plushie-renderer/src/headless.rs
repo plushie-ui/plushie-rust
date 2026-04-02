@@ -1058,7 +1058,6 @@ pub(crate) fn run(
                 run_multiplexed(codec, dispatcher, mode, max_sessions, &mut reader, initial);
             }
         }
-        #[cfg(debug_assertions)]
         Mode::Mock => {
             let mock_dispatcher = ExtensionDispatcher::<()>::new(vec![]);
             if max_sessions <= 1 {
@@ -1073,10 +1072,6 @@ pub(crate) fn run(
                     initial,
                 );
             }
-        }
-        #[cfg(not(debug_assertions))]
-        Mode::Mock => {
-            panic!("mock mode requires a debug build (debug_assertions)");
         }
     }
 

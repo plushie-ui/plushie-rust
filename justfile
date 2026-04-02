@@ -10,7 +10,7 @@ default:
 
 # === CI Preflight ===
 
-preflight: check clippy fmt test
+preflight: check check-release clippy fmt test
     @echo ""
     @echo "All preflight checks passed!"
 
@@ -18,6 +18,9 @@ preflight: check clippy fmt test
 
 check:
     cargo check --workspace --all-targets
+
+check-release:
+    cargo check --workspace --release
 
 clippy:
     cargo clippy --workspace --all-targets

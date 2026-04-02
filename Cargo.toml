@@ -43,6 +43,7 @@ unreachable_patterns = "deny"
 # [patch.crates-io]
 # plushie-iced = { path = "../plushie-iced" }
 # plushie-iced-core = { path = "../plushie-iced/core" }
+# plushie-iced-graphics = { path = "../plushie-iced/graphics" }
 # plushie-iced-runtime = { path = "../plushie-iced/runtime" }
 # plushie-iced-widget = { path = "../plushie-iced/widget" }
 # plushie-iced-renderer = { path = "../plushie-iced/renderer" }

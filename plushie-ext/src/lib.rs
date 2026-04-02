@@ -72,10 +72,7 @@ pub use iced;
 /// Trait alias for renderer types that can be used with the plushie widget pipeline.
 ///
 /// Both `iced::Renderer` (tiny-skia, used by headless and windowed modes) and
-/// `()` (null renderer, used by mock mode in debug builds) satisfy these bounds.
-/// The null renderer impls for geometry traits are gated on `debug_assertions`
-/// in iced, so mock mode is only available in debug builds (which includes all
-/// test configurations).
+/// `()` (null renderer, used by mock mode) satisfy these bounds.
 pub trait PlushieRenderer:
     iced::advanced::Renderer
     + iced::advanced::text::Renderer<Font = iced::Font>
@@ -87,6 +84,5 @@ pub trait PlushieRenderer:
 {
 }
 
-#[cfg(debug_assertions)]
 impl PlushieRenderer for () {}
 impl PlushieRenderer for iced::Renderer {}

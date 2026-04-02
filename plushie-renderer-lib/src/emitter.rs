@@ -542,9 +542,8 @@ mod tests {
         let events = vec![
             OutgoingEvent::slide("s1".into(), 0.5),
             OutgoingEvent::cursor_moved("t".into(), 1.0, 2.0),
-            OutgoingEvent::canvas_move("c1".into(), 1.0, 2.0),
             OutgoingEvent::pointer_move("m1".into(), 1.0, 2.0, "mouse", None, plushie_ext::protocol::KeyModifiers::default()),
-            OutgoingEvent::sensor_resize("s1".into(), 100.0, 200.0),
+            OutgoingEvent::resize("s1".into(), 100.0, 200.0),
             OutgoingEvent::pane_resized("p1".into(), "s0".into(), 0.5),
             OutgoingEvent::animation_frame("t".into(), 16000),
             OutgoingEvent::theme_changed("t".into(), "dark".into()),
@@ -568,7 +567,6 @@ mod tests {
     fn constructors_set_accumulate_hint() {
         let events = vec![
             OutgoingEvent::wheel_scrolled("t".into(), 0.0, -3.0, "line"),
-            OutgoingEvent::canvas_scroll("c1".into(), 5.0, 5.0, 0.0, -1.0),
             OutgoingEvent::pointer_scroll("m1".into(), 0.0, 0.0, 0.0, -3.0, "mouse", plushie_ext::protocol::KeyModifiers::default()),
         ];
         for event in events {
@@ -590,8 +588,8 @@ mod tests {
             OutgoingEvent::select("p1".into(), "opt".into()),
             OutgoingEvent::paste("i1".into(), "text".into()),
             OutgoingEvent::slide_release("s1".into(), 0.5),
-            OutgoingEvent::canvas_press("c1".into(), 1.0, 2.0, "Left".into()),
-            OutgoingEvent::canvas_release("c1".into(), 1.0, 2.0, "Left".into()),
+            OutgoingEvent::pointer_press("c1".into(), 1.0, 2.0, "Left", "mouse", None, plushie_ext::protocol::KeyModifiers::default()),
+            OutgoingEvent::pointer_release("c1".into(), 1.0, 2.0, "Left", "mouse", None, plushie_ext::protocol::KeyModifiers::default()),
             OutgoingEvent::option_hovered("cb1".into(), "opt".into()),
             OutgoingEvent::cursor_entered("t".into()),
             OutgoingEvent::cursor_left("t".into()),

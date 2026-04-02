@@ -546,66 +546,6 @@ impl OutgoingEvent {
     }
 
     // -----------------------------------------------------------------------
-    // Sensor events
-    // -----------------------------------------------------------------------
-
-    pub fn sensor_resize(id: String, width: f32, height: f32) -> Self {
-        Self {
-            data: Some(
-                serde_json::json!({"width": sanitize_f32(width), "height": sanitize_f32(height)}),
-            ),
-            coalesce: Some(CoalesceHint::Replace),
-            ..Self::bare("sensor_resize", id)
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Canvas events
-    // -----------------------------------------------------------------------
-
-    pub fn canvas_press(id: String, x: f32, y: f32, button: String) -> Self {
-        Self {
-            data: Some(
-                serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y), "button": button}),
-            ),
-            ..Self::bare("canvas_press", id)
-        }
-    }
-
-    pub fn canvas_release(id: String, x: f32, y: f32, button: String) -> Self {
-        Self {
-            data: Some(
-                serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y), "button": button}),
-            ),
-            ..Self::bare("canvas_release", id)
-        }
-    }
-
-    pub fn canvas_move(id: String, x: f32, y: f32) -> Self {
-        Self {
-            data: Some(serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y)})),
-            coalesce: Some(CoalesceHint::Replace),
-            ..Self::bare("canvas_move", id)
-        }
-    }
-
-    pub fn canvas_scroll(id: String, x: f32, y: f32, delta_x: f32, delta_y: f32) -> Self {
-        Self {
-            data: Some(serde_json::json!({
-                "x": sanitize_f32(x),
-                "y": sanitize_f32(y),
-                "delta_x": sanitize_f32(delta_x),
-                "delta_y": sanitize_f32(delta_y),
-            })),
-            coalesce: Some(CoalesceHint::Accumulate(vec![
-                "delta_x".into(),
-                "delta_y".into(),
-            ])),
-            ..Self::bare("canvas_scroll", id)
-        }
-    }
-
-    // -----------------------------------------------------------------------
     // Canvas element events (interactive group interactions)
     //
     // All canvas element events use scoped IDs: the wire `id` field is
@@ -1762,58 +1702,6 @@ mod tests {
         let json = serde_json::to_value(&evt).unwrap();
         assert_eq!(json["family"], "files_hovered_left");
     }
-
-    // -----------------------------------------------------------------------
-    // OutgoingEvent serialization -- sensor events
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn serialize_sensor_resize() {
-        let evt = OutgoingEvent::sensor_resize("s1".to_string(), 100.0, 200.0);
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "sensor_resize");
-        assert_eq!(json["id"], "s1");
-        assert_eq!(json["data"]["width"], 100.0);
-        assert_eq!(json["data"]["height"], 200.0);
-    }
-
-    // -----------------------------------------------------------------------
-    // OutgoingEvent serialization -- canvas events
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn serialize_canvas_press() {
-        let evt = OutgoingEvent::canvas_press("c1".to_string(), 10.0, 20.0, "Left".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "canvas_press");
-        assert_eq!(json["data"]["x"], 10.0);
-        assert_eq!(json["data"]["button"], "Left");
-    }
-
-    #[test]
-    fn serialize_canvas_release() {
-        let evt = OutgoingEvent::canvas_release("c1".to_string(), 10.0, 20.0, "Left".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "canvas_release");
-    }
-
-    #[test]
-    fn serialize_canvas_move() {
-        let evt = OutgoingEvent::canvas_move("c1".to_string(), 30.0, 40.0);
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "canvas_move");
-        assert_eq!(json["data"]["x"], 30.0);
-        assert_eq!(json["data"]["y"], 40.0);
-    }
-
-    #[test]
-    fn serialize_canvas_scroll() {
-        let evt = OutgoingEvent::canvas_scroll("c1".to_string(), 5.0, 5.0, 0.0, -1.0);
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "canvas_scroll");
-        assert_eq!(json["data"]["delta_y"], -1.0);
-    }
-
 
     // -----------------------------------------------------------------------
     // OutgoingEvent serialization -- pane grid events

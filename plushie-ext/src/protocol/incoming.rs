@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn deserialize_subscribe_with_max_rate() {
-        let json = r#"{"type":"subscribe","kind":"on_mouse_move","tag":"mouse","max_rate":30}"#;
+        let json = r#"{"type":"subscribe","kind":"on_pointer_move","tag":"mouse","max_rate":30}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
         match msg {
             IncomingMessage::Subscribe {
@@ -388,7 +388,7 @@ mod tests {
                 window_id,
                 max_rate,
             } => {
-                assert_eq!(kind, "on_mouse_move");
+                assert_eq!(kind, "on_pointer_move");
                 assert_eq!(tag, "mouse");
                 assert_eq!(window_id, None);
                 assert_eq!(max_rate, Some(30));

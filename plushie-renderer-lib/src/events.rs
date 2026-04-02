@@ -99,7 +99,7 @@ impl App {
     ) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.coalesce_subscription_for_window(SUB_MOUSE_MOVE, wid, captured, |tag| {
+        self.coalesce_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
             maybe_with_window_id(OutgoingEvent::cursor_moved(tag, pos.x, pos.y), &window_id)
         })
     }
@@ -107,7 +107,7 @@ impl App {
     pub fn handle_cursor_entered(&self, iced_id: window::Id, captured: bool) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.emit_subscription_for_window(SUB_MOUSE_MOVE, wid, captured, |tag| {
+        self.emit_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
             maybe_with_window_id(OutgoingEvent::cursor_entered(tag), &window_id)
         })
     }
@@ -115,7 +115,7 @@ impl App {
     pub fn handle_cursor_left(&self, iced_id: window::Id, captured: bool) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.emit_subscription_for_window(SUB_MOUSE_MOVE, wid, captured, |tag| {
+        self.emit_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
             maybe_with_window_id(OutgoingEvent::cursor_left(tag), &window_id)
         })
     }
@@ -128,7 +128,7 @@ impl App {
     ) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.emit_subscription_for_window(SUB_MOUSE_BUTTON, wid, captured, |tag| {
+        self.emit_subscription_for_window(SUB_POINTER_BUTTON, wid, captured, |tag| {
             maybe_with_window_id(
                 OutgoingEvent::button_pressed(tag, serialize_mouse_button(&button)),
                 &window_id,
@@ -144,7 +144,7 @@ impl App {
     ) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.emit_subscription_for_window(SUB_MOUSE_BUTTON, wid, captured, |tag| {
+        self.emit_subscription_for_window(SUB_POINTER_BUTTON, wid, captured, |tag| {
             maybe_with_window_id(
                 OutgoingEvent::button_released(tag, serialize_mouse_button(&button)),
                 &window_id,
@@ -160,7 +160,7 @@ impl App {
     ) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.coalesce_subscription_for_window(SUB_MOUSE_SCROLL, wid, captured, |tag| {
+        self.coalesce_subscription_for_window(SUB_POINTER_SCROLL, wid, captured, |tag| {
             let (dx, dy, unit) = serialize_scroll_delta(&delta);
             maybe_with_window_id(OutgoingEvent::wheel_scrolled(tag, dx, dy, unit), &window_id)
         })
@@ -175,7 +175,7 @@ impl App {
     ) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.emit_subscription_for_window(SUB_TOUCH, wid, captured, |tag| {
+        self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
             maybe_with_window_id(
                 OutgoingEvent::finger_pressed(tag, finger.0, pos.x, pos.y),
                 &window_id,
@@ -192,7 +192,7 @@ impl App {
     ) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.coalesce_subscription_for_window(SUB_TOUCH, wid, captured, |tag| {
+        self.coalesce_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
             maybe_with_window_id(
                 OutgoingEvent::finger_moved(tag, finger.0, pos.x, pos.y),
                 &window_id,
@@ -209,7 +209,7 @@ impl App {
     ) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.emit_subscription_for_window(SUB_TOUCH, wid, captured, |tag| {
+        self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
             maybe_with_window_id(
                 OutgoingEvent::finger_lifted(tag, finger.0, pos.x, pos.y),
                 &window_id,
@@ -226,7 +226,7 @@ impl App {
     ) -> Task<Message> {
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-        self.emit_subscription_for_window(SUB_TOUCH, wid, captured, |tag| {
+        self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
             maybe_with_window_id(
                 OutgoingEvent::finger_lost(tag, finger.0, pos.x, pos.y),
                 &window_id,

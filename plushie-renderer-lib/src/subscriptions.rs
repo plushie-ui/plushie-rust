@@ -207,7 +207,7 @@ impl App {
     }
 
     fn mouse_subscriptions(&self, has_on_event: bool, subs: &mut Vec<Subscription<Message>>) {
-        if !has_on_event && self.core.has_subscription(SUB_MOUSE_MOVE) {
+        if !has_on_event && self.core.has_subscription(SUB_POINTER_MOVE) {
             subs.push(event::listen_with(|evt, status, window| {
                 let captured = status == iced::event::Status::Captured;
                 match evt {
@@ -225,7 +225,7 @@ impl App {
             }));
         }
 
-        if !has_on_event && self.core.has_subscription(SUB_MOUSE_BUTTON) {
+        if !has_on_event && self.core.has_subscription(SUB_POINTER_BUTTON) {
             subs.push(event::listen_with(|evt, status, window| {
                 let captured = status == iced::event::Status::Captured;
                 match evt {
@@ -240,7 +240,7 @@ impl App {
             }));
         }
 
-        if !has_on_event && self.core.has_subscription(SUB_MOUSE_SCROLL) {
+        if !has_on_event && self.core.has_subscription(SUB_POINTER_SCROLL) {
             subs.push(event::listen_with(|evt, status, window| {
                 if let iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) = evt {
                     Some(Message::WheelScrolled(
@@ -256,7 +256,7 @@ impl App {
     }
 
     fn touch_subscriptions(&self, has_on_event: bool, subs: &mut Vec<Subscription<Message>>) {
-        if !has_on_event && self.core.has_subscription(SUB_TOUCH) {
+        if !has_on_event && self.core.has_subscription(SUB_POINTER_TOUCH) {
             subs.push(event::listen_with(|evt, status, window| {
                 let captured = status == iced::event::Status::Captured;
                 match evt {

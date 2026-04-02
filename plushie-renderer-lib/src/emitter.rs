@@ -41,7 +41,7 @@ async fn platform_sleep(duration: Duration) {
 /// Identifies a stream of events that can be coalesced together.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum CoalesceKey {
-    /// Subscription event keyed by subscription kind (e.g. "on_mouse_move").
+    /// Subscription event keyed by subscription kind (e.g. "on_pointer_move").
     Subscription(String),
     /// Widget event keyed by (widget_id, event_family).
     Widget(String, String),
@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn effective_rate_no_config_returns_none() {
         let emitter = EventEmitter::new();
-        let key = CoalesceKey::Subscription("on_mouse_move".into());
+        let key = CoalesceKey::Subscription("on_pointer_move".into());
         assert_eq!(emitter.effective_rate(&key), None);
     }
 
@@ -413,7 +413,7 @@ mod tests {
     fn effective_rate_uses_default() {
         let mut emitter = EventEmitter::new();
         emitter.set_default_rate(Some(60));
-        let key = CoalesceKey::Subscription("on_mouse_move".into());
+        let key = CoalesceKey::Subscription("on_pointer_move".into());
         assert_eq!(emitter.effective_rate(&key), Some(60));
     }
 
@@ -421,8 +421,8 @@ mod tests {
     fn effective_rate_subscription_overrides_default() {
         let mut emitter = EventEmitter::new();
         emitter.set_default_rate(Some(60));
-        emitter.set_subscription_rate("on_mouse_move", 30);
-        let key = CoalesceKey::Subscription("on_mouse_move".into());
+        emitter.set_subscription_rate("on_pointer_move", 30);
+        let key = CoalesceKey::Subscription("on_pointer_move".into());
         assert_eq!(emitter.effective_rate(&key), Some(30));
     }
 
@@ -459,9 +459,9 @@ mod tests {
     #[test]
     fn remove_subscription_rate_clears_rate() {
         let mut emitter = EventEmitter::new();
-        emitter.set_subscription_rate("on_mouse_move", 30);
-        emitter.remove_subscription_rate("on_mouse_move");
-        assert!(!emitter.subscription_rates.contains_key("on_mouse_move"));
+        emitter.set_subscription_rate("on_pointer_move", 30);
+        emitter.remove_subscription_rate("on_pointer_move");
+        assert!(!emitter.subscription_rates.contains_key("on_pointer_move"));
     }
 
     // -- buffer_event --

@@ -392,10 +392,10 @@ in place.
 | `on_key_press` | Key press with key, modifiers, text |
 | `on_key_release` | Key release |
 | `on_modifiers_changed` | Modifier key state change |
-| `on_mouse_move` | Cursor moved, entered, left |
-| `on_mouse_button` | Mouse button pressed/released |
-| `on_mouse_scroll` | Scroll wheel |
-| `on_touch` | Finger press/move/lift/lost |
+| `on_pointer_move` | Cursor moved, entered, left |
+| `on_pointer_button` | Pointer button pressed/released |
+| `on_pointer_scroll` | Scroll wheel |
+| `on_pointer_touch` | Finger press/move/lift/lost |
 | `on_ime` | Input method events (open, preedit, commit, close) |
 | `on_window_event` | All window lifecycle events |
 | `on_window_open` | Window opened |

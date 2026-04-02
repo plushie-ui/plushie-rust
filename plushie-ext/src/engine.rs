@@ -763,13 +763,13 @@ mod tests {
     fn subscribe_with_max_rate_stores_rate_in_entry() {
         let mut core: Core = Core::new();
         let msg = IncomingMessage::Subscribe {
-            kind: "on_mouse_move".to_string(),
+            kind: "on_pointer_move".to_string(),
             tag: "mouse".to_string(),
             window_id: None,
             max_rate: Some(30),
         };
         core.apply(msg);
-        let entries = &core.active_subscriptions["on_mouse_move"];
+        let entries = &core.active_subscriptions["on_pointer_move"];
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].max_rate, Some(30));
     }
@@ -792,16 +792,16 @@ mod tests {
     fn unsubscribe_removes_all_entries_for_kind() {
         let mut core: Core = Core::new();
         core.apply(IncomingMessage::Subscribe {
-            kind: "on_mouse_move".to_string(),
+            kind: "on_pointer_move".to_string(),
             tag: "mouse".to_string(),
             window_id: None,
             max_rate: Some(30),
         });
         core.apply(IncomingMessage::Unsubscribe {
-            kind: "on_mouse_move".to_string(),
+            kind: "on_pointer_move".to_string(),
             tag: None,
         });
-        assert!(!core.active_subscriptions.contains_key("on_mouse_move"));
+        assert!(!core.active_subscriptions.contains_key("on_pointer_move"));
     }
 
     #[test]

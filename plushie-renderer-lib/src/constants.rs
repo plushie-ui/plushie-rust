@@ -13,11 +13,11 @@ pub const SUB_KEY_PRESS: &str = "on_key_press";
 pub const SUB_KEY_RELEASE: &str = "on_key_release";
 pub const SUB_MODIFIERS_CHANGED: &str = "on_modifiers_changed";
 
-pub const SUB_MOUSE_MOVE: &str = "on_mouse_move";
-pub const SUB_MOUSE_BUTTON: &str = "on_mouse_button";
-pub const SUB_MOUSE_SCROLL: &str = "on_mouse_scroll";
+pub const SUB_POINTER_MOVE: &str = "on_pointer_move";
+pub const SUB_POINTER_BUTTON: &str = "on_pointer_button";
+pub const SUB_POINTER_SCROLL: &str = "on_pointer_scroll";
 
-pub const SUB_TOUCH: &str = "on_touch";
+pub const SUB_POINTER_TOUCH: &str = "on_pointer_touch";
 
 pub const SUB_IME: &str = "on_ime";
 

@@ -3352,18 +3352,18 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-selector"
-version = "0.8.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0f5477a402a31c10a31a1d8a91e533498fd4d38b73cd7533e8ab17fea071ae4"
+checksum = "9e36b6395f96075d5ac86ecb261f48939b88b3ba8d3ea132e3727ce91fc3aad0"
 dependencies = [
  "plushie-iced-core",
 ]
 
 [[package]]
 name = "plushie-iced-test"
-version = "0.8.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3e217cbb35504c976c859d3d05df6692061b48d2327bacc9145f475f4d2c511"
+checksum = "668bde63d4ac382c32d8aea2580707bec2ad5037ec28bcdeadd281200d403110"
 dependencies = [
  "nom",
  "plushie-iced-futures",

@@ -942,7 +942,7 @@ impl OutgoingEvent {
                 "content_width": sanitize_f32(content_w), "content_height": sanitize_f32(content_h),
             })),
             coalesce: Some(CoalesceHint::Replace),
-            ..Self::bare("scroll", id)
+            ..Self::bare("scrolled", id)
         }
     }
 

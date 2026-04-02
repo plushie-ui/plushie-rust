@@ -302,7 +302,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("delay", Number),
             ("style", Any),
         ],
-        "mouse_area" => &[
+        "pointer_area" => &[
             ("cursor", Str),
             ("on_press", Bool),
             ("on_release", Bool),
@@ -592,7 +592,7 @@ mod tests {
             ("grid", json!({"columns": 3})),
             ("radio", json!({"value": "a", "label": "A"})),
             ("tooltip", json!({"tip": "Help text"})),
-            ("mouse_area", json!({})),
+            ("pointer_area", json!({})),
             ("sensor", json!({})),
             ("space", json!({})),
             ("rule", json!({})),

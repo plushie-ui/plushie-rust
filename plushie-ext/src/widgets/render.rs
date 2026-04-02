@@ -101,7 +101,7 @@ pub fn render<'a, R: PlushieRenderer>(
         "combo_box" => input::render_combo_box(node, ctx),
         // Interactive widgets
         "button" => interactive::render_button(node, ctx),
-        "mouse_area" => interactive::render_mouse_area(node, ctx),
+        "pointer_area" => interactive::render_mouse_area(node, ctx),
         "sensor" => interactive::render_sensor(node, ctx),
         "tooltip" => interactive::render_tooltip(node, ctx),
         "themer" => interactive::render_themer(node, ctx),

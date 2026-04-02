@@ -38,15 +38,14 @@ unreachable_patterns = "deny"
 # opt-level = "z"      # optimize for size over speed (UI is GPU-bound, not CPU)
 # strip = true         # remove symbol names from the binary
 
-# Local development: use the local plushie-iced checkout so that
-# renderer builds pick up unpublished iced changes (a11y, null
-# renderer, widget fixes). Remove before publishing.
-[patch.crates-io]
-plushie-iced = { path = "../plushie-iced" }
-plushie-iced-core = { path = "../plushie-iced/core" }
-plushie-iced-runtime = { path = "../plushie-iced/runtime" }
-plushie-iced-widget = { path = "../plushie-iced/widget" }
-plushie-iced-renderer = { path = "../plushie-iced/renderer" }
-plushie-iced-winit = { path = "../plushie-iced/winit" }
-plushie-iced-test = { path = "../plushie-iced/test" }
-plushie-iced-futures = { path = "../plushie-iced/futures" }
+# Local development: uncomment to use the local plushie-iced checkout
+# so renderer builds pick up unpublished iced changes.
+# [patch.crates-io]
+# plushie-iced = { path = "../plushie-iced" }
+# plushie-iced-core = { path = "../plushie-iced/core" }
+# plushie-iced-runtime = { path = "../plushie-iced/runtime" }
+# plushie-iced-widget = { path = "../plushie-iced/widget" }
+# plushie-iced-renderer = { path = "../plushie-iced/renderer" }
+# plushie-iced-winit = { path = "../plushie-iced/winit" }
+# plushie-iced-test = { path = "../plushie-iced/test" }
+# plushie-iced-futures = { path = "../plushie-iced/futures" }

@@ -628,7 +628,7 @@ impl OutgoingEvent {
                 "y": sanitize_f32(y),
             })),
             ..Self::bare(
-                "mouse_enter",
+                "enter",
                 Self::scoped_element_id(&canvas_id, &element_id),
             )
         }
@@ -636,7 +636,7 @@ impl OutgoingEvent {
 
     pub fn canvas_element_leave(canvas_id: String, element_id: String) -> Self {
         Self::bare(
-            "mouse_exit",
+            "exit",
             Self::scoped_element_id(&canvas_id, &element_id),
         )
     }
@@ -795,59 +795,6 @@ impl OutgoingEvent {
     }
 
     // -----------------------------------------------------------------------
-    // MouseArea events
-    // -----------------------------------------------------------------------
-
-    pub fn mouse_right_press(id: String) -> Self {
-        Self::bare("mouse_right_press", id)
-    }
-
-    pub fn mouse_right_release(id: String) -> Self {
-        Self::bare("mouse_right_release", id)
-    }
-
-    pub fn mouse_middle_press(id: String) -> Self {
-        Self::bare("mouse_middle_press", id)
-    }
-
-    pub fn mouse_middle_release(id: String) -> Self {
-        Self::bare("mouse_middle_release", id)
-    }
-
-    pub fn mouse_double_click(id: String) -> Self {
-        Self::bare("mouse_double_click", id)
-    }
-
-    pub fn mouse_enter(id: String) -> Self {
-        Self::bare("mouse_enter", id)
-    }
-
-    pub fn mouse_exit(id: String) -> Self {
-        Self::bare("mouse_exit", id)
-    }
-
-    pub fn mouse_area_move(id: String, x: f32, y: f32) -> Self {
-        Self {
-            data: Some(serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y)})),
-            coalesce: Some(CoalesceHint::Replace),
-            ..Self::bare("mouse_move", id)
-        }
-    }
-
-    pub fn mouse_area_scroll(id: String, delta_x: f32, delta_y: f32) -> Self {
-        Self {
-            data: Some(
-                serde_json::json!({"delta_x": sanitize_f32(delta_x), "delta_y": sanitize_f32(delta_y)}),
-            ),
-            coalesce: Some(CoalesceHint::Accumulate(vec![
-                "delta_x".into(),
-                "delta_y".into(),
-            ])),
-            ..Self::bare("mouse_scroll", id)
-        }
-    }
-
-    // -----------------------------------------------------------------------
     // PaneGrid events
     // -----------------------------------------------------------------------
 
@@ -996,6 +943,174 @@ impl OutgoingEvent {
             })),
             coalesce: Some(CoalesceHint::Replace),
             ..Self::bare("scroll", id)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Unified pointer events
+    //
+    // These constructors produce events with unified families ("press",
+    // "release", "move", "scroll", "enter", "exit", "double_click",
+    // "resize") that carry pointer_type, finger ID, coordinates, and
+    // modifier state.
+    // -----------------------------------------------------------------------
+
+    /// Build a modifiers data object for inclusion in pointer event data.
+    fn modifiers_data(modifiers: &KeyModifiers) -> serde_json::Value {
+        serde_json::json!({
+            "shift": modifiers.shift,
+            "ctrl": modifiers.ctrl,
+            "alt": modifiers.alt,
+            "logo": modifiers.logo,
+            "command": modifiers.command,
+        })
+    }
+
+    /// Unified pointer press event.
+    ///
+    /// `pointer_type`: `"mouse"`, `"touch"`, or `"pen"`.
+    /// `finger`: finger ID when `pointer_type` is `"touch"`, `None` otherwise.
+    pub fn pointer_press(
+        id: String,
+        x: f32,
+        y: f32,
+        button: &str,
+        pointer_type: &str,
+        finger: Option<u64>,
+        modifiers: KeyModifiers,
+    ) -> Self {
+        let mut data = serde_json::json!({
+            "x": sanitize_f32(x),
+            "y": sanitize_f32(y),
+            "button": button,
+            "pointer": pointer_type,
+            "modifiers": Self::modifiers_data(&modifiers),
+        });
+        if let Some(f) = finger {
+            data["finger"] = serde_json::json!(f);
+        }
+        Self {
+            data: Some(data),
+            ..Self::bare("press", id)
+        }
+    }
+
+    /// Unified pointer release event.
+    pub fn pointer_release(
+        id: String,
+        x: f32,
+        y: f32,
+        button: &str,
+        pointer_type: &str,
+        finger: Option<u64>,
+        modifiers: KeyModifiers,
+    ) -> Self {
+        let mut data = serde_json::json!({
+            "x": sanitize_f32(x),
+            "y": sanitize_f32(y),
+            "button": button,
+            "pointer": pointer_type,
+            "modifiers": Self::modifiers_data(&modifiers),
+        });
+        if let Some(f) = finger {
+            data["finger"] = serde_json::json!(f);
+        }
+        Self {
+            data: Some(data),
+            ..Self::bare("release", id)
+        }
+    }
+
+    /// Unified pointer move event (coalesceable).
+    pub fn pointer_move(
+        id: String,
+        x: f32,
+        y: f32,
+        pointer_type: &str,
+        finger: Option<u64>,
+        modifiers: KeyModifiers,
+    ) -> Self {
+        let mut data = serde_json::json!({
+            "x": sanitize_f32(x),
+            "y": sanitize_f32(y),
+            "pointer": pointer_type,
+            "modifiers": Self::modifiers_data(&modifiers),
+        });
+        if let Some(f) = finger {
+            data["finger"] = serde_json::json!(f);
+        }
+        Self {
+            data: Some(data),
+            coalesce: Some(CoalesceHint::Replace),
+            ..Self::bare("move", id)
+        }
+    }
+
+    /// Unified pointer scroll event (coalesceable, accumulates deltas).
+    pub fn pointer_scroll(
+        id: String,
+        x: f32,
+        y: f32,
+        delta_x: f32,
+        delta_y: f32,
+        pointer_type: &str,
+        modifiers: KeyModifiers,
+    ) -> Self {
+        Self {
+            data: Some(serde_json::json!({
+                "x": sanitize_f32(x),
+                "y": sanitize_f32(y),
+                "delta_x": sanitize_f32(delta_x),
+                "delta_y": sanitize_f32(delta_y),
+                "pointer": pointer_type,
+                "modifiers": Self::modifiers_data(&modifiers),
+            })),
+            coalesce: Some(CoalesceHint::Accumulate(vec![
+                "delta_x".into(),
+                "delta_y".into(),
+            ])),
+            ..Self::bare("scroll", id)
+        }
+    }
+
+    /// Unified pointer enter event (no data payload).
+    pub fn pointer_enter(id: String) -> Self {
+        Self::bare("enter", id)
+    }
+
+    /// Unified pointer exit event (no data payload).
+    pub fn pointer_exit(id: String) -> Self {
+        Self::bare("exit", id)
+    }
+
+    /// Unified pointer double-click event.
+    pub fn pointer_double_click(
+        id: String,
+        x: f32,
+        y: f32,
+        pointer_type: &str,
+        modifiers: KeyModifiers,
+    ) -> Self {
+        Self {
+            data: Some(serde_json::json!({
+                "x": sanitize_f32(x),
+                "y": sanitize_f32(y),
+                "pointer": pointer_type,
+                "modifiers": Self::modifiers_data(&modifiers),
+            })),
+            ..Self::bare("double_click", id)
+        }
+    }
+
+    /// Unified resize event (for sensor widgets).
+    pub fn resize(id: String, width: f32, height: f32) -> Self {
+        Self {
+            data: Some(serde_json::json!({
+                "width": sanitize_f32(width),
+                "height": sanitize_f32(height),
+            })),
+            coalesce: Some(CoalesceHint::Replace),
+            ..Self::bare("resize", id)
         }
     }
 }
@@ -1699,81 +1814,6 @@ mod tests {
         assert_eq!(json["data"]["delta_y"], -1.0);
     }
 
-    // -----------------------------------------------------------------------
-    // OutgoingEvent serialization -- mouse area events
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn serialize_mouse_right_press() {
-        let evt = OutgoingEvent::mouse_right_press("zone".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_right_press");
-        assert_eq!(json["id"], "zone");
-    }
-
-    #[test]
-    fn serialize_mouse_right_release() {
-        let evt = OutgoingEvent::mouse_right_release("zone".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_right_release");
-    }
-
-    #[test]
-    fn serialize_mouse_middle_press() {
-        let evt = OutgoingEvent::mouse_middle_press("zone".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_middle_press");
-        assert_eq!(json["id"], "zone");
-    }
-
-    #[test]
-    fn serialize_mouse_middle_release() {
-        let evt = OutgoingEvent::mouse_middle_release("zone".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_middle_release");
-    }
-
-    #[test]
-    fn serialize_mouse_double_click() {
-        let evt = OutgoingEvent::mouse_double_click("zone".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_double_click");
-    }
-
-    #[test]
-    fn serialize_mouse_enter() {
-        let evt = OutgoingEvent::mouse_enter("zone".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_enter");
-    }
-
-    #[test]
-    fn serialize_mouse_exit() {
-        let evt = OutgoingEvent::mouse_exit("zone".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_exit");
-    }
-
-    #[test]
-    fn serialize_mouse_area_move() {
-        let evt = OutgoingEvent::mouse_area_move("zone".to_string(), 10.5, 20.3);
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_move");
-        assert_eq!(json["id"], "zone");
-        let data = &json["data"];
-        assert!((data["x"].as_f64().unwrap() - 10.5).abs() < 0.01);
-        assert!((data["y"].as_f64().unwrap() - 20.3).abs() < 0.01);
-    }
-
-    #[test]
-    fn serialize_mouse_area_scroll() {
-        let evt = OutgoingEvent::mouse_area_scroll("zone".to_string(), 0.0, -3.0);
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["family"], "mouse_scroll");
-        assert_eq!(json["id"], "zone");
-        assert_eq!(json["data"]["delta_x"], 0.0);
-        assert_eq!(json["data"]["delta_y"], -3.0);
-    }
 
     // -----------------------------------------------------------------------
     // OutgoingEvent serialization -- pane grid events

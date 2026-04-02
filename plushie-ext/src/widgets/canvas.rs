@@ -27,7 +27,7 @@ use super::caches::{WidgetCaches, canvas_layer_map, hash_json_value};
 use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
-use crate::message::Message;
+use crate::message::{Message, serialize_modifiers};
 use crate::protocol::TreeNode;
 
 /// Maximum number of shapes per canvas layer. Layers exceeding this limit
@@ -967,6 +967,9 @@ struct CanvasState {
     /// keyboard navigation (Tab), `false` for mouse clicks.
     /// Matches iced's "focus-visible" pattern.
     focus_visible: bool,
+    /// Current keyboard modifiers, tracked from ModifiersChanged events.
+    /// Included on all outgoing pointer events.
+    current_modifiers: keyboard::Modifiers,
 }
 
 struct CanvasProgram<'a, R: PlushieRenderer = iced::Renderer> {
@@ -2392,6 +2395,11 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
         bounds: iced::Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<iced::widget::Action<Message>> {
+        // Track modifier state for pointer events.
+        if let iced::Event::Keyboard(keyboard::Event::ModifiersChanged(mods)) = event {
+            state.current_modifiers = *mods;
+        }
+
         // Keyboard events don't depend on cursor position -- handle them
         // before the cursor check so they work when the mouse is outside.
         if matches!(event, iced::Event::Keyboard(..)) {
@@ -2558,7 +2566,8 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         kind: "move".to_string(),
                         x: position.x,
                         y: position.y,
-                        extra: String::new(),
+                        extra: "mouse".to_string(),
+                        modifiers: serialize_modifiers(state.current_modifiers),
                     };
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
@@ -2617,7 +2626,8 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         kind: "press".to_string(),
                         x: position.x,
                         y: position.y,
-                        extra: btn_str,
+                        extra: format!("{}:mouse", btn_str),
+                        modifiers: serialize_modifiers(state.current_modifiers),
                     };
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
@@ -2671,7 +2681,8 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         kind: "release".to_string(),
                         x: position.x,
                         y: position.y,
-                        extra: btn_str,
+                        extra: format!("{}:mouse", btn_str),
+                        modifiers: serialize_modifiers(state.current_modifiers),
                     };
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
@@ -2691,7 +2702,160 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                     y: position.y,
                     delta_x: dx,
                     delta_y: dy,
+                    pointer_type: "mouse".to_string(),
+                    modifiers: serialize_modifiers(state.current_modifiers),
                 }))
+            }
+
+            // -- Touch events --
+            iced::Event::Touch(iced::touch::Event::FingerPressed { id: finger, position: touch_pos }) => {
+                let touch_position = match cursor.position_in(bounds) {
+                    Some(_) => Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y),
+                    None => return None,
+                };
+                let mut action: Option<iced::widget::Action<Message>> = None;
+                state.focus_visible = false;
+
+                // Touch press same as left-click for interactive elements
+                if let Some(shape) = find_hit_element(touch_position, self.interactive_elements) {
+                    let clicked_idx = self
+                        .interactive_elements
+                        .iter()
+                        .position(|e| e.id == shape.id);
+                    if let Some(msg) = self.set_focus(state, clicked_idx) {
+                        action = Some(pick_action(action, iced::widget::Action::publish(msg)));
+                    }
+                    state.focused_group = shape.parent_group.clone();
+
+                    if shape.draggable {
+                        state.dragging = Some(DragState {
+                            element_id: shape.id.clone(),
+                            last: touch_position,
+                        });
+                    } else if shape.on_click {
+                        state.pressed_element = Some(shape.id.clone());
+                    }
+                }
+
+                if self.on_press {
+                    let msg = Message::CanvasEvent {
+                        window_id: self.window_id.clone(),
+                        id: self.id.clone(),
+                        kind: "press".to_string(),
+                        x: touch_position.x,
+                        y: touch_position.y,
+                        extra: format!("left:touch:{}", finger.0),
+                        modifiers: serialize_modifiers(state.current_modifiers),
+                    };
+                    action = Some(pick_action(action, iced::widget::Action::publish(msg)));
+                }
+
+                action
+            }
+
+            iced::Event::Touch(iced::touch::Event::FingerMoved { id: finger, position: touch_pos }) => {
+                let touch_position = Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y);
+                let mut action: Option<iced::widget::Action<Message>> = None;
+
+                // Drag tracking (same as mouse CursorMoved)
+                if let Some(ref mut drag) = state.dragging {
+                    let mut effective = touch_position;
+                    let shape = self
+                        .interactive_elements
+                        .iter()
+                        .find(|s| s.id == drag.element_id);
+                    if let Some(shape) = shape
+                        && let Some(ref db) = shape.drag_bounds
+                    {
+                        effective.x = effective.x.clamp(db.min_x, db.max_x);
+                        effective.y = effective.y.clamp(db.min_y, db.max_y);
+                    }
+                    let mut dx = effective.x - drag.last.x;
+                    let mut dy = effective.y - drag.last.y;
+                    if let Some(shape) = shape {
+                        match shape.drag_axis {
+                            DragAxis::X => dy = 0.0,
+                            DragAxis::Y => dx = 0.0,
+                            DragAxis::Both => {}
+                        }
+                    }
+                    drag.last = effective;
+                    let msg = Message::CanvasElementDrag {
+                        window_id: self.window_id.clone(),
+                        canvas_id: self.id.clone(),
+                        element_id: drag.element_id.clone(),
+                        x: effective.x,
+                        y: effective.y,
+                        delta_x: dx,
+                        delta_y: dy,
+                    };
+                    action = Some(iced::widget::Action::publish(msg).and_capture());
+                }
+
+                if self.on_move {
+                    let msg = Message::CanvasEvent {
+                        window_id: self.window_id.clone(),
+                        id: self.id.clone(),
+                        kind: "move".to_string(),
+                        x: touch_position.x,
+                        y: touch_position.y,
+                        extra: format!("touch:{}", finger.0),
+                        modifiers: serialize_modifiers(state.current_modifiers),
+                    };
+                    action = Some(pick_action(action, iced::widget::Action::publish(msg)));
+                }
+
+                action
+            }
+
+            iced::Event::Touch(iced::touch::Event::FingerLifted { id: finger, position: touch_pos }) => {
+                let touch_position = Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y);
+                let mut action: Option<iced::widget::Action<Message>> = None;
+
+                // Drag end
+                if let Some(drag) = state.dragging.take() {
+                    let msg = Message::CanvasElementDragEnd {
+                        window_id: self.window_id.clone(),
+                        canvas_id: self.id.clone(),
+                        element_id: drag.element_id,
+                        x: touch_position.x,
+                        y: touch_position.y,
+                    };
+                    action = Some(pick_action(action, iced::widget::Action::publish(msg)));
+                }
+
+                // Click detection
+                if let Some(pressed_id) = state.pressed_element.take() {
+                    let still_over = find_hit_element(touch_position, self.interactive_elements)
+                        .map(|s| s.id == pressed_id)
+                        .unwrap_or(false);
+                    if still_over {
+                        let msg = Message::CanvasElementClick {
+                            window_id: self.window_id.clone(),
+                            canvas_id: self.id.clone(),
+                            element_id: pressed_id,
+                            x: touch_position.x,
+                            y: touch_position.y,
+                            button: "left".to_string(),
+                        };
+                        action = Some(pick_action(action, iced::widget::Action::publish(msg)));
+                    }
+                }
+
+                if self.on_release {
+                    let msg = Message::CanvasEvent {
+                        window_id: self.window_id.clone(),
+                        id: self.id.clone(),
+                        kind: "release".to_string(),
+                        x: touch_position.x,
+                        y: touch_position.y,
+                        extra: format!("left:touch:{}", finger.0),
+                        modifiers: serialize_modifiers(state.current_modifiers),
+                    };
+                    action = Some(pick_action(action, iced::widget::Action::publish(msg)));
+                }
+
+                action
             }
 
             // Keyboard events are handled before the cursor position check
@@ -4649,6 +4813,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         assert_eq!(program.resolve_focus_index(&state), Some(1));
     }
@@ -4667,6 +4832,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         assert_eq!(program.resolve_focus_index(&state), None);
     }
@@ -4685,6 +4851,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         assert_eq!(program.resolve_focus_index(&state), None);
     }
@@ -4703,6 +4870,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         let msg = program.set_focus(&mut state, Some(1));
         assert!(msg.is_some());
@@ -4734,6 +4902,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         let msg = program.set_focus(&mut state, Some(1));
         assert!(msg.is_some());
@@ -4765,6 +4934,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         let msg = program.set_focus(&mut state, Some(0));
         assert!(msg.is_none());
@@ -4785,6 +4955,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         let msg = program.set_focus(&mut state, None);
         assert!(msg.is_some());
@@ -4816,6 +4987,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         let msg = program.set_focus(&mut state, None);
         assert!(msg.is_none());
@@ -4835,6 +5007,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         // Index 99 is out of bounds -> new_id becomes None -> blur.
         let msg = program.set_focus(&mut state, Some(99));
@@ -4860,6 +5033,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         let layers = program.layers_with_active_interaction(&state);
         assert_eq!(layers, vec!["ui"]);
@@ -4881,6 +5055,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: true,
             focus_visible: true,
+            ..Default::default()
         };
         let layers = program.layers_with_active_interaction(&state);
         assert_eq!(layers, vec!["ui"]);
@@ -4906,6 +5081,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: true,
             focus_visible: true,
+            ..Default::default()
         };
         let layers = program.layers_with_active_interaction(&state);
         assert_eq!(layers.len(), 2);
@@ -4933,6 +5109,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: true,
             focus_visible: true,
+            ..Default::default()
         };
         let layers = program.layers_with_active_interaction(&state);
         // Should not duplicate "ui".
@@ -4953,6 +5130,7 @@ mod tests {
             last_consumed_pending: None,
             canvas_focused: false,
             focus_visible: false,
+            ..Default::default()
         };
         let layers = program.layers_with_active_interaction(&state);
         assert!(layers.is_empty());

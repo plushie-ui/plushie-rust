@@ -202,7 +202,7 @@ pub fn message_to_event(msg: &Message) -> Option<OutgoingEvent> {
                 .with_window_id(window_id.clone()),
         ),
         Message::SensorResize(window_id, id, w, h) => {
-            Some(OutgoingEvent::sensor_resize(id.clone(), *w, *h).with_window_id(window_id.clone()))
+            Some(OutgoingEvent::resize(id.clone(), *w, *h).with_window_id(window_id.clone()))
         }
         Message::ScrollEvent(window_id, id, viewport) => Some(
             OutgoingEvent::scroll(
@@ -218,24 +218,44 @@ pub fn message_to_event(msg: &Message) -> Option<OutgoingEvent> {
             )
             .with_window_id(window_id.clone()),
         ),
-        Message::MouseAreaEvent(window_id, id, kind) => match kind.as_str() {
-            "right_press" => Some(OutgoingEvent::mouse_right_press(id.clone())),
-            "right_release" => Some(OutgoingEvent::mouse_right_release(id.clone())),
-            "middle_press" => Some(OutgoingEvent::mouse_middle_press(id.clone())),
-            "middle_release" => Some(OutgoingEvent::mouse_middle_release(id.clone())),
-            "double_click" => Some(OutgoingEvent::mouse_double_click(id.clone())),
-            "enter" => Some(OutgoingEvent::mouse_enter(id.clone())),
-            "exit" => Some(OutgoingEvent::mouse_exit(id.clone())),
-            _ => None,
+        Message::MouseAreaEvent(window_id, id, kind, x, y) => {
+            let mods = plushie_ext::protocol::KeyModifiers::default();
+            match kind.as_str() {
+                "right_press" => Some(OutgoingEvent::pointer_press(
+                    id.clone(), *x, *y, "right", "mouse", None, mods.clone(),
+                )),
+                "right_release" => Some(OutgoingEvent::pointer_release(
+                    id.clone(), *x, *y, "right", "mouse", None, mods.clone(),
+                )),
+                "middle_press" => Some(OutgoingEvent::pointer_press(
+                    id.clone(), *x, *y, "middle", "mouse", None, mods.clone(),
+                )),
+                "middle_release" => Some(OutgoingEvent::pointer_release(
+                    id.clone(), *x, *y, "middle", "mouse", None, mods.clone(),
+                )),
+                "double_click" => Some(OutgoingEvent::pointer_double_click(
+                    id.clone(), *x, *y, "mouse", mods.clone(),
+                )),
+                "enter" => Some(OutgoingEvent::pointer_enter(id.clone())),
+                "exit" => Some(OutgoingEvent::pointer_exit(id.clone())),
+                _ => None,
+            }
         }
         .map(|event| event.with_window_id(window_id.clone())),
-        Message::MouseAreaMove(window_id, id, x, y) => Some(
-            OutgoingEvent::mouse_area_move(id.clone(), *x, *y).with_window_id(window_id.clone()),
-        ),
-        Message::MouseAreaScroll(window_id, id, dx, dy) => Some(
-            OutgoingEvent::mouse_area_scroll(id.clone(), *dx, *dy)
-                .with_window_id(window_id.clone()),
-        ),
+        Message::MouseAreaMove(window_id, id, x, y) => {
+            let mods = plushie_ext::protocol::KeyModifiers::default();
+            Some(
+                OutgoingEvent::pointer_move(id.clone(), *x, *y, "mouse", None, mods)
+                    .with_window_id(window_id.clone()),
+            )
+        }
+        Message::MouseAreaScroll(window_id, id, dx, dy, x, y) => {
+            let mods = plushie_ext::protocol::KeyModifiers::default();
+            Some(
+                OutgoingEvent::pointer_scroll(id.clone(), *x, *y, *dx, *dy, "mouse", mods)
+                    .with_window_id(window_id.clone()),
+            )
+        }
         Message::CanvasEvent {
             window_id,
             id,
@@ -243,23 +263,38 @@ pub fn message_to_event(msg: &Message) -> Option<OutgoingEvent> {
             x,
             y,
             extra,
-        } => match kind.as_str() {
-            "press" => Some(OutgoingEvent::canvas_press(
-                id.clone(),
-                *x,
-                *y,
-                extra.clone(),
-            )),
-            "release" => Some(OutgoingEvent::canvas_release(
-                id.clone(),
-                *x,
-                *y,
-                extra.clone(),
-            )),
-            "move" => Some(OutgoingEvent::canvas_move(id.clone(), *x, *y)),
-            _ => None,
+            modifiers,
+        } => {
+            // `extra` encodes: "button:pointer_type:finger_id" for press/release,
+            // "pointer_type:finger_id" for move. Finger omitted for mouse.
+            let parts: Vec<&str> = extra.splitn(3, ':').collect();
+            let (button, pointer_type, finger) = match kind.as_str() {
+                "press" | "release" => {
+                    let btn = parts.first().copied().unwrap_or("left");
+                    let ptr = parts.get(1).copied().unwrap_or("mouse");
+                    let fng = parts.get(2).and_then(|s| s.parse::<u64>().ok());
+                    (btn, ptr, fng)
+                }
+                _ => {
+                    let ptr = parts.first().copied().unwrap_or("mouse");
+                    let fng = parts.get(1).and_then(|s| s.parse::<u64>().ok());
+                    ("", ptr, fng)
+                }
+            };
+            match kind.as_str() {
+                "press" => Some(OutgoingEvent::pointer_press(
+                    id.clone(), *x, *y, button, pointer_type, finger, modifiers.clone(),
+                )),
+                "release" => Some(OutgoingEvent::pointer_release(
+                    id.clone(), *x, *y, button, pointer_type, finger, modifiers.clone(),
+                )),
+                "move" => Some(OutgoingEvent::pointer_move(
+                    id.clone(), *x, *y, pointer_type, finger, modifiers.clone(),
+                )),
+                _ => None,
+            }
+            .map(|event| event.with_window_id(window_id.clone()))
         }
-        .map(|event| event.with_window_id(window_id.clone())),
         Message::CanvasScroll {
             window_id,
             id,
@@ -267,9 +302,13 @@ pub fn message_to_event(msg: &Message) -> Option<OutgoingEvent> {
             y,
             delta_x,
             delta_y,
+            pointer_type,
+            modifiers,
         } => Some(
-            OutgoingEvent::canvas_scroll(id.clone(), *x, *y, *delta_x, *delta_y)
-                .with_window_id(window_id.clone()),
+            OutgoingEvent::pointer_scroll(
+                id.clone(), *x, *y, *delta_x, *delta_y, pointer_type, modifiers.clone(),
+            )
+            .with_window_id(window_id.clone()),
         ),
         Message::CanvasElementEnter {
             window_id,
@@ -496,13 +535,13 @@ mod tests {
             "enter",
             "exit",
         ] {
-            let msg = Message::MouseAreaEvent("main".into(), "ma1".into(), kind.to_string());
+            let msg = Message::MouseAreaEvent("main".into(), "ma1".into(), kind.to_string(), 10.0, 20.0);
             assert!(
                 message_to_event(&msg).is_some(),
                 "mouse area event `{kind}` should map"
             );
         }
-        let msg = Message::MouseAreaEvent("main".into(), "ma1".into(), "unknown".into());
+        let msg = Message::MouseAreaEvent("main".into(), "ma1".into(), "unknown".into(), 0.0, 0.0);
         assert!(message_to_event(&msg).is_none());
     }
 
@@ -510,7 +549,7 @@ mod tests {
     fn message_to_event_sensor_resize() {
         let msg = Message::SensorResize("main".into(), "s1".into(), 100.0, 200.0);
         let event = message_to_event(&msg).unwrap();
-        assert_eq!(event.family, "sensor_resize");
+        assert_eq!(event.family, "resize");
     }
 
     #[test]
@@ -529,14 +568,20 @@ mod tests {
 
     #[test]
     fn message_to_event_canvas_events() {
+        let mods = plushie_ext::protocol::KeyModifiers::default();
         for kind in &["press", "release", "move"] {
+            let extra = match *kind {
+                "press" | "release" => "left:mouse".to_string(),
+                _ => "mouse".to_string(),
+            };
             let msg = Message::CanvasEvent {
                 window_id: "main".into(),
                 id: "c1".into(),
                 kind: kind.to_string(),
                 x: 10.0,
                 y: 20.0,
-                extra: String::new(),
+                extra,
+                modifiers: mods.clone(),
             };
             assert!(
                 message_to_event(&msg).is_some(),
@@ -550,6 +595,7 @@ mod tests {
             x: 0.0,
             y: 0.0,
             extra: String::new(),
+            modifiers: mods.clone(),
         };
         assert!(message_to_event(&msg).is_none());
     }
@@ -563,9 +609,11 @@ mod tests {
             y: 20.0,
             delta_x: 1.0,
             delta_y: -1.0,
+            pointer_type: "mouse".into(),
+            modifiers: plushie_ext::protocol::KeyModifiers::default(),
         };
         let event = message_to_event(&msg).unwrap();
-        assert_eq!(event.family, "canvas_scroll");
+        assert_eq!(event.family, "scroll");
     }
 
     #[test]

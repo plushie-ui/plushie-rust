@@ -165,6 +165,9 @@ struct Session<R: PlushieRenderer> {
     mode: Mode,
     /// Renderer-side animation manager.
     transition_manager: plushie_ext::animation::TransitionManager,
+    /// Current keyboard modifier state, updated on every ModifiersChanged
+    /// event. Included on all outgoing pointer events.
+    current_modifiers: iced::keyboard::Modifiers,
 }
 
 impl<R: PlushieRenderer> Session<R> {
@@ -196,6 +199,7 @@ impl<R: PlushieRenderer> Session<R> {
             ui,
             mode,
             transition_manager: plushie_ext::animation::TransitionManager::new(),
+            current_modifiers: iced::keyboard::Modifiers::default(),
         }
     }
 
@@ -310,6 +314,10 @@ impl<R: PlushieRenderer> Session<R> {
             // Update cursor from CursorMoved events before injection.
             if let Event::Mouse(mouse::Event::CursorMoved { position }) = event {
                 self.ui.cursor = mouse::Cursor::Available(*position);
+            }
+            // Track modifier state for pointer events.
+            if let Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) = event {
+                self.current_modifiers = *mods;
             }
 
             // Inject ONE event and capture the Messages iced produces.

@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use iced::{Task, Theme, window};
+use iced::{Task, Theme, keyboard, window};
 
 use plushie_ext::extensions::ExtensionDispatcher;
 use plushie_ext::message::Message;
@@ -69,6 +69,9 @@ pub struct App {
     /// and exit ghosts. Advances on frame ticks and writes interpolated
     /// values to WidgetCaches.interpolated_props.
     pub transition_manager: plushie_ext::animation::TransitionManager,
+    /// Current keyboard modifier state, updated on every ModifiersChanged
+    /// event. Included on all outgoing pointer events.
+    pub current_modifiers: keyboard::Modifiers,
 }
 
 impl App {
@@ -88,6 +91,7 @@ impl App {
             emitter: EventEmitter::new(),
             effect_handler,
             transition_manager: plushie_ext::animation::TransitionManager::new(),
+            current_modifiers: keyboard::Modifiers::default(),
         }
     }
 

@@ -144,7 +144,11 @@ pub enum Message {
         kind: String,
         x: f32,
         y: f32,
+        /// Encoded as "button:pointer_type:finger_id" for press/release,
+        /// "pointer_type:finger_id" for move. Finger omitted for mouse.
         extra: String,
+        /// Keyboard modifiers at the time of the event.
+        modifiers: KeyModifiers,
     },
     /// Canvas scroll event.
     CanvasScroll {
@@ -154,6 +158,10 @@ pub enum Message {
         y: f32,
         delta_x: f32,
         delta_y: f32,
+        /// Pointer type: "mouse", "touch", or "pen".
+        pointer_type: String,
+        /// Keyboard modifiers at the time of the event.
+        modifiers: KeyModifiers,
     },
     // -- Canvas element events (interactive group interactions) --
     /// Cursor entered an interactive element's hit region.
@@ -290,13 +298,14 @@ pub enum Message {
     Paste(String, String, String),
     /// ComboBox option was hovered (window_id, combo_id, option_value).
     OptionHovered(String, String, String),
-    /// MouseArea simple event (window_id, id, kind). Kind is one of: right_press,
-    /// right_release, middle_release, double_click, enter, exit.
-    MouseAreaEvent(String, String, String),
+    /// MouseArea simple event (window_id, id, kind, x, y). Kind is one of:
+    /// right_press, right_release, middle_press, middle_release,
+    /// double_click, enter, exit.
+    MouseAreaEvent(String, String, String, f32, f32),
     /// MouseArea cursor move event (window_id, id, x, y).
     MouseAreaMove(String, String, f32, f32),
-    /// MouseArea scroll event (window_id, id, delta_x, delta_y).
-    MouseAreaScroll(String, String, f32, f32),
+    /// MouseArea scroll event (window_id, id, delta_x, delta_y, x, y).
+    MouseAreaScroll(String, String, f32, f32, f32, f32),
     /// Generic widget event. Used for on_open, on_close, sort, and
     /// other events that carry a family string and optional data.
     Event {

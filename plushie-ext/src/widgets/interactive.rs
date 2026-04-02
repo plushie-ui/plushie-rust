@@ -152,49 +152,52 @@ pub(crate) fn render_mouse_area<'a, R: PlushieRenderer>(
     let window_id = ctx.window_id.to_string();
 
     let mut ma = mouse_area(child)
-        .on_press(Message::Click(window_id.clone(), id))
-        .on_release(Message::Click(window_id.clone(), release_id));
+        .on_press({
+            let wid = window_id.clone();
+            let nid = id.clone();
+            move |_p| Message::Click(wid.clone(), nid.clone())
+        })
+        .on_release({
+            let wid = window_id.clone();
+            let rid = release_id.clone();
+            move |_p| Message::Click(wid.clone(), rid.clone())
+        });
 
     // Conditional event handlers (opt-in via boolean props)
     if prop_bool_default(props, "on_middle_press", false) {
         let ev_id = node.id.clone();
-        ma = ma.on_middle_press(Message::MouseAreaEvent(
-            window_id.clone(),
-            ev_id,
-            "middle_press".into(),
-        ));
+        let wid = window_id.clone();
+        ma = ma.on_middle_press(move |p| {
+            Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "middle_press".into(), p.x, p.y)
+        });
     }
     if prop_bool_default(props, "on_right_press", false) {
         let ev_id = node.id.clone();
-        ma = ma.on_right_press(Message::MouseAreaEvent(
-            window_id.clone(),
-            ev_id,
-            "right_press".into(),
-        ));
+        let wid = window_id.clone();
+        ma = ma.on_right_press(move |p| {
+            Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "right_press".into(), p.x, p.y)
+        });
     }
     if prop_bool_default(props, "on_right_release", false) {
         let ev_id = node.id.clone();
-        ma = ma.on_right_release(Message::MouseAreaEvent(
-            window_id.clone(),
-            ev_id,
-            "right_release".into(),
-        ));
+        let wid = window_id.clone();
+        ma = ma.on_right_release(move |p| {
+            Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "right_release".into(), p.x, p.y)
+        });
     }
     if prop_bool_default(props, "on_middle_release", false) {
         let ev_id = node.id.clone();
-        ma = ma.on_middle_release(Message::MouseAreaEvent(
-            window_id.clone(),
-            ev_id,
-            "middle_release".into(),
-        ));
+        let wid = window_id.clone();
+        ma = ma.on_middle_release(move |p| {
+            Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "middle_release".into(), p.x, p.y)
+        });
     }
     if prop_bool_default(props, "on_double_click", false) {
         let ev_id = node.id.clone();
-        ma = ma.on_double_click(Message::MouseAreaEvent(
-            window_id.clone(),
-            ev_id,
-            "double_click".into(),
-        ));
+        let wid = window_id.clone();
+        ma = ma.on_double_click(move |p| {
+            Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "double_click".into(), p.x, p.y)
+        });
     }
     if prop_bool_default(props, "on_enter", false) {
         let ev_id = node.id.clone();
@@ -202,6 +205,8 @@ pub(crate) fn render_mouse_area<'a, R: PlushieRenderer>(
             window_id.clone(),
             ev_id,
             "enter".into(),
+            0.0,
+            0.0,
         ));
     }
     if prop_bool_default(props, "on_exit", false) {
@@ -210,6 +215,8 @@ pub(crate) fn render_mouse_area<'a, R: PlushieRenderer>(
             window_id.clone(),
             ev_id,
             "exit".into(),
+            0.0,
+            0.0,
         ));
     }
     if prop_bool_default(props, "on_move", false) {
@@ -222,12 +229,12 @@ pub(crate) fn render_mouse_area<'a, R: PlushieRenderer>(
     if prop_bool_default(props, "on_scroll", false) {
         let ev_id = node.id.clone();
         let scroll_window_id = window_id.clone();
-        ma = ma.on_scroll(move |delta| {
+        ma = ma.on_scroll(move |delta, position| {
             let (dx, dy) = match delta {
                 mouse::ScrollDelta::Lines { x, y } => (x, y),
                 mouse::ScrollDelta::Pixels { x, y } => (x, y),
             };
-            Message::MouseAreaScroll(scroll_window_id.clone(), ev_id.clone(), dx, dy)
+            Message::MouseAreaScroll(scroll_window_id.clone(), ev_id.clone(), dx, dy, position.x, position.y)
         });
     }
 

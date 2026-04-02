@@ -484,18 +484,18 @@ mod tests {
     #[test]
     fn buffer_accumulate_sums_deltas() {
         let mut emitter = EventEmitter::new();
-        let key = CoalesceKey::Widget("ma1".into(), "mouse_area_scroll".into());
+        let key = CoalesceKey::Widget("ma1".into(), "scroll".into());
         let hint = CoalesceHint::Accumulate(vec!["delta_x".into(), "delta_y".into()]);
 
         let ev1 = make_event_with_data(
-            "mouse_area_scroll",
+            "scroll",
             "ma1",
             json!({"delta_x": 1.0, "delta_y": 2.0}),
         );
         emitter.buffer_event(&key, ev1, &hint);
 
         let ev2 = make_event_with_data(
-            "mouse_area_scroll",
+            "scroll",
             "ma1",
             json!({"delta_x": 3.0, "delta_y": 4.0}),
         );
@@ -543,7 +543,7 @@ mod tests {
             OutgoingEvent::slide("s1".into(), 0.5),
             OutgoingEvent::cursor_moved("t".into(), 1.0, 2.0),
             OutgoingEvent::canvas_move("c1".into(), 1.0, 2.0),
-            OutgoingEvent::mouse_area_move("m1".into(), 1.0, 2.0),
+            OutgoingEvent::pointer_move("m1".into(), 1.0, 2.0, "mouse", None, plushie_ext::protocol::KeyModifiers::default()),
             OutgoingEvent::sensor_resize("s1".into(), 100.0, 200.0),
             OutgoingEvent::pane_resized("p1".into(), "s0".into(), 0.5),
             OutgoingEvent::animation_frame("t".into(), 16000),
@@ -569,7 +569,7 @@ mod tests {
         let events = vec![
             OutgoingEvent::wheel_scrolled("t".into(), 0.0, -3.0, "line"),
             OutgoingEvent::canvas_scroll("c1".into(), 5.0, 5.0, 0.0, -1.0),
-            OutgoingEvent::mouse_area_scroll("m1".into(), 0.0, -3.0),
+            OutgoingEvent::pointer_scroll("m1".into(), 0.0, 0.0, 0.0, -3.0, "mouse", plushie_ext::protocol::KeyModifiers::default()),
         ];
         for event in events {
             assert!(
@@ -597,8 +597,8 @@ mod tests {
             OutgoingEvent::cursor_left("t".into()),
             OutgoingEvent::button_pressed("t".into(), "Left".into()),
             OutgoingEvent::button_released("t".into(), "Left".into()),
-            OutgoingEvent::mouse_enter("m1".into()),
-            OutgoingEvent::mouse_exit("m1".into()),
+            OutgoingEvent::pointer_enter("m1".into()),
+            OutgoingEvent::pointer_exit("m1".into()),
             OutgoingEvent::pane_clicked("pg1".into(), "pane_a".into()),
             OutgoingEvent::pane_focus_cycle("pg1".into(), "pane_a".into()),
             OutgoingEvent::pane_dragged("pg1".into(), "picked", "pane_a".into(), None, None, None),

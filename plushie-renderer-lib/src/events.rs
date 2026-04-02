@@ -80,6 +80,7 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
+        self.current_modifiers = mods;
         let window_id = self.resolve_window_id(&iced_id);
         let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
         self.coalesce_subscription_for_window(SUB_MODIFIERS_CHANGED, wid, captured, |tag| {

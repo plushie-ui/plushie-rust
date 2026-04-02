@@ -763,6 +763,7 @@ pub fn build_interact_response(
                 .and_then(|v| v.as_str())
                 .unwrap_or("left")
                 .to_string();
+            let mods = plushie_ext::protocol::KeyModifiers::default();
 
             // Hit test against the canvas tree to determine if an
             // interactive element was clicked. Coordinates are canvas-
@@ -777,7 +778,7 @@ pub fn build_interact_response(
                             .with_window_id(window_id),
                     ]
                 } else if plushie_ext::widgets::canvas::canvas_has_on_press(node) {
-                    vec![OutgoingEvent::canvas_press(wid, x, y, button).with_window_id(window_id)]
+                    vec![OutgoingEvent::pointer_press(wid, x, y, &button, "mouse", None, mods).with_window_id(window_id)]
                 } else {
                     vec![]
                 }
@@ -793,12 +794,13 @@ pub fn build_interact_response(
                 .and_then(|v| v.as_str())
                 .unwrap_or("left")
                 .to_string();
+            let mods = plushie_ext::protocol::KeyModifiers::default();
 
             if let Some(node) = core.tree.root().and_then(|root| {
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
                 if plushie_ext::widgets::canvas::canvas_has_on_press(node) {
-                    vec![OutgoingEvent::canvas_release(wid, x, y, button).with_window_id(window_id)]
+                    vec![OutgoingEvent::pointer_release(wid, x, y, &button, "mouse", None, mods).with_window_id(window_id)]
                 } else {
                     vec![]
                 }
@@ -809,6 +811,7 @@ pub fn build_interact_response(
         ("canvas_move", Some((window_id, wid))) => {
             let x = payload.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
             let y = payload.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            let mods = plushie_ext::protocol::KeyModifiers::default();
 
             if let Some(node) = core.tree.root().and_then(|root| {
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
@@ -822,7 +825,7 @@ pub fn build_interact_response(
                             .with_window_id(window_id.clone()),
                     );
                 }
-                events.push(OutgoingEvent::canvas_move(wid, x, y).with_window_id(window_id));
+                events.push(OutgoingEvent::pointer_move(wid, x, y, "mouse", None, mods).with_window_id(window_id));
                 events
             } else {
                 vec![]

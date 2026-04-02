@@ -38,9 +38,8 @@ use plushie_ext::image_registry::ImageRegistry;
 use plushie_ext::message::Message;
 use plushie_ext::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
 
-use iced::keyboard::{self, Key};
 use plushie_renderer_lib::scripting::{
-    interaction_to_iced_events, make_key_pressed, make_key_released, parse_iced_modifiers,
+    interaction_to_iced_events,
     resolve_widget_id,
 };
 
@@ -720,21 +719,23 @@ fn handle_message<R: PlushieRenderer>(
             // - select: synthetic event (pick_list selection can't be done
             //   via focus+Space since it requires opening a dropdown and
             //   choosing a specific option)
-            let use_focus_activate = matches!(s.mode, Mode::Mock)
-                && matches!(action.as_str(), "click" | "toggle")
+            // In mock mode, click/toggle go through the synthetic event
+            // path (build_interact_response) which emits events directly
+            // from the tree. This is more reliable than focus+Space which
+            // depends on iced's internal focus tracking.
+            //
+            // Canvas actions also use synthetic construction because
+            // canvas_press/release/move coordinates are canvas-relative.
+            let use_synthetic = matches!(s.mode, Mode::Mock)
+                && matches!(
+                    action.as_str(),
+                    "click" | "toggle" | "select" | "canvas_press" | "canvas_release"
+                        | "canvas_move"
+                )
                 && widget_id.is_some();
-            // Canvas actions always use synthetic event construction
-            // because canvas_press/release/move coordinates are canvas-
-            // relative. Injecting them as iced mouse events would require
-            // knowing the canvas widget's window-absolute position. The
-            // synthetic path does hit testing directly from the tree.
-            let use_synthetic = matches!(
-                action.as_str(),
-                "select" | "canvas_press" | "canvas_release" | "canvas_move"
-            ) && (matches!(s.mode, Mode::Mock) || widget_id.is_some());
 
-            let iced_events = if use_focus_activate || use_synthetic {
-                // Handled via alternative paths below.
+            let iced_events = if use_synthetic {
+                // Handled via synthetic path below.
                 vec![]
             } else {
                 let cursor = s.ui.cursor;
@@ -742,8 +743,8 @@ fn handle_message<R: PlushieRenderer>(
             };
 
             let events = if use_synthetic {
-                // Synthetic event path for actions that can't be done
-                // position-independently (e.g. pick_list select).
+                // Synthetic event path: emit events directly from the
+                // tree without going through iced's widget system.
                 plushie_renderer_lib::scripting::build_interact_response(
                     &s.core,
                     id.clone(),
@@ -752,49 +753,6 @@ fn handle_message<R: PlushieRenderer>(
                     payload,
                 )
                 .events
-            } else if use_focus_activate {
-                let wid = widget_id.as_ref().unwrap();
-
-                // Step 1: Focus the target widget by ID.
-                s.with_ui(|ui, renderer, _cursor| {
-                    let mut op = iced_test::core::widget::operation::focusable::focus::<()>(
-                        iced::widget::Id::from(wid.clone()),
-                    );
-                    ui.operate(renderer, &mut op);
-                });
-
-                // Step 2: Inject Space key press/release. The focused
-                // widget (button/checkbox/toggler) handles Space as
-                // activation, producing the appropriate message.
-                let empty_mods = serde_json::Value::Object(Default::default());
-                let mods_json = payload.get("modifiers").unwrap_or(&empty_mods);
-                let modifiers = parse_iced_modifiers(mods_json);
-                let space_events = vec![
-                    make_key_pressed(
-                        Key::Named(keyboard::key::Named::Space),
-                        modifiers,
-                        None,
-                    ),
-                    make_key_released(
-                        Key::Named(keyboard::key::Named::Space),
-                        modifiers,
-                    ),
-                ];
-
-                let had_steps = s.inject_and_capture(session_id, &id, &space_events, read_next);
-
-                if had_steps {
-                    vec![]
-                } else {
-                    plushie_renderer_lib::scripting::build_interact_response(
-                        &s.core,
-                        id.clone(),
-                        action,
-                        selector,
-                        payload,
-                    )
-                    .events
-                }
             } else if !iced_events.is_empty() {
                 // Headless mode or keyboard actions: inject real iced
                 // events with host round-trips between events that

@@ -831,6 +831,66 @@ pub fn build_interact_response(
                 vec![]
             }
         }
+        // Canvas element click via scoped ID (e.g. "my-canvas/save-button").
+        // The full scoped ID doesn't match any tree node, so widget_target
+        // is None. Split into canvas_id + element_id, find the canvas node,
+        // verify the element exists, and emit a canvas_element_click event.
+        ("click", None) => {
+            let raw_id = parse_selector(&selector)
+                .and_then(|sel| match sel {
+                    Selector::Id { widget_id, .. } => Some(widget_id),
+                    _ => None,
+                });
+
+            if let Some(scoped_id) = raw_id.filter(|id| id.contains('/')) {
+                if let Some((canvas_id, element_id)) = scoped_id.split_once('/') {
+                    let window_id = core.tree.root().and_then(|root| {
+                        find_window_id_for_node(root, canvas_id, None)
+                    });
+
+                    if let Some(window_id) = window_id {
+                        let found = core.tree.root().and_then(|root| {
+                            find_tree_node_by_id_with_window(
+                                root,
+                                canvas_id,
+                                Some(&window_id),
+                                None,
+                                0,
+                            )
+                        });
+
+                        if let Some(node) = found {
+                            if plushie_ext::widgets::canvas::canvas_find_element_by_id(node, element_id) {
+                                vec![
+                                    OutgoingEvent::canvas_element_click(
+                                        canvas_id.to_string(),
+                                        element_id.to_string(),
+                                        0.0,
+                                        0.0,
+                                        "left".to_string(),
+                                    )
+                                    .with_window_id(window_id),
+                                ]
+                            } else {
+                                log::warn!("canvas element '{element_id}' not found in canvas '{canvas_id}'");
+                                vec![]
+                            }
+                        } else {
+                            log::warn!("canvas node '{canvas_id}' not found");
+                            vec![]
+                        }
+                    } else {
+                        log::warn!("no window found for canvas '{canvas_id}'");
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            } else {
+                log::warn!("click action: widget not found");
+                vec![]
+            }
+        }
         _ => {
             log::warn!("unknown action '{action}' or widget not found");
             vec![]

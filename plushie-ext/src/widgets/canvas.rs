@@ -3633,6 +3633,33 @@ pub fn canvas_hit_test(node: &crate::protocol::TreeNode, x: f32, y: f32) -> Opti
     find_hit_element(Point::new(x, y), &interactive_elements).map(|e| e.id.clone())
 }
 
+/// Check whether a canvas node contains an interactive element with the given ID.
+///
+/// Used by the scripting layer to verify that a scoped canvas element ID
+/// (e.g. "my-canvas/save-button") refers to a real interactive element
+/// before emitting a click event.
+pub fn canvas_find_element_by_id(node: &crate::protocol::TreeNode, element_id: &str) -> bool {
+    let props = node.props.as_object();
+    let layer_map = canvas_layer_map(props);
+
+    let mut interactive_elements = Vec::new();
+    for (layer_name, shapes_val) in &layer_map {
+        if let Some(shapes_arr) = shapes_val.as_array() {
+            collect_interactive_elements(
+                shapes_arr,
+                layer_name,
+                TransformMatrix::identity(),
+                None,
+                None,
+                "",
+                &mut interactive_elements,
+            );
+        }
+    }
+
+    interactive_elements.iter().any(|e| e.id == element_id)
+}
+
 /// Check whether a canvas node has `on_press` enabled.
 pub fn canvas_has_on_press(node: &crate::protocol::TreeNode) -> bool {
     node.props

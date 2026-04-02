@@ -1074,8 +1074,8 @@ Produced by widget interactions. The `id` field is the node ID and
 | `select` | id, value (string) | Pick list or radio selected |
 | `paste` | id, value (string) | Text pasted into input |
 | `option_hovered` | id, value (string) | Combo box option hovered |
-| `sensor_resize` | id, data: {width, height} | Sensor widget resized |
-| `scroll` | id, data: {absolute_x, absolute_y, relative_x, relative_y, bounds_width, bounds_height, content_width, content_height} | Scrollable scrolled |
+| `resize` | id, data: {width, height} | Sensor widget resized. Coalescable (Replace). |
+| `scrolled` | id, data: {absolute_x, absolute_y, relative_x, relative_y, bounds_width, bounds_height, content_width, content_height} | Scrollable viewport changed. NOT a pointer event. Coalescable (Replace). |
 | `sort` | id, data: {column} | Table column sort clicked |
 | `key_binding` | id, data | TextEditor key binding rule matched |
 | `open` | id | PickList or ComboBox menu opened |
@@ -1093,28 +1093,53 @@ Current renderer error payloads include:
 |-------------|--------------|-------------|
 | `extension_command` | `reason`, `node_id`, `op`, `message`, `extension` (optional) | Native extension command failed. `reason` is currently `"unknown_node"`, `"poisoned"`, or `"panic"`. |
 
-Mouse area events (from `mouse_area` widget):
+#### Pointer events
 
-| Family | Description |
-|--------|-------------|
-| `mouse_right_press` | Right button pressed |
-| `mouse_right_release` | Right button released |
-| `mouse_middle_press` | Middle button pressed |
-| `mouse_middle_release` | Middle button released |
-| `mouse_double_click` | Double click |
-| `mouse_enter` | Cursor entered area |
-| `mouse_exit` | Cursor left area |
-| `mouse_move` | Cursor moved (data: {x, y}) |
-| `mouse_scroll` | Scroll within area (data: {delta_x, delta_y}) |
+All pointer interactions (from `pointer_area`, canvas, and touch
+input) use a unified set of event families. The same families are
+emitted regardless of widget type -- the `pointer` field in the
+data distinguishes the input device.
 
-Canvas events:
+| Family | Data fields | Coalescable | Description |
+|--------|-------------|-------------|-------------|
+| `press` | `{x, y, button, pointer, finger?, modifiers}` | No | Pointer button down with coordinates |
+| `release` | `{x, y, button, pointer, finger?, modifiers}` | No | Pointer button up |
+| `move` | `{x, y, pointer, finger?, modifiers}` | Replace | Pointer movement |
+| `scroll` | `{x, y, delta_x, delta_y, pointer, modifiers}` | Accumulate (delta_x, delta_y) | Wheel/trackpad scroll input |
+| `enter` | (none) | No | Pointer entered widget area |
+| `exit` | (none) | No | Pointer left widget area |
+| `click` | (none) | No | Semantic activation (high-level, no coordinates) |
+| `double_click` | `{x, y, pointer, modifiers}` | No | Double click |
+| `resize` | `{width, height}` | Replace | Widget resized (from sensor) |
 
-| Family | Fields | Description |
-|--------|--------|-------------|
-| `canvas_press` | id, data: {x, y, button} | Mouse pressed on canvas |
-| `canvas_release` | id, data: {x, y, button} | Mouse released on canvas |
-| `canvas_move` | id, data: {x, y} | Mouse moved on canvas |
-| `canvas_scroll` | id, data: {x, y, delta_x, delta_y} | Scroll on canvas |
+**Pointer type.** The `pointer` field identifies the input device:
+
+| Value | Description |
+|-------|-------------|
+| `"mouse"` | Mouse or trackpad |
+| `"touch"` | Touchscreen finger |
+| `"pen"` | Stylus or pen tablet |
+
+**Finger field.** Touch events include a `finger` field (u64) that
+identifies the finger. This field is absent for mouse and pen input.
+
+**Button field.** The `button` field in `press` and `release` events
+identifies the button: `"left"`, `"right"`, or `"middle"`.
+
+**Modifiers.** The `modifiers` object has the shape:
+`{shift, ctrl, alt, logo, command}` (all booleans).
+
+These families are emitted by:
+- `pointer_area` widget -- mouse/touch/pen interactions on an
+  invisible overlay area.
+- `canvas` widget -- pointer interactions on the canvas surface.
+  The `id` field is the canvas node ID.
+- Canvas interactive elements -- pointer interactions on canvas
+  elements. The `id` field is `"{canvas_id}/{element_id}"`.
+
+Note: `scrolled` (scrollable container viewport change) is a
+separate widget event, not a pointer event. It has a different
+data shape and is documented in the widget events table above.
 
 Pane grid events:
 
@@ -1157,6 +1182,16 @@ tag from the subscription registration.
 | `finger_moved` | tag, data: {id, x, y} |
 | `finger_lifted` | tag, data: {id, x, y} |
 | `finger_lost` | tag, data: {id, x, y} |
+
+**Subscription events vs widget pointer events.** Subscription
+pointer events (`cursor_moved`, `button_pressed`, `finger_pressed`,
+etc.) use iced-native family names and data shapes. Widget pointer
+events (`press`, `release`, `move`, `scroll`, etc.) use the unified
+pointer model documented above. Both coexist on the wire -- the SDK
+is responsible for merging them into a consistent event model on the
+host side. For example, a `button_pressed` subscription event and a
+`press` widget event represent the same physical action at different
+abstraction levels.
 
 **IME (input method):**
 
@@ -1753,10 +1788,9 @@ renderer classifies events into two coalescing strategies:
 
 **Replace (latest value wins):** `cursor_moved`, `finger_moved`,
 `modifiers_changed`, `animation_frame`, `theme_changed`, `slide`,
-`mouse_area_move`, `canvas_move`, `sensor_resize`, `pane_resized`.
+`move`, `resize`, `scrolled`, `pane_resized`.
 
-**Accumulate (deltas sum):** `wheel_scrolled`, `mouse_area_scroll`,
-`canvas_scroll`.
+**Accumulate (deltas sum):** `wheel_scrolled`, `scroll` (pointer).
 
 **Never coalesced:** `click`, `input`, `submit`, `toggle`, `select`,
 `paste`, `key_press`, `key_release`, `button_pressed`,
@@ -1945,7 +1979,7 @@ sub-object).
 | `clip` | object | No | Clip rectangle `{x, y, w, h}` in local coordinates |
 | `id` | string | No* | Unique ID. Presence makes the group interactive. |
 | `on_click` | bool | No | Emit `click` events on the element |
-| `on_hover` | bool | No | Emit `mouse_enter` / `mouse_exit` events on the element |
+| `on_hover` | bool | No | Emit `enter` / `exit` events on the element |
 | `cursor` | string | No | Cursor on hover (`pointer`, `grab`, `crosshair`, `move`, `text`) |
 | `tooltip` | string | No | Tooltip text on hover |
 | `hit_rect` | object | No | Explicit hit region `{x, y, w, h}` in local coords |
@@ -2020,8 +2054,8 @@ the SDK's perspective.
 
 | Family | ID | Data | Coalescable | Description |
 |--------|-----|------|-------------|-------------|
-| `mouse_enter` | `{canvas}/{element}` | `x`, `y` | No | Cursor entered hit region |
-| `mouse_exit` | `{canvas}/{element}` | - | No | Cursor left hit region |
+| `enter` | `{canvas}/{element}` | `x`, `y` | No | Pointer entered hit region |
+| `exit` | `{canvas}/{element}` | - | No | Pointer left hit region |
 | `click` | `{canvas}/{element}` | `x`, `y`, `button` | No | Activated (click or keyboard). `button`: `"left"`, `"right"`, `"keyboard"` |
 | `key_press` | `{canvas}/{element}` | `key`, `modifiers` | No | Navigation key on focused element when `arrow_mode` is `"none"`. Keys: arrows, Home, End, PageUp, PageDown. `modifiers`: `{shift, ctrl, alt, logo, command}` |
 | `drag` | `{canvas}/{element}` | `x`, `y`, `delta_x`, `delta_y` | Replace | Drag movement |
@@ -2041,8 +2075,8 @@ the SDK's perspective.
 - Tab out: `blurred` (element) -> `blurred` (canvas)
 - Tab in: `focused` (canvas) -> `focused` (element)
 
-Raw canvas events (`canvas_press`, `canvas_release`, `canvas_move`,
-`canvas_scroll`) continue to fire alongside element events.
+Raw canvas pointer events (`press`, `release`, `move`, `scroll`)
+fire on the canvas node alongside element-level events.
 
 ### Keyboard navigation
 

@@ -40,7 +40,8 @@ use plushie_ext::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
 
 use iced::keyboard::{self, Key};
 use plushie_renderer_lib::scripting::{
-    interaction_to_iced_events, make_key_pressed, make_key_released, resolve_widget_id,
+    interaction_to_iced_events, make_key_pressed, make_key_released, parse_iced_modifiers,
+    resolve_widget_id,
 };
 
 fn log_hello_error(err: &io::Error) {
@@ -757,15 +758,18 @@ fn handle_message<R: PlushieRenderer>(
                 // Step 2: Inject Space key press/release. The focused
                 // widget (button/checkbox/toggler) handles Space as
                 // activation, producing the appropriate message.
+                let empty_mods = serde_json::Value::Object(Default::default());
+                let mods_json = payload.get("modifiers").unwrap_or(&empty_mods);
+                let modifiers = parse_iced_modifiers(mods_json);
                 let space_events = vec![
                     make_key_pressed(
                         Key::Named(keyboard::key::Named::Space),
-                        keyboard::Modifiers::empty(),
+                        modifiers,
                         None,
                     ),
                     make_key_released(
                         Key::Named(keyboard::key::Named::Space),
-                        keyboard::Modifiers::empty(),
+                        modifiers,
                     ),
                 ];
 

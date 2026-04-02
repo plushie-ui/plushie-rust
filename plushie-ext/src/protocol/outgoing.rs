@@ -611,13 +611,9 @@ impl OutgoingEvent {
     // All canvas element events use scoped IDs: the wire `id` field is
     // `"{canvas_id}/{element_id}"` so the SDK's scoped ID system splits
     // it into `id: element_id, scope: [canvas_id, ...]` automatically.
-    // This makes canvas elements look like regular widgets inside a
-    // container from the SDK's perspective.
-    //
-    // `canvas_element_click` uses the standard "click" family because
-    // clicking a canvas element is semantically identical to clicking
-    // any widget. Other canvas element events keep their specific
-    // families because they have no standard widget equivalent.
+    // All canvas events use standard families with scoped IDs
+    // (`"{canvas_id}/{element_id}"`), making canvas elements look like
+    // regular widgets from the SDK's perspective.
     // -----------------------------------------------------------------------
 
     /// Scoped ID helper: `"{canvas_id}/{element_id}"`.
@@ -632,7 +628,7 @@ impl OutgoingEvent {
                 "y": sanitize_f32(y),
             })),
             ..Self::bare(
-                "canvas_element_enter",
+                "mouse_enter",
                 Self::scoped_element_id(&canvas_id, &element_id),
             )
         }
@@ -640,7 +636,7 @@ impl OutgoingEvent {
 
     pub fn canvas_element_leave(canvas_id: String, element_id: String) -> Self {
         Self::bare(
-            "canvas_element_leave",
+            "mouse_exit",
             Self::scoped_element_id(&canvas_id, &element_id),
         )
     }
@@ -657,7 +653,7 @@ impl OutgoingEvent {
                 "modifiers": modifiers,
             })),
             ..Self::bare(
-                "canvas_element_key_press",
+                "key_press",
                 Self::scoped_element_id(&canvas_id, &element_id),
             )
         }
@@ -675,14 +671,13 @@ impl OutgoingEvent {
                 "modifiers": modifiers,
             })),
             ..Self::bare(
-                "canvas_element_key_release",
+                "key_release",
                 Self::scoped_element_id(&canvas_id, &element_id),
             )
         }
     }
 
-    /// Canvas element activation. Uses standard "click" family so
-    /// canvas elements produce the same events as regular widgets.
+    /// Canvas element activation.
     pub fn canvas_element_click(
         canvas_id: String,
         element_id: String,
@@ -717,7 +712,7 @@ impl OutgoingEvent {
             })),
             coalesce: Some(CoalesceHint::Replace),
             ..Self::bare(
-                "canvas_element_drag",
+                "drag",
                 Self::scoped_element_id(&canvas_id, &element_id),
             )
         }
@@ -730,7 +725,7 @@ impl OutgoingEvent {
                 "y": sanitize_f32(y),
             })),
             ..Self::bare(
-                "canvas_element_drag_end",
+                "drag_end",
                 Self::scoped_element_id(&canvas_id, &element_id),
             )
         }
@@ -738,32 +733,32 @@ impl OutgoingEvent {
 
     pub fn canvas_element_focused(canvas_id: String, element_id: String) -> Self {
         Self::bare(
-            "canvas_element_focused",
+            "focused",
             Self::scoped_element_id(&canvas_id, &element_id),
         )
     }
 
     pub fn canvas_element_blurred(canvas_id: String, element_id: String) -> Self {
         Self::bare(
-            "canvas_element_blurred",
+            "blurred",
             Self::scoped_element_id(&canvas_id, &element_id),
         )
     }
 
     /// The canvas widget itself gained iced-level focus.
     pub fn canvas_focused(canvas_id: String) -> Self {
-        Self::bare("canvas_focused", canvas_id)
+        Self::bare("focused", canvas_id)
     }
 
     /// The canvas widget itself lost iced-level focus.
     pub fn canvas_blurred(canvas_id: String) -> Self {
-        Self::bare("canvas_blurred", canvas_id)
+        Self::bare("blurred", canvas_id)
     }
 
     /// A focusable group gained group-level focus. Uses scoped ID.
     pub fn canvas_group_focused(canvas_id: String, group_id: String) -> Self {
         Self::bare(
-            "canvas_group_focused",
+            "focused",
             Self::scoped_element_id(&canvas_id, &group_id),
         )
     }
@@ -771,7 +766,7 @@ impl OutgoingEvent {
     /// A focusable group lost group-level focus. Uses scoped ID.
     pub fn canvas_group_blurred(canvas_id: String, group_id: String) -> Self {
         Self::bare(
-            "canvas_group_blurred",
+            "blurred",
             Self::scoped_element_id(&canvas_id, &group_id),
         )
     }

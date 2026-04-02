@@ -1892,9 +1892,9 @@ group to add interaction.
   image, svg). Pure visual, no interactivity.
 - **Group**: the only container type. Carries transforms, clips, and
   optionally interactivity (when it has an `id` field).
-- **Element**: an interactive group (one with an `id`). The term used
-  in event names (`canvas_element_click`), commands (`focus_element`),
-  and test actions.
+- **Element**: an interactive group (one with an `id`). Uses scoped
+  IDs for events (`"{canvas_id}/{element_id}"`), commands
+  (`focus_element`), and test actions.
 
 ### Group wire format
 
@@ -1944,8 +1944,8 @@ sub-object).
 | `transforms` | array | No | Ordered list of transforms: `translate`, `rotate`, `scale` |
 | `clip` | object | No | Clip rectangle `{x, y, w, h}` in local coordinates |
 | `id` | string | No* | Unique ID. Presence makes the group interactive. |
-| `on_click` | bool | No | Emit `canvas_element_click` events |
-| `on_hover` | bool | No | Emit `canvas_element_enter` / `canvas_element_leave` events |
+| `on_click` | bool | No | Emit `click` events on the element |
+| `on_hover` | bool | No | Emit `mouse_enter` / `mouse_exit` events on the element |
 | `cursor` | string | No | Cursor on hover (`pointer`, `grab`, `crosshair`, `move`, `text`) |
 | `tooltip` | string | No | Tooltip text on hover |
 | `hit_rect` | object | No | Explicit hit region `{x, y, w, h}` in local coords |
@@ -2012,31 +2012,34 @@ precision at transformed element boundaries.
 
 ### Events emitted
 
-Interactive elements emit the following event families. The top-level
-`id` field is the canvas widget ID; element identity is in `data`.
+Canvas events use standard event families with scoped IDs. The wire
+`id` field is `"{canvas_id}/{element_id}"` so the SDK's scoped ID
+system splits it into `id: element_id, scope: [canvas_id, ...]`.
+Canvas elements look like regular widgets inside a container from
+the SDK's perspective.
 
-| Family | Data | Coalescable | Description |
-|--------|------|-------------|-------------|
-| `canvas_element_enter` | `element_id`, `x`, `y` | No | Cursor entered hit region |
-| `canvas_element_leave` | `element_id` | No | Cursor left hit region |
-| `canvas_element_click` | `element_id`, `x`, `y`, `button` | No | Activated (click or keyboard). `button`: `"left"`, `"right"`, `"keyboard"` |
-| `canvas_element_key_press` | `element_id`, `key`, `modifiers` | No | Navigation key on focused element when `arrow_mode` is `"none"`. Keys: arrows, Home, End, PageUp, PageDown. `modifiers`: `{shift, ctrl, alt, logo, command}` |
-| `canvas_element_drag` | `element_id`, `x`, `y`, `delta_x`, `delta_y` | Replace | Drag movement |
-| `canvas_element_drag_end` | `element_id`, `x`, `y` | No | Drag released |
-| `canvas_element_focused` | `element_id` | No | Element gained keyboard focus |
-| `canvas_element_blurred` | `element_id` | No | Element lost keyboard focus |
-| `canvas_focused` | - | No | Canvas widget gained iced-level focus |
-| `canvas_blurred` | - | No | Canvas widget lost iced-level focus |
-| `canvas_group_focused` | `group_id` | No | Focusable group entered |
-| `canvas_group_blurred` | `group_id` | No | Focusable group exited |
-| `diagnostic` | `level`, `element_id`, `code`, `message` | Deduplicate | Validation warning |
+| Family | ID | Data | Coalescable | Description |
+|--------|-----|------|-------------|-------------|
+| `mouse_enter` | `{canvas}/{element}` | `x`, `y` | No | Cursor entered hit region |
+| `mouse_exit` | `{canvas}/{element}` | - | No | Cursor left hit region |
+| `click` | `{canvas}/{element}` | `x`, `y`, `button` | No | Activated (click or keyboard). `button`: `"left"`, `"right"`, `"keyboard"` |
+| `key_press` | `{canvas}/{element}` | `key`, `modifiers` | No | Navigation key on focused element when `arrow_mode` is `"none"`. Keys: arrows, Home, End, PageUp, PageDown. `modifiers`: `{shift, ctrl, alt, logo, command}` |
+| `drag` | `{canvas}/{element}` | `x`, `y`, `delta_x`, `delta_y` | Replace | Drag movement |
+| `drag_end` | `{canvas}/{element}` | `x`, `y` | No | Drag released |
+| `focused` | `{canvas}/{element}` | - | No | Element gained keyboard focus |
+| `blurred` | `{canvas}/{element}` | - | No | Element lost keyboard focus |
+| `focused` | `{canvas}` | - | No | Canvas widget gained iced-level focus |
+| `blurred` | `{canvas}` | - | No | Canvas widget lost iced-level focus |
+| `focused` | `{canvas}/{group}` | - | No | Focusable group entered |
+| `blurred` | `{canvas}/{group}` | - | No | Focusable group exited |
+| `diagnostic` | `{canvas}` | `level`, `element_id`, `code`, `message` | Deduplicate | Validation warning |
 
 **Event ordering guarantees:**
 
-- Click on element: `canvas_focused` (if new) -> `canvas_element_blurred` (old) -> `canvas_element_focused` (new) -> `canvas_element_click`
-- Tab to next: `canvas_element_blurred` (old) -> `canvas_element_focused` (new)
-- Tab out: `canvas_element_blurred` -> `canvas_blurred`
-- Tab in: `canvas_focused` -> `canvas_element_focused`
+- Click on element: `focused` (canvas, if new) -> `blurred` (old element) -> `focused` (new element) -> `click`
+- Tab to next: `blurred` (old element) -> `focused` (new element)
+- Tab out: `blurred` (element) -> `blurred` (canvas)
+- Tab in: `focused` (canvas) -> `focused` (element)
 
 Raw canvas events (`canvas_press`, `canvas_release`, `canvas_move`,
 `canvas_scroll`) continue to fire alongside element events.
@@ -2055,7 +2058,7 @@ internal keyboard navigation uses the roving tabindex pattern.
 | Home | First element in scope |
 | End | Last element in scope |
 | Page Down/Up | Jump by 10 within scope |
-| Enter / Space | Activate focused element (`canvas_element_click` with `button: "keyboard"`) |
+| Enter / Space | Activate focused element (`click` with `button: "keyboard"`) |
 | Escape | Exit focusable group / clear focus / unfocus canvas (three levels) |
 
 **Arrow mode** (`arrow_mode` canvas prop):
@@ -2065,7 +2068,7 @@ internal keyboard navigation uses the roving tabindex pattern.
 | `wrap` (default) | Wraps last->first and first->last. Always captures. |
 | `clamp` | Stops at first/last. Captures. |
 | `linear` | Propagates at boundaries (e.g. scrollable parent handles it). |
-| `none` | Navigation keys (arrows, Home, End, PageUp, PageDown) emit `canvas_element_key_press` to the host instead of navigating elements. Tab-only navigation for focus. Use for custom value adjustment on focused elements. |
+| `none` | Navigation keys (arrows, Home, End, PageUp, PageDown) emit `key_press` to the host instead of navigating elements. Tab-only navigation for focus. Use for custom value adjustment on focused elements. |
 
 **Focusable groups** (`focusable: true` on a group): Tab moves between
 top-level entries (standalone elements + focusable groups). When Tab

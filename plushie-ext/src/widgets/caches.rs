@@ -19,7 +19,7 @@ use iced::widget::{combo_box, markdown, pane_grid, text_editor};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
-use crate::protocol::TreeNode;
+use crate::protocol::{OutgoingEvent, TreeNode};
 
 /// Maximum recursion depth for tree walks (render, ensure_caches, prepare).
 /// Prevents stack overflow from pathologically nested trees. Normal UI trees
@@ -216,10 +216,12 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
 /// layers, etc.) is guarded by per-node content hashes, so unchanged
 /// nodes are O(1). A dirty-flag optimization would only skip those hash
 /// lookups, which are already cheap relative to the tree walk itself.
-pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) {
+pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) -> Vec<OutgoingEvent> {
     let mut live_ids = HashSet::new();
-    ensure_caches_walk(node, caches, &mut live_ids, 0);
+    let mut diagnostics = Vec::new();
+    ensure_caches_walk(node, caches, &mut live_ids, &mut diagnostics, 0);
     caches.prune_stale(&live_ids);
+    diagnostics
 }
 
 /// Inner recursive walk: populate caches and collect live node IDs.
@@ -227,6 +229,7 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     node: &TreeNode,
     caches: &mut WidgetCaches<R>,
     live_ids: &mut HashSet<String>,
+    diagnostics: &mut Vec<OutgoingEvent>,
     depth: usize,
 ) {
     if depth > MAX_TREE_DEPTH {
@@ -243,7 +246,7 @@ fn ensure_caches_walk<R: PlushieRenderer>(
         "markdown" => super::display::ensure_markdown_cache(node, caches),
         "combo_box" => super::input::ensure_combo_box_cache(node, caches),
         "pane_grid" => super::layout::ensure_pane_grid_cache(node, caches),
-        "canvas" => super::canvas::ensure_canvas_cache(node, caches),
+        "canvas" => diagnostics.extend(super::canvas::ensure_canvas_cache(node, caches)),
         "themer" => super::interactive::ensure_themer_cache(node, caches),
         "qr_code" => super::display::ensure_qr_code_cache(node, caches),
         _ => {}
@@ -255,7 +258,7 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     ensure_style_overrides_cache(node, caches);
 
     for child in &node.children {
-        ensure_caches_walk(child, caches, live_ids, depth + 1);
+        ensure_caches_walk(child, caches, live_ids, diagnostics, depth + 1);
     }
 }
 

@@ -28,6 +28,7 @@ use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
 use crate::message::{Message, serialize_modifiers};
+use crate::protocol::OutgoingEvent;
 use crate::protocol::TreeNode;
 
 /// Maximum number of shapes per canvas layer. Layers exceeding this limit
@@ -3476,18 +3477,25 @@ fn intersect_rects(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> (f32, f3
 // stay in local coordinates; the inverse matrix maps cursor positions
 // from canvas space to local space during hit testing.
 
-/// Validate interactive elements and emit log warnings for common
+/// Validate interactive elements and return diagnostic events for common
 /// accessibility issues. Called once per tree snapshot/patch.
-fn validate_interactive_elements(canvas_id: &str, elements: &[InteractiveElement]) {
+fn validate_interactive_elements(canvas_id: &str, elements: &[InteractiveElement]) -> Vec<OutgoingEvent> {
+    let mut diagnostics = Vec::new();
+
     for element in elements {
         // Interactive element without a11y metadata.
         if element.a11y.is_none() {
-            log::warn!(
-                "canvas '{}': interactive element '{}' has no a11y metadata; \
-                 focusable but invisible to screen readers",
-                canvas_id,
-                element.id,
-            );
+            diagnostics.push(OutgoingEvent::diagnostic(
+                canvas_id.to_string(),
+                Some(element.id.clone()),
+                "warning",
+                "canvas_no_a11y",
+                &format!(
+                    "interactive element '{}' has no a11y metadata; \
+                     focusable but invisible to screen readers",
+                    element.id,
+                ),
+            ));
         }
 
         if let Some(ref a11y) = element.a11y {
@@ -3497,11 +3505,16 @@ fn validate_interactive_elements(canvas_id: &str, elements: &[InteractiveElement
                 Some(iced::advanced::widget::operation::accessible::Role::Switch)
             ) && a11y.toggled.is_none()
             {
-                log::warn!(
-                    "canvas '{}': element '{}' has role 'switch' without 'toggled' state",
-                    canvas_id,
-                    element.id,
-                );
+                diagnostics.push(OutgoingEvent::diagnostic(
+                    canvas_id.to_string(),
+                    Some(element.id.clone()),
+                    "warning",
+                    "canvas_switch_no_toggled",
+                    &format!(
+                        "element '{}' has role 'switch' without 'toggled' state",
+                        element.id,
+                    ),
+                ));
             }
             // Radio without selected state.
             if matches!(
@@ -3509,11 +3522,16 @@ fn validate_interactive_elements(canvas_id: &str, elements: &[InteractiveElement
                 Some(iced::advanced::widget::operation::accessible::Role::RadioButton)
             ) && a11y.selected.is_none()
             {
-                log::warn!(
-                    "canvas '{}': element '{}' has role 'radio' without 'selected' state",
-                    canvas_id,
-                    element.id,
-                );
+                diagnostics.push(OutgoingEvent::diagnostic(
+                    canvas_id.to_string(),
+                    Some(element.id.clone()),
+                    "warning",
+                    "canvas_radio_no_selected",
+                    &format!(
+                        "element '{}' has role 'radio' without 'selected' state",
+                        element.id,
+                    ),
+                ));
             }
             // Checkbox without toggled state.
             if matches!(
@@ -3521,11 +3539,16 @@ fn validate_interactive_elements(canvas_id: &str, elements: &[InteractiveElement
                 Some(iced::advanced::widget::operation::accessible::Role::CheckBox)
             ) && a11y.toggled.is_none()
             {
-                log::warn!(
-                    "canvas '{}': element '{}' has role 'check_box' without 'toggled' state",
-                    canvas_id,
-                    element.id,
-                );
+                diagnostics.push(OutgoingEvent::diagnostic(
+                    canvas_id.to_string(),
+                    Some(element.id.clone()),
+                    "warning",
+                    "canvas_checkbox_no_toggled",
+                    &format!(
+                        "element '{}' has role 'check_box' without 'toggled' state",
+                        element.id,
+                    ),
+                ));
             }
         }
     }
@@ -3544,20 +3567,27 @@ fn validate_interactive_elements(canvas_id: &str, elements: &[InteractiveElement
             })
             .count();
         if missing_position == interactive_count {
-            log::info!(
-                "canvas '{}': {} interactive elements without position_in_set/size_of_set; \
-                 consider adding set position for screen reader context",
-                canvas_id,
-                interactive_count,
-            );
+            diagnostics.push(OutgoingEvent::diagnostic(
+                canvas_id.to_string(),
+                None,
+                "info",
+                "canvas_no_set_position",
+                &format!(
+                    "{} interactive elements without position_in_set/size_of_set; \
+                     consider adding set position for screen reader context",
+                    interactive_count,
+                ),
+            ));
         }
     }
+
+    diagnostics
 }
 
 pub(crate) fn ensure_canvas_cache<R: PlushieRenderer>(
     node: &crate::protocol::TreeNode,
     caches: &mut WidgetCaches<R>,
-) {
+) -> Vec<OutgoingEvent> {
     let props = node.props.as_object();
     // Build layer map: either from "layers" (object) or "shapes" (array -> single layer).
     let layer_map = canvas_layer_map(props);
@@ -3578,8 +3608,8 @@ pub(crate) fn ensure_canvas_cache<R: PlushieRenderer>(
             );
         }
     }
-    // A11y validation diagnostics (logged as warnings).
-    validate_interactive_elements(&node.id, &interactive_elements);
+    // A11y validation diagnostics.
+    let diagnostics = validate_interactive_elements(&node.id, &interactive_elements);
 
     caches
         .canvas_interactions
@@ -3608,6 +3638,8 @@ pub(crate) fn ensure_canvas_cache<R: PlushieRenderer>(
 
     // Remove stale layers that are no longer in the tree.
     node_caches.retain(|name, _| layer_map.contains_key(name));
+
+    diagnostics
 }
 
 /// Hit-test a canvas node at a canvas-relative point.

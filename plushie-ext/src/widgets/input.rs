@@ -97,6 +97,28 @@ pub(crate) fn render_text_input<'a, R: PlushieRenderer>(
             .on_paste(move |text| Message::Paste(paste_window_id.clone(), paste_id.clone(), text));
     }
 
+    if prop_bool_default(props, "on_focus", false) {
+        let focus_window_id = ctx.window_id.to_string();
+        let focus_id = node.id.clone();
+        ti = ti.on_focus(Message::widget_event(
+            focus_window_id,
+            focus_id,
+            "focused",
+            Value::Object(Default::default()),
+        ));
+    }
+
+    if prop_bool_default(props, "on_blur", false) {
+        let blur_window_id = ctx.window_id.to_string();
+        let blur_id = node.id.clone();
+        ti = ti.on_blur(Message::widget_event(
+            blur_window_id,
+            blur_id,
+            "blurred",
+            Value::Object(Default::default()),
+        ));
+    }
+
     if let Some(icon) = props
         .and_then(|p| p.get("icon"))
         .and_then(parse_text_input_icon)
@@ -629,6 +651,32 @@ pub(crate) fn render_text_editor<'a, R: PlushieRenderer>(
         if let Some(p) = purpose {
             te = te.input_purpose(p);
         }
+    }
+
+    if prop_bool_default(props, "on_focus", false) {
+        let focus_window_id = ctx.window_id.to_string();
+        let focus_id = node.id.clone();
+        te = te.on_focus(move || {
+            Message::widget_event(
+                focus_window_id.clone(),
+                focus_id.clone(),
+                "focused",
+                Value::Object(Default::default()),
+            )
+        });
+    }
+
+    if prop_bool_default(props, "on_blur", false) {
+        let blur_window_id = ctx.window_id.to_string();
+        let blur_id = node.id.clone();
+        te = te.on_blur(move || {
+            Message::widget_event(
+                blur_window_id.clone(),
+                blur_id.clone(),
+                "blurred",
+                Value::Object(Default::default()),
+            )
+        });
     }
 
     let wid = widget::Id::from(node.id.clone());

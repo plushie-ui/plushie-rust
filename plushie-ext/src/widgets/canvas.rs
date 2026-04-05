@@ -1,6 +1,6 @@
 //! Canvas widget -- 2D drawing surface with per-layer caching.
 //!
-//! Renders shapes from JSON prop data onto an iced canvas. Supports:
+//! Renders shapes from tree children onto an iced canvas. Supports:
 //!
 //! - **Shapes**: rect, circle, line, arc, path (with SVG-like commands),
 //!   text, image
@@ -23,7 +23,7 @@ use iced::{
 };
 use serde_json::Value;
 
-use super::caches::{WidgetCaches, canvas_layer_map, hash_json_value};
+use super::caches::{WidgetCaches, canvas_layers_from_node, hash_json_value};
 use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
@@ -892,50 +892,17 @@ fn parse_cursor_interaction(cursor: &str) -> mouse::Interaction {
     }
 }
 
-/// Extract sorted layer data directly from canvas props as cloned `Value`s.
-///
-/// This avoids the serialize-then-deserialize round trip that
-/// `canvas_layer_map` + deserialization would do. `canvas_layer_map` is
-/// still used in `ensure_caches` where string hashing is needed, but
-/// `render_canvas` only needs the parsed shapes.
-fn canvas_layers_from_props(
-    props: Option<&serde_json::Map<String, Value>>,
-) -> Vec<(String, Vec<Value>)> {
-    fn truncate_shapes(name: &str, mut shapes: Vec<Value>) -> Vec<Value> {
-        if shapes.len() > MAX_SHAPES_PER_LAYER {
-            log::warn!(
-                "canvas layer `{name}` has {} shapes, truncating to {MAX_SHAPES_PER_LAYER}",
-                shapes.len(),
-            );
-            shapes.truncate(MAX_SHAPES_PER_LAYER);
-        }
-        shapes
+/// Truncate a shape list if it exceeds the per-layer limit. Prevents
+/// excessive tessellation work from an oversized payload.
+fn truncate_shapes(name: &str, mut shapes: Vec<Value>) -> Vec<Value> {
+    if shapes.len() > MAX_SHAPES_PER_LAYER {
+        log::warn!(
+            "canvas layer `{name}` has {} shapes, truncating to {MAX_SHAPES_PER_LAYER}",
+            shapes.len(),
+        );
+        shapes.truncate(MAX_SHAPES_PER_LAYER);
     }
-
-    if let Some(layers_obj) = props
-        .and_then(|p| p.get("layers"))
-        .and_then(|v| v.as_object())
-    {
-        let mut layers: Vec<(String, Vec<Value>)> = layers_obj
-            .iter()
-            .map(|(name, shapes_val)| {
-                let shapes = shapes_val.as_array().cloned().unwrap_or_default();
-                (name.clone(), truncate_shapes(name, shapes))
-            })
-            .collect();
-        layers.sort_by(|a, b| a.0.cmp(&b.0));
-        layers
-    } else if let Some(shapes_arr) = props
-        .and_then(|p| p.get("shapes"))
-        .and_then(|v| v.as_array())
-    {
-        vec![(
-            "default".to_string(),
-            truncate_shapes("default", shapes_arr.clone()),
-        )]
-    } else {
-        Vec::new()
-    }
+    shapes
 }
 
 #[derive(Default)]
@@ -3202,9 +3169,14 @@ pub(crate) fn render_canvas<'a, R: PlushieRenderer>(
     let width = prop_length(props, "width", Length::Fill);
     let height = prop_length(props, "height", Length::Fixed(200.0));
 
-    // Build sorted layer data directly from props, avoiding the
-    // serialize-then-deserialize round trip that canvas_layer_map would do.
-    let layers: Vec<(String, Vec<Value>)> = canvas_layers_from_props(props);
+    // Build sorted layer data from children (shapes as tree nodes).
+    let layer_map = canvas_layers_from_node(node);
+    let layers: Vec<(String, Vec<Value>)> = layer_map.into_iter()
+        .map(|(name, val)| {
+            let shapes = val.as_array().cloned().unwrap_or_default();
+            (name.clone(), truncate_shapes(&name, shapes))
+        })
+        .collect();
 
     let node_caches = ctx.caches.canvas_caches.get(&node.id);
 
@@ -3588,9 +3560,8 @@ pub(crate) fn ensure_canvas_cache<R: PlushieRenderer>(
     node: &crate::protocol::TreeNode,
     caches: &mut WidgetCaches<R>,
 ) -> Vec<OutgoingEvent> {
-    let props = node.props.as_object();
-    // Build layer map: either from "layers" (object) or "shapes" (array -> single layer).
-    let layer_map = canvas_layer_map(props);
+    // Build layer map from children (shapes as tree nodes).
+    let layer_map = canvas_layers_from_node(node);
     let node_caches = caches.canvas_caches.entry(node.id.clone()).or_default();
 
     // Parse interactive elements from all layers, recursing into groups.
@@ -3626,7 +3597,6 @@ pub(crate) fn ensure_canvas_cache<R: PlushieRenderer>(
             Some((existing_hash, cache)) => {
                 if *existing_hash != hash {
                     cache.clear();
-                    // Update just the hash, keep the same cache object.
                     *existing_hash = hash;
                 }
             }
@@ -3653,8 +3623,7 @@ pub(crate) fn ensure_canvas_cache<R: PlushieRenderer>(
 /// which element (if any) was clicked without going through iced's
 /// mouse event system.
 pub fn canvas_hit_test(node: &crate::protocol::TreeNode, x: f32, y: f32) -> Option<String> {
-    let props = node.props.as_object();
-    let layer_map = canvas_layer_map(props);
+    let layer_map = canvas_layers_from_node(node);
 
     let mut interactive_elements = Vec::new();
     for (layer_name, shapes_val) in &layer_map {
@@ -3680,8 +3649,7 @@ pub fn canvas_hit_test(node: &crate::protocol::TreeNode, x: f32, y: f32) -> Opti
 /// (e.g. "my-canvas/save-button") refers to a real interactive element
 /// before emitting a click event.
 pub fn canvas_find_element_by_id(node: &crate::protocol::TreeNode, element_id: &str) -> bool {
-    let props = node.props.as_object();
-    let layer_map = canvas_layer_map(props);
+    let layer_map = canvas_layers_from_node(node);
 
     let mut interactive_elements = Vec::new();
     for (layer_name, shapes_val) in &layer_map {
@@ -3711,44 +3679,78 @@ pub fn canvas_has_on_press(node: &crate::protocol::TreeNode) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::caches::{canvas_layer_map, hash_str};
+    use super::super::caches::{canvas_layers_from_node, hash_str};
     use super::*;
+    use crate::protocol::TreeNode;
     use serde_json::json;
 
-    /// Helper: build a Props from a json! value. The value must be an object.
-    fn make_props(v: &Value) -> Props<'_> {
-        v.as_object()
+    /// Helper: build a TreeNode with given children and optional props.
+    fn make_canvas_node(props: Value, children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            id: "test-canvas".to_string(),
+            type_name: "canvas".to_string(),
+            props,
+            children,
+        }
+    }
+
+    fn make_layer_node(name: &str, shape_children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            id: format!("auto:layer:{name}"),
+            type_name: "__layer__".to_string(),
+            props: json!({"name": name}),
+            children: shape_children,
+        }
+    }
+
+    fn make_shape_node(id: &str, type_name: &str, props: Value) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props,
+            children: vec![],
+        }
     }
 
     #[test]
-    fn canvas_layer_map_from_layers() {
-        let v = json!({
-            "layers": {
-                "background": [{"type": "rect", "width": 100}],
-                "foreground": [{"type": "circle", "radius": 50}]
-            }
-        });
-        let props = make_props(&v);
-        let result = canvas_layer_map(props);
+    fn canvas_layers_from_layer_children() {
+        let node = make_canvas_node(json!({}), vec![
+            make_layer_node("background", vec![
+                make_shape_node("auto:shape:bg:0", "rect", json!({"width": 100})),
+            ]),
+            make_layer_node("foreground", vec![
+                make_shape_node("auto:shape:fg:0", "circle", json!({"radius": 50})),
+            ]),
+        ]);
+        let result = canvas_layers_from_node(&node);
         assert_eq!(result.len(), 2);
         assert!(result.contains_key("background"));
         assert!(result.contains_key("foreground"));
-        // Values are references to each layer's shapes array.
         let bg = result.get("background").unwrap();
         assert!(bg.is_array());
         assert_eq!(bg.as_array().unwrap().len(), 1);
+        // Shape should have "type" reconstructed from the node's type_name.
+        let shape = &bg.as_array().unwrap()[0];
+        assert_eq!(shape.get("type").and_then(|v| v.as_str()), Some("rect"));
+        assert_eq!(shape.get("width").and_then(|v| v.as_f64()), Some(100.0));
     }
 
     #[test]
-    fn canvas_layer_map_from_shapes() {
-        // Legacy "shapes" key wraps in a "default" layer.
-        let v = json!({
-            "shapes": [{"type": "line", "x1": 0, "y1": 0, "x2": 100, "y2": 100}]
-        });
-        let props = make_props(&v);
-        let result = canvas_layer_map(props);
+    fn canvas_flat_shape_children() {
+        // Direct shape children without layer wrappers go into "default".
+        let node = make_canvas_node(json!({}), vec![
+            make_shape_node("auto:shape:0", "line", json!({"x1": 0, "y1": 0, "x2": 100, "y2": 100})),
+        ]);
+        let result = canvas_layers_from_node(&node);
         assert_eq!(result.len(), 1);
         assert!(result.contains_key("default"));
+    }
+
+    #[test]
+    fn canvas_empty_children() {
+        let node = make_canvas_node(json!({}), vec![]);
+        let result = canvas_layers_from_node(&node);
+        assert!(result.is_empty());
     }
 
     #[test]
@@ -3765,15 +3767,18 @@ mod tests {
 
     #[test]
     fn canvas_layer_sort_order() {
-        let v = json!({
-            "layers": {
-                "charlie": [{"type": "rect"}],
-                "alpha": [{"type": "circle"}],
-                "bravo": [{"type": "line"}]
-            }
-        });
-        let props = make_props(&v);
-        let result = canvas_layer_map(props);
+        let node = make_canvas_node(json!({}), vec![
+            make_layer_node("charlie", vec![
+                make_shape_node("auto:shape:c:0", "rect", json!({})),
+            ]),
+            make_layer_node("alpha", vec![
+                make_shape_node("auto:shape:a:0", "circle", json!({})),
+            ]),
+            make_layer_node("bravo", vec![
+                make_shape_node("auto:shape:b:0", "line", json!({})),
+            ]),
+        ]);
+        let result = canvas_layers_from_node(&node);
         let keys: Vec<&String> = result.keys().collect();
         assert_eq!(keys, vec!["alpha", "bravo", "charlie"]);
     }

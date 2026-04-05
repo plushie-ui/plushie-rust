@@ -283,6 +283,7 @@ fn accept_connection(listener: &Listener) -> io::Result<ReaderWriter> {
         }
         Listener::Tcp(l) => {
             let (stream, _) = l.accept()?;
+            stream.set_nodelay(true)?;
             let reader = stream.try_clone()?;
             Ok((Box::new(reader), Box::new(stream)))
         }
@@ -376,23 +377,7 @@ fn generate_token() -> String {
 
 fn random_hex(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
-
-    // Try OS random source.
-    #[cfg(unix)]
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        let _ = io::Read::read_exact(&mut f, &mut buf);
-        return buf.iter().map(|b| format!("{b:02x}")).collect();
-    }
-
-    // Fallback: hash of pid + time.
-    let seed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    for (i, b) in buf.iter_mut().enumerate() {
-        *b = ((seed >> ((i % 16) * 8))
-            ^ (std::process::id() as u128).wrapping_mul(0x9e3779b97f4a7c15)) as u8;
-    }
+    getrandom::fill(&mut buf).expect("getrandom failed");
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 

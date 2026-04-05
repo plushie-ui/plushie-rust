@@ -381,6 +381,7 @@ fn parse_role(s: &str) -> Option<accessible::Role> {
         "combo_box" => accessible::Role::ComboBox,
         "dialog" => accessible::Role::Dialog,
         "document" => accessible::Role::Document,
+        "generic_container" | "container" | "generic" => accessible::Role::GenericContainer,
         "group" => accessible::Role::Group,
         "heading" => accessible::Role::Heading,
         "image" => accessible::Role::Image,
@@ -863,6 +864,7 @@ mod tests {
             ("combo_box", accessible::Role::ComboBox),
             ("dialog", accessible::Role::Dialog),
             ("document", accessible::Role::Document),
+            ("generic_container", accessible::Role::GenericContainer),
             ("group", accessible::Role::Group),
             ("heading", accessible::Role::Heading),
             ("image", accessible::Role::Image),
@@ -917,6 +919,14 @@ mod tests {
         );
         assert_eq!(parse_role("row"), Some(accessible::Role::Row));
         assert_eq!(parse_role("cell"), Some(accessible::Role::Cell));
+        assert_eq!(
+            parse_role("container"),
+            Some(accessible::Role::GenericContainer)
+        );
+        assert_eq!(
+            parse_role("generic"),
+            Some(accessible::Role::GenericContainer)
+        );
         // Concatenated forms are NOT accepted (one canonical form only).
         assert_eq!(parse_role("alertdialog"), None);
         assert_eq!(parse_role("combobox"), None);

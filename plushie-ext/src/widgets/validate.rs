@@ -168,6 +168,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("align_x", Str),
             ("placeholder_color", Color),
             ("selection_color", Color),
+            ("input_purpose", Str),
             ("ime_purpose", Str),
         ],
         "slider" => &[
@@ -385,6 +386,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("highlight_theme", Str),
             ("placeholder_color", Color),
             ("selection_color", Color),
+            ("input_purpose", Str),
             ("ime_purpose", Str),
         ],
         "overlay" => &[

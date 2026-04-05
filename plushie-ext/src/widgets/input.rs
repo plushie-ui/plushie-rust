@@ -53,16 +53,10 @@ pub(crate) fn render_text_input<'a, R: PlushieRenderer>(
         ti = ti.padding(p);
     }
 
-    if let Some(purpose_str) = prop_str(props, "ime_purpose") {
-        let purpose = match purpose_str.as_str() {
-            "terminal" => Some(iced::advanced::input_method::Purpose::Terminal),
-            "secure" => Some(iced::advanced::input_method::Purpose::Secure),
-            "normal" => Some(iced::advanced::input_method::Purpose::Normal),
-            _ => {
-                log::warn!("unknown ime_purpose {:?}, ignoring", purpose_str);
-                None
-            }
-        };
+    if let Some(purpose_str) =
+        prop_str(props, "input_purpose").or_else(|| prop_str(props, "ime_purpose"))
+    {
+        let purpose = parse_input_purpose(&purpose_str);
         if let Some(p) = purpose {
             ti = ti.input_purpose(p);
         }
@@ -628,16 +622,10 @@ pub(crate) fn render_text_editor<'a, R: PlushieRenderer>(
             None
         };
 
-    if let Some(purpose_str) = prop_str(props, "ime_purpose") {
-        let purpose = match purpose_str.as_str() {
-            "terminal" => Some(iced::advanced::input_method::Purpose::Terminal),
-            "secure" => Some(iced::advanced::input_method::Purpose::Secure),
-            "normal" => Some(iced::advanced::input_method::Purpose::Normal),
-            _ => {
-                log::warn!("unknown ime_purpose {:?}, ignoring", purpose_str);
-                None
-            }
-        };
+    if let Some(purpose_str) =
+        prop_str(props, "input_purpose").or_else(|| prop_str(props, "ime_purpose"))
+    {
+        let purpose = parse_input_purpose(&purpose_str);
         if let Some(p) = purpose {
             te = te.input_purpose(p);
         }
@@ -1660,5 +1648,28 @@ pub(crate) fn ensure_combo_box_cache<R: PlushieRenderer>(
             .combo_states
             .insert(node.id.clone(), combo_box::State::new(options.clone()));
         caches.combo_options.insert(node.id.clone(), options);
+    }
+}
+
+/// Parse an input purpose string into the corresponding iced `Purpose`.
+///
+/// Accepts the canonical `input_purpose` values. The legacy `ime_purpose`
+/// prop name is handled by callers (fallback lookup).
+fn parse_input_purpose(s: &str) -> Option<iced::advanced::input_method::Purpose> {
+    use iced::advanced::input_method::Purpose;
+    match s {
+        "normal" => Some(Purpose::Normal),
+        "secure" => Some(Purpose::Secure),
+        "terminal" => Some(Purpose::Terminal),
+        "number" => Some(Purpose::Number),
+        "decimal" => Some(Purpose::Decimal),
+        "phone" => Some(Purpose::Phone),
+        "email" => Some(Purpose::Email),
+        "url" => Some(Purpose::Url),
+        "search" => Some(Purpose::Search),
+        _ => {
+            log::warn!("unknown input_purpose {:?}, ignoring", s);
+            None
+        }
     }
 }

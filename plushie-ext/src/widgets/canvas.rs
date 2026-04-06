@@ -2118,11 +2118,25 @@ fn draw_canvas_shape<R: PlushieRenderer>(
             let y = json_f32(shape, "y");
             let w = json_f32(shape, "w");
             let h = json_f32(shape, "h");
-            let rect_path = if let Some(r) = shape.get("radius").and_then(|v| v.as_f64()) {
+            let rect_path = if let Some(radius_val) = shape.get("radius") {
+                let radius = if let Some(r) = radius_val.as_f64() {
+                    // Uniform radius
+                    iced::border::Radius::from(r as f32)
+                } else if let Some(obj) = radius_val.as_object() {
+                    // Per-corner radius
+                    iced::border::Radius {
+                        top_left: obj.get("top_left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        top_right: obj.get("top_right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        bottom_right: obj.get("bottom_right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        bottom_left: obj.get("bottom_left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                    }
+                } else {
+                    iced::border::Radius::from(0.0)
+                };
                 canvas::Path::rounded_rectangle(
                     Point::new(x, y),
                     Size::new(w, h),
-                    iced::border::Radius::from(r as f32),
+                    radius,
                 )
             } else {
                 canvas::Path::rectangle(Point::new(x, y), Size::new(w, h))

@@ -91,9 +91,12 @@ pub fn emit_event(event: OutgoingEvent) -> io::Result<()> {
 pub fn emit_hello(
     mode: &str,
     backend: &str,
-    extensions: &[&str],
+    native_widgets: &[&str],
     transport: &str,
 ) -> io::Result<()> {
+    let builtin = plushie_ext::widgets::render::builtin_widget_types();
+    let all_widgets: Vec<&str> = builtin.iter().copied().chain(native_widgets.iter().copied()).collect();
+
     let msg = serde_json::json!({
         "type": "hello",
         "session": "",
@@ -103,7 +106,8 @@ pub fn emit_hello(
         "mode": mode,
         "backend": backend,
         "transport": transport,
-        "extensions": extensions,
+        "native_widgets": native_widgets,
+        "widgets": all_widgets,
     });
     let codec = Codec::get_global();
     let bytes = codec.encode(&msg).map_err(io::Error::other)?;

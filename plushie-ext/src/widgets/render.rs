@@ -11,6 +11,21 @@ use iced::widget::{Space, container, text};
 use iced::{Color, Element, Theme};
 
 use super::caches::MAX_TREE_DEPTH;
+
+/// Returns the list of all built-in widget type names that the renderer supports.
+pub fn builtin_widget_types() -> &'static [&'static str] {
+    &[
+        "column", "row", "container", "stack", "grid", "pin",
+        "keyed_column", "float", "responsive", "scrollable", "pane_grid",
+        "text", "rich_text", "rich", "space", "rule", "progress_bar",
+        "image", "svg", "markdown", "qr_code",
+        "text_input", "text_editor", "checkbox", "toggler", "radio",
+        "slider", "vertical_slider", "pick_list", "combo_box",
+        "button", "pointer_area", "sensor", "tooltip", "themer",
+        "window", "overlay",
+        "canvas", "table",
+    ]
+}
 use super::helpers::*;
 use super::{canvas, display, input, interactive, layout, table, validate};
 use crate::PlushieRenderer;

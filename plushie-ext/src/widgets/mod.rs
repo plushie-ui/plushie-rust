@@ -12,7 +12,7 @@ mod input;
 mod interactive;
 mod layout;
 pub(crate) mod overlay;
-mod render;
+pub mod render;
 mod table;
 pub mod validate;
 

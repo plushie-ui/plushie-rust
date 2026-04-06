@@ -993,6 +993,42 @@ mode.
 |-------|------|-------------|
 | `timestamp` | number | Frame timestamp, passed through to the `animation_frame` event as-is. By convention, milliseconds (matching the windowed mode's `Instant::as_millis()` output). |
 
+### RegisterEffectStub
+
+Register a canned response for an effect kind. While registered, the
+renderer returns the stub response immediately instead of performing
+the real effect. Used by test frameworks to avoid OS dialogs.
+
+```json
+{
+  "type": "register_effect_stub",
+  "session": "s1",
+  "kind": "open_file",
+  "response": {"path": "/tmp/test.txt"}
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `kind` | string | Effect kind to stub (e.g. `"open_file"`, `"save_file"`, `"clipboard_read"`). |
+| `response` | object | Canned response payload. Shape must match the real effect response. |
+
+Response: `register_effect_stub_ack`.
+
+### UnregisterEffectStub
+
+Remove a previously registered effect stub, restoring real behavior.
+
+```json
+{
+  "type": "unregister_effect_stub",
+  "session": "s1",
+  "kind": "open_file"
+}
+```
+
+Response: `unregister_effect_stub_ack`.
+
 ---
 
 ## Outgoing messages (renderer -> host)
@@ -1436,6 +1472,30 @@ Response to a Reset message.
 | `id` | string | Matches request id |
 | `status` | string | Always `"ok"` |
 
+### register_effect_stub_ack
+
+Acknowledgment that an effect stub has been registered.
+
+```json
+{
+  "type": "register_effect_stub_ack",
+  "session": "s1",
+  "kind": "open_file"
+}
+```
+
+### unregister_effect_stub_ack
+
+Acknowledgment that an effect stub has been removed.
+
+```json
+{
+  "type": "unregister_effect_stub_ack",
+  "session": "s1",
+  "kind": "open_file"
+}
+```
+
 ---
 
 ## Execution modes
@@ -1578,7 +1638,8 @@ stderr but do not crash the process.
 - **Selector finds nothing**: Query returns `data: null`. Interact
   returns empty events.
 - **Broken stdout pipe**: Renderer exits cleanly.
-- **Protocol version mismatch**: Renderer exits on startup.
+- **Protocol version mismatch**: SDK stops the bridge and shuts down
+  the runtime.
 
 ---
 

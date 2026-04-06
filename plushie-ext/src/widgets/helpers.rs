@@ -1,9 +1,9 @@
-//! Internal widget helpers: parsing, style application, and utilities.
+//! Widget helpers: parsing, style application, and utilities.
 //!
 //! This module re-exports the public [`prop_helpers`](crate::prop_helpers)
-//! and adds internal-only functions for parsing complex prop types (padding,
-//! fonts, borders, style maps) and applying style overrides to iced widget
-//! styles.
+//! and provides functions for parsing complex prop types (padding, fonts,
+//! borders, style maps) and applying style overrides to iced widget styles.
+//! Extension authors can access these via `plushie_ext::widgets::helpers::*`.
 
 use iced::widget::text::{LineHeight, Wrapping};
 use iced::widget::{
@@ -15,7 +15,7 @@ use serde_json::Value;
 
 // Re-export all public prop helpers so widget submodules using `use super::*`
 // continue to find them without changes.
-pub(crate) use crate::prop_helpers::*;
+pub use crate::prop_helpers::*;
 
 // ---------------------------------------------------------------------------
 // Widget-internal helpers not in prop_helpers
@@ -23,7 +23,7 @@ pub(crate) use crate::prop_helpers::*;
 
 /// Try to parse a length from an optional Value. Returns None if the value
 /// is absent or unparseable (unlike prop_length which returns a fallback).
-pub(crate) fn value_to_length_opt(val: Option<&Value>) -> Option<Length> {
+pub fn value_to_length_opt(val: Option<&Value>) -> Option<Length> {
     val.and_then(value_to_length)
 }
 
@@ -39,7 +39,7 @@ pub(crate) fn value_to_length_opt(val: Option<&Value>) -> Option<Length> {
 /// - `"padding": 10` -- uniform padding
 /// - `"padding": {"top": 10, "right": 5, "bottom": 10, "left": 5}` -- per-side
 /// - Individual `"padding_top"` etc. keys (legacy)
-pub(crate) fn parse_padding_value(props: Props<'_>) -> Option<Padding> {
+pub fn parse_padding_value(props: Props<'_>) -> Option<Padding> {
     let padding_val = props.and_then(|p| p.get("padding"));
 
     match padding_val {
@@ -115,7 +115,7 @@ pub(crate) fn parse_padding_value(props: Props<'_>) -> Option<Padding> {
 // Mouse interaction (cursor) parsing
 // ---------------------------------------------------------------------------
 
-pub(crate) fn parse_interaction(s: &str) -> Option<mouse::Interaction> {
+pub fn parse_interaction(s: &str) -> Option<mouse::Interaction> {
     Some(match s {
         "pointer" => mouse::Interaction::Pointer,
         "grab" => mouse::Interaction::Grab,
@@ -149,12 +149,12 @@ pub(crate) fn parse_interaction(s: &str) -> Option<mouse::Interaction> {
 // Color parsing -- {r,g,b,a} object or hex string via theming::parse_hex_color
 // ---------------------------------------------------------------------------
 
-pub(crate) use crate::theming::parse_hex_color;
+pub use crate::theming::parse_hex_color;
 
 /// Parse a color from a JSON value. Accepts:
 /// Parse a color from a JSON value. Accepts hex strings: `"#rrggbb"` or
 /// `"#rrggbbaa"`. Returns `None` for non-string values.
-pub(crate) fn parse_color(value: &Value) -> Option<Color> {
+pub fn parse_color(value: &Value) -> Option<Color> {
     value.as_str().and_then(parse_hex_color)
 }
 
@@ -165,7 +165,7 @@ pub(crate) fn parse_color(value: &Value) -> Option<Color> {
 /// Parse a background from a JSON value. Accepts:
 /// - A color string ("#rrggbb" or "#rrggbbaa") -> Background::Color
 /// - A gradient object: {"type": "linear", "angle": 45, "stops": [{"offset": 0.0, "color": "#ff0000"}, ...]}
-pub(crate) fn parse_background(value: &Value) -> Option<iced::Background> {
+pub fn parse_background(value: &Value) -> Option<iced::Background> {
     match value {
         Value::String(_) => parse_color(value).map(iced::Background::Color),
         Value::Object(obj) => {
@@ -295,7 +295,7 @@ fn intern_font_family(name: &str) -> &'static str {
 /// - "default" -> Font::DEFAULT
 /// - "monospace" -> Font::MONOSPACE
 /// - An object with optional family, weight, style fields
-pub(crate) fn parse_font(value: &Value) -> Font {
+pub fn parse_font(value: &Value) -> Font {
     match value {
         Value::String(s) => match s.to_ascii_lowercase().as_str() {
             "monospace" => Font::MONOSPACE,
@@ -393,7 +393,7 @@ pub(crate) fn parse_font(value: &Value) -> Font {
 /// Parse a border from a JSON value.
 /// Accepts: {"color": "#rrggbb", "width": 1.0, "radius": 4.0}
 /// radius can be a number or [tl, tr, br, bl]
-pub(crate) fn parse_border(value: &Value) -> Border {
+pub fn parse_border(value: &Value) -> Border {
     let obj = match value.as_object() {
         Some(o) => o,
         None => return Border::default(),
@@ -463,7 +463,7 @@ pub(crate) fn parse_border(value: &Value) -> Border {
 
 /// Parse a shadow from a JSON value.
 /// Accepts: {"color": "#rrggbb", "offset": [x, y], "blur_radius": 5.0}
-pub(crate) fn parse_shadow(value: &Value) -> Shadow {
+pub fn parse_shadow(value: &Value) -> Shadow {
     let obj = match value.as_object() {
         Some(o) => o,
         None => return Shadow::default(),
@@ -500,14 +500,14 @@ pub(crate) fn parse_shadow(value: &Value) -> Shadow {
 /// Parsed fields from a style map JSON object. All fields are optional;
 /// only those present in the JSON get populated.
 #[derive(Clone, Default)]
-pub(crate) struct StyleMapFields {
-    pub(crate) background: Option<iced::Background>,
-    pub(crate) text_color: Option<Color>,
-    pub(crate) border: Option<Border>,
-    pub(crate) shadow: Option<Shadow>,
+pub struct StyleMapFields {
+    pub background: Option<iced::Background>,
+    pub text_color: Option<Color>,
+    pub border: Option<Border>,
+    pub shadow: Option<Shadow>,
 }
 
-pub(crate) fn parse_style_map_fields(obj: &serde_json::Map<String, Value>) -> StyleMapFields {
+pub fn parse_style_map_fields(obj: &serde_json::Map<String, Value>) -> StyleMapFields {
     StyleMapFields {
         background: obj.get("background").and_then(parse_background),
         text_color: obj.get("text_color").and_then(parse_color),
@@ -519,19 +519,19 @@ pub(crate) fn parse_style_map_fields(obj: &serde_json::Map<String, Value>) -> St
 /// Parsed style overrides for all status variants. The base fields are always
 /// present; status-specific overrides are optional.
 #[derive(Clone)]
-pub(crate) struct StyleOverrides {
-    pub(crate) base: StyleMapFields,
-    pub(crate) preset_base: Option<String>,
-    pub(crate) hovered: Option<StyleMapFields>,
-    pub(crate) pressed: Option<StyleMapFields>,
-    pub(crate) disabled: Option<StyleMapFields>,
-    pub(crate) focused: Option<StyleMapFields>,
+pub struct StyleOverrides {
+    pub base: StyleMapFields,
+    pub preset_base: Option<String>,
+    pub hovered: Option<StyleMapFields>,
+    pub pressed: Option<StyleMapFields>,
+    pub disabled: Option<StyleMapFields>,
+    pub focused: Option<StyleMapFields>,
 }
 
 /// Look up cached StyleOverrides for a node, falling back to parsing
 /// if the cache doesn't have an entry (shouldn't happen in practice
 /// since ensure_caches_walk populates it, but safe to fall back).
-pub(crate) fn get_style_overrides<R: crate::PlushieRenderer>(
+pub fn get_style_overrides<R: crate::PlushieRenderer>(
     node_id: &str,
     obj: &serde_json::Map<String, Value>,
     caches: &super::WidgetCaches<R>,
@@ -542,7 +542,7 @@ pub(crate) fn get_style_overrides<R: crate::PlushieRenderer>(
     parse_style_overrides(obj)
 }
 
-pub(crate) fn parse_style_overrides(obj: &serde_json::Map<String, Value>) -> StyleOverrides {
+pub fn parse_style_overrides(obj: &serde_json::Map<String, Value>) -> StyleOverrides {
     StyleOverrides {
         base: parse_style_map_fields(obj),
         preset_base: obj.get("base").and_then(|v| v.as_str()).map(str::to_owned),
@@ -566,12 +566,12 @@ pub(crate) fn parse_style_overrides(obj: &serde_json::Map<String, Value>) -> Sty
 }
 
 /// Auto-derive hover background. Lightens dark colors, darkens light colors.
-pub(crate) fn auto_derive_hover_bg(bg: Option<iced::Background>) -> Option<iced::Background> {
+pub fn auto_derive_hover_bg(bg: Option<iced::Background>) -> Option<iced::Background> {
     bg.map(|b| deviate_background(b, 0.1))
 }
 
 /// Auto-derive disabled background by reducing alpha to 50%.
-pub(crate) fn auto_derive_disabled_bg(bg: Option<iced::Background>) -> Option<iced::Background> {
+pub fn auto_derive_disabled_bg(bg: Option<iced::Background>) -> Option<iced::Background> {
     bg.map(|b| match b {
         iced::Background::Color(c) => iced::Background::Color(alpha_color(c, 0.5)),
         iced::Background::Gradient(g) => iced::Background::Gradient(alpha_gradient(g, 0.5)),
@@ -579,12 +579,12 @@ pub(crate) fn auto_derive_disabled_bg(bg: Option<iced::Background>) -> Option<ic
 }
 
 /// Auto-derive disabled text color by reducing alpha to 50%.
-pub(crate) fn auto_derive_disabled_text(color: Color) -> Color {
+pub fn auto_derive_disabled_text(color: Color) -> Color {
     alpha_color(color, 0.5)
 }
 
 /// Auto-derive disabled border by reducing border color alpha to 50%.
-pub(crate) fn auto_derive_disabled_border(border: Border) -> Border {
+pub fn auto_derive_disabled_border(border: Border) -> Border {
     Border {
         color: alpha_color(border.color, 0.5),
         ..border
@@ -592,7 +592,7 @@ pub(crate) fn auto_derive_disabled_border(border: Border) -> Border {
 }
 
 /// Auto-derive disabled shadow by reducing shadow color alpha to 50%.
-pub(crate) fn auto_derive_disabled_shadow(shadow: Shadow) -> Shadow {
+pub fn auto_derive_disabled_shadow(shadow: Shadow) -> Shadow {
     Shadow {
         color: alpha_color(shadow.color, 0.5),
         ..shadow
@@ -601,7 +601,7 @@ pub(crate) fn auto_derive_disabled_shadow(shadow: Shadow) -> Shadow {
 
 /// Apply style map fields to a button style. Background wraps in `Some`,
 /// text_color, border, and shadow map directly.
-pub(crate) fn apply_button_fields(style: &mut button::Style, fields: &StyleMapFields) {
+pub fn apply_button_fields(style: &mut button::Style, fields: &StyleMapFields) {
     if let Some(bg) = fields.background {
         style.background = Some(bg);
     }
@@ -618,7 +618,7 @@ pub(crate) fn apply_button_fields(style: &mut button::Style, fields: &StyleMapFi
 
 /// Apply style map fields to a progress_bar style. Background maps as
 /// `Background::Color`, text_color maps to the bar fill, border directly.
-pub(crate) fn apply_progress_bar_fields(style: &mut progress_bar::Style, fields: &StyleMapFields) {
+pub fn apply_progress_bar_fields(style: &mut progress_bar::Style, fields: &StyleMapFields) {
     if let Some(iced::Background::Color(c)) = fields.background {
         style.background = iced::Background::Color(c);
     }
@@ -633,7 +633,7 @@ pub(crate) fn apply_progress_bar_fields(style: &mut progress_bar::Style, fields:
 /// Apply style map fields to a text_input or text_editor style. Both widgets
 /// map background as `Background::Color`, border directly, and text_color to
 /// the `value` field (the typed text color).
-pub(crate) fn apply_text_input_fields(style: &mut text_input::Style, fields: &StyleMapFields) {
+pub fn apply_text_input_fields(style: &mut text_input::Style, fields: &StyleMapFields) {
     if let Some(iced::Background::Color(c)) = fields.background {
         style.background = iced::Background::Color(c);
     }
@@ -648,7 +648,7 @@ pub(crate) fn apply_text_input_fields(style: &mut text_input::Style, fields: &St
 /// Apply style map fields to a text_editor style. Mirrors
 /// [`apply_text_input_fields`] -- both style types have the same
 /// background/border/value fields but are distinct iced types.
-pub(crate) fn apply_text_editor_fields(style: &mut text_editor::Style, fields: &StyleMapFields) {
+pub fn apply_text_editor_fields(style: &mut text_editor::Style, fields: &StyleMapFields) {
     if let Some(iced::Background::Color(c)) = fields.background {
         style.background = iced::Background::Color(c);
     }
@@ -662,7 +662,7 @@ pub(crate) fn apply_text_editor_fields(style: &mut text_editor::Style, fields: &
 
 /// Apply style map fields to a pick_list style. Background is
 /// `Background::Color`, text_color and border map directly.
-pub(crate) fn apply_pick_list_fields(style: &mut pick_list::Style, fields: &StyleMapFields) {
+pub fn apply_pick_list_fields(style: &mut pick_list::Style, fields: &StyleMapFields) {
     if let Some(tc) = fields.text_color {
         style.text_color = tc;
     }
@@ -677,7 +677,7 @@ pub(crate) fn apply_pick_list_fields(style: &mut pick_list::Style, fields: &Styl
 /// Apply style map fields to a slider handle. Background maps to
 /// handle.background as `Background::Color`, border maps to
 /// handle.border_width/border_color. Shared by slider and vertical_slider.
-pub(crate) fn apply_slider_handle_fields(handle: &mut slider::Handle, fields: &StyleMapFields) {
+pub fn apply_slider_handle_fields(handle: &mut slider::Handle, fields: &StyleMapFields) {
     if let Some(iced::Background::Color(c)) = fields.background {
         handle.background = iced::Background::Color(c);
     }
@@ -689,7 +689,7 @@ pub(crate) fn apply_slider_handle_fields(handle: &mut slider::Handle, fields: &S
 
 /// Apply style map fields to a radio style. Background is `Background::Color`,
 /// text_color wraps in `Some`, border maps to border_width/border_color.
-pub(crate) fn apply_radio_fields(style: &mut iced::widget::radio::Style, fields: &StyleMapFields) {
+pub fn apply_radio_fields(style: &mut iced::widget::radio::Style, fields: &StyleMapFields) {
     if let Some(iced::Background::Color(c)) = fields.background {
         style.background = iced::Background::Color(c);
     }
@@ -704,7 +704,7 @@ pub(crate) fn apply_radio_fields(style: &mut iced::widget::radio::Style, fields:
 
 /// Apply style map fields to a toggler style. Background maps directly,
 /// text_color wraps in `Some`, border maps to border_width/border_color.
-pub(crate) fn apply_toggler_fields(style: &mut toggler::Style, fields: &StyleMapFields) {
+pub fn apply_toggler_fields(style: &mut toggler::Style, fields: &StyleMapFields) {
     if let Some(bg) = fields.background {
         style.background = bg;
     }
@@ -719,7 +719,7 @@ pub(crate) fn apply_toggler_fields(style: &mut toggler::Style, fields: &StyleMap
 
 /// Apply style map fields to a rule style. Maps background -> color,
 /// border -> radius.
-pub(crate) fn apply_rule_style(mut style: rule::Style, fields: &StyleMapFields) -> rule::Style {
+pub fn apply_rule_style(mut style: rule::Style, fields: &StyleMapFields) -> rule::Style {
     if let Some(iced::Background::Color(c)) = fields.background {
         style.color = c;
     }
@@ -731,7 +731,7 @@ pub(crate) fn apply_rule_style(mut style: rule::Style, fields: &StyleMapFields) 
 
 /// Apply style map fields to a checkbox style. Background is `Background::Color`,
 /// border directly, text_color wrapped in `Some`.
-pub(crate) fn apply_checkbox_fields(style: &mut checkbox::Style, fields: &StyleMapFields) {
+pub fn apply_checkbox_fields(style: &mut checkbox::Style, fields: &StyleMapFields) {
     if let Some(iced::Background::Color(c)) = fields.background {
         style.background = iced::Background::Color(c);
     }
@@ -745,7 +745,7 @@ pub(crate) fn apply_checkbox_fields(style: &mut checkbox::Style, fields: &StyleM
 
 /// Build a `container::Style` from base style map fields. Used by both
 /// container and tooltip widgets which share the same style type.
-pub(crate) fn container_style_from_base(base: &StyleMapFields) -> container::Style {
+pub fn container_style_from_base(base: &StyleMapFields) -> container::Style {
     let mut style = container::Style {
         background: base.background,
         text_color: base.text_color,
@@ -760,7 +760,7 @@ pub(crate) fn container_style_from_base(base: &StyleMapFields) -> container::Sty
     style
 }
 
-pub(crate) fn alpha_color(color: Color, alpha: f32) -> Color {
+pub fn alpha_color(color: Color, alpha: f32) -> Color {
     Color {
         r: color.r,
         g: color.g,
@@ -770,7 +770,7 @@ pub(crate) fn alpha_color(color: Color, alpha: f32) -> Color {
 }
 
 /// Lighten dark colors, darken light colors by the given amount.
-pub(crate) fn deviate_color(color: Color, amount: f32) -> Color {
+pub fn deviate_color(color: Color, amount: f32) -> Color {
     let luminance = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
     if luminance > 0.5 {
         // Light color: darken
@@ -791,14 +791,14 @@ pub(crate) fn deviate_color(color: Color, amount: f32) -> Color {
     }
 }
 
-pub(crate) fn deviate_background(bg: iced::Background, amount: f32) -> iced::Background {
+pub fn deviate_background(bg: iced::Background, amount: f32) -> iced::Background {
     match bg {
         iced::Background::Color(c) => iced::Background::Color(deviate_color(c, amount)),
         iced::Background::Gradient(g) => iced::Background::Gradient(deviate_gradient(g, amount)),
     }
 }
 
-pub(crate) fn deviate_gradient(gradient: iced::Gradient, amount: f32) -> iced::Gradient {
+pub fn deviate_gradient(gradient: iced::Gradient, amount: f32) -> iced::Gradient {
     match gradient {
         iced::Gradient::Linear(mut linear) => {
             for stop in linear.stops.iter_mut().flatten() {
@@ -809,7 +809,7 @@ pub(crate) fn deviate_gradient(gradient: iced::Gradient, amount: f32) -> iced::G
     }
 }
 
-pub(crate) fn alpha_gradient(gradient: iced::Gradient, alpha: f32) -> iced::Gradient {
+pub fn alpha_gradient(gradient: iced::Gradient, alpha: f32) -> iced::Gradient {
     match gradient {
         iced::Gradient::Linear(mut linear) => {
             for stop in linear.stops.iter_mut().flatten() {
@@ -827,7 +827,7 @@ pub(crate) fn alpha_gradient(gradient: iced::Gradient, alpha: f32) -> iced::Grad
 /// Parse line_height prop. Accepts:
 /// - A number (interpreted as relative multiplier)
 /// - An object {"relative": 1.5} or {"absolute": 20}
-pub(crate) fn parse_line_height(props: Props<'_>) -> Option<LineHeight> {
+pub fn parse_line_height(props: Props<'_>) -> Option<LineHeight> {
     let val = props?.get("line_height")?;
     match val {
         Value::Number(n) => {
@@ -848,7 +848,7 @@ pub(crate) fn parse_line_height(props: Props<'_>) -> Option<LineHeight> {
 }
 
 /// Parse text_shaping prop from a string.
-pub(crate) fn parse_shaping(props: Props<'_>) -> Option<iced::widget::text::Shaping> {
+pub fn parse_shaping(props: Props<'_>) -> Option<iced::widget::text::Shaping> {
     use iced::widget::text::Shaping;
     let s = prop_str(props, "shaping")?;
     match s.to_ascii_lowercase().as_str() {
@@ -860,7 +860,7 @@ pub(crate) fn parse_shaping(props: Props<'_>) -> Option<iced::widget::text::Shap
 }
 
 /// Parse wrapping prop from a string.
-pub(crate) fn parse_wrapping(props: Props<'_>) -> Option<Wrapping> {
+pub fn parse_wrapping(props: Props<'_>) -> Option<Wrapping> {
     let s = prop_str(props, "wrapping")?;
     match s.to_ascii_lowercase().as_str() {
         "none" => Some(Wrapping::None),
@@ -871,7 +871,7 @@ pub(crate) fn parse_wrapping(props: Props<'_>) -> Option<Wrapping> {
     }
 }
 
-pub(crate) fn parse_ellipsis(props: Props<'_>) -> Option<iced::widget::text::Ellipsis> {
+pub fn parse_ellipsis(props: Props<'_>) -> Option<iced::widget::text::Ellipsis> {
     use iced::widget::text::Ellipsis;
     let s = prop_str(props, "ellipsis")?;
     match s.to_ascii_lowercase().as_str() {
@@ -888,7 +888,7 @@ pub(crate) fn parse_ellipsis(props: Props<'_>) -> Option<iced::widget::text::Ell
 
 /// Parsed menu style overrides for pick_list/combo_box dropdown menus.
 #[derive(Clone)]
-pub(crate) struct MenuStyleOverrides {
+pub struct MenuStyleOverrides {
     pub background: Option<iced::Background>,
     pub text_color: Option<Color>,
     pub selected_text_color: Option<Color>,
@@ -898,7 +898,7 @@ pub(crate) struct MenuStyleOverrides {
 }
 
 /// Parse a `menu_style` prop into overrides for dropdown menu styling.
-pub(crate) fn parse_menu_style(props: Props<'_>) -> Option<MenuStyleOverrides> {
+pub fn parse_menu_style(props: Props<'_>) -> Option<MenuStyleOverrides> {
     let obj = props?.get("menu_style")?.as_object()?;
 
     Some(MenuStyleOverrides {
@@ -912,7 +912,7 @@ pub(crate) fn parse_menu_style(props: Props<'_>) -> Option<MenuStyleOverrides> {
 }
 
 /// Apply `MenuStyleOverrides` on top of a base `menu::Style`.
-pub(crate) fn apply_menu_style_overrides(
+pub fn apply_menu_style_overrides(
     style: &mut iced::overlay::menu::Style,
     ov: &MenuStyleOverrides,
 ) {
@@ -937,7 +937,7 @@ pub(crate) fn apply_menu_style_overrides(
 }
 
 /// Parse a text_input::Icon from a JSON value.
-pub(crate) fn parse_text_input_icon(value: &Value) -> Option<text_input::Icon<Font>> {
+pub fn parse_text_input_icon(value: &Value) -> Option<text_input::Icon<Font>> {
     let obj = value.as_object()?;
 
     let code_point = obj
@@ -973,7 +973,7 @@ pub(crate) fn parse_text_input_icon(value: &Value) -> Option<text_input::Icon<Fo
 }
 
 /// Parse a pick_list::Icon from a JSON value.
-pub(crate) fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font>> {
+pub fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font>> {
     let obj = value.as_object()?;
 
     let code_point = obj
@@ -1002,7 +1002,7 @@ pub(crate) fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font
 }
 
 /// Parse a PickList Handle from props.
-pub(crate) fn parse_pick_list_handle(props: Props<'_>) -> Option<pick_list::Handle<Font>> {
+pub fn parse_pick_list_handle(props: Props<'_>) -> Option<pick_list::Handle<Font>> {
     let handle_obj = props?.get("handle")?.as_object()?;
     let handle_type = handle_obj.get("type")?.as_str()?;
 

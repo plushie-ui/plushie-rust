@@ -113,7 +113,7 @@ fn hello_message_has_empty_session() {
     // Send initial settings to trigger hello.
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
 
     let hello = stdout.recv();
@@ -139,7 +139,7 @@ fn hello_message_fields() {
 
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
 
     let hello = stdout.recv();
@@ -192,7 +192,7 @@ fn single_session_echoes_session_id() {
 
     send(
         &mut stdin,
-        &serde_json::json!({"session": "test_1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "test_1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
     let _hello = stdout.recv();
 
@@ -226,7 +226,7 @@ fn multiplexed_sessions_are_isolated() {
     // Consume hello.
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
     let _hello = stdout.recv();
 
@@ -308,7 +308,7 @@ fn reset_tears_down_session() {
 
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
     let _hello = stdout.recv();
 
@@ -377,7 +377,7 @@ fn headless_interact_step_round_trip() {
     // Bootstrap: settings + hello.
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
     let _hello = stdout.recv();
 
@@ -453,7 +453,7 @@ fn mock_text_input_emits_input_event() {
     // Bootstrap.
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
     let hello = receiver.recv_timeout(timeout);
     assert_eq!(hello["type"], "hello");
@@ -520,7 +520,7 @@ fn mock_checkbox_emits_toggle_event() {
 
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
     let hello = receiver.recv_timeout(timeout);
     assert_eq!(hello["type"], "hello");
@@ -621,7 +621,7 @@ fn mock_slider_emits_slide_event() {
 
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
     let hello = receiver.recv_timeout(timeout);
     assert_eq!(hello["type"], "hello");
@@ -693,7 +693,7 @@ fn concurrent_sessions_interleaved() {
     // Bootstrap.
     send(
         &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {}}),
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
     );
     let hello = receiver.recv_timeout(timeout);
     assert_eq!(hello["type"], "hello");

@@ -154,9 +154,9 @@ pub(crate) fn read_required_settings(codec: &Codec, reader: &mut impl BufRead) -
 ///
 /// Checks the following, calling [`startup_exit`] on failure:
 ///
-/// - **Protocol version**: if `protocol_version` is present in the
-///   settings JSON, it must match [`PROTOCOL_VERSION`]. A mismatch
-///   is fatal -- running with mismatched protocols leads to subtle,
+/// - **Protocol version**: `protocol_version` must be present and
+///   match [`PROTOCOL_VERSION`]. A mismatch or missing value is
+///   fatal: running with mismatched protocols leads to subtle,
 ///   hard-to-debug failures.
 /// - **Token** (listen mode): if `expected_token` is `Some`, the
 ///   settings must contain a matching `token` field. Comparison uses
@@ -166,10 +166,11 @@ pub(crate) fn read_required_settings(codec: &Codec, reader: &mut impl BufRead) -
 ///
 /// [`PROTOCOL_VERSION`]: plushie_ext::protocol::PROTOCOL_VERSION
 pub(crate) fn validate_settings(settings: &Value, expected_token: Option<&str>, codec: &Codec) {
-    // Protocol version check.
+    // Protocol version check (mandatory).
     let expected = u64::from(plushie_ext::protocol::PROTOCOL_VERSION);
-    if let Some(version) = settings.get("protocol_version").and_then(|v| v.as_u64()) {
-        if version != expected {
+    match settings.get("protocol_version").and_then(|v| v.as_u64()) {
+        Some(version) if version == expected => {}
+        Some(version) => {
             startup_exit(
                 codec,
                 &format!(
@@ -177,8 +178,14 @@ pub(crate) fn validate_settings(settings: &Value, expected_token: Option<&str>, 
                 ),
             );
         }
-    } else {
-        log::warn!("no protocol_version in Settings, assuming compatible (expected {expected})");
+        None => {
+            startup_exit(
+                codec,
+                &format!(
+                    "missing protocol_version in Settings (expected {expected})"
+                ),
+            );
+        }
     }
 
     // Token verification (listen mode).

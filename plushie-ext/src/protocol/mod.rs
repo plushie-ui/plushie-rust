@@ -41,13 +41,25 @@ impl SessionMessage {
     /// [`IncomingMessage`].
     ///
     /// If the `session` key is absent, defaults to an empty string
-    /// (single-session backwards compatibility).
+    /// (single-session mode). If present but not a string, returns an
+    /// error: session is routing metadata and a non-string value
+    /// indicates a protocol bug.
     pub fn from_value(mut value: serde_json::Value) -> Result<Self, serde_json::Error> {
-        let session = value
-            .as_object_mut()
-            .and_then(|obj| obj.remove("session"))
-            .and_then(|v| v.as_str().map(String::from))
-            .unwrap_or_default();
+        let session = match value.as_object_mut() {
+            Some(obj) => match obj.remove("session") {
+                None => String::new(),
+                Some(serde_json::Value::String(s)) => s,
+                Some(other) => {
+                    return Err(serde::de::Error::custom(format!(
+                        "session must be a string, got {}",
+                        other
+                    )));
+                }
+            },
+            None => {
+                return Err(serde::de::Error::custom("expected JSON object"));
+            }
+        };
 
         let message = serde_json::from_value(value)?;
         Ok(Self { session, message })
@@ -152,13 +164,13 @@ mod tests {
     }
 
     #[test]
-    fn session_message_ignores_non_string_session() {
+    fn session_message_rejects_non_string_session() {
         let val = json!({
             "session": 42,
             "type": "reset",
             "id": "r1"
         });
-        let sm = SessionMessage::from_value(val).unwrap();
-        assert_eq!(sm.session, "");
+        let err = SessionMessage::from_value(val).unwrap_err();
+        assert!(err.to_string().contains("session must be a string"));
     }
 }

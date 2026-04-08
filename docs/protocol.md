@@ -106,9 +106,9 @@ thread exits.
 ## Startup sequence
 
 1. Host spawns the renderer and writes a **Settings** message to stdin.
-2. Renderer detects the wire format from the first byte.
-3. Renderer reads and applies the Settings.
-4. Renderer writes a **hello** message to stdout.
+2. Renderer peeks at the first byte of stdin to detect the wire format.
+3. Renderer writes a **hello** message to stdout.
+4. Renderer reads and validates Settings (protocol version, token).
 5. Normal message exchange begins.
 
 The hello message confirms the renderer is ready and reports its
@@ -124,7 +124,8 @@ protocol version:
   "mode": "headless",
   "backend": "tiny-skia",
   "transport": "stdio",
-  "extensions": ["charts", "editor"]
+  "native_widgets": ["charts", "editor"],
+  "widgets": ["button", "text", "column", "charts", "editor"]
 }
 ```
 
@@ -136,9 +137,10 @@ protocol version:
 | `mode` | string | Execution mode: `"windowed"`, `"headless"`, or `"mock"` |
 | `backend` | string | Rendering backend: `"wgpu"` (windowed), `"tiny-skia"` (headless), `"none"` (mock) |
 | `transport` | string | Transport backend: `"stdio"` (default) or `"exec"` (future: `"connect"`, `"listen"`) |
-| `extensions` | array | Config keys of registered widget extensions (empty array if none) |
+| `native_widgets` | array | Config keys of registered native (Rust-backed) widgets |
+| `widgets` | array | All compiled widget type names (built-in + native) |
 
-The host should check that `protocol` matches the version it expects.
+All fields are required. The host should check that `protocol` matches the version it expects.
 The `mode` field tells the SDK what capabilities are available (e.g.
 headless mode supports `interact_step` round-trips and real
 screenshots; mock mode returns stubs). The `session` field on
@@ -219,7 +221,7 @@ All fields inside `settings` are optional.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `protocol_version` | number | 1 | Expected protocol version |
+| `protocol_version` | number | required | Protocol version (must match renderer) |
 | `default_text_size` | number | 16.0 | Default text size for all text widgets |
 | `default_font` | object | system | Default font descriptor (`{"family": "..."}`) |
 | `antialiasing` | bool | false | Enable anti-aliasing (startup only) |

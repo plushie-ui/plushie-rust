@@ -41,7 +41,7 @@ pub(crate) fn render_text_input<'a, R: PlushieRenderer>(
     let padding = parse_padding_value(props);
     let secure = prop_bool_default(props, "secure", false);
     let id = node.id.clone();
-    let has_on_submit = props.and_then(|p| p.get("on_submit")).is_some();
+    let has_on_submit = prop_bool_default(props, "on_submit", false);
 
     let window_id = ctx.window_id.to_string();
     let mut ti = text_input(&placeholder, &value)

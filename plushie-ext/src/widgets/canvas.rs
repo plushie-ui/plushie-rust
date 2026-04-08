@@ -3046,40 +3046,34 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
     ) {
         let mut seen_ids = std::collections::HashSet::new();
 
-        // Emit accessible nodes for each interactive element with a11y metadata.
+        // Emit accessible nodes for each interactive element.
         // Focusable groups use traverse() to create parent-child relationships
-        // in the accessibility tree.
+        // in the accessibility tree. A focusable group without a11y metadata
+        // still traverses its children so they remain reachable by AT.
+        let canvas_pos = iced::Point::new(canvas_bounds.x, canvas_bounds.y);
+
         for element in self.interactive_elements {
-            let a11y = match &element.a11y {
-                Some(a) => a,
-                None => continue,
-            };
+            // Skip elements without a11y unless they are focusable groups
+            // (which must still traverse children for the a11y tree).
+            if element.a11y.is_none() && !element.focusable {
+                continue;
+            }
             if !seen_ids.insert(&element.id) {
                 continue;
             }
 
-            // Compute bounds in canvas space using the element's transform.
             let local_rect = hit_region_to_rect(&element.hit_region);
-            let (tx, ty) = element
-                .transform
-                .transform_point(local_rect.x, local_rect.y);
-            let (bx, by) = element.transform.transform_point(
-                local_rect.x + local_rect.width,
-                local_rect.y + local_rect.height,
-            );
-            let element_bounds = Rectangle {
-                x: canvas_bounds.x + tx.min(bx),
-                y: canvas_bounds.y + ty.min(by),
-                width: (bx - tx).abs(),
-                height: (by - ty).abs(),
-            };
+            let element_bounds =
+                transformed_bounds(local_rect, &element.transform, canvas_pos);
 
-            // Pass widget ID so active_descendant references can resolve.
             let wid = iced::widget::Id::from(element.id.clone());
 
             if element.focusable {
-                // Focusable group: emit as parent, then traverse children.
-                operation.accessible(Some(&wid), element_bounds, &a11y.to_accessible());
+                // Focusable group: emit as parent (if it has a11y), then
+                // traverse children regardless so they remain reachable.
+                if let Some(ref a11y) = element.a11y {
+                    operation.accessible(Some(&wid), element_bounds, &a11y.to_accessible());
+                }
                 operation.traverse(&mut |child_op| {
                     for child in self.interactive_elements.iter() {
                         if child.parent_group.as_deref() != Some(&element.id) {
@@ -3090,16 +3084,8 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                                 continue;
                             }
                             let cr = hit_region_to_rect(&child.hit_region);
-                            let (ctx, cty) = child.transform.transform_point(cr.x, cr.y);
-                            let (cbx, cby) = child
-                                .transform
-                                .transform_point(cr.x + cr.width, cr.y + cr.height);
-                            let child_bounds = Rectangle {
-                                x: canvas_bounds.x + ctx.min(cbx),
-                                y: canvas_bounds.y + cty.min(cby),
-                                width: (cbx - ctx).abs(),
-                                height: (cby - cty).abs(),
-                            };
+                            let child_bounds =
+                                transformed_bounds(cr, &child.transform, canvas_pos);
                             let child_wid = iced::widget::Id::from(child.id.clone());
                             child_op.accessible(
                                 Some(&child_wid),
@@ -3110,7 +3096,9 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                     }
                 });
             } else if element.parent_group.is_none() {
-                // Top-level non-group element.
+                // Top-level non-group element (a11y guaranteed present by
+                // the early skip above).
+                let a11y = element.a11y.as_ref().unwrap();
                 operation.accessible(Some(&wid), element_bounds, &a11y.to_accessible());
             }
             // Elements with parent_group are emitted inside their group's traverse().
@@ -3151,6 +3139,32 @@ fn hit_region_to_rect(region: &HitRegion) -> Rectangle {
                 height: max_y - min_y,
             }
         }
+    }
+}
+
+/// Compute the axis-aligned bounding box of a rectangle after applying
+/// a transform, offset by a canvas position. Transforms all four corners
+/// to handle rotation and shear correctly.
+fn transformed_bounds(
+    rect: Rectangle,
+    transform: &TransformMatrix,
+    canvas_pos: iced::Point,
+) -> Rectangle {
+    let corners = [
+        transform.transform_point(rect.x, rect.y),
+        transform.transform_point(rect.x + rect.width, rect.y),
+        transform.transform_point(rect.x, rect.y + rect.height),
+        transform.transform_point(rect.x + rect.width, rect.y + rect.height),
+    ];
+    let min_x = corners.iter().map(|c| c.0).fold(f32::MAX, f32::min);
+    let min_y = corners.iter().map(|c| c.1).fold(f32::MAX, f32::min);
+    let max_x = corners.iter().map(|c| c.0).fold(f32::MIN, f32::max);
+    let max_y = corners.iter().map(|c| c.1).fold(f32::MIN, f32::max);
+    Rectangle {
+        x: canvas_pos.x + min_x,
+        y: canvas_pos.y + min_y,
+        width: max_x - min_x,
+        height: max_y - min_y,
     }
 }
 
@@ -3552,7 +3566,22 @@ fn validate_interactive_elements(canvas_id: &str, elements: &[InteractiveElement
                     .unwrap_or(true)
             })
             .count();
-        if missing_position == interactive_count {
+        if missing_position > 0 && missing_position < interactive_count {
+            // Partial annotation: some elements have position_in_set but
+            // others don't. This is likely an oversight and produces an
+            // inconsistent screen reader experience.
+            diagnostics.push(OutgoingEvent::diagnostic(
+                canvas_id.to_string(),
+                None,
+                "warning",
+                "canvas_partial_set_position",
+                &format!(
+                    "{} of {} interactive elements missing position_in_set/size_of_set; \
+                     annotate all elements in the set for consistent screen reader context",
+                    missing_position, interactive_count,
+                ),
+            ));
+        } else if missing_position == interactive_count {
             diagnostics.push(OutgoingEvent::diagnostic(
                 canvas_id.to_string(),
                 None,

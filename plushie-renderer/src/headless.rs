@@ -1028,7 +1028,7 @@ pub(crate) fn run(
 
     let (mode_str, backend) = match mode {
         Mode::Headless => ("headless", "tiny-skia"),
-        Mode::Mock => ("mock", "null"),
+        Mode::Mock => ("mock", "mock"),
     };
     let ext_key_refs: Vec<&str> = ext_keys.iter().map(|s| s.as_str()).collect();
     if let Err(e) =

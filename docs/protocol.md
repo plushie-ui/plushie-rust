@@ -137,7 +137,7 @@ protocol version:
 | `mode` | string | Execution mode: `"windowed"`, `"headless"`, or `"mock"` |
 | `backend` | string | Rendering backend: `"wgpu"` (windowed), `"tiny-skia"` (headless), `"none"` (mock) |
 | `transport` | string | Transport backend: `"stdio"` (default) or `"exec"` (future: `"connect"`, `"listen"`) |
-| `native_widgets` | array | Config keys of registered native (Rust-backed) widgets |
+| `native_widgets` | array | Type names handled by registered native (Rust-backed) widgets |
 | `widgets` | array | All compiled widget type names (built-in + native) |
 
 All fields are required. The host should check that `protocol` matches the version it expects.

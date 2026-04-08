@@ -108,10 +108,10 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
         plushie_renderer_lib::emitters::init_output(Box::new(channel_writer));
     }
 
-    // Collect extension keys before building the dispatcher so the hello
-    // message can include them in all modes.
+    // Collect extension type names before building the dispatcher so the
+    // hello message can report which widget types are available.
     let ext_keys = builder
-        .extension_keys()
+        .extension_type_names()
         .iter()
         .map(|s| s.to_string())
         .collect::<Vec<_>>();

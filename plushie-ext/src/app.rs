@@ -63,9 +63,12 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
         self
     }
 
-    /// Return the config keys of all registered extensions.
-    pub fn extension_keys(&self) -> Vec<&str> {
-        self.extensions.iter().map(|e| e.config_key()).collect()
+    /// Return all type names handled by registered extensions.
+    pub fn extension_type_names(&self) -> Vec<&str> {
+        self.extensions
+            .iter()
+            .flat_map(|e| e.type_names().iter().copied())
+            .collect()
     }
 
     /// Consume the builder and produce an [`ExtensionDispatcher`].

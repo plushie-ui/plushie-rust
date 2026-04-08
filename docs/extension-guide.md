@@ -90,7 +90,9 @@ An extension can handle multiple types (e.g., `&["bar_chart", "line_chart"]`).
 `config_key()` is a unique identifier for your extension, used to:
 - Namespace `ExtensionCaches` entries (prevents collisions between extensions)
 - Key the `extension_config` section in Settings (host sends configuration)
-- Identify the extension in the `hello` message's `extensions` array
+
+The `hello` message reports your extension's type names in the
+`native_widgets` array, not the config key.
 
 `config_key` must not contain `:` (used as the cache key separator).
 

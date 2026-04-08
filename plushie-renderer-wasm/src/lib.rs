@@ -163,9 +163,9 @@ impl PlushieApp {
             }
         }
 
-        // Include extension keys in the hello message.
+        // Include extension type names in the hello message.
         let ext_keys: Vec<String> = builder
-            .extension_keys()
+            .extension_type_names()
             .iter()
             .map(|s| s.to_string())
             .collect();

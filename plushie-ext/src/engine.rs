@@ -262,29 +262,29 @@ impl<R: PlushieRenderer> Core<R> {
         entries
     }
 
-    /// Collect all max_rate values from subscription entries, keyed by kind.
-    /// Returns (kind, max_rate) pairs for entries that have a max_rate set.
-    /// Used by the emitter rate sync logic.
+    /// Collect all max_rate values from subscription entries, keyed by tag.
+    /// Returns (tag, max_rate) pairs for entries that have a max_rate set.
+    /// The tag includes window scope when present, so rate limiting is
+    /// isolated per subscription entry.
     pub fn subscription_rates(&self) -> impl Iterator<Item = (&str, u32)> {
         self.active_subscriptions
-            .iter()
-            .flat_map(|(kind, entries)| {
+            .values()
+            .flat_map(|entries| {
                 entries
                     .iter()
-                    .filter_map(|e| e.max_rate.map(|r| (kind.as_str(), r)))
+                    .filter_map(|e| e.max_rate.map(|r| (e.tag.as_str(), r)))
             })
     }
 
-    /// Collect all kinds that have at least one entry with a max_rate.
-    pub fn subscription_rate_kinds(&self) -> impl Iterator<Item = &str> {
+    /// Collect all tags that have a max_rate set.
+    pub fn subscription_rate_tags(&self) -> impl Iterator<Item = &str> {
         self.active_subscriptions
-            .iter()
-            .filter_map(|(kind, entries)| {
-                if entries.iter().any(|e| e.max_rate.is_some()) {
-                    Some(kind.as_str())
-                } else {
-                    None
-                }
+            .values()
+            .flat_map(|entries| {
+                entries
+                    .iter()
+                    .filter(|e| e.max_rate.is_some())
+                    .map(|e| e.tag.as_str())
             })
     }
 

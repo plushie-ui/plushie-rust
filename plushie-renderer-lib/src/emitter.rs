@@ -41,7 +41,8 @@ async fn platform_sleep(duration: Duration) {
 /// Identifies a stream of events that can be coalesced together.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum CoalesceKey {
-    /// Subscription event keyed by subscription kind (e.g. "on_pointer_move").
+    /// Subscription event keyed by entry tag (e.g. "on_pointer_move" or
+    /// "on_pointer_move:main" for window-scoped subscriptions).
     Subscription(String),
     /// Widget event keyed by (widget_id, event_family).
     Widget(String, String),
@@ -212,8 +213,8 @@ impl EventEmitter {
                 }
                 self.default_rate
             }
-            CoalesceKey::Subscription(kind) => {
-                if let Some(&rate) = self.subscription_rates.get(kind) {
+            CoalesceKey::Subscription(tag) => {
+                if let Some(&rate) = self.subscription_rates.get(tag) {
                     return Some(rate);
                 }
                 self.default_rate

@@ -183,10 +183,7 @@ impl App {
             .map(|v| v as u32)
     }
 
-    /// Coalesce a subscription event, emitting to the first matching entry.
-    /// Coalescing operates per-kind, so we pick the first matching tag and
-    /// use that for the coalesced event. All matching entries receive the
-    /// event when the coalesced buffer is flushed.
+    /// Coalesce a subscription event for all matching entries.
     pub fn coalesce_subscription(
         &mut self,
         key: &str,
@@ -197,6 +194,8 @@ impl App {
     }
 
     /// Coalesce a subscription event scoped to a specific window.
+    /// Each matching entry gets its own coalesce buffer (keyed by tag)
+    /// so rate limiting is isolated per subscription entry.
     pub fn coalesce_subscription_for_window(
         &mut self,
         key: &str,
@@ -210,13 +209,14 @@ impl App {
         if entries.is_empty() {
             return Task::none();
         }
-        // Coalesce using the first matching entry's tag. When flushed,
-        // the emitter emits a single coalesced event. For window-scoped
-        // subscriptions with multiple entries, the first match wins for
-        // coalescing purposes (rate limiting is per-kind, not per-entry).
-        let tag = entries[0].tag.clone();
-        let event = event_fn(tag).with_captured(captured);
-        self.emitter
-            .coalesce(CoalesceKey::Subscription(key.to_string()), event)
+        let tasks: Vec<_> = entries
+            .into_iter()
+            .map(|entry| {
+                let event = event_fn(entry.tag.clone()).with_captured(captured);
+                self.emitter
+                    .coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
+            })
+            .collect();
+        Task::batch(tasks)
     }
 }

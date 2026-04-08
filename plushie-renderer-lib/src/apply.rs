@@ -175,7 +175,9 @@ impl App {
 
         if is_tree_change {
             self.windows.clear_theme_cache();
-            for win_id in self.core.tree.window_ids() {
+            let window_ids = self.core.tree.window_ids();
+            log::debug!("window sync: {} windows", window_ids.len());
+            for win_id in window_ids {
                 if let Some(node) = self.core.tree.find_window(&win_id)
                     && let Some(theme_val) = node.props.get("theme")
                     && let Some(theme) = plushie_ext::theming::resolve_theme_only(theme_val)

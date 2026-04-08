@@ -77,6 +77,7 @@ impl Tree {
     /// Applies patch operations and returns any removed nodes that had
     /// an "exit" prop (for exit animation ghost promotion).
     pub fn apply_patch(&mut self, ops: Vec<PatchOp>) -> Vec<(String, usize, TreeNode)> {
+        log::debug!("applying patch: {} ops", ops.len());
         let mut exit_nodes = Vec::new();
         for op in ops {
             // Check for exit nodes before removal

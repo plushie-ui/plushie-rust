@@ -199,7 +199,7 @@ pub fn process_widget_message<R: PlushieRenderer>(
             }
         }
 
-        // Everything else (subscription events, NoOp, MarkdownUrl, etc.)
+        // Everything else (subscription events, NoOp, MarkdownUrl, StatusChanged, etc.)
         // produces no outgoing events.
         _ => vec![],
     }

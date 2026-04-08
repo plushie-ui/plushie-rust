@@ -165,8 +165,6 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("disabled", Bool),
             ("on_submit", Bool),
             ("on_paste", Bool),
-            ("on_focus", Bool),
-            ("on_blur", Bool),
             ("align_x", Str),
             ("placeholder_color", Color),
             ("selection_color", Color),

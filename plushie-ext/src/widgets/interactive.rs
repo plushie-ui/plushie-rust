@@ -129,6 +129,14 @@ pub(crate) fn render_button<'a, R: PlushieRenderer>(
         }
     }
 
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        b = b.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        });
+    }
+
     container(b).id(widget::Id::from(node.id.clone())).into()
 }
 

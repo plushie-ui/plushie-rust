@@ -71,6 +71,17 @@ impl LineReceiver {
         self.recv_timeout(RECV_TIMEOUT)
     }
 
+    /// Receive the next non-status message, skipping any status events.
+    fn recv_skip_status(&self) -> serde_json::Value {
+        loop {
+            let msg = self.recv();
+            if msg.get("family").and_then(|f| f.as_str()) == Some("status") {
+                continue;
+            }
+            return msg;
+        }
+    }
+
     fn recv_timeout(&self, timeout: Duration) -> serde_json::Value {
         match self.rx.recv_timeout(timeout) {
             Ok(val) => val,
@@ -409,7 +420,8 @@ fn headless_interact_step_round_trip() {
 
     // Semantic actions (click, toggle, select) use the synthetic path
     // in all modes. Returns a single interact_response with events.
-    let resp = stdout.recv();
+    // Skip any status events emitted during the interaction.
+    let resp = stdout.recv_skip_status();
     assert_eq!(resp["type"], "interact_response");
     assert_eq!(resp["session"], "s1");
     assert_eq!(resp["id"], "i1");
@@ -482,18 +494,46 @@ fn mock_text_input_emits_input_event() {
         }),
     );
 
-    let resp = receiver.recv_timeout(timeout);
-    assert_eq!(resp["type"], "interact_response");
-    assert_eq!(resp["session"], "s1");
-    assert_eq!(resp["id"], "i1");
+    // Collect events from interact_step and interact_response messages.
+    // The type_text action may produce steps that require snapshot replies.
+    let mut all_events = Vec::new();
+    loop {
+        let msg = receiver.recv_skip_status();
+        if msg["type"] == "interact_step" {
+            assert_eq!(msg["session"], "s1");
+            if let Some(evts) = msg["events"].as_array() {
+                all_events.extend(evts.clone());
+            }
+            send(
+                &mut stdin,
+                &serde_json::json!({
+                    "session": "s1",
+                    "type": "snapshot",
+                    "tree": {
+                        "id": "main", "type": "window", "props": {}, "children": [
+                            {"id": "root", "type": "column", "props": {}, "children": [
+                                {"id": "inp1", "type": "text_input", "props": {"value": "hello"}, "children": []}
+                            ]}
+                        ]
+                    }
+                }),
+            );
+        } else if msg["type"] == "interact_response" {
+            assert_eq!(msg["session"], "s1");
+            assert_eq!(msg["id"], "i1");
+            if let Some(evts) = msg["events"].as_array() {
+                all_events.extend(evts.clone());
+            }
+            break;
+        } else {
+            panic!("unexpected message type: {}", msg["type"]);
+        }
+    }
 
-    let events = resp["events"]
-        .as_array()
-        .expect("events should be an array");
-    assert_eq!(events.len(), 1, "expected exactly one event");
-    assert_eq!(events[0]["family"], "input");
-    assert_eq!(events[0]["id"], "inp1");
-    assert_eq!(events[0]["value"], "hello");
+    let input_event = all_events.iter().find(|e| e["family"] == "input")
+        .unwrap_or_else(|| panic!("expected an input event in: {all_events:?}"));
+    assert_eq!(input_event["id"], "inp1");
+    assert_eq!(input_event["value"], "hello");
 
     drop(stdin);
     child.wait().unwrap();
@@ -585,6 +625,9 @@ fn mock_checkbox_emits_toggle_event() {
                 toggle_events.extend(evts.clone());
             }
             break;
+        } else if msg.get("family").and_then(|f| f.as_str()) == Some("status") {
+            // Skip status change events during interaction.
+            continue;
         } else {
             panic!("unexpected message type: {}", msg["type"]);
         }
@@ -650,7 +693,7 @@ fn mock_slider_emits_slide_event() {
         }),
     );
 
-    let resp = receiver.recv_timeout(timeout);
+    let resp = receiver.recv_skip_status();
     assert_eq!(resp["type"], "interact_response");
     assert_eq!(resp["session"], "s1");
     assert_eq!(resp["id"], "i1");
@@ -658,9 +701,9 @@ fn mock_slider_emits_slide_event() {
     let events = resp["events"]
         .as_array()
         .expect("events should be an array");
-    assert_eq!(events.len(), 1, "expected exactly one event");
-    assert_eq!(events[0]["family"], "slide");
-    assert_eq!(events[0]["id"], "sld1");
+    let slide_event = events.iter().find(|e| e["family"] == "slide")
+        .expect("expected a slide event");
+    assert_eq!(slide_event["id"], "sld1");
     assert_eq!(events[0]["value"], 75.0);
 
     drop(stdin);

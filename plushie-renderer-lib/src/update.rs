@@ -88,6 +88,19 @@ impl App {
                 }
                 task
             }
+            // Status changes are emitted directly, not through the widget
+            // message pipeline. This prevents them from being bundled into
+            // interact_step event arrays during headless interactions.
+            Message::StatusChanged(window_id, id, status) => {
+                let event = plushie_ext::protocol::OutgoingEvent::generic(
+                    "status".to_string(),
+                    id,
+                    Some(serde_json::json!(status)),
+                )
+                .with_window_id(window_id);
+                self.emitter.emit_immediate(event)
+            }
+
             Message::MarkdownUrl(url) => {
                 log::debug!("markdown link clicked: {url}");
                 Task::none()

@@ -97,26 +97,12 @@ pub(crate) fn render_text_input<'a, R: PlushieRenderer>(
             .on_paste(move |text| Message::Paste(paste_window_id.clone(), paste_id.clone(), text));
     }
 
-    if prop_bool_default(props, "on_focus", false) {
-        let focus_window_id = ctx.window_id.to_string();
-        let focus_id = node.id.clone();
-        ti = ti.on_focus(Message::widget_event(
-            focus_window_id,
-            focus_id,
-            "focused",
-            Value::Object(Default::default()),
-        ));
-    }
-
-    if prop_bool_default(props, "on_blur", false) {
-        let blur_window_id = ctx.window_id.to_string();
-        let blur_id = node.id.clone();
-        ti = ti.on_blur(Message::widget_event(
-            blur_window_id,
-            blur_id,
-            "blurred",
-            Value::Object(Default::default()),
-        ));
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        ti = ti.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        });
     }
 
     if let Some(icon) = props
@@ -653,29 +639,11 @@ pub(crate) fn render_text_editor<'a, R: PlushieRenderer>(
         }
     }
 
-    if prop_bool_default(props, "on_focus", false) {
-        let focus_window_id = ctx.window_id.to_string();
-        let focus_id = node.id.clone();
-        te = te.on_focus(move || {
-            Message::widget_event(
-                focus_window_id.clone(),
-                focus_id.clone(),
-                "focused",
-                Value::Object(Default::default()),
-            )
-        });
-    }
-
-    if prop_bool_default(props, "on_blur", false) {
-        let blur_window_id = ctx.window_id.to_string();
-        let blur_id = node.id.clone();
-        te = te.on_blur(move || {
-            Message::widget_event(
-                blur_window_id.clone(),
-                blur_id.clone(),
-                "blurred",
-                Value::Object(Default::default()),
-            )
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        te = te.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
         });
     }
 
@@ -867,6 +835,14 @@ pub(crate) fn render_checkbox<'a, R: PlushieRenderer>(
         }
     }
 
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        cb = cb.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        });
+    }
+
     container(cb).id(widget::Id::from(node.id.clone())).into()
 }
 
@@ -985,6 +961,14 @@ pub(crate) fn render_toggler<'a, R: PlushieRenderer>(
                 style
             });
         }
+    }
+
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        t = t.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        });
     }
 
     container(t).id(widget::Id::from(node.id.clone())).into()
@@ -1116,6 +1100,14 @@ pub(crate) fn render_radio<'a, R: PlushieRenderer>(
         }
     }
 
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        r = r.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        });
+    }
+
     container(r).id(widget::Id::from(node.id.clone())).into()
 }
 
@@ -1237,6 +1229,14 @@ pub(crate) fn render_slider<'a, R: PlushieRenderer>(
         });
     }
 
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        s = s.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        });
+    }
+
     container(s).id(widget::Id::from(node.id.clone())).into()
 }
 
@@ -1332,6 +1332,14 @@ pub(crate) fn render_vertical_slider<'a, R: PlushieRenderer>(
             let mut style = vertical_slider::default(theme, status);
             apply_rail_overrides(&mut style, rail_color, rail_width);
             style
+        });
+    }
+
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        s = s.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
         });
     }
 
@@ -1460,6 +1468,14 @@ pub(crate) fn render_pick_list<'a, R: PlushieRenderer>(
             id: close_id,
             data: Value::Null,
             family: "close".into(),
+        });
+    }
+
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        pl = pl.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
         });
     }
 

@@ -614,6 +614,14 @@ pub(crate) fn render_scrollable<'a, R: PlushieRenderer>(
         });
     }
 
+    {
+        let status_wid = ctx.window_id.to_string();
+        let status_id = node.id.clone();
+        s = s.on_status_change(move |status| {
+            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        });
+    }
+
     s.into()
 }
 

@@ -314,6 +314,9 @@ pub enum Message {
         data: Value,
         family: String,
     },
+    /// Widget status changed (window_id, widget_id, status_name).
+    /// Emitted by on_status_change callbacks from iced widgets.
+    StatusChanged(String, String, String),
     /// Internal: flush the event coalesce buffer. Fired by a timer
     /// task scheduled by the EventEmitter when rate-limited events
     /// are pending.

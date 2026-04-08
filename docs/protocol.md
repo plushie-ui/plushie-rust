@@ -447,7 +447,7 @@ Perform an operation on a widget (focus, scroll, etc.).
 | `focus` | `target` | Focus a widget by ID |
 | `focus_next` | -- | Focus next focusable widget |
 | `focus_previous` | -- | Focus previous focusable widget |
-| `focus_element` | `target` (canvas ID), `element_id` | Focus a canvas and set internal focus to a specific element |
+| `focus` | `target` (scoped path) | Focus a widget or canvas element (e.g., `"canvas/element"`) |
 | `scroll_to` | `target`, `offset_x`, `offset`/`offset_y` | Scroll to absolute offset |
 | `scroll_by` | `target`, `offset_x`, `offset_y` | Scroll by relative amount |
 | `snap_to` | `target`, `x`, `y` | Snap scrollable to relative position (0.0-1.0) |
@@ -796,7 +796,7 @@ interaction.
 | `canvas_release` | CursorMoved, ButtonReleased | Canvas release (also triggers element events) |
 | `canvas_move` | CursorMoved | Canvas move (also triggers element enter/leave) |
 | `click_element` | CursorMoved, ButtonPressed, ButtonReleased | Click at coordinates within canvas |
-| `focus_element` | KeyPressed (Tab) | Tab into canvas |
+| `focus` | KeyPressed (Tab) | Tab into canvas |
 | `pane_focus_cycle` | synthetic only | Pane focus cycle |
 
 Actions marked **synthetic only** have no iced event equivalent
@@ -825,7 +825,7 @@ directly without widget processing.
 | `canvas_release` | `x` (number), `y` (number) | Canvas coordinates |
 | `canvas_move` | `x` (number), `y` (number) | Canvas coordinates |
 | `click_element` | `x` (number), `y` (number) | Element center in canvas coordinates |
-| `focus_element` | (none) | |
+
 | `pane_focus_cycle` | (none) | |
 
 **Key format:**
@@ -1991,7 +1991,7 @@ group to add interaction.
   optionally interactivity (when it has an `id` field).
 - **Element**: an interactive group (one with an `id`). Uses scoped
   IDs for events (`"{canvas_id}/{element_id}"`), commands
-  (`focus_element`), and test actions.
+  (scoped `focus`), and test actions.
 
 ### Group wire format
 
@@ -2182,7 +2182,7 @@ Clicking empty canvas area clears internal focus.
 
 | Op | Payload | Description |
 |----|---------|-------------|
-| `focus_element` | `target` (canvas ID), `element_id` | Focus the canvas and set internal focus to the specified element |
+
 
 ### Test interact actions
 

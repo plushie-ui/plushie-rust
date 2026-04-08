@@ -65,7 +65,7 @@ pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
     /// hit testing in `Program::update()` without re-parsing every frame.
     pub(crate) canvas_interactions: HashMap<String, Vec<super::canvas::InteractiveElement>>,
     /// Pending programmatic focus for a canvas element, set by the
-    /// `focus_element` widget_op. Read and drained by `render_canvas`,
+    /// `focus` widget_op (canvas element path). Read and drained by `render_canvas`,
     /// which passes the value to `CanvasProgram`. The Program consumes
     /// it at the top of `update()` to set `focused_id`.
     pub(crate) canvas_pending_focus: HashMap<String, String>,
@@ -182,7 +182,7 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
     }
 
     /// Set a pending programmatic focus for a canvas element.
-    /// Called by the `focus_element` widget_op. The canvas Program
+    /// Called by the `focus` widget_op (canvas element path). The canvas Program
     /// consumes this on the next update cycle.
     pub fn set_canvas_pending_focus(&mut self, canvas_id: String, element_id: String) {
         self.canvas_pending_focus.insert(canvas_id, element_id);

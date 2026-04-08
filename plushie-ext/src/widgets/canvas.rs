@@ -958,7 +958,7 @@ struct CanvasProgram<'a, R: PlushieRenderer = iced::Renderer> {
     interactive_elements: &'a [InteractiveElement],
     /// Arrow key navigation mode.
     arrow_mode: ArrowMode,
-    /// Pending programmatic focus from `focus_element` widget_op.
+    /// Pending programmatic focus from `focus` widget_op (canvas element path).
     /// Consumed at the top of `update()` to set `focused_id`.
     pending_focus: Option<String>,
 }

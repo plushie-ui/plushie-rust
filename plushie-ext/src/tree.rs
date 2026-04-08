@@ -67,6 +67,11 @@ impl Tree {
         find_by_id_recursive(root, node_id, 0)
     }
 
+    /// Returns the type name of the node with the given ID, if found.
+    pub fn find_by_type(&self, node_id: &str) -> Option<&str> {
+        self.find_by_id(node_id).map(|n| n.type_name.as_str())
+    }
+
     /// Apply a sequence of patch operations to the tree.
     ///
     /// Operations are applied sequentially. If one operation fails, it is

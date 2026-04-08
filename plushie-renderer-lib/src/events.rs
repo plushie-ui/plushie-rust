@@ -31,46 +31,36 @@ fn path_to_string(path: std::path::PathBuf) -> String {
     }
 }
 
-/// Attach window_id to an outgoing event if the id is non-empty.
-/// When the iced window::Id can't be resolved (shouldn't happen for
-/// known windows), the event is emitted without a window_id and a
-/// warning is logged.
-fn maybe_with_window_id(event: OutgoingEvent, window_id: &str) -> OutgoingEvent {
-    if window_id.is_empty() {
-        event
-    } else {
-        event.with_window_id(window_id)
-    }
-}
-
 impl App {
-    /// Resolve an iced window::Id to a string window_id, logging a
-    /// warning if the window is unknown. Returns an empty string for
-    /// unresolved windows so handlers can proceed without panicking.
-    fn resolve_window_id(&self, iced_id: &window::Id) -> String {
+    /// Resolve an iced window::Id to a string window_id. Returns `None`
+    /// for unresolved windows (e.g., late events after a window close).
+    /// Callers should skip event emission when this returns `None`.
+    fn resolve_window_id(&self, iced_id: &window::Id) -> Option<String> {
         let id = self.windows.window_id_for(iced_id);
         if id.is_empty() {
-            log::warn!(
-                "subscription event for unknown iced window {:?}, emitting without window_id",
+            log::debug!(
+                "event for unknown iced window {:?}, suppressing",
                 iced_id
             );
+            None
+        } else {
+            Some(id)
         }
-        id
     }
 
     pub fn handle_key_pressed(&self, data: KeyEventData, iced_id: window::Id) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_KEY_PRESS, wid, data.captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::key_press(tag, &data), &window_id)
+            OutgoingEvent::key_press(tag, &data).with_window_id(&window_id)
         })
     }
 
     pub fn handle_key_released(&self, data: KeyEventData, iced_id: window::Id) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_KEY_RELEASE, wid, data.captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::key_release(tag, &data), &window_id)
+            OutgoingEvent::key_release(tag, &data).with_window_id(&window_id)
         })
     }
 
@@ -81,13 +71,11 @@ impl App {
         captured: bool,
     ) -> Task<Message> {
         self.current_modifiers = mods;
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.coalesce_subscription_for_window(SUB_MODIFIERS_CHANGED, wid, captured, |tag| {
-            maybe_with_window_id(
-                OutgoingEvent::modifiers_changed(tag, serialize_modifiers(mods)),
-                &window_id,
-            )
+            OutgoingEvent::modifiers_changed(tag, serialize_modifiers(mods))
+                .with_window_id(&window_id)
         })
     }
 
@@ -97,26 +85,26 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.coalesce_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::cursor_moved(tag, pos.x, pos.y), &window_id)
+            OutgoingEvent::cursor_moved(tag, pos.x, pos.y).with_window_id(&window_id)
         })
     }
 
     pub fn handle_cursor_entered(&self, iced_id: window::Id, captured: bool) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::cursor_entered(tag), &window_id)
+            OutgoingEvent::cursor_entered(tag).with_window_id(&window_id)
         })
     }
 
     pub fn handle_cursor_left(&self, iced_id: window::Id, captured: bool) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::cursor_left(tag), &window_id)
+            OutgoingEvent::cursor_left(tag).with_window_id(&window_id)
         })
     }
 
@@ -126,13 +114,11 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_BUTTON, wid, captured, |tag| {
-            maybe_with_window_id(
-                OutgoingEvent::button_pressed(tag, serialize_mouse_button(&button)),
-                &window_id,
-            )
+            OutgoingEvent::button_pressed(tag, serialize_mouse_button(&button))
+                .with_window_id(&window_id)
         })
     }
 
@@ -142,13 +128,11 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_BUTTON, wid, captured, |tag| {
-            maybe_with_window_id(
-                OutgoingEvent::button_released(tag, serialize_mouse_button(&button)),
-                &window_id,
-            )
+            OutgoingEvent::button_released(tag, serialize_mouse_button(&button))
+                .with_window_id(&window_id)
         })
     }
 
@@ -158,11 +142,11 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.coalesce_subscription_for_window(SUB_POINTER_SCROLL, wid, captured, |tag| {
             let (dx, dy, unit) = serialize_scroll_delta(&delta);
-            maybe_with_window_id(OutgoingEvent::wheel_scrolled(tag, dx, dy, unit), &window_id)
+            OutgoingEvent::wheel_scrolled(tag, dx, dy, unit).with_window_id(&window_id)
         })
     }
 
@@ -173,13 +157,11 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
-            maybe_with_window_id(
-                OutgoingEvent::finger_pressed(tag, finger.0, pos.x, pos.y),
-                &window_id,
-            )
+            OutgoingEvent::finger_pressed(tag, finger.0, pos.x, pos.y)
+                .with_window_id(&window_id)
         })
     }
 
@@ -190,13 +172,11 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.coalesce_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
-            maybe_with_window_id(
-                OutgoingEvent::finger_moved(tag, finger.0, pos.x, pos.y),
-                &window_id,
-            )
+            OutgoingEvent::finger_moved(tag, finger.0, pos.x, pos.y)
+                .with_window_id(&window_id)
         })
     }
 
@@ -207,13 +187,11 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
-            maybe_with_window_id(
-                OutgoingEvent::finger_lifted(tag, finger.0, pos.x, pos.y),
-                &window_id,
-            )
+            OutgoingEvent::finger_lifted(tag, finger.0, pos.x, pos.y)
+                .with_window_id(&window_id)
         })
     }
 
@@ -224,13 +202,11 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
-            maybe_with_window_id(
-                OutgoingEvent::finger_lost(tag, finger.0, pos.x, pos.y),
-                &window_id,
-            )
+            OutgoingEvent::finger_lost(tag, finger.0, pos.x, pos.y)
+                .with_window_id(&window_id)
         })
     }
 
@@ -241,10 +217,10 @@ impl App {
     // (text-input-v3 protocol -- compositor support varies). The preedit
     // cursor range may be None on some older X11 IME implementations.
     pub fn handle_ime_opened(&self, iced_id: window::Id, captured: bool) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::ime_opened(tag), &window_id)
+            OutgoingEvent::ime_opened(tag).with_window_id(&window_id)
         })
     }
 
@@ -255,13 +231,11 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            maybe_with_window_id(
-                OutgoingEvent::ime_preedit(tag, text.clone(), cursor.clone()),
-                &window_id,
-            )
+            OutgoingEvent::ime_preedit(tag, text.clone(), cursor.clone())
+                .with_window_id(&window_id)
         })
     }
 
@@ -271,18 +245,18 @@ impl App {
         iced_id: window::Id,
         captured: bool,
     ) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::ime_commit(tag, text.clone()), &window_id)
+            OutgoingEvent::ime_commit(tag, text.clone()).with_window_id(&window_id)
         })
     }
 
     pub fn handle_ime_closed(&self, iced_id: window::Id, captured: bool) -> Task<Message> {
-        let window_id = self.resolve_window_id(&iced_id);
-        let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
+        let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            maybe_with_window_id(OutgoingEvent::ime_closed(tag), &window_id)
+            OutgoingEvent::ime_closed(tag).with_window_id(&window_id)
         })
     }
 
@@ -310,14 +284,7 @@ impl App {
     }
 
     pub fn handle_window_event(&self, iced_id: window::Id, evt: window::Event) -> Task<Message> {
-        let window_id = self.windows.window_id_for(&iced_id);
-        if window_id.is_empty() {
-            log::warn!(
-                "received window event for unknown iced window {:?}, skipping emission",
-                iced_id
-            );
-            return Task::none();
-        }
+        let window_id = match self.resolve_window_id(&iced_id) { Some(w) => w, None => return Task::none() };
         // Helper closure: emit and propagate errors uniformly.
         let result: io::Result<()> = (|| {
             match evt {

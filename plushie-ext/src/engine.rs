@@ -526,9 +526,11 @@ impl<R: PlushieRenderer> Core<R> {
                         None => Font::DEFAULT,
                     }
                 });
-                if let Some(ext_config) = settings.get("extension_config") {
-                    effects.push(CoreEffect::ExtensionConfig(ext_config.clone()));
-                }
+                let ext_config = settings
+                    .get("extension_config")
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                effects.push(CoreEffect::ExtensionConfig(ext_config));
             }
             IncomingMessage::ImageOp {
                 op,
@@ -877,13 +879,14 @@ mod tests {
     }
 
     #[test]
-    fn settings_without_extension_config_returns_no_effects() {
+    fn settings_without_extension_config_emits_null_config() {
         let mut core: Core = Core::new();
         let msg = IncomingMessage::Settings {
             settings: serde_json::json!({"default_text_size": 14.0}),
         };
         let effects = core.apply(msg);
-        assert!(effects.is_empty());
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(effects[0], CoreEffect::ExtensionConfig(serde_json::Value::Null)));
     }
 
     #[test]

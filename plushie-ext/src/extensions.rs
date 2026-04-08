@@ -682,9 +682,17 @@ impl<R: PlushieRenderer> ExtensionDispatcher<R> {
             }
         }
 
+        let builtins = crate::widgets::render::builtin_widget_types();
         let mut type_name_index = HashMap::new();
         for (idx, ext) in extensions.iter().enumerate() {
             for &name in ext.type_names() {
+                if builtins.contains(&name) {
+                    panic!(
+                        "extension `{}` type name `{name}` shadows a built-in widget. \
+                         Choose a different type name to avoid silent dispatch failures.",
+                        ext.config_key(),
+                    );
+                }
                 if let Some(prev_idx) = type_name_index.insert(name.to_string(), idx) {
                     panic!(
                         "duplicate extension type name `{name}`: \
@@ -753,40 +761,36 @@ impl<R: PlushieRenderer> ExtensionDispatcher<R> {
         let mut new_map = HashMap::new();
         self.walk_prepare(root, caches, theme, &mut new_map, 0);
 
-        // Prune stale nodes: call cleanup() for nodes that existed in the
-        // previous tree but not in the current one. Cache entries for
-        // poisoned extensions are removed directly (without calling
-        // cleanup) because the extension's mutable state may be
-        // inconsistent after a panic. Note that between the tree change
-        // and this prune pass, cache entries for poisoned extensions
-        // survive intentionally -- cleanup callbacks for *healthy*
-        // extensions may need to observe neighbouring cache data.
+        // Prune stale nodes: call cleanup() for nodes that were removed
+        // or changed extension ownership. A node that keeps its ID but
+        // switches from one extension to another still needs cleanup for
+        // the old owner. Cache entries for poisoned extensions are removed
+        // directly (without calling cleanup) because the extension's
+        // mutable state may be inconsistent after a panic.
         for (old_id, ext_idx) in &self.node_extension_map {
-            if !new_map.contains_key(old_id) {
-                let ns = self.extensions[*ext_idx].config_key().to_string();
-                if self.poisoned[*ext_idx] {
-                    caches.remove(&ns, old_id);
-                    log::warn!(
-                        "skipping cleanup for poisoned extension `{ns}`; \
-                         cache entry removed for node `{old_id}`",
-                    );
-                } else if catch_unwind_enabled() {
-                    let result = catch_unwind(AssertUnwindSafe(|| {
-                        self.extensions[*ext_idx].cleanup(old_id, caches);
-                    }));
-                    if let Err(panic) = result {
-                        let msg = panic_message(&panic);
-                        log::error!("extension `{ns}` panicked in cleanup: {msg}",);
-                        self.poisoned[*ext_idx] = true;
-                    }
-                    // Auto-remove cache entry after cleanup (whether it
-                    // panicked or not). Extensions that need the entry to
-                    // survive should not rely on stale nodes.
-                    caches.remove(&ns, old_id);
-                } else {
+            if new_map.get(old_id) == Some(ext_idx) {
+                continue;
+            }
+            let ns = self.extensions[*ext_idx].config_key().to_string();
+            if self.poisoned[*ext_idx] {
+                caches.remove(&ns, old_id);
+                log::warn!(
+                    "skipping cleanup for poisoned extension `{ns}`; \
+                     cache entry removed for node `{old_id}`",
+                );
+            } else if catch_unwind_enabled() {
+                let result = catch_unwind(AssertUnwindSafe(|| {
                     self.extensions[*ext_idx].cleanup(old_id, caches);
-                    caches.remove(&ns, old_id);
+                }));
+                if let Err(panic) = result {
+                    let msg = panic_message(&panic);
+                    log::error!("extension `{ns}` panicked in cleanup: {msg}",);
+                    self.poisoned[*ext_idx] = true;
                 }
+                caches.remove(&ns, old_id);
+            } else {
+                self.extensions[*ext_idx].cleanup(old_id, caches);
+                caches.remove(&ns, old_id);
             }
         }
 

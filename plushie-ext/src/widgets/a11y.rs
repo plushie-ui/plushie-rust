@@ -114,6 +114,11 @@ pub(crate) struct A11yOverrides {
     /// Tells AT what kind of popup to expect (listbox, menu, dialog,
     /// tree, or grid) so it can adjust navigation accordingly.
     pub has_popup: Option<accessible::HasPopup>,
+    /// The currently active child in a composite widget (e.g. the
+    /// highlighted option in a combobox popup).
+    pub active_descendant: Option<widget::Id>,
+    /// The IDs of radio buttons in a radio group.
+    pub radio_group: Option<Vec<widget::Id>>,
 }
 
 impl A11yOverrides {
@@ -228,6 +233,17 @@ impl A11yOverrides {
             .and_then(|v| v.as_str())
             .and_then(parse_has_popup);
 
+        let active_descendant = a11y
+            .get("active_descendant")
+            .and_then(|v| v.as_str())
+            .map(|s| widget::Id::from(s.to_owned()));
+
+        let radio_group = a11y.get("radio_group").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| widget::Id::from(s.to_owned())))
+                .collect()
+        });
+
         let result = Self {
             role,
             label,
@@ -253,6 +269,8 @@ impl A11yOverrides {
             position_in_set,
             size_of_set,
             has_popup,
+            active_descendant,
+            radio_group,
         };
 
         // Only wrap when there's something to do.
@@ -291,6 +309,8 @@ impl A11yOverrides {
             || self.position_in_set.is_some()
             || self.size_of_set.is_some()
             || self.has_popup.is_some()
+            || self.active_descendant.is_some()
+            || self.radio_group.is_some()
     }
 
     /// Merge these overrides into a base [`Accessible`], returning a
@@ -303,6 +323,8 @@ impl A11yOverrides {
     fn apply_to<'a>(&'a self, base: &Accessible<'a>) -> Accessible<'a> {
         let value_override = self.value.as_deref().map(accessible::Value::Text);
 
+        // The SDK is authoritative: override values always replace base
+        // values. None means "use the widget's default" (base value).
         Accessible {
             role: self.role.unwrap_or(base.role),
             label: self.label.as_deref().or(base.label),
@@ -310,11 +332,11 @@ impl A11yOverrides {
             expanded: self.expanded.or(base.expanded),
             live: self.live.or(base.live),
             level: self.level.or(base.level),
-            required: self.required || base.required,
+            required: self.required,
             busy: self.busy.unwrap_or(base.busy),
-            invalid: self.invalid || base.invalid,
-            modal: self.modal || base.modal,
-            read_only: self.read_only || base.read_only,
+            invalid: self.invalid,
+            modal: self.modal,
+            read_only: self.read_only,
             mnemonic: self.mnemonic.or(base.mnemonic),
             toggled: self.toggled.or(base.toggled),
             selected: self.selected.or(base.selected),
@@ -327,6 +349,8 @@ impl A11yOverrides {
             position_in_set: self.position_in_set.or(base.position_in_set),
             size_of_set: self.size_of_set.or(base.size_of_set),
             has_popup: self.has_popup.or(base.has_popup),
+            active_descendant: self.active_descendant.as_ref().or(base.active_descendant),
+            radio_group: self.radio_group.as_deref().or(base.radio_group),
             // `hidden` is intentionally omitted -- it's handled at the
             // interception layer (subtree suppression) rather than as a
             // property merge. See the operate() and traverse() methods.

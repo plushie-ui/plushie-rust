@@ -326,19 +326,14 @@ fn reset_tears_down_session() {
         &serde_json::json!({"session": "s1", "type": "reset", "id": "r1"}),
     );
 
-    // After reset, the session thread emits reset_response followed by
-    // a session_closed event. Consume both (order may vary between the
-    // session thread's response and the reader thread's close event).
+    // After reset, the session thread emits reset_response during
+    // message processing, then session_closed as its last action
+    // before exiting. The ordering is deterministic.
     let r1 = stdout.recv();
+    assert_eq!(r1["type"], "reset_response", "expected reset_response first");
     let r2 = stdout.recv();
-    let msgs: Vec<_> = [&r1, &r2]
-        .iter()
-        .map(|m| m["type"].as_str().unwrap_or(""))
-        .collect();
-    assert!(
-        msgs.contains(&"reset_response"),
-        "expected reset_response in {msgs:?}"
-    );
+    assert_eq!(r2["type"], "event");
+    assert_eq!(r2["family"], "session_closed");
 
     // Reuse the same session ID -- should get a fresh session.
     send(

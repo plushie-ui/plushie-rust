@@ -1327,7 +1327,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                     let writer = WireWriter::channel(writer_tx.clone());
                     let sid = session_id.clone();
 
-                    let panic_writer_tx = writer_tx.clone();
+                    let closed_writer_tx = writer_tx.clone();
                     let handle = thread::spawn(move || {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let mut session = Session::new(dispatcher, mode, writer);
@@ -1349,8 +1349,6 @@ fn run_multiplexed<R: PlushieRenderer>(
                                 .or_else(|| payload.downcast_ref::<String>().map(|s| s.as_str()))
                                 .unwrap_or("(non-string panic)");
                             log::error!("session '{sid}' thread panicked: {msg}");
-                            // Emit a synthetic error event so the host knows
-                            // the session died.
                             let error = serde_json::json!({
                                 "type": "event",
                                 "session": sid,
@@ -1360,8 +1358,24 @@ fn run_multiplexed<R: PlushieRenderer>(
                             });
                             let codec = Codec::get_global();
                             if let Ok(bytes) = codec.encode(&error) {
-                                let _ = panic_writer_tx.send(bytes);
+                                let _ = closed_writer_tx.send(bytes);
                             }
+                        }
+
+                        // Emit session_closed as the last action, after all
+                        // processing is done and any panic error has been
+                        // reported. This ensures the host only sees this
+                        // event when the session is truly finished.
+                        let closed = serde_json::json!({
+                            "type": "event",
+                            "session": sid,
+                            "family": "session_closed",
+                            "id": "",
+                            "data": {}
+                        });
+                        let codec = Codec::get_global();
+                        if let Ok(bytes) = codec.encode(&closed) {
+                            let _ = closed_writer_tx.send(bytes);
                         }
                     });
 
@@ -1400,23 +1414,10 @@ fn run_multiplexed<R: PlushieRenderer>(
                 // from the old session thread may interleave with the new one.
                 if is_reset {
                     // Drop the sender so the session thread exits after
-                    // processing the Reset message.
+                    // processing the Reset message. The session thread
+                    // emits session_closed as its last action.
                     sessions.remove(&session_id);
                     log::info!("session '{session_id}' reset (active: {})", sessions.len());
-
-                    // Emit a synthetic session_closed event so the host
-                    // knows the session thread has been torn down.
-                    let closed = serde_json::json!({
-                        "type": "event",
-                        "session": &session_id,
-                        "family": "session_closed",
-                        "id": "",
-                        "data": { "reason": "reset" }
-                    });
-                    let codec = Codec::get_global();
-                    if let Ok(bytes) = codec.encode(&closed) {
-                        let _ = writer_tx.send(bytes);
-                    }
                 }
             }
             Err(e) => {

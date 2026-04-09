@@ -283,7 +283,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// Return type names grouped by set/provenance.
     pub fn type_names_by_set(&self) -> HashMap<&str, Vec<&str>> {
         let mut result: HashMap<&str, Vec<&str>> = HashMap::new();
-        for (type_name, _idx) in &self.type_index {
+        for type_name in self.type_index.keys() {
             let set_name = self
                 .provenance
                 .get(type_name)

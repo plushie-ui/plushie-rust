@@ -379,10 +379,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
         let code_theme_str = crate::prop_helpers::prop_str(props, "code_theme").unwrap_or_default();
         let hash = hash_str(&format!("{content_str}\0{code_theme_str}"));
 
-        if let Some((existing_hash, _)) = self.items.get(&key) {
-            if *existing_hash == hash {
-                return;
-            }
+        if let Some((existing_hash, _)) = self.items.get(&key)
+            && *existing_hash == hash
+        {
+            return;
         }
 
         let code_theme = match code_theme_str.as_str() {

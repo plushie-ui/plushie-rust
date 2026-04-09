@@ -1,13 +1,12 @@
-//! Shared widget cache management.
+//! Shared renderer state and cross-cutting cache management.
 //!
-//! [`SharedState`] holds state that must persist across renders:
-//! canvas geometry caches, pane_grid layout state (for widget_ops),
-//! style overrides, extension caches, and animation interpolated props.
+//! [`SharedState`] holds cross-cutting state shared by all widget types:
+//! style overrides, animation interpolated props, and extension caches.
+//! It also holds pane_grid layout state and canvas pending focus, which
+//! are shared with widget_ops.rs for programmatic operations.
 //!
-//! Most stateful widgets own their state directly via PlushieWidget
-//! factories (see `widgets/builtins.rs`). This module handles the
-//! remaining shared concerns and widgets not yet factory-extracted
-//! (canvas).
+//! Widget-specific state is owned by PlushieWidget factories
+//! (see `widgets/builtins.rs`).
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
@@ -441,9 +440,9 @@ mod tests {
     fn shared_state_new_is_empty() {
         let c: SharedState = SharedState::new();
         assert!(c.pane_grid_states.is_empty());
-        assert!(c.pane_grid_states.is_empty());
-        assert!(c.pane_grid_states.is_empty());
+        assert!(c.canvas_pending_focus.is_empty());
         assert!(c.style_overrides.is_empty());
+        assert!(c.interpolated_props.is_empty());
     }
 
     #[test]

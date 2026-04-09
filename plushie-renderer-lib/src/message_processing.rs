@@ -82,28 +82,9 @@ pub fn process_widget_message<R: PlushieRenderer>(
         | Message::CanvasGroupBlurred { .. }
         | Message::Diagnostic { .. }) => message_to_event(m).into_iter().collect(),
 
-        // Focus transition produces up to 2 events (blur old + focus new).
-        Message::CanvasElementFocusChanged {
-            window_id,
-            canvas_id,
-            old_element_id,
-            new_element_id,
-        } => {
-            let mut events = Vec::with_capacity(2);
-            if let Some(old_id) = old_element_id {
-                events.push(
-                    OutgoingEvent::canvas_element_blurred(canvas_id.clone(), old_id.clone())
-                        .with_window_id(window_id.clone()),
-                );
-            }
-            if let Some(new_id) = new_element_id {
-                events.push(
-                    OutgoingEvent::canvas_element_focused(canvas_id.clone(), new_id.clone())
-                        .with_window_id(window_id.clone()),
-                );
-            }
-            events
-        }
+        // CanvasElementFocusChanged is handled by CanvasWidget::handle_message
+        // (splits into blur + focus events). Fallback returns empty.
+        Message::CanvasElementFocusChanged { .. } => vec![],
 
         // Slider Slide/SlideRelease and TextEditorAction are handled
         // by their PlushieWidget factories via registry dispatch.

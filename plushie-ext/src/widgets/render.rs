@@ -130,7 +130,7 @@ pub fn render<'a, R: PlushieRenderer>(
     // exists, try widget-specific auto-inference.
     //
     // When the registry is active, infer_a11y() on the PlushieWidget is
-    // used. Otherwise, fall back to the hardcoded match for legacy paths.
+    // used. Otherwise, fall back to the hardcoded match (test paths).
     let overrides = crate::widgets::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
         if let Some(registry) = ctx.registry {
             registry
@@ -166,9 +166,9 @@ fn render_via_match<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    // Stateful widget types whose caches have been migrated to
-    // PlushieWidget factories are not listed here. They require
-    // the registry path (which provides factory-owned state).
+    // Stateful widgets are handled by PlushieWidget factories via the
+    // registry and are not listed here. This match covers stateless
+    // widgets only (test paths without a registry).
     // This match only covers stateless widgets and those still
     // using SharedState (canvas, qr_code).
     match node.type_name.as_str() {

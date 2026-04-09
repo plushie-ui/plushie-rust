@@ -203,11 +203,13 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     }
     live_ids.insert(node.id.clone());
 
-    // Widget-specific cache population. Types handled by extracted
-    // PlushieWidget factories (themer, markdown, combo_box, text_editor,
-    // pane_grid) are no longer populated here; their factories own the
-    // state and populate it via prepare_walk.
+    // Widget-specific cache population. Most stateful types are handled
+    // by PlushieWidget factories via prepare_walk. Remaining types here
+    // either haven't been extracted yet (canvas, qr_code) or have
+    // external consumers that still read from WidgetCaches (pane_grid
+    // state is read by widget_ops.rs for split/close/swap operations).
     match node.type_name.as_str() {
+        "pane_grid" => ensure_pane_grid_cache(node, caches),
         "canvas" => diagnostics.extend(super::canvas::ensure_canvas_cache(node, caches)),
         "qr_code" => super::display::ensure_qr_code_cache(node, caches),
         _ => {}
@@ -220,6 +222,69 @@ fn ensure_caches_walk<R: PlushieRenderer>(
 
     for child in &node.children {
         ensure_caches_walk(child, caches, live_ids, diagnostics, depth + 1);
+    }
+}
+
+/// Ensure pane_grid layout state exists in WidgetCaches for widget_ops.rs.
+///
+/// PaneGridWidget also owns state via its factory prepare(), but widget_ops
+/// (split, close, swap, maximize, restore) still read from WidgetCaches
+/// directly. This keeps WidgetCaches in sync until handle_widget_op routing
+/// is implemented.
+fn ensure_pane_grid_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) {
+    use iced::widget::pane_grid;
+    use std::collections::HashSet;
+
+    let props = node.props.as_object();
+    let axis = match crate::prop_helpers::prop_str(props, "split_axis").as_deref() {
+        Some("horizontal") => pane_grid::Axis::Horizontal,
+        _ => pane_grid::Axis::Vertical,
+    };
+    let child_ids: HashSet<String> = node.children.iter().map(|c| c.id.clone()).collect();
+
+    if let Some(state) = caches.pane_grid_states.get_mut(&node.id) {
+        // Prune panes whose child nodes no longer exist.
+        let stale: Vec<pane_grid::Pane> = state
+            .panes
+            .iter()
+            .filter(|(_, id)| !child_ids.contains(*id))
+            .map(|(pane, _)| *pane)
+            .collect();
+        for pane in stale {
+            state.close(pane);
+        }
+        // Add panes for new children.
+        let existing: HashSet<String> = state.panes.values().cloned().collect();
+        let new_ids: Vec<String> = node
+            .children
+            .iter()
+            .filter(|c| !existing.contains(&c.id))
+            .map(|c| c.id.clone())
+            .collect();
+        for id in new_ids {
+            if let Some((&anchor, _)) = state.panes.iter().next() {
+                let _ = state.split(axis, anchor, id);
+            }
+        }
+    } else {
+        let ids: Vec<String> = node.children.iter().map(|c| c.id.clone()).collect();
+        let new_state = if ids.is_empty() {
+            let (s, _) = pane_grid::State::new("default".to_string());
+            s
+        } else if ids.len() == 1 {
+            let (s, _) = pane_grid::State::new(ids[0].clone());
+            s
+        } else {
+            let (mut s, first) = pane_grid::State::new(ids[0].clone());
+            let mut last = first;
+            for id in ids.iter().skip(1) {
+                if let Some((new, _)) = s.split(axis, last, id.clone()) {
+                    last = new;
+                }
+            }
+            s
+        };
+        caches.pane_grid_states.insert(node.id.clone(), new_state);
     }
 }
 

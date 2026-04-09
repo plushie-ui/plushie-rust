@@ -21,7 +21,6 @@
 //! collects responses from all sessions and writes them to stdout.
 //! Each session is fully isolated (own Core, caches, extensions, UI).
 
-use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Read};
 use std::sync::mpsc;
 use std::thread;
@@ -156,8 +155,6 @@ struct Session<R: PlushieRenderer> {
     registry: plushie_ext::registry::WidgetRegistry<R>,
     images: ImageRegistry,
     writer: WireWriter,
-    /// Slider value tracking for SlideRelease (mirrors App.last_slide_values).
-    last_slide_values: HashMap<String, f64>,
     ui: UiState<R>,
     mode: Mode,
     /// Renderer-side animation manager.
@@ -196,7 +193,6 @@ impl<R: PlushieRenderer> Session<R> {
             registry,
             images: ImageRegistry::new(),
             writer,
-            last_slide_values: HashMap::new(),
             ui,
             mode,
             transition_manager: plushie_ext::animation::TransitionManager::new(),
@@ -670,9 +666,6 @@ fn handle_message<R: PlushieRenderer>(
             if is_tree_change {
                 if is_snapshot {
                     s.dispatcher.clear_poisoned();
-                    // Clear stale slider tracking -- the entire tree was replaced,
-                    // so old node IDs are no longer valid.
-                    s.last_slide_values.clear();
                     s.transition_manager.clear();
                 }
                 if let Some(root) = s.core.tree.root() {
@@ -819,7 +812,6 @@ fn handle_message<R: PlushieRenderer>(
             s.dispatcher.reset(&mut s.core.caches.extension);
             s.images = ImageRegistry::new();
             s.theme = Theme::Dark;
-            s.last_slide_values.clear();
             s.transition_manager.clear();
             s.ui.ui_cache = UiCache::default();
             s.ui.cursor = mouse::Cursor::Unavailable;

@@ -639,22 +639,23 @@ builtin_widget!(RadioWidget, ["radio"], input::render_radio);
 // ---------------------------------------------------------------------------
 
 /// Handle Slide/SlideRelease messages for sliders. Tracks the latest drag
-/// value per node ID so SlideRelease can report the final value (iced's
-/// release event doesn't carry the value itself).
+/// value per (window_id, node_id) so SlideRelease can report the final
+/// value (iced's release event doesn't carry the value itself).
 fn handle_slider_message(
-    last_values: &mut std::collections::HashMap<String, f64>,
+    last_values: &mut std::collections::HashMap<(String, String), f64>,
     msg: &Message,
 ) -> Option<Vec<crate::protocol::OutgoingEvent>> {
     match msg {
         Message::Slide(window_id, id, value) => {
-            last_values.insert(id.clone(), *value);
+            last_values.insert((window_id.clone(), id.clone()), *value);
             Some(vec![
                 crate::protocol::OutgoingEvent::slide(id.clone(), *value)
                     .with_window_id(window_id.clone()),
             ])
         }
         Message::SlideRelease(window_id, id) => {
-            let value = last_values.remove(id).unwrap_or(0.0);
+            let key = (window_id.clone(), id.clone());
+            let value = last_values.remove(&key).unwrap_or(0.0);
             Some(vec![
                 crate::protocol::OutgoingEvent::slide_release(id.clone(), value)
                     .with_window_id(window_id.clone()),
@@ -665,7 +666,7 @@ fn handle_slider_message(
 }
 
 pub(crate) struct SliderWidget {
-    last_values: std::collections::HashMap<String, f64>,
+    last_values: std::collections::HashMap<(String, String), f64>,
 }
 
 impl SliderWidget {
@@ -693,8 +694,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
         handle_slider_message(&mut self.last_values, msg)
     }
 
-    fn cleanup(&mut self, node_id: &str, _window_id: &str) {
-        self.last_values.remove(node_id);
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        self.last_values
+            .remove(&(window_id.to_string(), node_id.to_string()));
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
@@ -703,7 +705,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
 }
 
 pub(crate) struct VerticalSliderWidget {
-    last_values: std::collections::HashMap<String, f64>,
+    last_values: std::collections::HashMap<(String, String), f64>,
 }
 
 impl VerticalSliderWidget {
@@ -731,8 +733,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
         handle_slider_message(&mut self.last_values, msg)
     }
 
-    fn cleanup(&mut self, node_id: &str, _window_id: &str) {
-        self.last_values.remove(node_id);
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        self.last_values
+            .remove(&(window_id.to_string(), node_id.to_string()));
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {

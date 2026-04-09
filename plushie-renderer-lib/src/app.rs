@@ -4,8 +4,6 @@
 //! that the rest of the renderer uses to query window titles, themes,
 //! scale factors, and emit subscription events.
 
-use std::collections::HashMap;
-
 use iced::{Task, Theme, keyboard, window};
 
 use plushie_ext::extensions::ExtensionDispatcher;
@@ -54,8 +52,6 @@ pub struct App {
     pub theme_follows_system: bool,
     /// Global scale factor multiplier (1.0 = follow OS DPI).
     pub scale_factor: f32,
-    /// Last slider value per widget ID, for correct on_release events.
-    pub last_slide_values: HashMap<String, f64>,
     /// Extension dispatcher for custom widget types.
     pub dispatcher: ExtensionDispatcher,
     /// Unified widget registry. When populated, render dispatch goes
@@ -93,7 +89,6 @@ impl App {
             system_theme: DEFAULT_THEME,
             theme_follows_system: false,
             scale_factor: 1.0,
-            last_slide_values: HashMap::new(),
             dispatcher,
             registry,
             animation_epoch: None,

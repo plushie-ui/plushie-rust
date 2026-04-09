@@ -188,7 +188,6 @@ impl App {
 
             if is_snapshot {
                 self.dispatcher.clear_poisoned();
-                self.last_slide_values.clear();
                 self.transition_manager.clear();
             }
             if let Some(root) = self.core.tree.root() {

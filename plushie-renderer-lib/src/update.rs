@@ -339,7 +339,6 @@ impl App {
                         self.theme = DEFAULT_THEME;
                         self.theme_follows_system = false;
                         self.scale_factor = 1.0;
-                        self.last_slide_values.clear();
                         self.pending_tasks.clear();
                         self.animation_epoch = None;
                         self.emitter = crate::emitter::EventEmitter::new();

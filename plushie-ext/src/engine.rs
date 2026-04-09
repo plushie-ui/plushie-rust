@@ -14,7 +14,7 @@ use crate::PlushieRenderer;
 use crate::protocol::{IncomingMessage, OutgoingEvent};
 use crate::theming;
 use crate::tree::Tree;
-use crate::widgets::{self, WidgetCaches};
+use crate::widgets::{self, SharedState};
 
 /// Side effects produced by [`Core::apply`] that the host must handle.
 ///
@@ -171,7 +171,7 @@ pub struct Core<R: PlushieRenderer = iced::Renderer> {
     /// The retained UI tree (snapshots replace it, patches update it).
     pub tree: Tree,
     /// Caches for stateful widgets (text_editor content, markdown items, etc.).
-    pub caches: WidgetCaches<R>,
+    pub caches: SharedState<R>,
     /// Active event subscriptions: kind -> list of entries.
     /// Each kind can have multiple entries with different tags and
     /// optional window scoping.
@@ -210,7 +210,7 @@ impl<R: PlushieRenderer> Core<R> {
     pub fn new() -> Self {
         Self {
             tree: Tree::new(),
-            caches: WidgetCaches::new(),
+            caches: SharedState::new(),
             active_subscriptions: HashMap::new(),
             default_event_rate: None,
             default_text_size: None,
@@ -1022,7 +1022,7 @@ mod tests {
 
         // Test that built-in caches are cleared on snapshot. Most stateful
         // widget caches are now factory-owned; only canvas and pane_grid
-        // state remain in WidgetCaches. Use style_overrides as a simple
+        // state remain in SharedState. Use style_overrides as a simple
         // proxy for the clear behavior (populated for any node with a
         // style prop, and cleared on snapshot).
         let styled_node = make_node_with_props(

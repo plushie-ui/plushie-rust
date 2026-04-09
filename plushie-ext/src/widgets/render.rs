@@ -170,7 +170,7 @@ fn render_via_match<'a, R: PlushieRenderer>(
     // PlushieWidget factories are not listed here. They require
     // the registry path (which provides factory-owned state).
     // This match only covers stateless widgets and those still
-    // using WidgetCaches (canvas, qr_code).
+    // using SharedState (canvas, qr_code).
     match node.type_name.as_str() {
         // Layout widgets (stateless)
         "column" => layout::render_column(node, ctx),
@@ -275,7 +275,7 @@ mod tests {
     use crate::extensions::ExtensionDispatcher;
     use crate::image_registry::ImageRegistry;
     use crate::protocol::TreeNode;
-    use crate::widgets::WidgetCaches;
+    use crate::widgets::SharedState;
 
     // -- Image registry handle lookup --
 
@@ -319,7 +319,7 @@ mod tests {
     }
 
     fn smoke_ctx<'a>(
-        caches: &'a WidgetCaches,
+        caches: &'a SharedState,
         images: &'a ImageRegistry,
         theme: &'a iced::Theme,
         dispatcher: &'a ExtensionDispatcher,
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn render_smoke_text() {
         let node = smoke_node("t", "text", serde_json::json!({"content": "hello"}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn render_smoke_column_empty() {
         let node = smoke_node("c", "column", serde_json::json!({}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn render_smoke_row_empty() {
         let node = smoke_node("r", "row", serde_json::json!({}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -378,7 +378,7 @@ mod tests {
             serde_json::json!({}),
             vec![smoke_text_child()],
         );
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -394,7 +394,7 @@ mod tests {
             serde_json::json!({}),
             vec![smoke_text_child()],
         );
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -409,7 +409,7 @@ mod tests {
             "checkbox",
             serde_json::json!({"label": "Accept", "checked": true}),
         );
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -420,7 +420,7 @@ mod tests {
     #[test]
     fn render_smoke_space() {
         let node = smoke_node("sp", "space", serde_json::json!({}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn render_smoke_rule() {
         let node = smoke_node("rl", "rule", serde_json::json!({"direction": "horizontal"}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -446,7 +446,7 @@ mod tests {
             "progress_bar",
             serde_json::json!({"value": 50.0, "min": 0.0, "max": 100.0}),
         );
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -461,7 +461,7 @@ mod tests {
             "slider",
             serde_json::json!({"min": 0.0, "max": 100.0, "value": 50.0}),
         );
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -476,7 +476,7 @@ mod tests {
             "text_input",
             serde_json::json!({"placeholder": "Type here", "value": ""}),
         );
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn render_smoke_toggler() {
         let node = smoke_node("tg", "toggler", serde_json::json!({"is_toggled": false}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -498,7 +498,7 @@ mod tests {
     #[test]
     fn render_smoke_stack_empty() {
         let node = smoke_node("st", "stack", serde_json::json!({}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -513,7 +513,7 @@ mod tests {
     #[test]
     fn render_unknown_type_returns_element_without_panic() {
         let node = smoke_node("unk", "definitely_not_a_widget", serde_json::json!({}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
@@ -525,7 +525,7 @@ mod tests {
     #[test]
     fn render_text_input_missing_props_does_not_panic() {
         let node = smoke_node("ti_empty", "text_input", serde_json::json!({}));
-        let caches: WidgetCaches = WidgetCaches::new();
+        let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
         let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();

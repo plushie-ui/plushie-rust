@@ -324,7 +324,7 @@ pub(crate) struct DragBounds {
 /// (`on_click`, `on_hover`, `a11y`, etc.) live at the top level of
 /// the group JSON, not in a nested `"interactive"` sub-object.
 ///
-/// Extracted during `ensure_canvas_cache` and stored in `WidgetCaches`
+/// Extracted during `ensure_canvas_cache` and stored in `SharedState`
 /// so `update()` can hit-test without re-parsing JSON every frame.
 #[derive(Debug, Clone)]
 pub(crate) struct InteractiveElement {
@@ -941,7 +941,7 @@ struct CanvasState {
 struct CanvasProgram<'a, R: PlushieRenderer = iced::Renderer> {
     /// Sorted layer data: (layer_name, shapes array).
     layers: Vec<(String, Vec<Value>)>,
-    /// Per-layer caches from WidgetCaches.
+    /// Per-layer caches from SharedState.
     caches: Option<&'a HashMap<String, (u64, canvas::Cache<R>)>>,
     background: Option<Color>,
     window_id: String,

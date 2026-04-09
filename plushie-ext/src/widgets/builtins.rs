@@ -1075,8 +1075,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, iced::Theme, R> {
         let key = (ctx.window_id.to_string(), node.id.clone());
-        // Check both factory-owned pending_focus and WidgetCaches pending_focus
-        // (widget_ops.rs writes to WidgetCaches for programmatic focus commands).
+        // Check both factory-owned pending_focus and SharedState pending_focus
+        // (widget_ops.rs writes to SharedState for programmatic focus commands).
         let pending = self
             .pending_focus
             .get(&key)

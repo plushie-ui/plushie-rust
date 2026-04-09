@@ -24,7 +24,7 @@ use crate::PlushieRenderer;
 use crate::image_registry::ImageRegistry;
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
-use crate::widgets::WidgetCaches;
+use crate::widgets::SharedState;
 
 /// Check if panic isolation is disabled via the PLUSHIE_NO_CATCH_UNWIND env var.
 /// When true, extension panics propagate normally, preserving stack traces for
@@ -546,7 +546,7 @@ pub struct InitCtx<'a> {
 /// The `R` parameter selects the renderer backend: `iced::Renderer` for
 /// headless/windowed modes, `()` (null renderer) for mock mode.
 pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
-    pub caches: &'a WidgetCaches<R>,
+    pub caches: &'a SharedState<R>,
     pub images: &'a ImageRegistry,
     pub theme: &'a Theme,
     pub extensions: &'a ExtensionDispatcher<R>,
@@ -1906,9 +1906,9 @@ mod tests {
         //    dispatcher (returns Some with red error text, not a panic).
         let node = make_node("pr1", "panicky_render");
         {
-            let widget_caches = crate::widgets::WidgetCaches::new();
+            let shared_state = crate::widgets::SharedState::new();
             let ctx = RenderCtx {
-                caches: &widget_caches,
+                caches: &shared_state,
                 images: &images,
                 theme: &theme,
                 extensions: &dispatcher,
@@ -1941,9 +1941,9 @@ mod tests {
         //    We verify by checking that render() actually calls the
         //    extension (which panics) rather than returning the placeholder.
         //    We use catch_unwind to contain the panic.
-        let widget_caches2 = crate::widgets::WidgetCaches::new();
+        let shared_state2 = crate::widgets::SharedState::new();
         let ctx2 = RenderCtx {
-            caches: &widget_caches2,
+            caches: &shared_state2,
             images: &images,
             theme: &theme,
             extensions: &dispatcher,

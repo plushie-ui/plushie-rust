@@ -534,7 +534,7 @@ pub struct StyleOverrides {
 pub fn get_style_overrides<R: crate::PlushieRenderer>(
     node_id: &str,
     obj: &serde_json::Map<String, Value>,
-    caches: &super::WidgetCaches<R>,
+    caches: &super::SharedState<R>,
 ) -> StyleOverrides {
     if let Some(cached) = super::caches::cached_style_overrides(caches, node_id) {
         return cached.clone();

@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use crate::extensions::{ExtensionCaches, ExtensionDispatcher, RenderCtx, WidgetEnv};
 use crate::image_registry::ImageRegistry;
 use crate::protocol::TreeNode;
-use crate::widgets::WidgetCaches;
+use crate::widgets::SharedState;
 
 // ---------------------------------------------------------------------------
 // TreeNode constructors
@@ -103,7 +103,7 @@ pub fn node_with_props_and_children(
 /// ```
 pub struct TestEnv {
     pub ext_caches: ExtensionCaches,
-    pub widget_caches: WidgetCaches,
+    pub shared_state: SharedState,
     pub images: ImageRegistry,
     pub theme: Theme,
     pub dispatcher: ExtensionDispatcher,
@@ -127,7 +127,7 @@ impl Default for TestEnv {
     fn default() -> Self {
         Self {
             ext_caches: ExtensionCaches::new(),
-            widget_caches: WidgetCaches::new(),
+            shared_state: SharedState::new(),
             images: ImageRegistry::new(),
             theme: Theme::Dark,
             dispatcher: ExtensionDispatcher::new(vec![]),
@@ -141,7 +141,7 @@ impl TestEnv {
     /// Build a [`RenderCtx`] from the owned test state.
     pub fn render_ctx(&self) -> RenderCtx<'_> {
         RenderCtx {
-            caches: &self.widget_caches,
+            caches: &self.shared_state,
             images: &self.images,
             theme: &self.theme,
             extensions: &self.dispatcher,

@@ -1,6 +1,6 @@
 //! Shared widget cache management.
 //!
-//! [`WidgetCaches`] holds state that must persist across renders:
+//! [`SharedState`] holds state that must persist across renders:
 //! canvas geometry caches, pane_grid layout state (for widget_ops),
 //! style overrides, extension caches, and animation interpolated props.
 //!
@@ -41,7 +41,7 @@ const MAX_HASH_DEPTH: usize = 256;
 /// The `R` parameter selects the renderer backend. Some caches
 /// (text_editor Content, canvas Cache) are parameterized on the
 /// renderer type because iced's widget state depends on it.
-pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
+pub struct SharedState<R: PlushieRenderer = iced::Renderer> {
     /// Phantom: R parameter preserved for API stability. No R-generic
     /// fields remain (all R-generic widget state moved to factories).
     _renderer: std::marker::PhantomData<R>,
@@ -68,7 +68,7 @@ pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
     pub interpolated_props: HashMap<String, serde_json::Map<String, serde_json::Value>>,
 }
 
-impl<R: PlushieRenderer> WidgetCaches<R> {
+impl<R: PlushieRenderer> SharedState<R> {
     pub fn new() -> Self {
         Self {
             _renderer: std::marker::PhantomData,
@@ -103,13 +103,13 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
     }
 }
 
-impl<R: PlushieRenderer> Default for WidgetCaches<R> {
+impl<R: PlushieRenderer> Default for SharedState<R> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<R: PlushieRenderer> WidgetCaches<R> {
+impl<R: PlushieRenderer> SharedState<R> {
     pub fn clear(&mut self) {
         self.clear_builtin();
         self.extension.clear();
@@ -155,7 +155,7 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
 /// layers, etc.) is guarded by per-node content hashes, so unchanged
 /// nodes are O(1). A dirty-flag optimization would only skip those hash
 /// lookups, which are already cheap relative to the tree walk itself.
-pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) {
+pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut SharedState<R>) {
     let mut live_ids = HashSet::new();
     ensure_caches_walk(node, caches, &mut live_ids, 0);
     caches.prune_stale(&live_ids);
@@ -164,7 +164,7 @@ pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCac
 /// Inner recursive walk: populate caches and collect live node IDs.
 fn ensure_caches_walk<R: PlushieRenderer>(
     node: &TreeNode,
-    caches: &mut WidgetCaches<R>,
+    caches: &mut SharedState<R>,
     live_ids: &mut HashSet<String>,
     depth: usize,
 ) {
@@ -193,11 +193,11 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     }
 }
 
-/// Populate pane_grid layout state in WidgetCaches.
+/// Populate pane_grid layout state in SharedState.
 ///
 /// Shared with widget_ops.rs which reads pane state for split, close,
 /// swap, maximize, and restore operations.
-fn ensure_pane_grid_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) {
+fn ensure_pane_grid_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mut SharedState<R>) {
     use iced::widget::pane_grid;
     use std::collections::HashSet;
 
@@ -329,7 +329,7 @@ pub(crate) fn canvas_layers_from_node(
 
 /// Cache parsed `StyleOverrides` for a node's `style` prop. Only
 /// re-parses when the content hash of the JSON value changes.
-fn ensure_style_overrides_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) {
+fn ensure_style_overrides_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mut SharedState<R>) {
     let style_val = match node.props.get("style").and_then(|v| v.as_object()) {
         Some(obj) => obj,
         None => return,
@@ -356,7 +356,7 @@ fn ensure_style_overrides_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mu
 /// Used by widget render functions to avoid re-parsing the style JSON
 /// on every frame.
 pub(crate) fn cached_style_overrides<'a, R: PlushieRenderer>(
-    caches: &'a WidgetCaches<R>,
+    caches: &'a SharedState<R>,
     node_id: &str,
 ) -> Option<&'a super::helpers::StyleOverrides> {
     caches.style_overrides.get(node_id).map(|(_, ov)| ov)
@@ -435,11 +435,11 @@ pub(crate) fn hash_str(s: &str) -> u64 {
 mod tests {
     use super::*;
 
-    // -- WidgetCaches --
+    // -- SharedState --
 
     #[test]
-    fn widget_caches_new_is_empty() {
-        let c: WidgetCaches = WidgetCaches::new();
+    fn shared_state_new_is_empty() {
+        let c: SharedState = SharedState::new();
         assert!(c.pane_grid_states.is_empty());
         assert!(c.pane_grid_states.is_empty());
         assert!(c.pane_grid_states.is_empty());
@@ -447,8 +447,8 @@ mod tests {
     }
 
     #[test]
-    fn widget_caches_clear_empties_maps() {
-        let mut c: WidgetCaches = WidgetCaches::new();
+    fn shared_state_clear_empties_maps() {
+        let mut c: SharedState = SharedState::new();
         c.interpolated_props
             .insert("w1".into(), serde_json::Map::new());
         c.clear();
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn clear_builtin_preserves_extension_caches() {
-        let mut caches: WidgetCaches = WidgetCaches::new();
+        let mut caches: SharedState = SharedState::new();
 
         caches
             .interpolated_props
@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn clear_wipes_both_builtin_and_extension() {
-        let mut caches: WidgetCaches = WidgetCaches::new();
+        let mut caches: SharedState = SharedState::new();
 
         caches
             .interpolated_props

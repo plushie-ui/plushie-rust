@@ -21,7 +21,7 @@ use plushie_ext::PlushieRenderer;
 use plushie_ext::extensions::{EventResult, ExtensionDispatcher};
 use plushie_ext::message::Message;
 use plushie_ext::protocol::OutgoingEvent;
-use plushie_ext::widgets::WidgetCaches;
+use plushie_ext::widgets::SharedState;
 
 use crate::emitters::message_to_event;
 
@@ -36,7 +36,7 @@ use crate::emitters::message_to_event;
 /// events (stdout, WireWriter, etc.).
 pub fn process_widget_message<R: PlushieRenderer>(
     msg: Message,
-    caches: &mut WidgetCaches<R>,
+    caches: &mut SharedState<R>,
     dispatcher: &mut ExtensionDispatcher<R>,
     registry: &mut plushie_ext::registry::WidgetRegistry<R>,
 ) -> Vec<OutgoingEvent> {

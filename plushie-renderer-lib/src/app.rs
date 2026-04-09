@@ -67,7 +67,7 @@ pub struct App {
     pub effect_handler: Box<dyn EffectHandler>,
     /// Renderer-side animation manager. Tracks transitions, springs,
     /// and exit ghosts. Advances on frame ticks and writes interpolated
-    /// values to WidgetCaches.interpolated_props.
+    /// values to SharedState.interpolated_props.
     pub transition_manager: plushie_ext::animation::TransitionManager,
     /// Current keyboard modifier state, updated on every ModifiersChanged
     /// event. Included on all outgoing pointer events.

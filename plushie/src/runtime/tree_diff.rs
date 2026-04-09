@@ -433,6 +433,9 @@ fn longest_increasing_subsequence(arr: &[usize]) -> Vec<usize> {
     }
 
     // Reconstruct the LIS by following predecessors backward.
+    if len == 0 {
+        return vec![];
+    }
     let mut result = vec![0usize; len];
     let mut k = idxs[len - 1];
     for i in (0..len).rev() {

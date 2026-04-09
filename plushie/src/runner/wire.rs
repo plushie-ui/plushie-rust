@@ -66,11 +66,16 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
         // Convert wire event to SDK Event.
         if let Some(event) = wire_event_to_sdk_event(&raw) {
             let cmd = A::update(&mut model, event);
-            execute_wire_command(&mut bridge, &cmd)?;
+            if let Err(e) = execute_wire_command(&mut bridge, &cmd) {
+                log::error!("command execution failed: {e}");
+            }
 
             // Re-render and diff.
             let view = A::view(&model);
-            let (new_tree, _) = normalize::normalize(&view.0);
+            let (new_tree, warnings) = normalize::normalize(&view.0);
+            for warning in &warnings {
+                log::warn!("view normalization: {warning}");
+            }
 
             let patches = tree_diff::diff(&current_tree, &new_tree);
             if !patches.is_empty() {

@@ -212,9 +212,16 @@ impl Bridge {
                 serde_json::from_str(&line).map_err(io::Error::other)
             }
             Codec::MsgPack => {
+                const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MB
                 let mut len_buf = [0u8; 4];
                 stdout.read_exact(&mut len_buf)?;
                 let len = u32::from_be_bytes(len_buf) as usize;
+                if len > MAX_MESSAGE_SIZE {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("message size {len} exceeds {MAX_MESSAGE_SIZE} byte limit"),
+                    ));
+                }
                 let mut buf = vec![0u8; len];
                 stdout.read_exact(&mut buf)?;
                 rmp_serde::from_slice(&buf).map_err(io::Error::other)

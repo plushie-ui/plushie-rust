@@ -233,7 +233,7 @@ fn message_to_event(msg: &Message) -> Option<Event> {
     match msg {
         Message::Click(window_id, id) => Some(Event::Widget(WidgetEvent {
             event_type: EventType::Click,
-            id: id.clone(),
+            id: local_id(id),
             window_id: window_id.clone(),
             scope: extract_scope(id),
             value: serde_json::Value::Null,

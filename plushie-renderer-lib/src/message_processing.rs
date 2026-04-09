@@ -9,8 +9,8 @@
 //!   not the value on release).
 //! - **Text editor mutation:** `TextEditorAction` must be applied to
 //!   the cached `Content` and the resulting text emitted.
-//! - **Extension event routing:** `Message::Event` is forwarded to the
-//!   `ExtensionDispatcher` which may consume, observe, or pass through.
+//! - **Extension event routing:** `Message::Event` is routed through the
+//!   `WidgetRegistry` which may consume, observe, or pass through.
 //! - **Pane grid state:** resize, drag, and click events need the pane
 //!   state map to resolve internal pane handles to plushie IDs.
 //!
@@ -18,10 +18,8 @@
 //! share one implementation.
 
 use plushie_ext::PlushieRenderer;
-use plushie_ext::extensions::{EventResult, ExtensionDispatcher};
 use plushie_ext::message::Message;
 use plushie_ext::protocol::OutgoingEvent;
-use plushie_ext::widgets::SharedState;
 
 use crate::emitters::message_to_event;
 
@@ -36,8 +34,6 @@ use crate::emitters::message_to_event;
 /// events (stdout, WireWriter, etc.).
 pub fn process_widget_message<R: PlushieRenderer>(
     msg: Message,
-    caches: &mut SharedState<R>,
-    dispatcher: &mut ExtensionDispatcher<R>,
     registry: &mut plushie_ext::registry::WidgetRegistry<R>,
 ) -> Vec<OutgoingEvent> {
     // Try registry dispatch first. If the factory handles the message
@@ -92,41 +88,23 @@ pub fn process_widget_message<R: PlushieRenderer>(
         // has no mapping.
         Message::Slide(..) | Message::SlideRelease(..) | Message::TextEditorAction(..) => vec![],
 
-        // Extension events -- route through dispatcher.
+        // Extension events: if the registry's handle_message (above) didn't
+        // match, pass through as a generic outgoing event.
         Message::Event {
             ref window_id,
             ref id,
             ref data,
             ref family,
         } => {
-            let result = dispatcher.handle_event(id, family, data, &mut caches.extension);
             let data_opt = if data.is_null() {
                 None
             } else {
                 Some(data.clone())
             };
-            match result {
-                EventResult::PassThrough => vec![
-                    OutgoingEvent::generic(family.clone(), id.clone(), data_opt)
-                        .with_window_id(window_id.clone()),
-                ],
-                EventResult::Consumed(ext_events) => ext_events
-                    .into_iter()
-                    .map(|event| event.with_window_id(window_id.clone()))
-                    .collect(),
-                EventResult::Observed(ext_events) => {
-                    let mut events = vec![
-                        OutgoingEvent::generic(family.clone(), id.clone(), data_opt)
-                            .with_window_id(window_id.clone()),
-                    ];
-                    events.extend(
-                        ext_events
-                            .into_iter()
-                            .map(|event| event.with_window_id(window_id.clone())),
-                    );
-                    events
-                }
-            }
+            vec![
+                OutgoingEvent::generic(family.clone(), id.clone(), data_opt)
+                    .with_window_id(window_id.clone()),
+            ]
         }
 
         // Pane grid events are handled by PaneGridWidget via registry

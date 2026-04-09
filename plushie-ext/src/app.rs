@@ -21,7 +21,7 @@
 //! ```
 
 use crate::PlushieRenderer;
-use crate::extensions::{ExtensionDispatcher, WidgetExtension};
+use crate::extensions::WidgetExtension;
 use crate::registry::{PlushieWidget, WidgetRegistry, WidgetSet};
 
 /// Builder for registering widgets before starting the renderer.
@@ -78,16 +78,8 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
     }
 
     /// Consume the builder and produce the [`WidgetRegistry`].
-    pub fn build_registry(self) -> WidgetRegistry<R> {
+    pub fn build(self) -> WidgetRegistry<R> {
         self.registry
-    }
-
-    /// Consume the builder and produce the [`WidgetRegistry`] and an
-    /// empty [`ExtensionDispatcher`] (for infrastructure that still
-    /// references it).
-    pub fn build(self) -> (WidgetRegistry<R>, ExtensionDispatcher<R>) {
-        let dispatcher = ExtensionDispatcher::new(vec![]);
-        (self.registry, dispatcher)
     }
 
     /// Register a [`WidgetExtension`] via the [`ExtensionAdapter`], adding
@@ -122,12 +114,6 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
             .into_iter()
             .filter(|name| !builtins.contains(name))
             .collect()
-    }
-
-    /// Consume the builder and produce an [`ExtensionDispatcher`].
-    /// Returns an empty dispatcher (all extensions are in the registry).
-    pub fn build_dispatcher(self) -> ExtensionDispatcher<R> {
-        ExtensionDispatcher::new(vec![])
     }
 }
 

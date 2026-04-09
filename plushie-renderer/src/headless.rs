@@ -32,7 +32,7 @@ use serde::Serialize;
 use plushie_ext::PlushieRenderer;
 use plushie_ext::codec::Codec;
 use plushie_ext::engine::Core;
-use plushie_ext::extensions::{ExtensionDispatcher, RenderCtx};
+use plushie_ext::extensions::RenderCtx;
 use plushie_ext::image_registry::ImageRegistry;
 use plushie_ext::message::Message;
 use plushie_ext::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
@@ -151,7 +151,6 @@ struct UiState<R: PlushieRenderer> {
 struct Session<R: PlushieRenderer> {
     core: Core<R>,
     theme: Theme,
-    dispatcher: ExtensionDispatcher<R>,
     registry: plushie_ext::registry::WidgetRegistry<R>,
     images: ImageRegistry,
     writer: WireWriter,
@@ -165,7 +164,7 @@ struct Session<R: PlushieRenderer> {
 }
 
 impl<R: PlushieRenderer> Session<R> {
-    fn new(dispatcher: ExtensionDispatcher<R>, mode: Mode, writer: WireWriter) -> Self {
+    fn new(mode: Mode, writer: WireWriter) -> Self {
         let renderer_settings = iced::advanced::renderer::Settings {
             default_font: iced::Font::DEFAULT,
             default_text_size: iced::Pixels(16.0),
@@ -189,7 +188,6 @@ impl<R: PlushieRenderer> Session<R> {
         Self {
             core: Core::new(),
             theme: Theme::Dark,
-            dispatcher,
             registry,
             images: ImageRegistry::new(),
             writer,
@@ -231,8 +229,7 @@ impl<R: PlushieRenderer> Session<R> {
             caches: &self.core.caches,
             images: &self.images,
             theme: &self.theme,
-            extensions: &self.dispatcher,
-            registry: Some(&self.registry),
+            registry: &self.registry,
             default_text_size: self.core.default_text_size,
             default_font: self.core.default_font,
             window_id: "",
@@ -406,22 +403,18 @@ impl<R: PlushieRenderer> Session<R> {
                         match effect {
                             CoreEffect::ThemeChanged(t) => self.theme = t,
                             CoreEffect::ExtensionConfig(config) => {
-                                self.dispatcher.init_all(
-                                    &config,
-                                    &self.theme,
-                                    self.core.default_text_size,
-                                    self.core.default_font,
-                                );
+                                let ctx = plushie_ext::extensions::InitCtx {
+                                    config: &config,
+                                    theme: &self.theme,
+                                    default_text_size: self.core.default_text_size,
+                                    default_font: self.core.default_font,
+                                };
+                                self.registry.init_all(&ctx);
                             }
                             _ => {}
                         }
                     }
                     if is_tree_change && let Some(root) = self.core.tree.root() {
-                        self.dispatcher.prepare_all(
-                            root,
-                            &mut self.core.caches.extension,
-                            &self.theme,
-                        );
                         self.registry
                             .prepare_walk(root, &mut self.core.caches, &self.theme);
                     }
@@ -463,8 +456,6 @@ impl<R: PlushieRenderer> Session<R> {
             events.extend(
                 plushie_renderer_lib::message_processing::process_widget_message(
                     msg,
-                    &mut self.core.caches,
-                    &mut self.dispatcher,
                     &mut self.registry,
                 ),
             );
@@ -594,12 +585,13 @@ fn handle_message<R: PlushieRenderer>(
                         }
                     }
                     CoreEffect::ExtensionConfig(config) => {
-                        s.dispatcher.init_all(
-                            &config,
-                            &s.theme,
-                            s.core.default_text_size,
-                            s.core.default_font,
-                        );
+                        let ctx = plushie_ext::extensions::InitCtx {
+                            config: &config,
+                            theme: &s.theme,
+                            default_text_size: s.core.default_text_size,
+                            default_font: s.core.default_font,
+                        };
+                        s.registry.init_all(&ctx);
                     }
                     CoreEffect::SyncWindows => {}
                     CoreEffect::WidgetOp {
@@ -666,12 +658,9 @@ fn handle_message<R: PlushieRenderer>(
             }
             if is_tree_change {
                 if is_snapshot {
-                    s.dispatcher.clear_poisoned();
                     s.transition_manager.clear();
                 }
                 if let Some(root) = s.core.tree.root() {
-                    s.dispatcher
-                        .prepare_all(root, &mut s.core.caches.extension, &s.theme);
                     s.registry.prepare_walk(root, &mut s.core.caches, &s.theme);
                 }
 
@@ -810,7 +799,6 @@ fn handle_message<R: PlushieRenderer>(
             handle_screenshot(s, session_id, id, name, w, h)?;
         }
         IncomingMessage::Reset { id } => {
-            s.dispatcher.reset(&mut s.core.caches.extension);
             s.images = ImageRegistry::new();
             s.theme = Theme::Dark;
             s.transition_manager.clear();
@@ -826,23 +814,21 @@ fn handle_message<R: PlushieRenderer>(
             op,
             payload,
         } => {
-            let events =
-                s.dispatcher
-                    .handle_command(&node_id, &op, &payload, &mut s.core.caches.extension);
-            for event in events {
-                s.writer.emit(&event.with_session(session_id))?;
+            if let Some(events) = s.registry.handle_widget_op(&node_id, &op, &payload) {
+                for event in events {
+                    s.writer.emit(&event.with_session(session_id))?;
+                }
             }
         }
         IncomingMessage::ExtensionCommands { commands } => {
             for cmd in commands {
-                let events = s.dispatcher.handle_command(
-                    &cmd.node_id,
-                    &cmd.op,
-                    &cmd.payload,
-                    &mut s.core.caches.extension,
-                );
-                for event in events {
-                    s.writer.emit(&event.with_session(session_id))?;
+                if let Some(events) =
+                    s.registry
+                        .handle_widget_op(&cmd.node_id, &cmd.op, &cmd.payload)
+                {
+                    for event in events {
+                        s.writer.emit(&event.with_session(session_id))?;
+                    }
                 }
             }
         }
@@ -922,8 +908,7 @@ fn handle_screenshot<R: PlushieRenderer>(
         caches: &s.core.caches,
         images: &s.images,
         theme: &s.theme,
-        extensions: &s.dispatcher,
-        registry: Some(&s.registry),
+        registry: &s.registry,
         default_text_size: s.core.default_text_size,
         default_font: s.core.default_font,
         window_id: "",
@@ -1014,7 +999,6 @@ fn screenshot_map(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run(
     forced_codec: Option<Codec>,
-    dispatcher: ExtensionDispatcher,
     mode: Mode,
     max_sessions: usize,
     ext_keys: &[String],
@@ -1052,29 +1036,20 @@ pub(crate) fn run(
 
     // Branch on mode once at the top. Headless uses iced::Renderer
     // (tiny-skia) for real screenshots. Mock uses the null renderer ()
-    // for speed, with an empty dispatcher (extensions don't render in
-    // mock mode -- synthetic events handle all interactions).
+    // for speed (synthetic events handle all interactions).
     match mode {
         Mode::Headless => {
             if max_sessions <= 1 {
-                run_single(codec, dispatcher, mode, &mut reader, initial);
+                run_single::<iced::Renderer>(codec, mode, &mut reader, initial);
             } else {
-                run_multiplexed(codec, dispatcher, mode, max_sessions, &mut reader, initial);
+                run_multiplexed::<iced::Renderer>(codec, mode, max_sessions, &mut reader, initial);
             }
         }
         Mode::Mock => {
-            let mock_dispatcher = ExtensionDispatcher::<()>::new(vec![]);
             if max_sessions <= 1 {
-                run_single(codec, mock_dispatcher, mode, &mut reader, initial);
+                run_single::<()>(codec, mode, &mut reader, initial);
             } else {
-                run_multiplexed(
-                    codec,
-                    mock_dispatcher,
-                    mode,
-                    max_sessions,
-                    &mut reader,
-                    initial,
-                );
+                run_multiplexed::<()>(codec, mode, max_sessions, &mut reader, initial);
             }
         }
     }
@@ -1203,12 +1178,11 @@ fn read_message(codec: Codec, reader: &mut impl BufRead) -> Option<SessionMessag
 /// original design: one session, direct stdout writes.
 fn run_single<R: PlushieRenderer>(
     codec: Codec,
-    dispatcher: ExtensionDispatcher<R>,
     mode: Mode,
     reader: &mut impl BufRead,
     initial: crate::startup::InitialSettings,
 ) {
-    let mut session = Session::new(dispatcher, mode, WireWriter::stdout());
+    let mut session = Session::<R>::new(mode, WireWriter::stdout());
 
     // Process the initial Settings through the session so Core.apply()
     // picks up default_event_rate, default_text_size, extensions, etc.
@@ -1238,7 +1212,6 @@ fn run_single<R: PlushieRenderer>(
 /// to per-session threads. Writer thread serializes output to stdout.
 fn run_multiplexed<R: PlushieRenderer>(
     codec: Codec,
-    template: ExtensionDispatcher<R>,
     mode: Mode,
     max_sessions: usize,
     reader: &mut impl BufRead,
@@ -1321,22 +1294,13 @@ fn run_multiplexed<R: PlushieRenderer>(
                     // Bounded channel (32) provides natural back-pressure
                     // from the reader to slow sessions.
                     let (tx, rx) = mpsc::sync_channel::<IncomingMessage>(32);
-                    let dispatcher = match template.clone_for_session() {
-                        Ok(d) => d,
-                        Err(e) => {
-                            log::error!(
-                                "failed to clone extensions for session '{session_id}': {e}"
-                            );
-                            continue;
-                        }
-                    };
                     let writer = WireWriter::channel(writer_tx.clone());
                     let sid = session_id.clone();
 
                     let closed_writer_tx = writer_tx.clone();
                     let handle = thread::spawn(move || {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            let mut session = Session::new(dispatcher, mode, writer);
+                            let mut session = Session::<R>::new(mode, writer);
                             for msg in &rx {
                                 let mut read_next = || rx.recv().ok();
                                 if let Err(e) =

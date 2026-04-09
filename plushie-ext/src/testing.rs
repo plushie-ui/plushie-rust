@@ -18,9 +18,10 @@
 use iced::Theme;
 use serde_json::{Value, json};
 
-use crate::extensions::{ExtensionCaches, ExtensionDispatcher, RenderCtx, WidgetEnv};
+use crate::extensions::{ExtensionCaches, RenderCtx, WidgetEnv};
 use crate::image_registry::ImageRegistry;
 use crate::protocol::TreeNode;
+use crate::registry::WidgetRegistry;
 use crate::widgets::SharedState;
 
 // ---------------------------------------------------------------------------
@@ -106,7 +107,7 @@ pub struct TestEnv {
     pub shared_state: SharedState,
     pub images: ImageRegistry,
     pub theme: Theme,
-    pub dispatcher: ExtensionDispatcher,
+    pub registry: WidgetRegistry,
     pub default_text_size: Option<f32>,
     pub default_font: Option<iced::Font>,
 }
@@ -116,7 +117,7 @@ impl std::fmt::Debug for TestEnv {
         f.debug_struct("TestEnv")
             .field("ext_caches", &self.ext_caches)
             .field("images", &self.images)
-            .field("dispatcher", &self.dispatcher)
+            .field("registry", &self.registry)
             .field("default_text_size", &self.default_text_size)
             .field("default_font", &self.default_font)
             .finish_non_exhaustive()
@@ -125,12 +126,14 @@ impl std::fmt::Debug for TestEnv {
 
 impl Default for TestEnv {
     fn default() -> Self {
+        let mut registry = WidgetRegistry::new();
+        registry.register_set(&crate::widgets::builtins::iced_widget_set());
         Self {
             ext_caches: ExtensionCaches::new(),
             shared_state: SharedState::new(),
             images: ImageRegistry::new(),
             theme: Theme::Dark,
-            dispatcher: ExtensionDispatcher::new(vec![]),
+            registry,
             default_text_size: None,
             default_font: None,
         }
@@ -144,8 +147,7 @@ impl TestEnv {
             caches: &self.shared_state,
             images: &self.images,
             theme: &self.theme,
-            extensions: &self.dispatcher,
-            registry: None,
+            registry: &self.registry,
             default_text_size: self.default_text_size,
             default_font: self.default_font,
             window_id: "",
@@ -232,7 +234,6 @@ mod tests {
         let ctx = test.render_ctx();
         let env = test.env(&ctx);
         assert!(!env.caches.contains("test", "anything"));
-        assert!(ctx.extensions.is_empty());
     }
 
     #[test]

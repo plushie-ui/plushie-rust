@@ -6,7 +6,6 @@
 
 use iced::{Task, Theme, keyboard, window};
 
-use plushie_ext::extensions::ExtensionDispatcher;
 use plushie_ext::message::Message;
 use plushie_ext::protocol::OutgoingEvent;
 use plushie_ext::registry::WidgetRegistry;
@@ -33,8 +32,8 @@ pub fn validate_scale_factor(sf: f32) -> f32 {
 // ---------------------------------------------------------------------------
 
 /// The iced daemon application. Owns the rendering engine, window
-/// state, extension dispatcher, and all runtime state needed to
-/// translate between the wire protocol and iced's update/view cycle.
+/// state, widget registry, and all runtime state needed to translate
+/// between the wire protocol and iced's update/view cycle.
 pub struct App {
     pub core: plushie_ext::engine::Core,
     pub theme: Theme,
@@ -52,10 +51,8 @@ pub struct App {
     pub theme_follows_system: bool,
     /// Global scale factor multiplier (1.0 = follow OS DPI).
     pub scale_factor: f32,
-    /// Extension dispatcher for custom widget types.
-    pub dispatcher: ExtensionDispatcher,
-    /// Unified widget registry. When populated, render dispatch goes
-    /// through the registry instead of the hardcoded match.
+    /// Unified widget registry. All widget types (built-in and extension)
+    /// are dispatched through this registry.
     pub registry: WidgetRegistry,
     /// Epoch for animation_frame timestamp calculation.
     pub animation_epoch: Option<iced::time::Instant>,
@@ -75,11 +72,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(
-        dispatcher: ExtensionDispatcher,
-        registry: WidgetRegistry,
-        effect_handler: Box<dyn EffectHandler>,
-    ) -> Self {
+    pub fn new(registry: WidgetRegistry, effect_handler: Box<dyn EffectHandler>) -> Self {
         Self {
             core: plushie_ext::engine::Core::new(),
             theme: DEFAULT_THEME,
@@ -89,7 +82,6 @@ impl App {
             system_theme: DEFAULT_THEME,
             theme_follows_system: false,
             scale_factor: 1.0,
-            dispatcher,
             registry,
             animation_epoch: None,
             emitter: EventEmitter::new(),

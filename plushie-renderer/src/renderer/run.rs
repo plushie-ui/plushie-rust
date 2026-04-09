@@ -119,7 +119,6 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
     if has_flag("--mock") {
         crate::headless::run(
             forced_codec,
-            builder.build_dispatcher(),
             crate::headless::Mode::Mock,
             max_sessions,
             &ext_keys,
@@ -132,7 +131,6 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
     if has_flag("--headless") {
         crate::headless::run(
             forced_codec,
-            builder.build_dispatcher(),
             crate::headless::Mode::Headless,
             max_sessions,
             &ext_keys,
@@ -185,10 +183,10 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
                 .take()
                 .expect("daemon init closure called more than once")
                 .widget_set(&plushie_ext::widgets::builtins::iced_widget_set());
-            let (registry, dispatcher) = builder.build();
+            let registry = builder.build();
 
             let effect_handler = Box::new(crate::effects::NativeEffectHandler);
-            let mut app = App::new(dispatcher, registry, effect_handler);
+            let mut app = App::new(registry, effect_handler);
 
             // Extract scale_factor before applying settings to Core
             app.scale_factor = plushie_renderer_lib::app::validate_scale_factor(
@@ -204,12 +202,13 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
             for effect in effects {
                 match effect {
                     plushie_ext::engine::CoreEffect::ExtensionConfig(config) => {
-                        app.dispatcher.init_all(
-                            &config,
-                            &app.theme,
-                            app.core.default_text_size,
-                            app.core.default_font,
-                        );
+                        let ctx = plushie_ext::extensions::InitCtx {
+                            config: &config,
+                            theme: &app.theme,
+                            default_text_size: app.core.default_text_size,
+                            default_font: app.core.default_font,
+                        };
+                        app.registry.init_all(&ctx);
                     }
                     other => {
                         log::warn!("unexpected effect from initial Settings: {other:?}");

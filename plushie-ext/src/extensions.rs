@@ -549,11 +549,9 @@ pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
     pub caches: &'a SharedState<R>,
     pub images: &'a ImageRegistry,
     pub theme: &'a Theme,
-    pub extensions: &'a ExtensionDispatcher<R>,
-    /// Widget registry for unified dispatch. When present, render()
-    /// uses the registry instead of the hardcoded match. Extension types
-    /// still fall through to the ExtensionDispatcher.
-    pub registry: Option<&'a crate::registry::WidgetRegistry<R>>,
+    /// Widget registry for unified dispatch. All widget types (built-in
+    /// and extension) are registered here.
+    pub registry: &'a crate::registry::WidgetRegistry<R>,
     pub default_text_size: Option<f32>,
     pub default_font: Option<iced::Font>,
     /// The plushie window ID this render is for.
@@ -617,8 +615,9 @@ const RENDER_PANIC_THRESHOLD: u32 = 3;
 ///
 /// Maintains a type-name index for O(1) dispatch, a node-to-extension
 /// map for event/command routing, and per-extension poison state for
-/// panic isolation. Created via
-/// [`PlushieAppBuilder::build_dispatcher`](crate::app::PlushieAppBuilder::build_dispatcher).
+/// panic isolation. Legacy infrastructure: new code should use
+/// [`WidgetRegistry`](crate::registry::WidgetRegistry) with
+/// [`ExtensionAdapter`](crate::extension_adapter::ExtensionAdapter).
 pub struct ExtensionDispatcher<R: PlushieRenderer = iced::Renderer> {
     extensions: Vec<Box<dyn WidgetExtension<R>>>,
     type_name_index: HashMap<String, usize>,
@@ -1905,14 +1904,14 @@ mod tests {
         // 4) Verify the poisoned extension renders a placeholder via the
         //    dispatcher (returns Some with red error text, not a panic).
         let node = make_node("pr1", "panicky_render");
+        let registry = crate::registry::WidgetRegistry::new();
         {
             let shared_state = crate::widgets::SharedState::new();
             let ctx = RenderCtx {
                 caches: &shared_state,
                 images: &images,
                 theme: &theme,
-                extensions: &dispatcher,
-                registry: None,
+                registry: &registry,
                 default_text_size: None,
                 default_font: None,
                 window_id: "",
@@ -1946,8 +1945,7 @@ mod tests {
             caches: &shared_state2,
             images: &images,
             theme: &theme,
-            extensions: &dispatcher,
-            registry: None,
+            registry: &registry,
             default_text_size: None,
             default_font: None,
             window_id: "",

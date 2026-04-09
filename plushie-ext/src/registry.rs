@@ -397,6 +397,18 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
     }
 
+    /// Route a widget operation (extension command) to the factory
+    /// that owns the target node ID.
+    pub fn handle_widget_op(
+        &mut self,
+        node_id: &str,
+        op: &str,
+        payload: &Value,
+    ) -> Option<Vec<OutgoingEvent>> {
+        let (idx, _) = self.get_for_node_id(node_id)?;
+        self.impls[idx].handle_widget_op(node_id, op, payload)
+    }
+
     /// Clear the node-to-factory mapping. Called before a full prepare walk.
     pub fn clear_node_map(&mut self) {
         self.node_factory_map.clear();

@@ -200,9 +200,9 @@ impl PlushieApp {
 
                     let builder =
                         builder.widget_set(&plushie_ext::widgets::builtins::iced_widget_set());
-                    let (registry, dispatcher) = builder.build();
+                    let registry = builder.build();
                     let effect_handler = Box::new(WebEffectHandler);
-                    let mut app = App::new(dispatcher, registry, effect_handler);
+                    let mut app = App::new(registry, effect_handler);
 
                     app.scale_factor = plushie_renderer_lib::validate_scale_factor(
                         settings
@@ -215,12 +215,13 @@ impl PlushieApp {
                     let effects = app.core.apply(IncomingMessage::Settings { settings });
                     for effect in effects {
                         if let plushie_ext::engine::CoreEffect::ExtensionConfig(config) = effect {
-                            app.dispatcher.init_all(
-                                &config,
-                                &app.theme,
-                                app.core.default_text_size,
-                                app.core.default_font,
-                            );
+                            let ctx = plushie_ext::extensions::InitCtx {
+                                config: &config,
+                                theme: &app.theme,
+                                default_text_size: app.core.default_text_size,
+                                default_font: app.core.default_font,
+                            };
+                            app.registry.init_all(&ctx);
                         }
                     }
 

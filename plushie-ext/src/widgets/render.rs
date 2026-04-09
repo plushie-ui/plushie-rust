@@ -56,8 +56,7 @@ pub fn builtin_widget_types() -> &'static [&'static str] {
         "table",
     ]
 }
-use super::helpers::*;
-use super::{display, input, interactive, layout, table, validate};
+use super::validate;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
 use crate::message::Message;
@@ -111,42 +110,25 @@ pub fn render<'a, R: PlushieRenderer>(
         validate::validate_props(node);
     }
 
-    // Dispatch through the WidgetRegistry when available. The registry
-    // holds PlushieWidget impls for all built-in types and falls through
-    // to the ExtensionDispatcher for custom extension types.
-    let element = if let Some(registry) = ctx.registry {
-        if let Some(widget) = registry.get_for_type(node.type_name.as_str()) {
-            widget.render(node, &ctx)
-        } else {
-            // Not in the registry: try extension dispatch
-            render_via_extension(node, ctx)
-        }
+    // Dispatch through the WidgetRegistry. All widget types (built-in
+    // and extension) are registered here.
+    let element = if let Some(widget) = ctx.registry.get_for_type(node.type_name.as_str()) {
+        widget.render(node, &ctx)
     } else {
-        // No registry (test paths): use hardcoded match
-        render_via_match(node, ctx)
+        log::warn!(
+            "[id={}] unknown node type `{}`, rendering as empty container",
+            node.id,
+            node.type_name
+        );
+        container(Space::new()).into()
     };
 
     // Explicit a11y overrides take precedence. When no explicit a11y prop
-    // exists, try widget-specific auto-inference.
-    //
-    // When the registry is active, infer_a11y() on the PlushieWidget is
-    // used. Otherwise, fall back to the hardcoded match (test paths).
+    // exists, try widget-specific auto-inference via the registry.
     let overrides = crate::widgets::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
-        if let Some(registry) = ctx.registry {
-            registry
-                .get_for_type(node.type_name.as_str())
-                .and_then(|widget| widget.infer_a11y(node))
-        } else {
-            // Hardcoded path (test contexts without registry).
-            // Image and SVG use iced's native .alt()/.description() methods
-            // directly, so no A11yOverride wrapping needed for those.
-            let props = node.props.as_object();
-            match node.type_name.as_str() {
-                "text_input" | "text_editor" | "combo_box" => prop_str(props, "placeholder")
-                    .map(crate::widgets::a11y::A11yOverrides::with_description),
-                _ => None,
-            }
-        }
+        ctx.registry
+            .get_for_type(node.type_name.as_str())
+            .and_then(|widget| widget.infer_a11y(node))
     });
 
     if let Some(overrides) = overrides {
@@ -157,125 +139,18 @@ pub fn render<'a, R: PlushieRenderer>(
 }
 
 // ---------------------------------------------------------------------------
-// Match dispatch (used when no registry is available)
-// ---------------------------------------------------------------------------
-
-/// Dispatch via the hardcoded match statement. Used when no WidgetRegistry
-/// is present (test paths).
-fn render_via_match<'a, R: PlushieRenderer>(
-    node: &'a TreeNode,
-    ctx: RenderCtx<'a, R>,
-) -> Element<'a, Message, Theme, R> {
-    // Stateful widgets are handled by PlushieWidget factories via the
-    // registry and are not listed here. This match covers stateless
-    // widgets only (test paths without a registry).
-    // This match only covers stateless widgets and those still
-    // using SharedState (canvas, qr_code).
-    match node.type_name.as_str() {
-        // Layout widgets (stateless)
-        "column" => layout::render_column(node, ctx),
-        "row" => layout::render_row(node, ctx),
-        "container" => layout::render_container(node, ctx),
-        "stack" => layout::render_stack(node, ctx),
-        "grid" => layout::render_grid(node, ctx),
-        "pin" => layout::render_pin(node, ctx),
-        "keyed_column" => layout::render_keyed_column(node, ctx),
-        "float" => layout::render_float(node, ctx),
-        "responsive" => layout::render_responsive(node, ctx),
-        "scrollable" => layout::render_scrollable(node, ctx),
-        // Display widgets (stateless only)
-        "text" => display::render_text(node, ctx),
-        "rich_text" | "rich" => display::render_rich_text(node, ctx),
-        "space" => display::render_space(node, ctx),
-        "rule" => display::render_rule(node, ctx),
-        "progress_bar" => display::render_progress_bar(node, ctx),
-        "image" => display::render_image(node, ctx),
-        "svg" => display::render_svg(node, ctx),
-        // Input widgets (stateless only)
-        "text_input" => input::render_text_input(node, ctx),
-        "checkbox" => input::render_checkbox(node, ctx),
-        "toggler" => input::render_toggler(node, ctx),
-        "radio" => input::render_radio(node, ctx),
-        "slider" => input::render_slider(node, ctx),
-        "vertical_slider" => input::render_vertical_slider(node, ctx),
-        "pick_list" => input::render_pick_list(node, ctx),
-        // Interactive widgets (stateless only)
-        "button" => interactive::render_button(node, ctx),
-        "pointer_area" => interactive::render_mouse_area(node, ctx),
-        "sensor" => interactive::render_sensor(node, ctx),
-        "tooltip" => interactive::render_tooltip(node, ctx),
-        "window" => interactive::render_window(node, ctx),
-        "overlay" => interactive::render_overlay(node, ctx),
-        // Table (stateless)
-        "table" => table::render_table(node, ctx),
-        // Extension dispatch / unknown type
-        _ => render_via_extension(node, ctx),
-    }
-}
-
-/// Dispatch to the ExtensionDispatcher for extension types,
-/// or render a placeholder for unknown types.
-fn render_via_extension<'a, R: PlushieRenderer>(
-    node: &'a TreeNode,
-    ctx: RenderCtx<'a, R>,
-) -> Element<'a, Message, Theme, R> {
-    let type_name = node.type_name.as_str();
-    if ctx.extensions.handles_type(type_name) {
-        let env = crate::extensions::WidgetEnv {
-            caches: &ctx.caches.extension,
-            ctx,
-        };
-        if crate::extensions::catch_unwind_enabled() {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                ctx.extensions.render(node, &env)
-            })) {
-                Ok(Some(element)) => element,
-                Ok(None) => container(Space::new()).into(),
-                Err(_) => {
-                    let at_threshold = ctx.extensions.record_render_panic(type_name);
-                    if at_threshold {
-                        log::error!(
-                            "[id={}] extension for type `{type_name}` hit render panic \
-                             threshold, will be poisoned on next prepare cycle",
-                            node.id
-                        );
-                    } else {
-                        log::error!("extension panicked in render for node `{}`", node.id);
-                    }
-                    iced::widget::text(format!(
-                        "Extension error: type `{type_name}`, node `{}`",
-                        node.id
-                    ))
-                    .color(iced::Color::from_rgb(1.0, 0.0, 0.0))
-                    .into()
-                }
-            }
-        } else {
-            match ctx.extensions.render(node, &env) {
-                Some(element) => element,
-                None => container(Space::new()).into(),
-            }
-        }
-    } else {
-        log::warn!(
-            "[id={}] unknown node type `{type_name}`, rendering as empty container",
-            node.id
-        );
-        container(Space::new()).into()
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::extensions::ExtensionDispatcher;
     use crate::image_registry::ImageRegistry;
+    use crate::prop_helpers::prop_str;
     use crate::protocol::TreeNode;
+    use crate::registry::WidgetRegistry;
     use crate::widgets::SharedState;
+    use crate::widgets::builtins::iced_widget_set;
 
     // -- Image registry handle lookup --
 
@@ -318,18 +193,23 @@ mod tests {
         smoke_node("child", "text", serde_json::json!({"content": "hi"}))
     }
 
+    fn smoke_registry() -> WidgetRegistry {
+        let mut registry = WidgetRegistry::new();
+        registry.register_set(&iced_widget_set());
+        registry
+    }
+
     fn smoke_ctx<'a>(
         caches: &'a SharedState,
         images: &'a ImageRegistry,
         theme: &'a iced::Theme,
-        dispatcher: &'a ExtensionDispatcher,
+        registry: &'a WidgetRegistry,
     ) -> RenderCtx<'a> {
         RenderCtx {
             caches,
             images,
             theme,
-            extensions: dispatcher,
-            registry: None,
+            registry,
             default_text_size: None,
             default_font: None,
             window_id: "",
@@ -343,8 +223,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -354,8 +234,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -365,8 +245,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -381,8 +261,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -397,8 +277,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -412,8 +292,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -423,8 +303,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -434,8 +314,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -449,8 +329,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -464,8 +344,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -479,8 +359,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -490,8 +370,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -501,8 +381,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 
@@ -516,8 +396,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         // Should produce the empty container fallback, not panic.
         let _elem = render(&node, ctx);
     }
@@ -528,8 +408,8 @@ mod tests {
         let caches: SharedState = SharedState::new();
         let images = ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let dispatcher: ExtensionDispatcher = ExtensionDispatcher::default();
-        let ctx = smoke_ctx(&caches, &images, &theme, &dispatcher);
+        let registry = smoke_registry();
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
         let _elem = render(&node, ctx);
     }
 

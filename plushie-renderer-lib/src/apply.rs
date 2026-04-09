@@ -12,33 +12,29 @@ use crate::emitters::{emit_effect_response, emit_event};
 impl App {
     pub fn apply(&mut self, message: IncomingMessage) -> io::Result<()> {
         // Extension commands bypass the normal tree update / diff / patch cycle.
+        // Route through the unified widget registry.
         match &message {
             IncomingMessage::ExtensionCommand {
                 node_id,
                 op,
                 payload,
             } => {
-                let events = self.dispatcher.handle_command(
-                    node_id,
-                    op,
-                    payload,
-                    &mut self.core.caches.extension,
-                );
-                for ev in events {
-                    emit_event(ev)?;
+                if let Some(events) = self.registry.handle_widget_op(node_id, op, payload) {
+                    for ev in events {
+                        emit_event(ev)?;
+                    }
                 }
                 return Ok(());
             }
             IncomingMessage::ExtensionCommands { commands } => {
                 for cmd in commands {
-                    let events = self.dispatcher.handle_command(
-                        &cmd.node_id,
-                        &cmd.op,
-                        &cmd.payload,
-                        &mut self.core.caches.extension,
-                    );
-                    for ev in events {
-                        emit_event(ev)?;
+                    if let Some(events) =
+                        self.registry
+                            .handle_widget_op(&cmd.node_id, &cmd.op, &cmd.payload)
+                    {
+                        for ev in events {
+                            emit_event(ev)?;
+                        }
                     }
                 }
                 return Ok(());
@@ -156,12 +152,13 @@ impl App {
                     self.handle_image_op(&op, &handle, data, pixels, width, height);
                 }
                 CoreEffect::ExtensionConfig(config) => {
-                    self.dispatcher.init_all(
-                        &config,
-                        &self.theme,
-                        self.core.default_text_size,
-                        self.core.default_font,
-                    );
+                    let ctx = plushie_ext::extensions::InitCtx {
+                        config: &config,
+                        theme: &self.theme,
+                        default_text_size: self.core.default_text_size,
+                        default_font: self.core.default_font,
+                    };
+                    self.registry.init_all(&ctx);
                 }
                 CoreEffect::ExitNodes(nodes) => {
                     for (parent_id, index, node) in nodes {
@@ -187,12 +184,9 @@ impl App {
             }
 
             if is_snapshot {
-                self.dispatcher.clear_poisoned();
                 self.transition_manager.clear();
             }
             if let Some(root) = self.core.tree.root() {
-                self.dispatcher
-                    .prepare_all(root, &mut self.core.caches.extension, &self.theme);
                 self.registry
                     .prepare_walk(root, &mut self.core.caches, &self.theme);
             }

@@ -63,12 +63,8 @@ impl App {
             | Message::PaneResized(..)
             | Message::PaneDragged(..)
             | Message::PaneClicked(..)) => {
-                let events = crate::message_processing::process_widget_message(
-                    msg,
-                    &mut self.core.caches,
-                    &mut self.dispatcher,
-                    &mut self.registry,
-                );
+                let events =
+                    crate::message_processing::process_widget_message(msg, &mut self.registry);
                 let mut task = Task::none();
                 for event in events {
                     let t = if event.coalesce.is_some() {
@@ -316,9 +312,6 @@ impl App {
                     IncomingMessage::Reset { id } => {
                         // Flush any pending coalesced events before reset.
                         let _ = self.emitter.flush();
-
-                        // Clean up extension state before wiping core.
-                        self.dispatcher.reset(&mut self.core.caches.extension);
 
                         // Reset core and emit the response.
                         if let Err(e) = crate::scripting::handle_reset(&mut self.core, id) {

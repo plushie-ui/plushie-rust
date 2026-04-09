@@ -35,7 +35,7 @@ use iced::{Element, Theme};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
-use crate::extensions::InitCtx;
+use crate::extensions::{InitCtx, RenderCtx};
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
 use crate::widgets::a11y::A11yOverrides;
@@ -74,10 +74,14 @@ pub trait PlushieWidget<R: PlushieRenderer>: Send + Sync {
     ///
     /// Called during the immutable view phase. The widget reads its
     /// per-instance state from `&self` and shared state from `ctx`.
+    ///
+    /// The `'a` lifetime binds `&self`, `node`, and `ctx` together so
+    /// stateful widgets can return Elements that borrow from their own
+    /// fields (e.g., a cached `Theme` or `text_editor::Content`).
     fn render<'a>(
-        &self,
+        &'a self,
         node: &'a TreeNode,
-        ctx: &crate::extensions::RenderCtx<'a, R>,
+        ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R>;
 
     /// Update per-instance state for a node during the mutable phase.
@@ -412,9 +416,9 @@ mod tests {
         }
 
         fn render<'a>(
-            &self,
+            &'a self,
             _node: &'a TreeNode,
-            _ctx: &crate::extensions::RenderCtx<'a, ()>,
+            _ctx: &RenderCtx<'a, ()>,
         ) -> Element<'a, Message, Theme, ()> {
             iced::widget::text("test").into()
         }

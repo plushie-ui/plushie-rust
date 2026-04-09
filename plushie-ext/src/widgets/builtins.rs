@@ -37,7 +37,7 @@ macro_rules! builtin_widget {
             }
 
             fn render<'a>(
-                &self,
+                &'a self,
                 node: &'a TreeNode,
                 ctx: &RenderCtx<'a, R>,
             ) -> Element<'a, Message, Theme, R> {
@@ -60,7 +60,7 @@ macro_rules! builtin_widget {
             }
 
             fn render<'a>(
-                &self,
+                &'a self,
                 node: &'a TreeNode,
                 ctx: &RenderCtx<'a, R>,
             ) -> Element<'a, Message, Theme, R> {
@@ -143,7 +143,69 @@ builtin_widget!(ButtonWidget,          ["button"],       interactive::render_but
 builtin_widget!(PointerAreaWidget,     ["pointer_area"], interactive::render_mouse_area);
 builtin_widget!(SensorWidget,          ["sensor"],       interactive::render_sensor);
 builtin_widget!(TooltipWidget,         ["tooltip"],      interactive::render_tooltip);
-builtin_widget!(ThemerWidget,          ["themer"],       interactive::render_themer);
+// ThemerWidget: extracted stateful factory (owns resolved theme cache)
+// See interactive::ensure_themer_cache for the original ensure logic.
+pub(crate) struct ThemerWidget {
+    /// Resolved themes per (window_id, node_id). Populated during prepare,
+    /// borrowed during render for child context theming.
+    themes: std::collections::HashMap<(String, String), iced::Theme>,
+}
+
+impl ThemerWidget {
+    pub(crate) fn new() -> Self {
+        Self {
+            themes: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
+    fn type_names(&self) -> &[&str] {
+        &["themer"]
+    }
+
+    fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
+        let key = (window_id.to_string(), node.id.clone());
+        let props = node.props.as_object();
+        if let Some(resolved) = props
+            .and_then(|p| p.get("theme"))
+            .and_then(crate::theming::resolve_theme_only)
+        {
+            self.themes.insert(key, resolved);
+        } else {
+            self.themes.remove(&key);
+        }
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, iced::Theme, R> {
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        let cached_theme = self.themes.get(&key);
+        let child_theme = cached_theme.unwrap_or(ctx.theme);
+        let child_ctx = ctx.with_theme(child_theme);
+
+        let child: Element<'a, Message, iced::Theme, R> = node
+            .children
+            .first()
+            .map(|c| child_ctx.render_child(c))
+            .unwrap_or_else(|| iced::widget::Space::new().into());
+
+        let themer_theme = cached_theme.cloned();
+        iced::widget::Themer::new(themer_theme, child).into()
+    }
+
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        let key = (window_id.to_string(), node_id.to_string());
+        self.themes.remove(&key);
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(ThemerWidget::new())
+    }
+}
 builtin_widget!(WindowWidget,          ["window"],       interactive::render_window);
 builtin_widget!(OverlayWidget,         ["overlay"],      interactive::render_overlay);
 
@@ -210,7 +272,7 @@ impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {
             Box::new(PointerAreaWidget),
             Box::new(SensorWidget),
             Box::new(TooltipWidget),
-            Box::new(ThemerWidget),
+            Box::new(ThemerWidget::new()),
             Box::new(WindowWidget),
             Box::new(OverlayWidget),
             // Canvas

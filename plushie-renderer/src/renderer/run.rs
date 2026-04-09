@@ -179,15 +179,16 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
                 .take()
                 .unwrap_or_default();
 
-            let dispatcher = builder_slot
+            let builder = builder_slot
                 .lock()
                 .expect("builder_slot lock poisoned")
                 .take()
                 .expect("daemon init closure called more than once")
-                .build_dispatcher();
+                .widget_set(&plushie_ext::widgets::builtins::iced_widget_set());
+            let (registry, dispatcher) = builder.build();
 
             let effect_handler = Box::new(crate::effects::NativeEffectHandler);
-            let mut app = App::new(dispatcher, effect_handler);
+            let mut app = App::new(dispatcher, registry, effect_handler);
 
             // Extract scale_factor before applying settings to Core
             app.scale_factor = plushie_renderer_lib::app::validate_scale_factor(

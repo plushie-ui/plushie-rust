@@ -84,6 +84,13 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
         self.registry
     }
 
+    /// Consume the builder and produce both the [`WidgetRegistry`] and
+    /// the legacy [`ExtensionDispatcher`] (transition period).
+    pub fn build(self) -> (WidgetRegistry<R>, ExtensionDispatcher<R>) {
+        let dispatcher = ExtensionDispatcher::new(self.extensions);
+        (self.registry, dispatcher)
+    }
+
     // -- Legacy WidgetExtension API (transition period) -----------------------
 
     /// Register a legacy [`WidgetExtension`].

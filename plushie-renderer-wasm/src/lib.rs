@@ -198,9 +198,11 @@ impl PlushieApp {
                         .take()
                         .expect("daemon init closure called more than once");
 
-                    let dispatcher = builder.build_dispatcher();
+                    let builder = builder
+                        .widget_set(&plushie_ext::widgets::builtins::iced_widget_set());
+                    let (registry, dispatcher) = builder.build();
                     let effect_handler = Box::new(WebEffectHandler);
-                    let mut app = App::new(dispatcher, effect_handler);
+                    let mut app = App::new(dispatcher, registry, effect_handler);
 
                     app.scale_factor = plushie_renderer_lib::validate_scale_factor(
                         settings

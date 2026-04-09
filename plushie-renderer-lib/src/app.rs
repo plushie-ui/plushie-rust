@@ -11,6 +11,7 @@ use iced::{Task, Theme, keyboard, window};
 use plushie_ext::extensions::ExtensionDispatcher;
 use plushie_ext::message::Message;
 use plushie_ext::protocol::OutgoingEvent;
+use plushie_ext::registry::WidgetRegistry;
 
 use crate::constants::*;
 use crate::effects::EffectHandler;
@@ -57,6 +58,9 @@ pub struct App {
     pub last_slide_values: HashMap<String, f64>,
     /// Extension dispatcher for custom widget types.
     pub dispatcher: ExtensionDispatcher,
+    /// Unified widget registry. When populated, render dispatch goes
+    /// through the registry instead of the hardcoded match.
+    pub registry: WidgetRegistry,
     /// Epoch for animation_frame timestamp calculation.
     pub animation_epoch: Option<iced::time::Instant>,
     /// Rate-limited event emitter with coalescing.
@@ -75,7 +79,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(dispatcher: ExtensionDispatcher, effect_handler: Box<dyn EffectHandler>) -> Self {
+    pub fn new(
+        dispatcher: ExtensionDispatcher,
+        registry: WidgetRegistry,
+        effect_handler: Box<dyn EffectHandler>,
+    ) -> Self {
         Self {
             core: plushie_ext::engine::Core::new(),
             theme: DEFAULT_THEME,
@@ -87,6 +95,7 @@ impl App {
             scale_factor: 1.0,
             last_slide_values: HashMap::new(),
             dispatcher,
+            registry,
             animation_epoch: None,
             emitter: EventEmitter::new(),
             effect_handler,

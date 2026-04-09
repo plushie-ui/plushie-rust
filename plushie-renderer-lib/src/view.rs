@@ -32,7 +32,7 @@ impl App {
                     images: &self.image_registry,
                     theme: resolved_theme,
                     extensions: &self.dispatcher,
-                    registry: None,
+                    registry: Some(&self.registry),
                     default_text_size: self.core.default_text_size,
                     default_font: self.core.default_font,
                     window_id,

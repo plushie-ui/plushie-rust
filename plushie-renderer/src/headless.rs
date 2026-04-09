@@ -153,6 +153,7 @@ struct Session<R: PlushieRenderer> {
     core: Core<R>,
     theme: Theme,
     dispatcher: ExtensionDispatcher<R>,
+    registry: plushie_ext::registry::WidgetRegistry<R>,
     images: ImageRegistry,
     writer: WireWriter,
     /// Slider value tracking for SlideRelease (mirrors App.last_slide_values).
@@ -185,10 +186,14 @@ impl<R: PlushieRenderer> Session<R> {
             cursor: mouse::Cursor::Unavailable,
         };
 
+        let mut registry = plushie_ext::registry::WidgetRegistry::new();
+        registry.register_set(&plushie_ext::widgets::builtins::iced_widget_set());
+
         Self {
             core: Core::new(),
             theme: Theme::Dark,
             dispatcher,
+            registry,
             images: ImageRegistry::new(),
             writer,
             last_slide_values: HashMap::new(),
@@ -231,7 +236,7 @@ impl<R: PlushieRenderer> Session<R> {
             images: &self.images,
             theme: &self.theme,
             extensions: &self.dispatcher,
-            registry: None,
+            registry: Some(&self.registry),
             default_text_size: self.core.default_text_size,
             default_font: self.core.default_font,
             window_id: "",
@@ -923,7 +928,7 @@ fn handle_screenshot<R: PlushieRenderer>(
         images: &s.images,
         theme: &s.theme,
         extensions: &s.dispatcher,
-        registry: None,
+        registry: Some(&s.registry),
         default_text_size: s.core.default_text_size,
         default_font: s.core.default_font,
         window_id: "",

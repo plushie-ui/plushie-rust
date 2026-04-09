@@ -173,7 +173,7 @@ pub trait WidgetSet<R: PlushieRenderer> {
 /// walks progressively shorter prefixes until a match is found. This
 /// handles both container-scoped IDs and internal composition (e.g.,
 /// a gauge widget that internally renders a canvas).
-pub struct WidgetRegistry<R: PlushieRenderer> {
+pub struct WidgetRegistry<R: PlushieRenderer = iced::Renderer> {
     /// All registered widget implementations.
     impls: Vec<Box<dyn PlushieWidget<R>>>,
 

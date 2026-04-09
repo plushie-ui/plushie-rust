@@ -774,12 +774,21 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, iced::Theme, R> {
-        // Delegate to existing render function during transition.
-        // ThemerWidget.prepare() populates self.themes, but the registry
-        // prepare_walk is not yet wired in. The old ensure_themer_cache
-        // populates WidgetCaches.themer_themes, which render_themer reads.
-        // TODO: once registry prepare_walk is active, render from self.themes.
-        interactive::render_themer(node, *ctx)
+        // Render from factory-owned state. prepare() populates self.themes
+        // via the registry prepare_walk (wired into App::apply and headless).
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        let cached_theme = self.themes.get(&key);
+        let child_theme = cached_theme.unwrap_or(ctx.theme);
+        let child_ctx = ctx.with_theme(child_theme);
+
+        let child: Element<'a, Message, iced::Theme, R> = node
+            .children
+            .first()
+            .map(|c| child_ctx.render_child(c))
+            .unwrap_or_else(|| iced::widget::Space::new().into());
+
+        let themer_theme = cached_theme.cloned();
+        iced::widget::Themer::new(themer_theme, child).into()
     }
 
     fn cleanup(&mut self, node_id: &str, window_id: &str) {

@@ -348,6 +348,41 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
     }
 
+    /// Walk the tree depth-first and call `prepare()` on each factory
+    /// for matching nodes. Also populates the `node_factory_map` for
+    /// message routing.
+    ///
+    /// Call this after `ensure_caches` (which handles shared state like
+    /// style overrides) and before rendering.
+    pub fn prepare_walk(&mut self, root: &TreeNode, theme: &Theme) {
+        self.node_factory_map.clear();
+        self.prepare_walk_inner(root, "", theme);
+    }
+
+    fn prepare_walk_inner(&mut self, node: &TreeNode, window_id: &str, theme: &Theme) {
+        // Track which window we're in. Window nodes set the window_id
+        // for their subtree.
+        let current_window_id = if node.type_name == "window" {
+            node.id.as_str()
+        } else {
+            window_id
+        };
+
+        // Look up factory for this node type and call prepare.
+        if let Some(&idx) = self.type_index.get(node.type_name.as_str()) {
+            self.node_factory_map
+                .insert(node.id.clone(), idx);
+            // Split borrow: index into impls while self.type_index/node_factory_map
+            // are not borrowed mutably (they were used above, but the borrow ended).
+            self.impls[idx].prepare(node, current_window_id, theme);
+        }
+
+        // Recurse into children.
+        for child in &node.children {
+            self.prepare_walk_inner(child, current_window_id, theme);
+        }
+    }
+
     /// Clear the node-to-factory mapping. Called before a full prepare walk.
     pub fn clear_node_map(&mut self) {
         self.node_factory_map.clear();

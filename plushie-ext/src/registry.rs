@@ -40,6 +40,24 @@ use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
 use crate::widgets::a11y::A11yOverrides;
 
+/// Check if panic isolation is disabled via the PLUSHIE_NO_CATCH_UNWIND env var.
+/// When true, extension panics propagate normally, preserving stack traces for
+/// debugging. Only use during development. In production, catch_unwind
+/// prevents one extension from crashing the entire renderer.
+fn catch_unwind_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            std::env::var("PLUSHIE_NO_CATCH_UNWIND").is_err()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            true
+        }
+    })
+}
+
 // ---------------------------------------------------------------------------
 // PlushieWidget trait
 // ---------------------------------------------------------------------------
@@ -317,7 +335,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
 
         let is_trusted = self.provenance.get(type_name).is_some_and(|s| s == "iced");
 
-        if is_trusted || !crate::extensions::catch_unwind_enabled() {
+        if is_trusted || !catch_unwind_enabled() {
             self.impls[idx].render(node, ctx)
         } else {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

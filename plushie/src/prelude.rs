@@ -20,6 +20,9 @@ pub use crate::command::Command;
 // Subscriptions
 pub use crate::subscription::Subscription;
 
+// UI builder functions
+pub use crate::ui::*;
+
 // Property types
 pub use crate::types::{
     Align, Border, Color, Font, Gradient, KeyModifiers,

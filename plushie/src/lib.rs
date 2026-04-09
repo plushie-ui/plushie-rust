@@ -59,6 +59,7 @@ pub mod prelude;
 pub mod settings;
 pub mod subscription;
 pub mod types;
+pub mod ui;
 
 // Re-export the widget SDK for widget authors who also use the app SDK.
 pub use plushie_widget_sdk as widget_sdk;
@@ -72,10 +73,23 @@ use event::Event;
 use settings::{ExitReason, Settings, WindowConfig};
 use subscription::Subscription;
 
-/// Placeholder for the view tree type. Will be defined in the
-/// ui module once view builders are implemented.
+/// An opaque view tree returned from [`App::view`].
+///
+/// Built using UI builder functions (`window`, `column`, `button`,
+/// `text`, etc.). Internally wraps a JSON value for both direct
+/// and wire mode rendering.
 #[derive(Debug, Clone)]
 pub struct View(pub(crate) serde_json::Value);
+
+impl View {
+    /// Access the internal JSON representation.
+    ///
+    /// Primarily useful for testing and debugging. In production
+    /// code, the View is consumed by the runtime.
+    pub fn as_json(&self) -> &serde_json::Value {
+        &self.0
+    }
+}
 
 /// The core trait for plushie applications.
 ///

@@ -97,22 +97,26 @@ pub fn render<'a, R: PlushieRenderer>(
         render_via_match(node, ctx)
     };
 
-    // Explicit a11y overrides take precedence.
+    // Explicit a11y overrides take precedence. When no explicit a11y prop
+    // exists, try widget-specific auto-inference.
     //
-    // NOTE: Auto-inference only applies to built-in widget types listed
-    // below. Extension widgets do NOT get auto-inferred a11y overrides.
-    // Extension authors must set explicit a11y props on their nodes for
-    // accessible labels, descriptions, and roles.
+    // When the registry is active, infer_a11y() on the PlushieWidget is
+    // used. Otherwise, fall back to the hardcoded match for legacy paths.
     let overrides = crate::widgets::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
-        // Auto-infer accessibility overrides from widget-specific props
-        // when the host hasn't set an explicit a11y block.
-        let props = node.props.as_object();
-        match node.type_name.as_str() {
+        if let Some(registry) = ctx.registry {
+            registry
+                .get_for_type(node.type_name.as_str())
+                .and_then(|widget| widget.infer_a11y(node))
+        } else {
+            // Legacy hardcoded path (test contexts without registry).
             // Image and SVG use iced's native .alt()/.description() methods
             // directly, so no A11yOverride wrapping needed for those.
-            "text_input" | "text_editor" | "combo_box" => prop_str(props, "placeholder")
-                .map(crate::widgets::a11y::A11yOverrides::with_description),
-            _ => None,
+            let props = node.props.as_object();
+            match node.type_name.as_str() {
+                "text_input" | "text_editor" | "combo_box" => prop_str(props, "placeholder")
+                    .map(crate::widgets::a11y::A11yOverrides::with_description),
+                _ => None,
+            }
         }
     });
 

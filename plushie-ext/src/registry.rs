@@ -216,7 +216,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     fn register_with_set_name(&mut self, widget: Box<dyn PlushieWidget<R>>, set_name: &str) {
         let idx = self.impls.len();
         for &name in widget.type_names() {
-            if let Some(&old_idx) = self.type_index.get(name) {
+            if self.type_index.contains_key(name) {
                 let old_provenance = self.provenance.get(name).map(|s| s.as_str()).unwrap_or("");
                 let new_provenance = if set_name.is_empty() {
                     "(individual)"
@@ -229,10 +229,6 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                     old_provenance,
                     new_provenance,
                 );
-                // Old impl stays in the vec (indices are stable) but is
-                // unreachable via type_index. It will be cleaned up on
-                // the next full registry rebuild if needed.
-                let _ = old_idx;
             }
             self.type_index.insert(name.to_string(), idx);
             if !set_name.is_empty() {
@@ -278,14 +274,13 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// Return type names grouped by set/provenance.
     pub fn type_names_by_set(&self) -> HashMap<&str, Vec<&str>> {
         let mut result: HashMap<&str, Vec<&str>> = HashMap::new();
-        for (type_name, idx) in &self.type_index {
+        for (type_name, _idx) in &self.type_index {
             let set_name = self
                 .provenance
                 .get(type_name)
                 .map(|s| s.as_str())
                 .unwrap_or("(none)");
             result.entry(set_name).or_default().push(type_name.as_str());
-            let _ = idx;
         }
         result
     }
@@ -360,7 +355,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     }
 
     /// Get the factory index for a type name.
-    pub fn type_index(&self, type_name: &str) -> Option<usize> {
+    pub fn index_for_type(&self, type_name: &str) -> Option<usize> {
         self.type_index.get(type_name).copied()
     }
 
@@ -464,10 +459,10 @@ mod tests {
     fn last_registered_wins() {
         let mut registry = WidgetRegistry::<()>::new();
         registry.register(Box::new(TestWidget::new(&["button"])));
-        let first_idx = registry.type_index("button").unwrap();
+        let first_idx = registry.index_for_type("button").unwrap();
 
         registry.register(Box::new(TestWidget::new(&["button"])));
-        let second_idx = registry.type_index("button").unwrap();
+        let second_idx = registry.index_for_type("button").unwrap();
 
         assert_ne!(first_idx, second_idx);
     }
@@ -476,7 +471,7 @@ mod tests {
     fn scoped_id_routing_exact_match() {
         let mut registry = WidgetRegistry::<()>::new();
         registry.register(Box::new(TestWidget::new(&["button"])));
-        let idx = registry.type_index("button").unwrap();
+        let idx = registry.index_for_type("button").unwrap();
         registry.map_node("form/save".into(), idx);
 
         let (found_idx, matched_id) = registry.get_for_node_id("form/save").unwrap();
@@ -488,7 +483,7 @@ mod tests {
     fn scoped_id_routing_prefix_walk() {
         let mut registry = WidgetRegistry::<()>::new();
         registry.register(Box::new(TestWidget::new(&["gauge"])));
-        let idx = registry.type_index("gauge").unwrap();
+        let idx = registry.index_for_type("gauge").unwrap();
         registry.map_node("gauge-1".into(), idx);
 
         // "gauge-1/canvas/element" should walk to "gauge-1"

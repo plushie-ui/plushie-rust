@@ -63,8 +63,7 @@ impl App {
             | Message::PaneResized(..)
             | Message::PaneDragged(..)
             | Message::PaneClicked(..)) => {
-                let events =
-                    crate::message_processing::process_widget_message(msg, &mut self.registry);
+                let events = self.registry.process_message(&msg);
                 let mut task = Task::none();
                 for event in events {
                     let t = if event.coalesce.is_some() {

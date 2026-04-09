@@ -452,12 +452,7 @@ impl<R: PlushieRenderer> Session<R> {
     fn process_captured_messages(&mut self, messages: Vec<Message>) -> Vec<OutgoingEvent> {
         let mut events = Vec::new();
         for msg in messages {
-            events.extend(
-                plushie_renderer_lib::message_processing::process_widget_message(
-                    msg,
-                    &mut self.registry,
-                ),
-            );
+            events.extend(self.registry.process_message(&msg));
         }
         events
     }

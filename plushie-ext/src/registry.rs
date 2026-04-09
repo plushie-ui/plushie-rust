@@ -349,37 +349,51 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
     }
 
-    /// Walk the tree depth-first and call `prepare()` on each factory
-    /// for matching nodes. Also populates the `node_factory_map` for
-    /// message routing.
-    ///
-    /// Call this after `ensure_caches` (which handles shared state like
-    /// style overrides) and before rendering.
-    pub fn prepare_walk(&mut self, root: &TreeNode, theme: &Theme) {
+    /// Walk the tree depth-first, calling `prepare()` on each factory
+    /// for matching nodes and populating cross-cutting shared state
+    /// (style overrides). Also populates `node_factory_map` for message
+    /// routing and prunes stale shared state entries.
+    pub fn prepare_walk(
+        &mut self,
+        root: &TreeNode,
+        shared: &mut crate::widgets::SharedState<R>,
+        theme: &Theme,
+    ) {
         self.node_factory_map.clear();
-        self.prepare_walk_inner(root, "", theme);
+        let mut live_ids = std::collections::HashSet::new();
+        self.prepare_walk_inner(root, "", shared, theme, &mut live_ids);
+        shared.prune_shared(&live_ids);
     }
 
-    fn prepare_walk_inner(&mut self, node: &TreeNode, window_id: &str, theme: &Theme) {
-        // Track which window we're in. Window nodes set the window_id
-        // for their subtree.
+    fn prepare_walk_inner(
+        &mut self,
+        node: &TreeNode,
+        window_id: &str,
+        shared: &mut crate::widgets::SharedState<R>,
+        theme: &Theme,
+        live_ids: &mut std::collections::HashSet<String>,
+    ) {
+        live_ids.insert(node.id.clone());
+
+        // Track which window we're in.
         let current_window_id = if node.type_name == "window" {
             node.id.as_str()
         } else {
             window_id
         };
 
-        // Look up factory for this node type and call prepare.
+        // Cross-cutting: populate style overrides for any node with
+        // a style prop. This replaces the ensure_caches_walk.
+        crate::widgets::caches::ensure_style_overrides_cache(node, shared);
+
+        // Factory-specific prepare.
         if let Some(&idx) = self.type_index.get(node.type_name.as_str()) {
             self.node_factory_map.insert(node.id.clone(), idx);
-            // Split borrow: index into impls while self.type_index/node_factory_map
-            // are not borrowed mutably (they were used above, but the borrow ended).
             self.impls[idx].prepare(node, current_window_id, theme);
         }
 
-        // Recurse into children.
         for child in &node.children {
-            self.prepare_walk_inner(child, current_window_id, theme);
+            self.prepare_walk_inner(child, current_window_id, shared, theme, live_ids);
         }
     }
 

@@ -422,7 +422,8 @@ impl<R: PlushieRenderer> Session<R> {
                             &mut self.core.caches.extension,
                             &self.theme,
                         );
-                        self.registry.prepare_walk(root, &self.theme);
+                        self.registry
+                            .prepare_walk(root, &mut self.core.caches, &self.theme);
                     }
                 } else {
                     // stdin closed or channel dropped mid-interact.
@@ -671,7 +672,7 @@ fn handle_message<R: PlushieRenderer>(
                 if let Some(root) = s.core.tree.root() {
                     s.dispatcher
                         .prepare_all(root, &mut s.core.caches.extension, &s.theme);
-                    s.registry.prepare_walk(root, &s.theme);
+                    s.registry.prepare_walk(root, &mut s.core.caches, &s.theme);
                 }
 
                 // Scan tree for animation descriptors.

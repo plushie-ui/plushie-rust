@@ -91,11 +91,16 @@ impl<R: PlushieRenderer> SharedState<R> {
         self.interpolated_props.clear();
     }
 
-    /// Remove entries whose node IDs are no longer in the live set.
+    /// Remove stale entries for the ensure_caches path (pane_grid, canvas focus).
     fn prune_stale(&mut self, live_ids: &HashSet<String>) {
         self.pane_grid_states.retain(|id, _| live_ids.contains(id));
         self.canvas_pending_focus
             .retain(|id, _| live_ids.contains(id));
+    }
+
+    /// Remove stale cross-cutting entries. Called by registry.prepare_walk()
+    /// which tracks its own live_ids set.
+    pub fn prune_shared(&mut self, live_ids: &HashSet<String>) {
         self.style_overrides.retain(|id, _| live_ids.contains(id));
         self.interpolated_props
             .retain(|id, _| live_ids.contains(id));
@@ -154,41 +159,32 @@ impl<R: PlushieRenderer> SharedState<R> {
 /// layers, etc.) is guarded by per-node content hashes, so unchanged
 /// nodes are O(1). A dirty-flag optimization would only skip those hash
 /// lookups, which are already cheap relative to the tree walk itself.
+/// Walk the tree and populate pane_grid state (shared with widget_ops.rs).
+/// Style overrides and other cross-cutting state are handled by
+/// `registry.prepare_walk()`.
 pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut SharedState<R>) {
     let mut live_ids = HashSet::new();
-    ensure_caches_walk(node, caches, &mut live_ids, 0);
+    ensure_pane_grid_walk(node, caches, &mut live_ids, 0);
     caches.prune_stale(&live_ids);
 }
 
-/// Inner recursive walk: populate caches and collect live node IDs.
-fn ensure_caches_walk<R: PlushieRenderer>(
+fn ensure_pane_grid_walk<R: PlushieRenderer>(
     node: &TreeNode,
     caches: &mut SharedState<R>,
     live_ids: &mut HashSet<String>,
     depth: usize,
 ) {
     if depth > MAX_TREE_DEPTH {
-        log::warn!(
-            "[id={}] ensure_caches depth exceeds {MAX_TREE_DEPTH}, skipping subtree",
-            node.id
-        );
         return;
     }
     live_ids.insert(node.id.clone());
 
-    // Pane_grid state is shared with widget_ops.rs for split/close/swap.
-    // Other stateful widgets are handled by PlushieWidget factories.
     if node.type_name == "pane_grid" {
         ensure_pane_grid_cache(node, caches);
     }
 
-    // Cache parsed StyleOverrides for any node with a `style` object prop.
-    // Uses the same content-hash pattern as canvas/markdown: only re-parse
-    // when the JSON value changes.
-    ensure_style_overrides_cache(node, caches);
-
     for child in &node.children {
-        ensure_caches_walk(child, caches, live_ids, depth + 1);
+        ensure_pane_grid_walk(child, caches, live_ids, depth + 1);
     }
 }
 
@@ -328,7 +324,10 @@ pub(crate) fn canvas_layers_from_node(
 
 /// Cache parsed `StyleOverrides` for a node's `style` prop. Only
 /// re-parses when the content hash of the JSON value changes.
-fn ensure_style_overrides_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mut SharedState<R>) {
+pub(crate) fn ensure_style_overrides_cache<R: PlushieRenderer>(
+    node: &TreeNode,
+    caches: &mut SharedState<R>,
+) {
     let style_val = match node.props.get("style").and_then(|v| v.as_object()) {
         Some(obj) => obj,
         None => return,

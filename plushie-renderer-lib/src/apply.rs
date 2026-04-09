@@ -193,7 +193,8 @@ impl App {
             if let Some(root) = self.core.tree.root() {
                 self.dispatcher
                     .prepare_all(root, &mut self.core.caches.extension, &self.theme);
-                self.registry.prepare_walk(root, &self.theme);
+                self.registry
+                    .prepare_walk(root, &mut self.core.caches, &self.theme);
             }
 
             // Scan tree for animation descriptors and start/update animations.

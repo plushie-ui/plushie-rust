@@ -1017,29 +1017,22 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_clears_builtin_caches() {
+    fn snapshot_clears_shared_state() {
         let mut core: Core = Core::new();
 
-        // Test that built-in caches are cleared on snapshot. Most stateful
-        // widget caches are now factory-owned; only canvas and pane_grid
-        // state remain in SharedState. Use style_overrides as a simple
-        // proxy for the clear behavior (populated for any node with a
-        // style prop, and cleared on snapshot).
-        let styled_node = make_node_with_props(
-            "s1",
-            "text",
-            serde_json::json!({"content": "hello", "style": {"background": "#fff"}}),
-        );
+        // Test that shared state is cleared on snapshot. Use pane_grid
+        // state (populated by ensure_caches for widget_ops compatibility).
+        let pane_node = make_node("pg1", "pane_grid");
         let mut root = make_node("root", "column");
-        root.children.push(styled_node);
+        root.children.push(pane_node);
         core.apply(IncomingMessage::Snapshot { tree: root });
-        assert!(core.caches.style_overrides.contains_key("s1"));
+        assert!(core.caches.pane_grid_states.contains_key("pg1"));
 
-        // Second snapshot without the styled node.
+        // Second snapshot without the pane_grid.
         core.apply(IncomingMessage::Snapshot {
             tree: make_node("root2", "column"),
         });
-        assert!(!core.caches.style_overrides.contains_key("s1"));
+        assert!(!core.caches.pane_grid_states.contains_key("pg1"));
     }
 
     // -- Multi-window sequence -----------------------------------------------

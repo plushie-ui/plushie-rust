@@ -206,8 +206,23 @@ fn widget_match_slide_carries_f64() {
 }
 
 #[test]
-fn widget_match_returns_none_for_non_widget() {
+fn widget_match_handles_timer_events() {
     let event = Event::Timer(TimerEvent { tag: "tick".into(), timestamp: 0 });
+    match event.widget_match() {
+        Some(WidgetMatch::Timer("tick")) => {}
+        other => panic!("expected Timer(\"tick\"), got {other:?}"),
+    }
+}
+
+#[test]
+fn widget_match_returns_none_for_non_matchable_events() {
+    let event = Event::System(plushie::event::SystemEvent {
+        event_type: plushie::event::SystemEventType::ThemeChanged,
+        tag: None,
+        value: None,
+        id: None,
+        window_id: None,
+    });
     assert!(event.widget_match().is_none());
 }
 

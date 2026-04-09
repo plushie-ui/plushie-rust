@@ -45,8 +45,11 @@ impl Event {
     /// }
     /// ```
     pub fn widget_match(&self) -> Option<WidgetMatch<'_>> {
-        let w = self.as_widget()?;
-        Some(w.to_match())
+        match self {
+            Event::Widget(w) => Some(w.to_match()),
+            Event::Timer(t) => Some(WidgetMatch::Timer(&t.tag)),
+            _ => None,
+        }
     }
 
     /// Access the inner [`WidgetEvent`] if this is a widget event.

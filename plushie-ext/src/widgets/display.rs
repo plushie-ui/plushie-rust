@@ -10,9 +10,6 @@
 //! - `space` -- invisible spacer for layout padding
 //! - `qr_code` -- QR code rendered via canvas with configurable colors
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 use iced::widget::text::LineHeight;
 use iced::widget::{Space, canvas, progress_bar, rich_text, rule, span, text};
 use iced::{
@@ -20,7 +17,6 @@ use iced::{
 };
 use serde_json::Value;
 
-use super::caches::WidgetCaches;
 use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
@@ -398,9 +394,6 @@ pub(crate) fn render_svg<'a, R: PlushieRenderer>(
     s.into()
 }
 
-// render_markdown: removed. MarkdownWidget::render() in builtins.rs
-// handles all markdown rendering from factory-owned state.
-
 // ---------------------------------------------------------------------------
 // Progress Bar
 // ---------------------------------------------------------------------------
@@ -586,9 +579,11 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for QrCodeProg
     }
 }
 
-pub(crate) fn render_qr_code<'a, R: PlushieRenderer>(
+/// Render a qr_code with the provided cache entry.
+/// Called by QrCodeWidget::render() with factory-owned cache.
+pub(crate) fn render_qr_code_with_cache<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
-    ctx: RenderCtx<'a, R>,
+    cache_entry: Option<&'a (u64, canvas::Cache<R>)>,
 ) -> Element<'a, Message, Theme, R> {
     let props = node.props.as_object();
     let data = prop_str(props, "data").unwrap_or_default();
@@ -627,8 +622,6 @@ pub(crate) fn render_qr_code<'a, R: PlushieRenderer>(
 
     let pixel_size = width as f32 * cell_size;
 
-    let cache_entry = ctx.caches.qr_code_caches.get(&node.id);
-
     let mut qr_canvas = iced::widget::Canvas::<_, Message, iced::Theme, R>::new(QrCodeProgram {
         modules,
         cell_size,
@@ -652,36 +645,3 @@ pub(crate) fn render_qr_code<'a, R: PlushieRenderer>(
 // ---------------------------------------------------------------------------
 // Cache ensure functions
 // ---------------------------------------------------------------------------
-
-// ensure_markdown_cache: removed, logic lives in MarkdownWidget::prepare()
-
-pub(crate) fn ensure_qr_code_cache<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut WidgetCaches<R>,
-) {
-    let props = node.props.as_object();
-    let data = prop_str(props, "data").unwrap_or_default();
-    let cell_size = prop_f32(props, "cell_size").unwrap_or(4.0);
-    let ec = prop_str(props, "error_correction").unwrap_or_default();
-    // Hash data + cell_size + error_correction for cache invalidation.
-    let mut hasher = DefaultHasher::new();
-    data.hash(&mut hasher);
-    cell_size.to_bits().hash(&mut hasher);
-    ec.hash(&mut hasher);
-    let hash = hasher.finish();
-
-    match caches.qr_code_caches.get_mut(&node.id) {
-        Some((existing_hash, cache)) => {
-            if *existing_hash != hash {
-                cache.clear();
-                // Update just the hash, keep the same cache object.
-                *existing_hash = hash;
-            }
-        }
-        None => {
-            caches
-                .qr_code_caches
-                .insert(node.id.clone(), (hash, canvas::Cache::new()));
-        }
-    }
-}

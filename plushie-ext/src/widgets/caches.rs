@@ -1,13 +1,13 @@
-//! Widget cache management.
+//! Shared widget cache management.
 //!
-//! Manages shared state that must persist across renders for widgets
-//! not yet migrated to PlushieWidget factories (canvas, qr_code), plus
-//! cross-cutting shared state used by all widgets (style_overrides,
-//! interpolated_props, extension caches).
+//! [`WidgetCaches`] holds state that must persist across renders:
+//! canvas geometry caches, pane_grid layout state (for widget_ops),
+//! style overrides, extension caches, and animation interpolated props.
 //!
-//! Most stateful widgets (text_editor, markdown, combo_box, pane_grid,
-//! themer, slider) are now handled by PlushieWidget factories which own
-//! their state directly. See `widgets/builtins.rs`.
+//! Most stateful widgets own their state directly via PlushieWidget
+//! factories (see `widgets/builtins.rs`). This module handles the
+//! remaining shared concerns and widgets not yet factory-extracted
+//! (canvas).
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
@@ -44,9 +44,8 @@ const MAX_HASH_DEPTH: usize = 256;
 /// renderer type because iced's widget state depends on it.
 pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
     // -- Widget-specific caches (remaining, not yet factory-extracted) --
-    /// pane_grid layout state. Still in WidgetCaches because widget_ops.rs
-    /// accesses it directly for split/close/swap operations. Will move to
-    /// PaneGridWidget once handle_widget_op routing is implemented.
+    /// pane_grid layout state. Shared with widget_ops.rs which accesses
+    /// it directly for split/close/swap operations.
     pub(crate) pane_grid_states: HashMap<String, iced::widget::pane_grid::State<String>>,
 
     /// Per-canvas, per-layer geometry caches. Inner key is layer name,
@@ -60,8 +59,6 @@ pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
     /// which passes the value to `CanvasProgram`. The Program consumes
     /// it at the top of `update()` to set `focused_id`.
     pub(crate) canvas_pending_focus: HashMap<String, String>,
-    /// Per-qr_code caches (content hash, canvas Cache).
-    pub(crate) qr_code_caches: HashMap<String, (u64, iced_canvas::Cache<R>)>,
 
     // -- Cross-cutting shared state (used by all widget types) --
     /// Parsed style overrides with content hash for invalidation.
@@ -85,7 +82,7 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
             canvas_caches: HashMap::new(),
             canvas_interactions: HashMap::new(),
             canvas_pending_focus: HashMap::new(),
-            qr_code_caches: HashMap::new(),
+
             style_overrides: HashMap::new(),
             extension: crate::extensions::ExtensionCaches::new(),
             interpolated_props: HashMap::new(),
@@ -102,7 +99,7 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
         self.canvas_caches.clear();
         self.canvas_interactions.clear();
         self.canvas_pending_focus.clear();
-        self.qr_code_caches.clear();
+
         self.style_overrides.clear();
         self.interpolated_props.clear();
     }
@@ -115,7 +112,7 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
             .retain(|id, _| live_ids.contains(id));
         self.canvas_pending_focus
             .retain(|id, _| live_ids.contains(id));
-        self.qr_code_caches.retain(|id, _| live_ids.contains(id));
+
         self.style_overrides.retain(|id, _| live_ids.contains(id));
         self.interpolated_props
             .retain(|id, _| live_ids.contains(id));
@@ -203,15 +200,12 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     }
     live_ids.insert(node.id.clone());
 
-    // Widget-specific cache population. Most stateful types are handled
-    // by PlushieWidget factories via prepare_walk. Remaining types here
-    // either haven't been extracted yet (canvas, qr_code) or have
-    // external consumers that still read from WidgetCaches (pane_grid
-    // state is read by widget_ops.rs for split/close/swap operations).
+    // Widget-specific cache population. Canvas state and pane_grid state
+    // (shared with widget_ops) are populated here. Other stateful widgets
+    // are handled by PlushieWidget factories via prepare_walk.
     match node.type_name.as_str() {
         "pane_grid" => ensure_pane_grid_cache(node, caches),
         "canvas" => diagnostics.extend(super::canvas::ensure_canvas_cache(node, caches)),
-        "qr_code" => super::display::ensure_qr_code_cache(node, caches),
         _ => {}
     }
 
@@ -225,12 +219,10 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     }
 }
 
-/// Ensure pane_grid layout state exists in WidgetCaches for widget_ops.rs.
+/// Populate pane_grid layout state in WidgetCaches.
 ///
-/// PaneGridWidget also owns state via its factory prepare(), but widget_ops
-/// (split, close, swap, maximize, restore) still read from WidgetCaches
-/// directly. This keeps WidgetCaches in sync until handle_widget_op routing
-/// is implemented.
+/// Shared with widget_ops.rs which reads pane state for split, close,
+/// swap, maximize, and restore operations.
 fn ensure_pane_grid_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) {
     use iced::widget::pane_grid;
     use std::collections::HashSet;
@@ -476,7 +468,7 @@ mod tests {
         let c: WidgetCaches = WidgetCaches::new();
         assert!(c.pane_grid_states.is_empty());
         assert!(c.canvas_caches.is_empty());
-        assert!(c.qr_code_caches.is_empty());
+        assert!(c.canvas_caches.is_empty());
         assert!(c.style_overrides.is_empty());
     }
 

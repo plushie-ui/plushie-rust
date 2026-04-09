@@ -112,18 +112,17 @@ pub fn render<'a, R: PlushieRenderer>(
     }
 
     // Dispatch through the WidgetRegistry when available. The registry
-    // holds PlushieWidget impls for all built-in types (via wrapper
-    // factories) and falls through to the legacy ExtensionDispatcher
-    // for custom extension types.
+    // holds PlushieWidget impls for all built-in types and falls through
+    // to the ExtensionDispatcher for custom extension types.
     let element = if let Some(registry) = ctx.registry {
         if let Some(widget) = registry.get_for_type(node.type_name.as_str()) {
             widget.render(node, &ctx)
         } else {
-            // Not in the registry: try legacy extension dispatch
+            // Not in the registry: try extension dispatch
             render_via_extension(node, ctx)
         }
     } else {
-        // No registry (test paths, transition): use hardcoded match
+        // No registry (test paths): use hardcoded match
         render_via_match(node, ctx)
     };
 
@@ -138,7 +137,7 @@ pub fn render<'a, R: PlushieRenderer>(
                 .get_for_type(node.type_name.as_str())
                 .and_then(|widget| widget.infer_a11y(node))
         } else {
-            // Legacy hardcoded path (test contexts without registry).
+            // Hardcoded path (test contexts without registry).
             // Image and SVG use iced's native .alt()/.description() methods
             // directly, so no A11yOverride wrapping needed for those.
             let props = node.props.as_object();
@@ -158,11 +157,11 @@ pub fn render<'a, R: PlushieRenderer>(
 }
 
 // ---------------------------------------------------------------------------
-// Legacy dispatch helpers (used when no registry is available)
+// Match dispatch (used when no registry is available)
 // ---------------------------------------------------------------------------
 
 /// Dispatch via the hardcoded match statement. Used when no WidgetRegistry
-/// is present (test paths, transition).
+/// is present (test paths).
 fn render_via_match<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
@@ -184,7 +183,7 @@ fn render_via_match<'a, R: PlushieRenderer>(
         "float" => layout::render_float(node, ctx),
         "responsive" => layout::render_responsive(node, ctx),
         "scrollable" => layout::render_scrollable(node, ctx),
-        // Display widgets (stateless + qr_code which still uses WidgetCaches)
+        // Display widgets (stateless only)
         "text" => display::render_text(node, ctx),
         "rich_text" | "rich" => display::render_rich_text(node, ctx),
         "space" => display::render_space(node, ctx),
@@ -192,7 +191,6 @@ fn render_via_match<'a, R: PlushieRenderer>(
         "progress_bar" => display::render_progress_bar(node, ctx),
         "image" => display::render_image(node, ctx),
         "svg" => display::render_svg(node, ctx),
-        "qr_code" => display::render_qr_code(node, ctx),
         // Input widgets (stateless only)
         "text_input" => input::render_text_input(node, ctx),
         "checkbox" => input::render_checkbox(node, ctx),
@@ -208,7 +206,7 @@ fn render_via_match<'a, R: PlushieRenderer>(
         "tooltip" => interactive::render_tooltip(node, ctx),
         "window" => interactive::render_window(node, ctx),
         "overlay" => interactive::render_overlay(node, ctx),
-        // Canvas (still uses WidgetCaches)
+        // Canvas
         "canvas" => canvas::render_canvas(node, ctx),
         // Table (stateless)
         "table" => table::render_table(node, ctx),
@@ -217,7 +215,7 @@ fn render_via_match<'a, R: PlushieRenderer>(
     }
 }
 
-/// Dispatch to the legacy ExtensionDispatcher for extension types,
+/// Dispatch to the ExtensionDispatcher for extension types,
 /// or render a placeholder for unknown types.
 fn render_via_extension<'a, R: PlushieRenderer>(
     node: &'a TreeNode,

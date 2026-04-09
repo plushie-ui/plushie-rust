@@ -513,7 +513,75 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
         Box::new(MarkdownWidget::new())
     }
 }
-builtin_widget!(QrCodeWidget, ["qr_code"], display::render_qr_code);
+// QrCodeWidget: extracted stateful factory (owns R-generic canvas::Cache).
+pub(crate) struct QrCodeWidget<R: PlushieRenderer> {
+    /// Per-qr_code cache with content hash for invalidation.
+    /// Keyed by (window_id, node_id).
+    caches: std::collections::HashMap<(String, String), (u64, iced::widget::canvas::Cache<R>)>,
+}
+
+impl<R: PlushieRenderer> QrCodeWidget<R> {
+    pub(crate) fn new() -> Self {
+        Self {
+            caches: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
+    fn type_names(&self) -> &[&str] {
+        &["qr_code"]
+    }
+
+    fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let key = (window_id.to_string(), node.id.clone());
+        let props = node.props.as_object();
+        let data = crate::prop_helpers::prop_str(props, "data").unwrap_or_default();
+        let cell_size = crate::prop_helpers::prop_f32(props, "cell_size").unwrap_or(4.0);
+        let ec = crate::prop_helpers::prop_str(props, "error_correction").unwrap_or_default();
+
+        let mut hasher = DefaultHasher::new();
+        data.hash(&mut hasher);
+        cell_size.to_bits().hash(&mut hasher);
+        ec.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        match self.caches.get_mut(&key) {
+            Some((existing_hash, cache)) => {
+                if *existing_hash != hash {
+                    cache.clear();
+                    *existing_hash = hash;
+                }
+            }
+            None => {
+                self.caches
+                    .insert(key, (hash, iced::widget::canvas::Cache::new()));
+            }
+        }
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, iced::Theme, R> {
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        let cache_entry = self.caches.get(&key);
+        display::render_qr_code_with_cache(node, cache_entry)
+    }
+
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        self.caches
+            .remove(&(window_id.to_string(), node_id.to_string()));
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(QrCodeWidget::new())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Input widgets (9)
@@ -743,10 +811,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
     }
 }
 builtin_widget!(PickListWidget, ["pick_list"], input::render_pick_list);
-// ComboBoxWidget: extracted stateful factory (owns combo_box::State).
-// Render delegates to existing function during transition. Once render
-// reads from factory state instead of WidgetCaches, the delegation
-// can be inlined.
+/// Stateful factory owning combo_box::State per (window_id, node_id).
 pub(crate) struct ComboBoxWidget {
     /// combo_box::State per (window_id, node_id).
     states: std::collections::HashMap<(String, String), iced::widget::combo_box::State<String>>,
@@ -950,7 +1015,7 @@ impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {
             Box::new(ImageWidget),
             Box::new(SvgWidget),
             Box::new(MarkdownWidget::new()),
-            Box::new(QrCodeWidget),
+            Box::new(QrCodeWidget::new()),
             // Input
             Box::new(TextInputWidget),
             Box::new(TextEditorWidget::new()),

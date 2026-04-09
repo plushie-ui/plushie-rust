@@ -719,5 +719,3 @@ pub(crate) fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
 
     pg.into()
 }
-
-// ensure_pane_grid_cache: removed, logic lives in PaneGridWidget::prepare()

@@ -42,7 +42,7 @@ pub fn process_widget_message<R: PlushieRenderer>(
 ) -> Vec<OutgoingEvent> {
     // Try registry dispatch first. If the factory handles the message
     // (returns Some), use that result. Otherwise fall through to the
-    // legacy dispatch below.
+    // match dispatch below.
     if let Some(node_id) = msg.node_id()
         && let Some((idx, _matched_id)) = registry.get_for_node_id(node_id)
         && let Some(factory) = registry.get_mut(idx)
@@ -106,10 +106,9 @@ pub fn process_widget_message<R: PlushieRenderer>(
         }
 
         // Slider Slide/SlideRelease and TextEditorAction are handled
-        // by their PlushieWidget factories via registry dispatch above.
-        // The factory handle_message returns Some, so these arms are
-        // unreachable in production. They remain as safety fallback
-        // for edge cases where the registry has no mapping.
+        // by their PlushieWidget factories via registry dispatch.
+        // These arms are fallback for edge cases where the registry
+        // has no mapping.
         Message::Slide(..) | Message::SlideRelease(..) | Message::TextEditorAction(..) => vec![],
 
         // Extension events -- route through dispatcher.
@@ -149,8 +148,8 @@ pub fn process_widget_message<R: PlushieRenderer>(
             }
         }
 
-        // Pane grid events are handled by PaneGridWidget factory via
-        // registry dispatch above. Safety fallback returns empty.
+        // Pane grid events are handled by PaneGridWidget via registry
+        // dispatch. Fallback returns empty.
         Message::PaneFocusCycle(..)
         | Message::PaneResized(..)
         | Message::PaneDragged(..)

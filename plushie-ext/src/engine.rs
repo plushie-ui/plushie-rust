@@ -1026,22 +1026,26 @@ mod tests {
     fn snapshot_clears_builtin_caches() {
         let mut core: Core = Core::new();
 
-        // Populate a built-in cache by applying a snapshot with a qr_code.
-        // (text_editor, markdown, combo_box, themer, pane_grid caches are
-        // now factory-owned via PlushieWidget::prepare(), not populated
-        // by ensure_caches_walk. qr_code and canvas still use the old path.)
-        let qr_node = make_node_with_props("qr1", "qr_code", serde_json::json!({"data": "hello"}));
+        // Test that built-in caches are cleared on snapshot. Most stateful
+        // widget caches are now factory-owned; only canvas and pane_grid
+        // state remain in WidgetCaches. Use style_overrides as a simple
+        // proxy for the clear behavior (populated for any node with a
+        // style prop, and cleared on snapshot).
+        let styled_node = make_node_with_props(
+            "s1",
+            "text",
+            serde_json::json!({"content": "hello", "style": {"background": "#fff"}}),
+        );
         let mut root = make_node("root", "column");
-        root.children.push(qr_node);
+        root.children.push(styled_node);
         core.apply(IncomingMessage::Snapshot { tree: root });
-        assert!(core.caches.qr_code_caches.contains_key("qr1"));
+        assert!(core.caches.style_overrides.contains_key("s1"));
 
-        // Second snapshot without the qr_code -- built-in caches should
-        // be cleared and repopulated (without the qr_code).
+        // Second snapshot without the styled node.
         core.apply(IncomingMessage::Snapshot {
             tree: make_node("root2", "column"),
         });
-        assert!(!core.caches.qr_code_caches.contains_key("qr1"));
+        assert!(!core.caches.style_overrides.contains_key("s1"));
     }
 
     // -- Multi-window sequence -----------------------------------------------

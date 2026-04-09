@@ -374,7 +374,6 @@ struct KeyRule {
 // Text Editor
 // ---------------------------------------------------------------------------
 
-// render_text_editor WidgetCaches wrapper: removed.
 // TextEditorWidget::render() calls render_text_editor_with_content directly.
 
 /// Render a text_editor with the provided Content.
@@ -1483,7 +1482,6 @@ pub(crate) fn render_pick_list<'a, R: PlushieRenderer>(
 // Combo Box
 // ---------------------------------------------------------------------------
 
-// render_combo_box WidgetCaches wrapper: removed.
 // ComboBoxWidget::render() calls render_combo_box_with_state directly.
 
 /// Render a combo_box with the provided State.
@@ -1643,14 +1641,13 @@ pub(crate) fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     container(cb).id(widget::Id::from(node.id.clone())).into()
 }
 
-// Cache ensure functions for text_editor and combo_box: removed.
 // Logic lives in TextEditorWidget::prepare() and ComboBoxWidget::prepare()
 // in widgets/builtins.rs.
 
 /// Parse an input purpose string into the corresponding iced `Purpose`.
 ///
-/// Accepts the canonical `input_purpose` values. The legacy `ime_purpose`
-/// prop name is handled by callers (fallback lookup).
+/// Accepts the canonical `input_purpose` values. The `ime_purpose`
+/// prop name is handled by callers as a fallback alias.
 fn parse_input_purpose(s: &str) -> Option<iced::advanced::input_method::Purpose> {
     use iced::advanced::input_method::Purpose;
     match s {

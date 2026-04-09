@@ -416,9 +416,6 @@ pub(crate) fn render_tooltip<'a, R: PlushieRenderer>(
 // Themer (applies a sub-theme to child content)
 // ---------------------------------------------------------------------------
 
-// render_themer: removed. ThemerWidget::render() in builtins.rs
-// handles all themer rendering from factory-owned state.
-
 // ---------------------------------------------------------------------------
 // Window (top-level container)
 // ---------------------------------------------------------------------------
@@ -488,5 +485,3 @@ pub(crate) fn render_overlay<'a, R: PlushieRenderer>(
 
     overlay::OverlayWrapper::new(anchor, content, pos, gap, offset_x, offset_y, flip, align).into()
 }
-
-// ensure_themer_cache: removed, logic lives in ThemerWidget::prepare()

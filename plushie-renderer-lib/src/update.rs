@@ -20,7 +20,7 @@ impl App {
 
             // Widget messages shared between daemon and headless modes.
             // The shared processor handles slider tracking, text editor
-            // mutation, extension event routing, and pane grid state.
+            // mutation and pane grid state.
             //
             // Redraw contract: iced::daemon rebuilds UIs after every
             // update() call regardless of the returned Task. Extensions

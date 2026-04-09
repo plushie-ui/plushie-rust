@@ -24,7 +24,7 @@
 //! `engine`, `tree`, `message`, `widgets`, `protocol`, `codec`,
 //! `theming`, `image_registry`
 
-// Ensure catch_unwind works: extension panic isolation requires unwinding.
+// Ensure catch_unwind works: widget panic isolation requires unwinding.
 // If this fails, remove `panic = "abort"` from your Cargo profile.
 // On WASM, catch_unwind is a no-op (panics always abort), so skip this check.
 #[cfg(all(not(test), not(target_arch = "wasm32"), panic = "abort"))]
@@ -33,7 +33,7 @@ compile_error!(
      Extension panic isolation via catch_unwind is a no-op with panic=\"abort\"."
 );
 
-// -- Public SDK modules (stable API for extension authors) --
+// -- Public SDK modules (stable API for widget authors) --
 pub mod app;
 pub mod canvas_engine;
 pub mod extension_adapter;
@@ -49,7 +49,7 @@ pub mod animation;
 // -- Internal modules used by the plushie binary --
 //
 // These are public so the binary crate can access them, but they are
-// NOT part of the stable extension SDK. Extension authors should use
+// NOT part of the stable widget SDK. Widget authors should use
 // the prelude and `plushie_ext::iced::*` instead.
 #[doc(hidden)]
 pub mod codec;
@@ -68,7 +68,7 @@ pub mod tree;
 #[doc(hidden)]
 pub mod widgets;
 
-// Re-export iced so extension crates can use `plushie_ext::iced::*` without
+// Re-export iced so widget crates can use `plushie_ext::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when
 // plushie-core bumps its iced version -- extensions that use only
 // `plushie_ext::prelude::*` and `plushie_ext::iced::*` get the upgrade

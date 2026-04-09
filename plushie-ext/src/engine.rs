@@ -351,7 +351,7 @@ impl Core {
                         })),
                     )));
                 }
-                // Clear built-in caches but NOT extension caches. Extension
+                // Clear built-in caches but NOT adapter caches. Adapter
                 // cleanup callbacks run later via prepare_all() in the host,
                 // which needs the old cache entries to still be accessible.
                 self.caches.clear_builtin();
@@ -993,7 +993,7 @@ mod tests {
     fn snapshot_preserves_adapter_caches() {
         let mut core: Core = Core::new();
 
-        // Simulate extension storing data in adapter caches.
+        // Simulate a widget storing data in adapter caches.
         core.caches.adapter_caches.insert("ext", "node-1", 42u32);
 
         // Snapshot replaces the tree.
@@ -1004,7 +1004,7 @@ mod tests {
 
         // Adapter caches must survive -- clear_builtin() must NOT
         // wipe them. The host calls prepare_all() after apply() to
-        // handle extension cleanup properly.
+        // handle adapter cleanup properly.
         assert_eq!(
             core.caches.adapter_caches.get::<u32>("ext", "node-1"),
             Some(&42)

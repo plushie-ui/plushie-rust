@@ -13,11 +13,10 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
-use iced::widget::canvas as iced_canvas;
 use serde_json::Value;
 
 use crate::PlushieRenderer;
-use crate::protocol::{OutgoingEvent, TreeNode};
+use crate::protocol::TreeNode;
 
 /// Maximum recursion depth for tree walks (render, ensure_caches, prepare).
 /// Prevents stack overflow from pathologically nested trees. Normal UI trees
@@ -43,21 +42,15 @@ const MAX_HASH_DEPTH: usize = 256;
 /// (text_editor Content, canvas Cache) are parameterized on the
 /// renderer type because iced's widget state depends on it.
 pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
-    // -- Widget-specific caches (remaining, not yet factory-extracted) --
-    /// pane_grid layout state. Shared with widget_ops.rs which accesses
-    /// it directly for split/close/swap operations.
-    pub(crate) pane_grid_states: HashMap<String, iced::widget::pane_grid::State<String>>,
+    /// Phantom: R parameter preserved for API stability. No R-generic
+    /// fields remain (all R-generic widget state moved to factories).
+    _renderer: std::marker::PhantomData<R>,
 
-    /// Per-canvas, per-layer geometry caches. Inner key is layer name,
-    /// u64 is content hash for invalidation.
-    pub(crate) canvas_caches: HashMap<String, HashMap<String, (u64, iced_canvas::Cache<R>)>>,
-    /// Per-canvas interactive element data parsed from group JSON. Used for
-    /// hit testing in `Program::update()` without re-parsing every frame.
-    pub(crate) canvas_interactions: HashMap<String, Vec<super::canvas::InteractiveElement>>,
-    /// Pending programmatic focus for a canvas element, set by the
-    /// `focus` widget_op (canvas element path). Read and drained by `render_canvas`,
-    /// which passes the value to `CanvasProgram`. The Program consumes
-    /// it at the top of `update()` to set `focused_id`.
+    // -- Widget-specific caches (shared with widget_ops.rs) --
+    /// pane_grid layout state. Shared with widget_ops.rs for split/close/swap.
+    pub(crate) pane_grid_states: HashMap<String, iced::widget::pane_grid::State<String>>,
+    /// Pending programmatic focus for a canvas element. Written by widget_ops.rs
+    /// on focus commands, read by CanvasWidget during render.
     pub(crate) canvas_pending_focus: HashMap<String, String>,
 
     // -- Cross-cutting shared state (used by all widget types) --
@@ -78,11 +71,9 @@ pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
 impl<R: PlushieRenderer> WidgetCaches<R> {
     pub fn new() -> Self {
         Self {
+            _renderer: std::marker::PhantomData,
             pane_grid_states: HashMap::new(),
-            canvas_caches: HashMap::new(),
-            canvas_interactions: HashMap::new(),
             canvas_pending_focus: HashMap::new(),
-
             style_overrides: HashMap::new(),
             extension: crate::extensions::ExtensionCaches::new(),
             interpolated_props: HashMap::new(),
@@ -96,10 +87,7 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
     /// extension cache entries are removed.
     pub fn clear_builtin(&mut self) {
         self.pane_grid_states.clear();
-        self.canvas_caches.clear();
-        self.canvas_interactions.clear();
         self.canvas_pending_focus.clear();
-
         self.style_overrides.clear();
         self.interpolated_props.clear();
     }
@@ -107,12 +95,8 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
     /// Remove entries whose node IDs are no longer in the live set.
     fn prune_stale(&mut self, live_ids: &HashSet<String>) {
         self.pane_grid_states.retain(|id, _| live_ids.contains(id));
-        self.canvas_caches.retain(|id, _| live_ids.contains(id));
-        self.canvas_interactions
-            .retain(|id, _| live_ids.contains(id));
         self.canvas_pending_focus
             .retain(|id, _| live_ids.contains(id));
-
         self.style_overrides.retain(|id, _| live_ids.contains(id));
         self.interpolated_props
             .retain(|id, _| live_ids.contains(id));
@@ -147,9 +131,8 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
         self.pane_grid_states.get(id)
     }
 
-    /// Set a pending programmatic focus for a canvas element.
-    /// Called by the `focus` widget_op (canvas element path). The canvas Program
-    /// consumes this on the next update cycle.
+    /// Set pending programmatic focus for a canvas element.
+    /// Written by widget_ops.rs, read by CanvasWidget during render.
     pub fn set_canvas_pending_focus(&mut self, canvas_id: String, element_id: String) {
         self.canvas_pending_focus.insert(canvas_id, element_id);
     }
@@ -172,15 +155,10 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
 /// layers, etc.) is guarded by per-node content hashes, so unchanged
 /// nodes are O(1). A dirty-flag optimization would only skip those hash
 /// lookups, which are already cheap relative to the tree walk itself.
-pub fn ensure_caches<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut WidgetCaches<R>,
-) -> Vec<OutgoingEvent> {
+pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) {
     let mut live_ids = HashSet::new();
-    let mut diagnostics = Vec::new();
-    ensure_caches_walk(node, caches, &mut live_ids, &mut diagnostics, 0);
+    ensure_caches_walk(node, caches, &mut live_ids, 0);
     caches.prune_stale(&live_ids);
-    diagnostics
 }
 
 /// Inner recursive walk: populate caches and collect live node IDs.
@@ -188,7 +166,6 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     node: &TreeNode,
     caches: &mut WidgetCaches<R>,
     live_ids: &mut HashSet<String>,
-    diagnostics: &mut Vec<OutgoingEvent>,
     depth: usize,
 ) {
     if depth > MAX_TREE_DEPTH {
@@ -200,13 +177,10 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     }
     live_ids.insert(node.id.clone());
 
-    // Widget-specific cache population. Canvas state and pane_grid state
-    // (shared with widget_ops) are populated here. Other stateful widgets
-    // are handled by PlushieWidget factories via prepare_walk.
-    match node.type_name.as_str() {
-        "pane_grid" => ensure_pane_grid_cache(node, caches),
-        "canvas" => diagnostics.extend(super::canvas::ensure_canvas_cache(node, caches)),
-        _ => {}
+    // Pane_grid state is shared with widget_ops.rs for split/close/swap.
+    // Other stateful widgets are handled by PlushieWidget factories.
+    if node.type_name == "pane_grid" {
+        ensure_pane_grid_cache(node, caches);
     }
 
     // Cache parsed StyleOverrides for any node with a `style` object prop.
@@ -215,7 +189,7 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     ensure_style_overrides_cache(node, caches);
 
     for child in &node.children {
-        ensure_caches_walk(child, caches, live_ids, diagnostics, depth + 1);
+        ensure_caches_walk(child, caches, live_ids, depth + 1);
     }
 }
 
@@ -467,18 +441,18 @@ mod tests {
     fn widget_caches_new_is_empty() {
         let c: WidgetCaches = WidgetCaches::new();
         assert!(c.pane_grid_states.is_empty());
-        assert!(c.canvas_caches.is_empty());
-        assert!(c.canvas_caches.is_empty());
+        assert!(c.pane_grid_states.is_empty());
+        assert!(c.pane_grid_states.is_empty());
         assert!(c.style_overrides.is_empty());
     }
 
     #[test]
     fn widget_caches_clear_empties_maps() {
         let mut c: WidgetCaches = WidgetCaches::new();
-        // Use canvas_pending_focus as a simple test field.
-        c.canvas_pending_focus.insert("c1".into(), "elem".into());
+        c.interpolated_props
+            .insert("w1".into(), serde_json::Map::new());
         c.clear();
-        assert!(c.canvas_pending_focus.is_empty());
+        assert!(c.interpolated_props.is_empty());
     }
 
     // -- clear_builtin vs clear --
@@ -488,13 +462,13 @@ mod tests {
         let mut caches: WidgetCaches = WidgetCaches::new();
 
         caches
-            .canvas_pending_focus
-            .insert("c1".into(), "elem".into());
+            .interpolated_props
+            .insert("w1".into(), serde_json::Map::new());
         caches.extension.insert("ext", "key", 42u32);
 
         caches.clear_builtin();
 
-        assert!(caches.canvas_pending_focus.is_empty());
+        assert!(caches.interpolated_props.is_empty());
         // Extension caches should survive.
         assert_eq!(caches.extension.get::<u32>("ext", "key"), Some(&42));
     }
@@ -504,13 +478,13 @@ mod tests {
         let mut caches: WidgetCaches = WidgetCaches::new();
 
         caches
-            .canvas_pending_focus
-            .insert("c1".into(), "elem".into());
+            .interpolated_props
+            .insert("w1".into(), serde_json::Map::new());
         caches.extension.insert("ext", "key", 42u32);
 
         caches.clear();
 
-        assert!(caches.canvas_pending_focus.is_empty());
+        assert!(caches.interpolated_props.is_empty());
         assert!(!caches.extension.contains("ext", "key"));
     }
 

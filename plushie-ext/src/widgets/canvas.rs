@@ -13,8 +13,6 @@
 //!   canvas-local coordinates
 
 use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
 
 use iced::widget::canvas;
 use iced::{
@@ -23,7 +21,7 @@ use iced::{
 };
 use serde_json::Value;
 
-use super::caches::{WidgetCaches, canvas_layers_from_node, hash_json_value};
+use super::caches::canvas_layers_from_node;
 use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
@@ -3191,9 +3189,14 @@ fn serialize_mouse_button_for_canvas(button: &mouse::Button) -> String {
     }
 }
 
-pub(crate) fn render_canvas<'a, R: PlushieRenderer>(
+/// Render a canvas with the provided cache state.
+/// Called by CanvasWidget::render() with factory-owned state.
+pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
+    node_caches: Option<&'a HashMap<String, (u64, canvas::Cache<R>)>>,
+    interactive_elements: &'a [InteractiveElement],
+    pending_focus: Option<String>,
 ) -> Element<'a, Message, Theme, R> {
     let props = node.props.as_object();
     let width = prop_length(props, "width", Length::Fill);
@@ -3209,8 +3212,6 @@ pub(crate) fn render_canvas<'a, R: PlushieRenderer>(
         })
         .collect();
 
-    let node_caches = ctx.caches.canvas_caches.get(&node.id);
-
     let background = props
         .and_then(|p| p.get("background"))
         .and_then(parse_color);
@@ -3219,15 +3220,7 @@ pub(crate) fn render_canvas<'a, R: PlushieRenderer>(
     let on_release = prop_bool_default(props, "on_release", false);
     let on_move = prop_bool_default(props, "on_move", false);
     let on_scroll = prop_bool_default(props, "on_scroll", false);
-    // "interactive" is a convenience flag that enables all event handlers.
     let interactive = prop_bool_default(props, "interactive", false);
-
-    let interactive_elements = ctx
-        .caches
-        .canvas_interactions
-        .get(&node.id)
-        .map(|v| v.as_slice())
-        .unwrap_or(&[]);
     let has_interactive_elements = !interactive_elements.is_empty();
 
     let mut c = iced::widget::Canvas::<_, Message, iced::Theme, R>::new(CanvasProgram {
@@ -3245,12 +3238,11 @@ pub(crate) fn render_canvas<'a, R: PlushieRenderer>(
         arrow_mode: prop_str(props, "arrow_mode")
             .map(|s| ArrowMode::from_str(&s))
             .unwrap_or_default(),
-        pending_focus: ctx.caches.canvas_pending_focus.get(&node.id).cloned(),
+        pending_focus,
     })
     .width(width)
     .height(height);
 
-    // Widget ID -- enables Command.focus("canvas-id") targeting.
     c = c.id(iced::widget::Id::from(node.id.clone()));
 
     if let Some(alt) = prop_str(props, "alt") {
@@ -3260,8 +3252,6 @@ pub(crate) fn render_canvas<'a, R: PlushieRenderer>(
         c = c.description(desc);
     }
 
-    // Accessible role: explicit prop, or auto-infer from content.
-    // Default: Group when interactive elements exist, Image otherwise.
     if let Some(role_str) = prop_str(props, "role") {
         if let Some(role) = super::a11y::parse_role_str(&role_str) {
             c = c.role(role);
@@ -3358,7 +3348,7 @@ fn resolve_color(value: &Value, theme: &iced::Theme) -> Option<Color> {
 ///
 /// Only groups with an `"id"` field are collected as interactive elements.
 /// Non-group shapes are skipped regardless of any fields they carry.
-fn collect_interactive_elements(
+pub(crate) fn collect_interactive_elements(
     shapes: &[Value],
     layer_name: &str,
     parent_transform: TransformMatrix,
@@ -3482,7 +3472,7 @@ fn intersect_rects(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> (f32, f3
 
 /// Validate interactive elements and return diagnostic events for common
 /// accessibility issues. Called once per tree snapshot/patch.
-fn validate_interactive_elements(
+pub(crate) fn validate_interactive_elements(
     canvas_id: &str,
     elements: &[InteractiveElement],
 ) -> Vec<OutgoingEvent> {
@@ -3601,62 +3591,6 @@ fn validate_interactive_elements(
             ));
         }
     }
-
-    diagnostics
-}
-
-pub(crate) fn ensure_canvas_cache<R: PlushieRenderer>(
-    node: &crate::protocol::TreeNode,
-    caches: &mut WidgetCaches<R>,
-) -> Vec<OutgoingEvent> {
-    // Build layer map from children (shapes as tree nodes).
-    let layer_map = canvas_layers_from_node(node);
-    let node_caches = caches.canvas_caches.entry(node.id.clone()).or_default();
-
-    // Parse interactive elements from all layers, recursing into groups.
-    let mut interactive_elements = Vec::new();
-    for (layer_name, shapes_val) in &layer_map {
-        if let Some(shapes_arr) = shapes_val.as_array() {
-            collect_interactive_elements(
-                shapes_arr,
-                layer_name,
-                TransformMatrix::identity(),
-                None,
-                None,
-                "",
-                &mut interactive_elements,
-            );
-        }
-    }
-    // A11y validation diagnostics.
-    let diagnostics = validate_interactive_elements(&node.id, &interactive_elements);
-
-    caches
-        .canvas_interactions
-        .insert(node.id.clone(), interactive_elements);
-
-    // Update or create caches for each layer.
-    for (layer_name, shapes_val) in &layer_map {
-        let hash = {
-            let mut hasher = DefaultHasher::new();
-            hash_json_value(shapes_val, &mut hasher);
-            hasher.finish()
-        };
-        match node_caches.get_mut(layer_name) {
-            Some((existing_hash, cache)) => {
-                if *existing_hash != hash {
-                    cache.clear();
-                    *existing_hash = hash;
-                }
-            }
-            None => {
-                node_caches.insert(layer_name.clone(), (hash, canvas::Cache::new()));
-            }
-        }
-    }
-
-    // Remove stale layers that are no longer in the tree.
-    node_caches.retain(|name, _| layer_map.contains_key(name));
 
     diagnostics
 }

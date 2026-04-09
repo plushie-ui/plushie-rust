@@ -57,7 +57,7 @@ pub fn builtin_widget_types() -> &'static [&'static str] {
     ]
 }
 use super::helpers::*;
-use super::{canvas, display, input, interactive, layout, table, validate};
+use super::{display, input, interactive, layout, table, validate};
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
 use crate::message::Message;
@@ -206,8 +206,6 @@ fn render_via_match<'a, R: PlushieRenderer>(
         "tooltip" => interactive::render_tooltip(node, ctx),
         "window" => interactive::render_window(node, ctx),
         "overlay" => interactive::render_overlay(node, ctx),
-        // Canvas
-        "canvas" => canvas::render_canvas(node, ctx),
         // Table (stateless)
         "table" => table::render_table(node, ctx),
         // Extension dispatch / unknown type

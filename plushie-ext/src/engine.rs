@@ -362,10 +362,7 @@ impl<R: PlushieRenderer> Core<R> {
                 // which needs the old cache entries to still be accessible.
                 self.caches.clear_builtin();
                 if let Some(root) = self.tree.root() {
-                    let diags = widgets::ensure_caches(root, &mut self.caches);
-                    for diag in diags {
-                        effects.push(CoreEffect::EmitEvent(diag));
-                    }
+                    widgets::ensure_caches(root, &mut self.caches);
                     if widgets::validate::is_validate_props_enabled() {
                         Self::emit_prop_validation_warnings(root, &mut effects);
                     }
@@ -386,10 +383,7 @@ impl<R: PlushieRenderer> Core<R> {
                     self.resolve_and_cache_theme(&theme_val, &mut effects);
                 }
                 if let Some(root) = self.tree.root() {
-                    let diags = widgets::ensure_caches(root, &mut self.caches);
-                    for diag in diags {
-                        effects.push(CoreEffect::EmitEvent(diag));
-                    }
+                    widgets::ensure_caches(root, &mut self.caches);
                     if widgets::validate::is_validate_props_enabled() {
                         Self::emit_prop_validation_warnings(root, &mut effects);
                     }

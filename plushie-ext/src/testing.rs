@@ -126,7 +126,7 @@ impl std::fmt::Debug for TestEnv {
 impl Default for TestEnv {
     fn default() -> Self {
         let mut registry = WidgetRegistry::new();
-        registry.register_set(&crate::widgets::builtins::iced_widget_set());
+        registry.register_set(&crate::widgets::widget_set::iced_widget_set());
         Self {
             shared_state: SharedState::new(),
             images: ImageRegistry::new(),

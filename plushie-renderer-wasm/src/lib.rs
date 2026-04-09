@@ -199,7 +199,7 @@ impl PlushieApp {
                         .expect("daemon init closure called more than once");
 
                     let builder =
-                        builder.widget_set(&plushie_ext::widgets::builtins::iced_widget_set());
+                        builder.widget_set(&plushie_ext::widgets::widget_set::iced_widget_set());
                     let registry = builder.build();
                     let effect_handler = Box::new(WebEffectHandler);
                     let mut app = App::new(registry, effect_handler);

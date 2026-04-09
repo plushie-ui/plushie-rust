@@ -1,0 +1,191 @@
+use iced::widget::canvas;
+use iced::{Color, Element, Length, Point, Size, Theme, mouse};
+
+use crate::PlushieRenderer;
+use crate::message::Message;
+use crate::protocol::TreeNode;
+use crate::registry::PlushieWidget;
+use crate::render_ctx::RenderCtx;
+use crate::theming::parse_hex_color;
+use crate::widgets::helpers::*;
+
+// ---------------------------------------------------------------------------
+// QrCodeProgram (canvas program for drawing QR modules)
+// ---------------------------------------------------------------------------
+
+struct QrCodeProgram<'a, R: PlushieRenderer = iced::Renderer> {
+    modules: Vec<Vec<bool>>,
+    cell_size: f32,
+    cell_color: Color,
+    background: Color,
+    cache: Option<&'a (u64, canvas::Cache<R>)>,
+}
+
+impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for QrCodeProgram<'_, R> {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &R,
+        _theme: &iced::Theme,
+        bounds: iced::Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry<R>> {
+        let draw_fn = |frame: &mut canvas::Frame<R>| {
+            // Fill background
+            frame.fill_rectangle(Point::ORIGIN, bounds.size(), self.background);
+            // Draw each dark module as a filled square
+            for (row_idx, row) in self.modules.iter().enumerate() {
+                for (col_idx, &dark) in row.iter().enumerate() {
+                    if dark {
+                        let x = col_idx as f32 * self.cell_size;
+                        let y = row_idx as f32 * self.cell_size;
+                        frame.fill_rectangle(
+                            Point::new(x, y),
+                            Size::new(self.cell_size, self.cell_size),
+                            self.cell_color,
+                        );
+                    }
+                }
+            }
+        };
+
+        if let Some((_hash, cache)) = self.cache {
+            vec![cache.draw(renderer, bounds.size(), draw_fn)]
+        } else {
+            let mut frame = canvas::Frame::new(renderer, bounds.size());
+            draw_fn(&mut frame);
+            vec![frame.into_geometry()]
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// QrCodeWidget (stateful, owns R-generic canvas::Cache)
+// ---------------------------------------------------------------------------
+
+/// Stateful QR code factory (owns R-generic `canvas::Cache`).
+pub(crate) struct QrCodeWidget<R: PlushieRenderer> {
+    /// Per-qr_code cache with content hash for invalidation.
+    /// Keyed by (window_id, node_id).
+    caches: std::collections::HashMap<(String, String), (u64, canvas::Cache<R>)>,
+}
+
+impl<R: PlushieRenderer> QrCodeWidget<R> {
+    pub(crate) fn new() -> Self {
+        Self {
+            caches: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
+    fn type_names(&self) -> &[&str] {
+        &["qr_code"]
+    }
+
+    fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let key = (window_id.to_string(), node.id.clone());
+        let props = node.props.as_object();
+        let data = crate::prop_helpers::prop_str(props, "data").unwrap_or_default();
+        let cell_size = crate::prop_helpers::prop_f32(props, "cell_size").unwrap_or(4.0);
+        let ec = crate::prop_helpers::prop_str(props, "error_correction").unwrap_or_default();
+
+        let mut hasher = DefaultHasher::new();
+        data.hash(&mut hasher);
+        cell_size.to_bits().hash(&mut hasher);
+        ec.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        match self.caches.get_mut(&key) {
+            Some((existing_hash, cache)) => {
+                if *existing_hash != hash {
+                    cache.clear();
+                    *existing_hash = hash;
+                }
+            }
+            None => {
+                self.caches.insert(key, (hash, canvas::Cache::new()));
+            }
+        }
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, Theme, R> {
+        let props = node.props.as_object();
+        let data = prop_str(props, "data").unwrap_or_default();
+        let cell_size = prop_f32(props, "cell_size").unwrap_or(4.0).clamp(1.0, 50.0);
+        let ec_str = prop_str(props, "error_correction").unwrap_or_default();
+        let cell_color = prop_str(props, "cell_color")
+            .and_then(|s| parse_hex_color(&s))
+            .unwrap_or(Color::BLACK);
+        let background = prop_str(props, "background")
+            .and_then(|s| parse_hex_color(&s))
+            .unwrap_or(Color::WHITE);
+
+        let ec_level = match ec_str.as_str() {
+            "low" => qrcode::EcLevel::L,
+            "quartile" => qrcode::EcLevel::Q,
+            "high" => qrcode::EcLevel::H,
+            _ => qrcode::EcLevel::M,
+        };
+
+        let qr = match qrcode::QrCode::with_error_correction_level(data.as_bytes(), ec_level) {
+            Ok(qr) => qr,
+            Err(e) => {
+                log::warn!("[id={}] qr_code: failed to encode data: {e}", node.id);
+                return iced::widget::text(format!("QR code error: {e}")).into();
+            }
+        };
+
+        let width = qr.width();
+        let modules: Vec<Vec<bool>> = (0..width)
+            .map(|y| {
+                (0..width)
+                    .map(|x| qr[(x, y)] == qrcode::types::Color::Dark)
+                    .collect()
+            })
+            .collect();
+
+        let pixel_size = width as f32 * cell_size;
+
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        let cache_entry = self.caches.get(&key);
+
+        let mut qr_canvas =
+            iced::widget::Canvas::<_, Message, iced::Theme, R>::new(QrCodeProgram {
+                modules,
+                cell_size,
+                cell_color,
+                background,
+                cache: cache_entry,
+            })
+            .width(Length::Fixed(pixel_size))
+            .height(Length::Fixed(pixel_size));
+
+        if let Some(alt) = prop_str(props, "alt") {
+            qr_canvas = qr_canvas.alt(alt);
+        }
+        if let Some(desc) = prop_str(props, "description") {
+            qr_canvas = qr_canvas.description(desc);
+        }
+
+        qr_canvas.into()
+    }
+
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        self.caches
+            .remove(&(window_id.to_string(), node_id.to_string()));
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(QrCodeWidget::new())
+    }
+}

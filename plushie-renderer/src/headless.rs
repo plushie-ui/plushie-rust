@@ -183,7 +183,7 @@ impl<R: PlushieRenderer> Session<R> {
         };
 
         let mut registry = plushie_ext::registry::WidgetRegistry::new();
-        registry.register_set(&plushie_ext::widgets::builtins::iced_widget_set());
+        registry.register_set(&plushie_ext::widgets::widget_set::iced_widget_set());
 
         Self {
             core: Core::new(),

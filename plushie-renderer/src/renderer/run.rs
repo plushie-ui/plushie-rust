@@ -182,7 +182,7 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
                 .expect("builder_slot lock poisoned")
                 .take()
                 .expect("daemon init closure called more than once")
-                .widget_set(&plushie_ext::widgets::builtins::iced_widget_set());
+                .widget_set(&plushie_ext::widgets::widget_set::iced_widget_set());
             let registry = builder.build();
 
             let effect_handler = Box::new(crate::effects::NativeEffectHandler);

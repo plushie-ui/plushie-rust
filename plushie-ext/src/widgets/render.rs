@@ -10,7 +10,7 @@ use std::cell::Cell;
 use iced::widget::text;
 use iced::{Color, Element, Theme};
 
-use super::caches::MAX_TREE_DEPTH;
+use crate::shared_state::MAX_TREE_DEPTH;
 
 /// Returns the list of all built-in widget type names that the renderer supports.
 pub fn builtin_widget_types() -> &'static [&'static str] {
@@ -139,7 +139,7 @@ mod tests {
     use crate::protocol::TreeNode;
     use crate::registry::WidgetRegistry;
     use crate::widgets::SharedState;
-    use crate::widgets::builtins::iced_widget_set;
+    use crate::widgets::widget_set::iced_widget_set;
 
     // -- Image registry handle lookup --
 

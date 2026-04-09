@@ -272,8 +272,124 @@ builtin_widget!(QrCodeWidget,          ["qr_code"],      display::render_qr_code
 
 builtin_widget!(TextInputWidget,       ["text_input"],       input::render_text_input,
     infer_a11y: infer_placeholder_as_description);
-builtin_widget!(TextEditorWidget,      ["text_editor"],      input::render_text_editor,
-    infer_a11y: infer_placeholder_as_description);
+// TextEditorWidget: extracted stateful factory (owns text_editor::Content<R>).
+// The R-generic Content is why this factory is parameterized on R.
+pub(crate) struct TextEditorWidget<R: PlushieRenderer> {
+    /// text_editor Content per (window_id, node_id). Preserves cursor,
+    /// undo history, and selection across renders.
+    contents: std::collections::HashMap<(String, String), iced::widget::text_editor::Content<R>>,
+    /// Hash of last-synced "content" prop per (window_id, node_id).
+    /// Detects host-side prop changes without clobbering user edits.
+    content_hashes: std::collections::HashMap<(String, String), u64>,
+}
+
+impl<R: PlushieRenderer> TextEditorWidget<R> {
+    const MAX_CONTENT: usize = 10_485_760; // 10 MB
+
+    pub(crate) fn new() -> Self {
+        Self {
+            contents: std::collections::HashMap::new(),
+            content_hashes: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
+    fn type_names(&self) -> &[&str] {
+        &["text_editor"]
+    }
+
+    fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
+        use crate::widgets::caches::hash_str;
+
+        let key = (window_id.to_string(), node.id.clone());
+        let props = node.props.as_object();
+        let mut content_str = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
+        if content_str.len() > Self::MAX_CONTENT {
+            log::warn!(
+                "[id={}] text_editor content ({} bytes) exceeds limit ({} bytes), truncating",
+                node.id,
+                content_str.len(),
+                Self::MAX_CONTENT,
+            );
+            let mut end = Self::MAX_CONTENT;
+            while !content_str.is_char_boundary(end) && end > 0 {
+                end -= 1;
+            }
+            content_str.truncate(end);
+        }
+        let prop_hash = hash_str(&content_str);
+        let prev_hash = self.content_hashes.get(&key).copied();
+        if prev_hash != Some(prop_hash) {
+            self.contents.insert(
+                key.clone(),
+                iced::widget::text_editor::Content::with_text(&content_str),
+            );
+            self.content_hashes.insert(key, prop_hash);
+        }
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, iced::Theme, R> {
+        // Delegate to existing render function during transition.
+        // The old ensure_text_editor_cache path still populates WidgetCaches,
+        // so render_text_editor reads from ctx.caches.editor_contents.
+        // TODO: once ensure_caches_walk is removed, render from self.contents.
+        input::render_text_editor(node, *ctx)
+    }
+
+    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+        use crate::widgets::caches::hash_str;
+
+        match msg {
+            Message::TextEditorAction(window_id, id, action) => {
+                // During transition, Content lives in both self.contents
+                // and WidgetCaches. The old process_widget_message path
+                // mutates WidgetCaches. This handle_message is ready for
+                // when registry message dispatch takes over.
+                // For now, find by node_id alone (matching old behavior).
+                let key_match = self
+                    .contents
+                    .keys()
+                    .find(|(_, nid)| nid == id)
+                    .cloned();
+                if let Some(key) = key_match {
+                    if let Some(content) = self.contents.get_mut(&key) {
+                        let is_edit = action.is_edit();
+                        content.perform(action.clone());
+                        if is_edit {
+                            let new_text = content.text();
+                            self.content_hashes.insert(key, hash_str(&new_text));
+                            return Some(vec![
+                                crate::protocol::OutgoingEvent::input(id.clone(), new_text)
+                                    .with_window_id(window_id.clone()),
+                            ]);
+                        }
+                    }
+                }
+                Some(vec![])
+            }
+            _ => None,
+        }
+    }
+
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        infer_placeholder_as_description(node)
+    }
+
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        let key = (window_id.to_string(), node_id.to_string());
+        self.contents.remove(&key);
+        self.content_hashes.remove(&key);
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(TextEditorWidget::new())
+    }
+}
 builtin_widget!(CheckboxWidget,        ["checkbox"],         input::render_checkbox);
 builtin_widget!(TogglerWidget,         ["toggler"],          input::render_toggler);
 builtin_widget!(RadioWidget,           ["radio"],            input::render_radio);
@@ -390,8 +506,79 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
     }
 }
 builtin_widget!(PickListWidget,        ["pick_list"],        input::render_pick_list);
-builtin_widget!(ComboBoxWidget,        ["combo_box"],        input::render_combo_box,
-    infer_a11y: infer_placeholder_as_description);
+// ComboBoxWidget: extracted stateful factory (owns combo_box::State).
+// Render delegates to existing function during transition. Once render
+// reads from factory state instead of WidgetCaches, the delegation
+// can be inlined.
+pub(crate) struct ComboBoxWidget {
+    /// combo_box::State per (window_id, node_id).
+    states: std::collections::HashMap<(String, String), iced::widget::combo_box::State<String>>,
+    /// Cached options per (window_id, node_id) for change detection.
+    options: std::collections::HashMap<(String, String), Vec<String>>,
+}
+
+impl ComboBoxWidget {
+    pub(crate) fn new() -> Self {
+        Self {
+            states: std::collections::HashMap::new(),
+            options: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
+    fn type_names(&self) -> &[&str] {
+        &["combo_box"]
+    }
+
+    fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
+        let key = (window_id.to_string(), node.id.clone());
+        let props = node.props.as_object();
+        let new_options: Vec<String> = props
+            .and_then(|p| p.get("options"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let options_changed = self.options.get(&key).is_none_or(|cached| *cached != new_options);
+        if options_changed {
+            self.states.insert(
+                key.clone(),
+                iced::widget::combo_box::State::new(new_options.clone()),
+            );
+            self.options.insert(key, new_options);
+        }
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, iced::Theme, R> {
+        // During transition, delegate to existing render function which reads
+        // from WidgetCaches. The factory's prepare() keeps WidgetCaches in
+        // sync via the old ensure_combo_box_cache path (still runs).
+        // TODO: once ensure_caches_walk is removed, render from self.states.
+        input::render_combo_box(node, *ctx)
+    }
+
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        infer_placeholder_as_description(node)
+    }
+
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        let key = (window_id.to_string(), node_id.to_string());
+        self.states.remove(&key);
+        self.options.remove(&key);
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(ComboBoxWidget::new())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Interactive widgets (7)
@@ -517,14 +704,14 @@ impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {
             Box::new(QrCodeWidget),
             // Input
             Box::new(TextInputWidget),
-            Box::new(TextEditorWidget),
+            Box::new(TextEditorWidget::new()),
             Box::new(CheckboxWidget),
             Box::new(TogglerWidget),
             Box::new(RadioWidget),
             Box::new(SliderWidget::new()),
             Box::new(VerticalSliderWidget::new()),
             Box::new(PickListWidget),
-            Box::new(ComboBoxWidget),
+            Box::new(ComboBoxWidget::new()),
             // Interactive
             Box::new(ButtonWidget),
             Box::new(PointerAreaWidget),

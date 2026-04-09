@@ -55,10 +55,11 @@ use crate::widgets::a11y::A11yOverrides;
 /// keyed by `(window_id, node_id)` to handle duplicate scoped IDs across
 /// windows.
 ///
-/// The trait requires `Send` (not `Sync`) because each multiplexed
-/// session owns its own factory instances. Factories are never shared
-/// across threads, only moved via `clone_for_session`.
-pub trait PlushieWidget<R: PlushieRenderer>: Send {
+/// No `Send` or `Sync` bound: the registry and its widgets are
+/// always accessed from a single thread. Multiplexed sessions create
+/// their own registries via [`WidgetSet::create_widgets`] rather than
+/// cloning across threads.
+pub trait PlushieWidget<R: PlushieRenderer> {
     /// Widget type name(s) this implementation handles.
     ///
     /// Most widgets handle a single type (e.g., `["button"]`).

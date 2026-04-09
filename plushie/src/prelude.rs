@@ -28,3 +28,6 @@ pub use crate::types::{
     Align, Border, Color, Font, Gradient, KeyModifiers,
     Length, Length::*, Padding, Shadow, Style, StyleMap,
 };
+
+// Animation
+pub use crate::animation::{Easing, Sequence, Spring, Transition};

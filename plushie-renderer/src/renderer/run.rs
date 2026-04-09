@@ -151,7 +151,7 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
     Codec::set_global(codec);
 
     let ext_key_refs: Vec<&str> = ext_keys.iter().map(|s| s.as_str()).collect();
-    if let Err(e) = emit_hello("windowed", "wgpu", &ext_key_refs, transport_name) {
+    if let Err(e) = emit_hello("windowed", "wgpu", &ext_key_refs, &["iced"], transport_name) {
         log_hello_error(&e);
         return Ok(());
     }

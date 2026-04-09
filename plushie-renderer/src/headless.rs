@@ -1032,9 +1032,13 @@ pub(crate) fn run(
         Mode::Mock => ("mock", "mock"),
     };
     let ext_key_refs: Vec<&str> = ext_keys.iter().map(|s| s.as_str()).collect();
-    if let Err(e) =
-        plushie_renderer_lib::emitters::emit_hello(mode_str, backend, &ext_key_refs, transport_name)
-    {
+    if let Err(e) = plushie_renderer_lib::emitters::emit_hello(
+        mode_str,
+        backend,
+        &ext_key_refs,
+        &["iced"],
+        transport_name,
+    ) {
         log_hello_error(&e);
         return;
     }

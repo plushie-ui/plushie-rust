@@ -88,10 +88,15 @@ pub fn emit_event(event: OutgoingEvent) -> io::Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Emit a `hello` handshake message immediately after codec negotiation.
+///
+/// The `widget_sets` field reports which named widget sets are registered.
+/// The "iced" set is always present (provides the 36 built-in widget types).
+/// Extension widgets are reported separately in `native_widgets`.
 pub fn emit_hello(
     mode: &str,
     backend: &str,
     native_widgets: &[&str],
+    widget_set_names: &[&str],
     transport: &str,
 ) -> io::Result<()> {
     let builtin = plushie_ext::widgets::render::builtin_widget_types();
@@ -111,6 +116,7 @@ pub fn emit_hello(
         "backend": backend,
         "transport": transport,
         "native_widgets": native_widgets,
+        "widget_sets": widget_set_names,
         "widgets": all_widgets,
     });
     let codec = Codec::get_global();

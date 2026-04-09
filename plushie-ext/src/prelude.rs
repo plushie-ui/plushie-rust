@@ -28,6 +28,7 @@ pub use crate::widgets::a11y::A11yOverrides;
 
 // -- Canvas engine (for composing canvas-based widgets) --
 pub use crate::canvas_engine::CanvasEngine;
+pub use crate::extension_adapter::ExtensionAdapter;
 
 // -- Wire protocol types --
 pub use crate::message::Message;

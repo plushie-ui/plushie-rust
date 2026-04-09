@@ -91,15 +91,21 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
         (self.registry, dispatcher)
     }
 
-    // -- Legacy WidgetExtension API (transition period) -----------------------
-
-    /// Register a legacy [`WidgetExtension`].
+    /// Register a [`WidgetExtension`] via the [`ExtensionAdapter`], adding
+    /// it to the widget registry. The adapter bridges the WidgetExtension
+    /// API to PlushieWidget so extensions work through unified dispatch.
+    ///
+    /// [`ExtensionAdapter`]: crate::extension_adapter::ExtensionAdapter
     pub fn extension(mut self, ext: impl WidgetExtension<R> + 'static) -> Self {
-        self.extensions.push(Box::new(ext));
+        self.registry
+            .register(Box::new(crate::extension_adapter::ExtensionAdapter::new(
+                ext,
+            )));
         self
     }
 
-    /// Register a pre-boxed legacy [`WidgetExtension`].
+    /// Register a pre-boxed [`WidgetExtension`] via the
+    /// [`ExtensionAdapter`](crate::extension_adapter::ExtensionAdapter).
     pub fn extension_boxed(mut self, ext: Box<dyn WidgetExtension<R>>) -> Self {
         self.extensions.push(ext);
         self

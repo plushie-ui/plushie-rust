@@ -204,7 +204,7 @@ pub trait WidgetExtension<R: PlushieRenderer = iced::Renderer>: Send + Sync + 's
     /// multiple nodes, they're visited in tree order.
     ///
     /// Use this to populate [`ExtensionCaches`] entries that `render()`
-    /// reads. The ensure_caches/render split avoids the need for
+    /// reads. The prepare/render split avoids the need for
     /// `RefCell` or interior mutability in the view phase.
     fn prepare(&mut self, _node: &TreeNode, _caches: &mut ExtensionCaches, _theme: &Theme) {}
 

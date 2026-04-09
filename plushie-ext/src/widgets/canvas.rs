@@ -952,7 +952,7 @@ struct CanvasProgram<'a, R: PlushieRenderer = iced::Renderer> {
     on_scroll: bool,
     /// Reference to the image registry for resolving in-memory image handles.
     images: &'a crate::image_registry::ImageRegistry,
-    /// Interactive elements parsed during ensure_caches.
+    /// Interactive elements parsed during prepare.
     interactive_elements: &'a [InteractiveElement],
     /// Arrow key navigation mode.
     arrow_mode: ArrowMode,

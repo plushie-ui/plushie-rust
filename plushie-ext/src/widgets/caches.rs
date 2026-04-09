@@ -16,7 +16,7 @@ use serde_json::Value;
 
 use crate::protocol::TreeNode;
 
-/// Maximum recursion depth for tree walks (render, ensure_caches, prepare).
+/// Maximum recursion depth for tree walks (render, prepare_walk).
 /// Prevents stack overflow from pathologically nested trees. Normal UI trees
 /// rarely exceed 20-30 levels; 256 is generous.
 pub(crate) const MAX_TREE_DEPTH: usize = 256;
@@ -38,7 +38,7 @@ const MAX_HASH_DEPTH: usize = 256;
 pub struct SharedState {
     // -- Cross-cutting shared state (used by all widget types) --
     /// Parsed style overrides with content hash for invalidation.
-    /// Populated in `ensure_caches_walk` for any node with a `style`
+    /// Populated in `prepare_walk` for any node with a `style`
     /// object prop; read during render to avoid re-parsing every frame.
     pub(crate) style_overrides: HashMap<String, (u64, super::helpers::StyleOverrides)>,
     /// Extension-owned caches. Public so extension authors can
@@ -188,7 +188,7 @@ pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedS
 }
 
 /// Look up cached `StyleOverrides` for a node. Returns `None` if the
-/// node has no `style` prop or if `ensure_caches` hasn't run yet.
+/// node has no `style` prop or if prepare_walk hasn't run yet.
 /// Used by widget render functions to avoid re-parsing the style JSON
 /// on every frame.
 pub(crate) fn cached_style_overrides<'a>(

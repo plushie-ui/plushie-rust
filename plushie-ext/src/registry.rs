@@ -440,7 +440,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         };
 
         // Cross-cutting: populate style overrides for any node with
-        // a style prop. This replaces the ensure_caches_walk.
+        // a style prop. Populated for all nodes during prepare_walk.
         crate::widgets::caches::ensure_style_overrides_cache(node, shared);
 
         // Factory-specific prepare.

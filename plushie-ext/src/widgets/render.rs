@@ -1,7 +1,7 @@
 //! Main render dispatch: maps a [`TreeNode`] to an iced [`Element`].
 //!
-//! This is the immutable side of the ensure_caches/render split. All
-//! mutable cache state must be pre-populated by [`super::ensure_caches`]
+//! This is the immutable side of the prepare/render split. All
+//! mutable cache state must be pre-populated by `registry.prepare_walk()` (via PlushieWidget::prepare)
 //! before calling [`render`]. Recursion depth is bounded by a
 //! thread-local counter.
 
@@ -68,9 +68,9 @@ use crate::protocol::TreeNode;
 
 /// Map a TreeNode to an iced Element. Unknown types render as an empty container.
 ///
-/// This is the immutable side of the ensure_caches/render split. All mutable
+/// This is the immutable side of the prepare/render split. All mutable
 /// cache state (text_editor Content, markdown Items, combo_box State, canvas
-/// Cache, etc.) must be pre-populated by [`super::ensure_caches`] before calling
+/// Cache, etc.) must be pre-populated by `registry.prepare_walk()` (via PlushieWidget::prepare) before calling
 /// this function. `render` works exclusively with shared (`&`) references
 /// to caches, so it can run inside iced's `view()` which only has `&self`.
 pub fn render<'a, R: PlushieRenderer>(

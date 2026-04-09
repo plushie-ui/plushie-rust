@@ -3209,6 +3209,7 @@ dependencies = [
  "log",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
+ "rmp-serde",
  "serde",
  "serde_json",
  "tokio",

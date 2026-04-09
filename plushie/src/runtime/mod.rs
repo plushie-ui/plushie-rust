@@ -5,3 +5,4 @@
 //! tracking window state, and executing commands.
 
 pub mod normalize;
+pub mod tree_diff;

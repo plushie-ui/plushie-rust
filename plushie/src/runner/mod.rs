@@ -11,4 +11,7 @@
 pub mod direct;
 
 #[cfg(feature = "wire")]
+pub mod bridge;
+
+#[cfg(feature = "wire")]
 pub mod wire;

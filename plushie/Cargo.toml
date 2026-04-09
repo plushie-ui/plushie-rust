@@ -13,7 +13,7 @@ categories = ["gui", "rendering"]
 [features]
 default = ["direct"]
 direct = ["dep:plushie-renderer-lib"]
-wire = ["dep:tokio"]
+wire = ["dep:tokio", "dep:rmp-serde"]
 
 [dependencies]
 plushie-widget-sdk = { version = "0.6.1", path = "../plushie-widget-sdk" }
@@ -21,6 +21,7 @@ plushie-renderer-lib = { version = "0.6.1", path = "../plushie-renderer-lib", op
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "process", "io-util", "time"], optional = true }
+rmp-serde = { version = "1", optional = true }
 log = "0.4"
 
 [lints]

@@ -650,11 +650,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, iced::Theme, R> {
-        // During transition, delegate to existing render function which reads
-        // from WidgetCaches. The factory's prepare() keeps WidgetCaches in
-        // sync via the old ensure_combo_box_cache path (still runs).
-        // TODO: once ensure_caches_walk is removed, render from self.states.
-        input::render_combo_box(node, *ctx)
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        match self.states.get(&key) {
+            Some(state) => input::render_combo_box_with_state(node, *ctx, state),
+            None => {
+                log::warn!("combo_box factory cache miss for id={}", node.id);
+                iced::widget::text("(combo_box: cache miss)").into()
+            }
+        }
     }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {

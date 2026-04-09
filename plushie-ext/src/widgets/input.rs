@@ -1497,6 +1497,16 @@ pub(crate) fn render_combo_box<'a, R: PlushieRenderer>(
             return text("(combo_box: cache miss)").into();
         }
     };
+    render_combo_box_with_state(node, ctx, state)
+}
+
+/// Inner render function that accepts state as a parameter.
+/// Called by both the legacy WidgetCaches path and the PlushieWidget factory.
+pub(crate) fn render_combo_box_with_state<'a, R: PlushieRenderer>(
+    node: &'a TreeNode,
+    ctx: RenderCtx<'a, R>,
+    state: &'a combo_box::State<String>,
+) -> Element<'a, Message, Theme, R> {
 
     let props = node.props.as_object();
     let selected: Option<String> = prop_str(props, "selected");

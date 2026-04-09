@@ -115,7 +115,155 @@ builtin_widget!(RuleWidget,            ["rule"],         display::render_rule);
 builtin_widget!(ProgressBarWidget,     ["progress_bar"], display::render_progress_bar);
 builtin_widget!(ImageWidget,           ["image"],        display::render_image);
 builtin_widget!(SvgWidget,             ["svg"],          display::render_svg);
-builtin_widget!(MarkdownWidget,        ["markdown"],     display::render_markdown);
+// MarkdownWidget: extracted stateful factory (owns parsed markdown items)
+pub(crate) struct MarkdownWidget {
+    /// Parsed markdown items per (window_id, node_id), with content hash
+    /// for invalidation. Rebuilt when the "content" or "code_theme" prop changes.
+    items: std::collections::HashMap<(String, String), (u64, Vec<iced::widget::markdown::Item>)>,
+}
+
+impl MarkdownWidget {
+    const MAX_CONTENT: usize = 1_048_576; // 1 MB
+
+    pub(crate) fn new() -> Self {
+        Self {
+            items: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
+    fn type_names(&self) -> &[&str] {
+        &["markdown"]
+    }
+
+    fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
+        use crate::widgets::caches::hash_str;
+
+        let key = (window_id.to_string(), node.id.clone());
+        let props = node.props.as_object();
+        let mut content_str = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
+        if content_str.len() > Self::MAX_CONTENT {
+            log::warn!(
+                "[id={}] markdown content ({} bytes) exceeds limit ({} bytes), truncating",
+                node.id,
+                content_str.len(),
+                Self::MAX_CONTENT,
+            );
+            let mut end = Self::MAX_CONTENT;
+            while !content_str.is_char_boundary(end) && end > 0 {
+                end -= 1;
+            }
+            content_str.truncate(end);
+        }
+        let code_theme_str = crate::prop_helpers::prop_str(props, "code_theme").unwrap_or_default();
+        let hash = hash_str(&format!("{content_str}\0{code_theme_str}"));
+
+        if let Some((existing_hash, _)) = self.items.get(&key) {
+            if *existing_hash == hash {
+                return;
+            }
+        }
+
+        let code_theme = match code_theme_str.as_str() {
+            "base16_mocha" => Some(iced::highlighter::Theme::Base16Mocha),
+            "base16_ocean" => Some(iced::highlighter::Theme::Base16Ocean),
+            "base16_eighties" => Some(iced::highlighter::Theme::Base16Eighties),
+            "solarized_dark" => Some(iced::highlighter::Theme::SolarizedDark),
+            "inspired_github" => Some(iced::highlighter::Theme::InspiredGitHub),
+            "" => None,
+            other => {
+                log::warn!("unknown code_theme {:?}, using default", other);
+                None
+            }
+        };
+        let items: Vec<_> = if let Some(theme) = code_theme {
+            let mut md = iced::widget::markdown::Content::new().code_theme(theme);
+            md.push_str(&content_str);
+            md.items().to_vec()
+        } else {
+            iced::widget::markdown::parse(&content_str).collect()
+        };
+        self.items.insert(key, (hash, items));
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, iced::Theme, R> {
+        use crate::prop_helpers::*;
+        use crate::widgets::helpers::value_to_length_opt;
+
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        let items = match self.items.get(&key) {
+            Some((_hash, items)) => items.as_slice(),
+            None => {
+                log::warn!("markdown cache miss for id={}", node.id);
+                return iced::widget::text("(markdown: cache miss)").into();
+            }
+        };
+
+        let props = node.props.as_object();
+        let mut settings = if let Some(text_size) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "text_size")
+                .or(ctx.default_text_size)
+        {
+            iced::widget::markdown::Settings::with_text_size(
+                text_size,
+                iced::widget::markdown::Style::from(ctx.theme),
+            )
+        } else {
+            iced::widget::markdown::Settings::from(ctx.theme)
+        };
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h1_size")
+        {
+            settings.h1_size = iced::Pixels(v);
+        }
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h2_size")
+        {
+            settings.h2_size = iced::Pixels(v);
+        }
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h3_size")
+        {
+            settings.h3_size = iced::Pixels(v);
+        }
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "code_size")
+        {
+            settings.code_size = iced::Pixels(v);
+        }
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing")
+        {
+            settings.spacing = iced::Pixels(v);
+        }
+        if let Some(lc) = prop_color(props, "link_color") {
+            settings.style.link_color = lc;
+        }
+
+        let mut md: Element<'a, Message, iced::Theme, R> =
+            iced::widget::markdown::view(items, settings).map(Message::MarkdownUrl);
+
+        if let Some(w) = value_to_length_opt(props.and_then(|p| p.get("width"))) {
+            md = iced::widget::container(md).width(w).into();
+        }
+
+        md
+    }
+
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        let key = (window_id.to_string(), node_id.to_string());
+        self.items.remove(&key);
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(MarkdownWidget::new())
+    }
+}
 builtin_widget!(QrCodeWidget,          ["qr_code"],      display::render_qr_code);
 
 // ---------------------------------------------------------------------------
@@ -255,7 +403,7 @@ impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {
             Box::new(ProgressBarWidget),
             Box::new(ImageWidget),
             Box::new(SvgWidget),
-            Box::new(MarkdownWidget),
+            Box::new(MarkdownWidget::new()),
             Box::new(QrCodeWidget),
             // Input
             Box::new(TextInputWidget),

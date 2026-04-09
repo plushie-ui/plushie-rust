@@ -54,7 +54,11 @@ use crate::widgets::a11y::A11yOverrides;
 /// Stateful widgets (TextEditor, PaneGrid, Canvas) own per-instance state
 /// keyed by `(window_id, node_id)` to handle duplicate scoped IDs across
 /// windows.
-pub trait PlushieWidget<R: PlushieRenderer>: Send + Sync {
+///
+/// The trait requires `Send` (not `Sync`) because each multiplexed
+/// session owns its own factory instances. Factories are never shared
+/// across threads, only moved via `clone_for_session`.
+pub trait PlushieWidget<R: PlushieRenderer>: Send {
     /// Widget type name(s) this implementation handles.
     ///
     /// Most widgets handle a single type (e.g., `["button"]`).

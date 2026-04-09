@@ -38,7 +38,7 @@ pub struct SharedState {
     /// Parsed style overrides with content hash for invalidation.
     /// Populated in `prepare_walk` for any node with a `style`
     /// object prop; read during render to avoid re-parsing every frame.
-    pub(crate) style_overrides: HashMap<String, (u64, crate::widgets::helpers::StyleOverrides)>,
+    pub(crate) style_overrides: HashMap<String, (u64, crate::widget::helpers::StyleOverrides)>,
     /// Interpolated prop values from active renderer-side animations.
     /// Keyed by widget ID -> prop name -> current value.
     /// Populated by the TransitionManager on each frame tick.
@@ -100,7 +100,7 @@ pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedS
         return;
     }
 
-    let overrides = crate::widgets::helpers::parse_style_overrides(style_val);
+    let overrides = crate::widget::helpers::parse_style_overrides(style_val);
     caches
         .style_overrides
         .insert(node.id.clone(), (hash, overrides));
@@ -113,7 +113,7 @@ pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedS
 pub(crate) fn cached_style_overrides<'a>(
     caches: &'a SharedState,
     node_id: &str,
-) -> Option<&'a crate::widgets::helpers::StyleOverrides> {
+) -> Option<&'a crate::widget::helpers::StyleOverrides> {
     caches.style_overrides.get(node_id).map(|(_, ov)| ov)
 }
 

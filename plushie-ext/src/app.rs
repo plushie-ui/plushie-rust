@@ -80,7 +80,7 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
     /// Return type names for non-built-in widgets (custom widgets).
     /// Used by the hello message.
     pub fn custom_type_names(&self) -> Vec<&str> {
-        let builtins = crate::widgets::render::builtin_widget_types();
+        let builtins = crate::widget::render::builtin_widget_types();
         self.registry
             .type_names()
             .into_iter()

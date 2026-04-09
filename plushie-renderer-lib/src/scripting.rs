@@ -776,13 +776,12 @@ pub fn build_interact_response(
             if let Some(node) = core.tree.root().and_then(|root| {
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
-                if let Some(element_id) = plushie_ext::widgets::canvas::canvas_hit_test(node, x, y)
-                {
+                if let Some(element_id) = plushie_ext::widget::canvas::canvas_hit_test(node, x, y) {
                     vec![
                         OutgoingEvent::canvas_element_click(wid, element_id, x, y, button)
                             .with_window_id(window_id),
                     ]
-                } else if plushie_ext::widgets::canvas::canvas_has_on_press(node) {
+                } else if plushie_ext::widget::canvas::canvas_has_on_press(node) {
                     vec![
                         OutgoingEvent::pointer_press(wid, x, y, &button, "mouse", None, mods)
                             .with_window_id(window_id),
@@ -807,7 +806,7 @@ pub fn build_interact_response(
             if let Some(node) = core.tree.root().and_then(|root| {
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
-                if plushie_ext::widgets::canvas::canvas_has_on_press(node) {
+                if plushie_ext::widget::canvas::canvas_has_on_press(node) {
                     vec![
                         OutgoingEvent::pointer_release(wid, x, y, &button, "mouse", None, mods)
                             .with_window_id(window_id),
@@ -829,8 +828,7 @@ pub fn build_interact_response(
             }) {
                 // Check for element enter/leave + raw move event
                 let mut events = Vec::new();
-                if let Some(element_id) = plushie_ext::widgets::canvas::canvas_hit_test(node, x, y)
-                {
+                if let Some(element_id) = plushie_ext::widget::canvas::canvas_hit_test(node, x, y) {
                     events.push(
                         OutgoingEvent::canvas_element_enter(wid.clone(), element_id, x, y)
                             .with_window_id(window_id.clone()),
@@ -874,7 +872,7 @@ pub fn build_interact_response(
                         });
 
                         if let Some(node) = found {
-                            if plushie_ext::widgets::canvas::canvas_find_element_by_id(
+                            if plushie_ext::widget::canvas::canvas_find_element_by_id(
                                 node, element_id,
                             ) {
                                 vec![

@@ -183,7 +183,7 @@ impl<R: PlushieRenderer> Session<R> {
         };
 
         let mut registry = plushie_ext::registry::WidgetRegistry::new();
-        registry.register_set(&plushie_ext::widgets::widget_set::iced_widget_set());
+        registry.register_set(&plushie_ext::widget::widget_set::iced_widget_set());
 
         Self {
             core: Core::new(),
@@ -234,7 +234,7 @@ impl<R: PlushieRenderer> Session<R> {
             window_id: "",
             scale_factor: 1.0,
         };
-        let element = plushie_ext::widgets::render(root, ctx);
+        let element = plushie_ext::widget::render(root, ctx);
 
         let cache = std::mem::take(&mut self.ui.ui_cache);
         let mut ui = iced_test::runtime::UserInterface::build(
@@ -908,7 +908,7 @@ fn handle_screenshot<R: PlushieRenderer>(
         scale_factor: 1.0,
     };
     let element: iced::Element<'_, plushie_ext::message::Message, Theme, R> =
-        plushie_ext::widgets::render(root, ctx);
+        plushie_ext::widget::render(root, ctx);
 
     let cache = std::mem::take(&mut s.ui.ui_cache);
     let mut ui = iced_test::runtime::UserInterface::build(

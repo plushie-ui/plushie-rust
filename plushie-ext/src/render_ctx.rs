@@ -61,7 +61,7 @@ impl<R: PlushieRenderer> std::fmt::Debug for RenderCtx<'_, R> {
 impl<'a, R: PlushieRenderer> RenderCtx<'a, R> {
     /// Render a child node through the main dispatch.
     pub fn render_child(&self, node: &'a TreeNode) -> Element<'a, Message, Theme, R> {
-        crate::widgets::render(node, *self)
+        crate::widget::render(node, *self)
     }
 
     /// Create a new RenderCtx with a different theme, preserving all other fields.

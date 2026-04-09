@@ -475,7 +475,7 @@ pub fn prop_value<'a>(props: Props<'a>, key: &str) -> Option<&'a Value> {
 /// Returns `None` if no padding props are present, preserving iced defaults.
 /// Negative values are clamped to `0.0` in the object and uniform formats.
 pub fn prop_padding(props: Props<'_>) -> Option<iced::Padding> {
-    crate::widgets::parse_padding_value(props)
+    crate::widget::parse_padding_value(props)
 }
 
 // ---------------------------------------------------------------------------

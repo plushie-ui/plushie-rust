@@ -49,7 +49,7 @@ use crate::message::Message;
 use crate::protocol::OutgoingEvent;
 use crate::protocol::TreeNode;
 use crate::render_ctx::RenderCtx;
-use crate::widgets::canvas as canvas_widgets;
+use crate::widget::canvas as canvas_widgets;
 
 /// Reusable canvas rendering engine.
 ///
@@ -87,8 +87,8 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::Hasher;
 
-        use crate::widgets::canvas::canvas_layers_from_node;
-        use crate::widgets::caches::hash_json_value;
+        use crate::widget::caches::hash_json_value;
+        use crate::widget::canvas::canvas_layers_from_node;
 
         let key = (window_id.to_string(), node.id.clone());
         let layer_map = canvas_layers_from_node(node);

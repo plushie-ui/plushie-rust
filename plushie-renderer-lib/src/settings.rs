@@ -55,7 +55,7 @@ pub fn parse_iced_settings(settings: &Value) -> iced::Settings {
 ///
 /// Checks for `validate_props: true` in the settings JSON and, if
 /// present, enables debug-mode prop validation globally via
-/// `plushie_ext::widgets::set_validate_props`. The flag is backed by
+/// `plushie_ext::widget::set_validate_props`. The flag is backed by
 /// a `OnceLock` and can only be set once per process lifetime.
 ///
 /// Called during startup, after the Settings message is parsed.
@@ -65,7 +65,7 @@ pub fn apply_validate_props(settings: &Value) {
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
     {
-        plushie_ext::widgets::set_validate_props(true);
+        plushie_ext::widget::set_validate_props(true);
         log::info!("prop validation enabled via settings");
     }
 }

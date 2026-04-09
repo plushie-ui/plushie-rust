@@ -68,7 +68,13 @@ pub mod theming;
 #[doc(hidden)]
 pub mod tree;
 #[doc(hidden)]
-pub mod widgets;
+pub mod widget;
+
+/// Backward-compatible alias for `widget`.
+#[doc(hidden)]
+pub mod widgets {
+    pub use crate::widget::*;
+}
 
 // Re-export iced so widget crates can use `plushie_ext::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when

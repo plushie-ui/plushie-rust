@@ -37,7 +37,7 @@ impl App {
                     window_id,
                     scale_factor: self.scale_factor_for_window(iced_id),
                 };
-                plushie_ext::widgets::render(window_node, ctx)
+                plushie_ext::widget::render(window_node, ctx)
             }
             None => container(text("waiting for snapshot..."))
                 .width(Fill)

@@ -35,7 +35,7 @@ pub use crate::protocol::{CoalesceHint, OutgoingEvent, TreeNode};
 pub use crate::prop_helpers::*;
 
 // -- Widget helpers (parsing, style application) --
-pub use crate::widgets::helpers::{
+pub use crate::widget::helpers::{
     StyleMapFields, StyleOverrides, container_style_from_base, get_style_overrides,
     parse_background, parse_border, parse_color, parse_font, parse_padding_value, parse_shadow,
     parse_style_map_fields, parse_style_overrides,

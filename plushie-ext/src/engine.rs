@@ -11,9 +11,9 @@ use iced::Font;
 use serde_json::Value;
 
 use crate::protocol::{IncomingMessage, OutgoingEvent};
+use crate::shared_state::SharedState;
 use crate::theming;
 use crate::tree::Tree;
-use crate::shared_state::SharedState;
 use crate::widgets;
 
 /// Side effects produced by [`Core::apply`] that the host must handle.

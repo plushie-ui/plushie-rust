@@ -102,7 +102,256 @@ builtin_widget!(KeyedColumnWidget,     ["keyed_column"], layout::render_keyed_co
 builtin_widget!(FloatWidget,           ["float"],        layout::render_float);
 builtin_widget!(ResponsiveWidget,      ["responsive"],   layout::render_responsive);
 builtin_widget!(ScrollableWidget,      ["scrollable"],   layout::render_scrollable);
-builtin_widget!(PaneGridWidget,        ["pane_grid"],    layout::render_pane_grid);
+// PaneGridWidget: extracted stateful factory (owns pane_grid::State).
+// Has complex prepare (pane reconciliation) and handle_message
+// (resolve pane handles to IDs, mutate state on resize/drop).
+pub(crate) struct PaneGridWidget {
+    /// pane_grid layout state per (window_id, node_id).
+    states: std::collections::HashMap<(String, String), iced::widget::pane_grid::State<String>>,
+}
+
+impl PaneGridWidget {
+    pub(crate) fn new() -> Self {
+        Self {
+            states: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
+    fn type_names(&self) -> &[&str] {
+        &["pane_grid"]
+    }
+
+    fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
+        use iced::widget::pane_grid;
+        use std::collections::HashSet;
+
+        let key = (window_id.to_string(), node.id.clone());
+        let props = node.props.as_object();
+        let axis = match crate::prop_helpers::prop_str(props, "split_axis").as_deref() {
+            Some("horizontal") => pane_grid::Axis::Horizontal,
+            _ => pane_grid::Axis::Vertical,
+        };
+        let child_ids: HashSet<String> = node.children.iter().map(|c| c.id.clone()).collect();
+
+        if let Some(state) = self.states.get_mut(&key) {
+            // Prune panes whose child nodes no longer exist.
+            let stale_panes: Vec<pane_grid::Pane> = state
+                .panes
+                .iter()
+                .filter(|(_pane, id)| !child_ids.contains(*id))
+                .map(|(pane, _id)| *pane)
+                .collect();
+            for pane in stale_panes {
+                state.close(pane);
+            }
+            // Add panes for new children.
+            let existing_ids: HashSet<String> = state.panes.values().cloned().collect();
+            let new_child_ids: Vec<String> = node
+                .children
+                .iter()
+                .filter(|c| !existing_ids.contains(&c.id))
+                .map(|c| c.id.clone())
+                .collect();
+            for new_id in new_child_ids {
+                if let Some((&anchor, _)) = state.panes.iter().next() {
+                    let _ = state.split(axis, anchor, new_id);
+                }
+            }
+        } else {
+            let child_list: Vec<String> = node.children.iter().map(|c| c.id.clone()).collect();
+            let new_state = if child_list.is_empty() {
+                let (state, _) = pane_grid::State::new("default".to_string());
+                state
+            } else if child_list.len() == 1 {
+                let (state, _) = pane_grid::State::new(child_list[0].clone());
+                state
+            } else {
+                let (mut state, first_pane) = pane_grid::State::new(child_list[0].clone());
+                let mut last_pane = first_pane;
+                for id in child_list.iter().skip(1) {
+                    if let Some((new_pane, _)) = state.split(axis, last_pane, id.clone()) {
+                        last_pane = new_pane;
+                    }
+                }
+                state
+            };
+            self.states.insert(key, new_state);
+        }
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, iced::Theme, R> {
+        // Delegate to existing render function during transition.
+        layout::render_pane_grid(node, *ctx)
+    }
+
+    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+        use crate::protocol::OutgoingEvent;
+        use iced::widget::pane_grid;
+
+        match msg {
+            Message::PaneFocusCycle(window_id, grid_id, pane) => {
+                let state = self
+                    .states
+                    .values()
+                    .find(|s| s.panes.values().any(|id| id == grid_id))
+                    .or_else(|| {
+                        self.states.iter().find(|((_w, n), _)| n == grid_id).map(|(_, s)| s)
+                    });
+                if let Some(state) = state {
+                    let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                    Some(vec![
+                        OutgoingEvent::pane_focus_cycle(grid_id.clone(), pane_id)
+                            .with_window_id(window_id.clone()),
+                    ])
+                } else {
+                    Some(vec![])
+                }
+            }
+            Message::PaneResized(window_id, grid_id, evt) => {
+                // Find state by grid_id (node_id part of the key)
+                if let Some(state) = self
+                    .states
+                    .iter_mut()
+                    .find(|((_w, n), _)| n == grid_id)
+                    .map(|(_, s)| s)
+                {
+                    state.resize(evt.split, evt.ratio);
+                }
+                Some(vec![
+                    OutgoingEvent::pane_resized(
+                        grid_id.clone(),
+                        format!("{:?}", evt.split),
+                        evt.ratio,
+                    )
+                    .with_window_id(window_id.clone()),
+                ])
+            }
+            Message::PaneDragged(window_id, grid_id, evt) => {
+                let state = self
+                    .states
+                    .iter_mut()
+                    .find(|((_w, n), _)| n == grid_id)
+                    .map(|(_, s)| s);
+
+                match evt {
+                    pane_grid::DragEvent::Picked { pane } => {
+                        if let Some(state) = state {
+                            let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                            Some(vec![
+                                OutgoingEvent::pane_dragged(
+                                    grid_id.clone(),
+                                    "picked",
+                                    pane_id,
+                                    None,
+                                    None,
+                                    None,
+                                )
+                                .with_window_id(window_id.clone()),
+                            ])
+                        } else {
+                            Some(vec![])
+                        }
+                    }
+                    pane_grid::DragEvent::Dropped { pane, target } => {
+                        if let Some(state) = state {
+                            let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                            let (target_pane, region, edge) = match target {
+                                pane_grid::Target::Edge(e) => {
+                                    let edge_str = match e {
+                                        pane_grid::Edge::Top => "top",
+                                        pane_grid::Edge::Bottom => "bottom",
+                                        pane_grid::Edge::Left => "left",
+                                        pane_grid::Edge::Right => "right",
+                                    };
+                                    (None, None, Some(edge_str))
+                                }
+                                pane_grid::Target::Pane(p, region) => {
+                                    let target_id = state.get(*p).cloned().unwrap_or_default();
+                                    let region_str = match region {
+                                        pane_grid::Region::Center => "center",
+                                        pane_grid::Region::Edge(pane_grid::Edge::Top) => "top",
+                                        pane_grid::Region::Edge(pane_grid::Edge::Bottom) => {
+                                            "bottom"
+                                        }
+                                        pane_grid::Region::Edge(pane_grid::Edge::Left) => "left",
+                                        pane_grid::Region::Edge(pane_grid::Edge::Right) => "right",
+                                    };
+                                    (Some(target_id), Some(region_str), None)
+                                }
+                            };
+                            state.drop(*pane, *target);
+                            Some(vec![
+                                OutgoingEvent::pane_dragged(
+                                    grid_id.clone(),
+                                    "dropped",
+                                    pane_id,
+                                    target_pane,
+                                    region,
+                                    edge,
+                                )
+                                .with_window_id(window_id.clone()),
+                            ])
+                        } else {
+                            Some(vec![])
+                        }
+                    }
+                    pane_grid::DragEvent::Canceled { pane } => {
+                        if let Some(state) = state {
+                            let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                            Some(vec![
+                                OutgoingEvent::pane_dragged(
+                                    grid_id.clone(),
+                                    "canceled",
+                                    pane_id,
+                                    None,
+                                    None,
+                                    None,
+                                )
+                                .with_window_id(window_id.clone()),
+                            ])
+                        } else {
+                            Some(vec![])
+                        }
+                    }
+                }
+            }
+            Message::PaneClicked(window_id, grid_id, pane) => {
+                let state = self
+                    .states
+                    .values()
+                    .find(|s| s.panes.values().any(|id| id == grid_id))
+                    .or_else(|| {
+                        self.states.iter().find(|((_w, n), _)| n == grid_id).map(|(_, s)| s)
+                    });
+                if let Some(state) = state {
+                    let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                    Some(vec![
+                        OutgoingEvent::pane_clicked(grid_id.clone(), pane_id)
+                            .with_window_id(window_id.clone()),
+                    ])
+                } else {
+                    Some(vec![])
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn cleanup(&mut self, node_id: &str, window_id: &str) {
+        let key = (window_id.to_string(), node_id.to_string());
+        self.states.remove(&key);
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(PaneGridWidget::new())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Display widgets (9, counting rich_text alias)
@@ -691,7 +940,7 @@ impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {
             Box::new(FloatWidget),
             Box::new(ResponsiveWidget),
             Box::new(ScrollableWidget),
-            Box::new(PaneGridWidget),
+            Box::new(PaneGridWidget::new()),
             // Display
             Box::new(TextWidget),
             Box::new(RichTextWidget),

@@ -379,11 +379,6 @@ pub(crate) fn render_text_editor<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
-    let height = prop_length(props, "height", Length::Shrink);
-    let placeholder = prop_str(props, "placeholder").unwrap_or_default();
-    let id = node.id.clone();
-
     let content = match ctx.caches.editor_contents.get(&node.id) {
         Some(c) => c,
         None => {
@@ -391,6 +386,20 @@ pub(crate) fn render_text_editor<'a, R: PlushieRenderer>(
             return text("(text_editor: cache miss)").into();
         }
     };
+    render_text_editor_with_content(node, ctx, content)
+}
+
+/// Inner render function that accepts Content as a parameter.
+/// Called by both the legacy WidgetCaches path and the PlushieWidget factory.
+pub(crate) fn render_text_editor_with_content<'a, R: PlushieRenderer>(
+    node: &'a TreeNode,
+    ctx: RenderCtx<'a, R>,
+    content: &'a text_editor::Content<R>,
+) -> Element<'a, Message, Theme, R> {
+    let props = node.props.as_object();
+    let height = prop_length(props, "height", Length::Shrink);
+    let placeholder = prop_str(props, "placeholder").unwrap_or_default();
+    let id = node.id.clone();
 
     let editor_id = id;
     let mut te = text_editor::TextEditor::<'_, _, Message, iced::Theme, R>::new(content)

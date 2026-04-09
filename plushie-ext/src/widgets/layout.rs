@@ -643,16 +643,25 @@ pub(crate) fn render_pane_grid<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
+    let state = match ctx.caches.pane_grid_states.get(&node.id) {
+        Some(s) => s,
+        None => return text("(pane_grid: no state)").into(),
+    };
+    render_pane_grid_with_state(node, ctx, state)
+}
+
+/// Inner render function that accepts pane_grid::State as a parameter.
+/// Called by both the legacy WidgetCaches path and the PlushieWidget factory.
+pub(crate) fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
+    node: &'a TreeNode,
+    ctx: RenderCtx<'a, R>,
+    state: &'a pane_grid::State<String>,
+) -> Element<'a, Message, Theme, R> {
     let props = node.props.as_object();
     let spacing = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing")
         .unwrap_or(2.0);
     let width = prop_length(props, "width", Length::Fill);
     let height = prop_length(props, "height", Length::Fill);
-
-    let state = match ctx.caches.pane_grid_states.get(&node.id) {
-        Some(s) => s,
-        None => return text("(pane_grid: no state)").into(),
-    };
 
     // Pre-render children into a map keyed by plushie ID. Also extract
     // title props from child nodes before the closure consumes the elements.

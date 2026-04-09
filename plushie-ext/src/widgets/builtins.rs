@@ -193,25 +193,129 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, iced::Theme, R> {
-        // Delegate to existing render function during transition.
-        // render_pane_grid reads State from WidgetCaches, which is mutated
-        // by the old process_widget_message Pane* arms. handle_message
-        // returns None to let the old path handle mutations so render
-        // sees the correct state.
-        // TODO: once render reads from self.states, enable handle_message.
-        layout::render_pane_grid(node, *ctx)
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        match self.states.get(&key) {
+            Some(state) => layout::render_pane_grid_with_state(node, *ctx, state),
+            None => iced::widget::text("(pane_grid: no state)").into(),
+        }
     }
 
-    // handle_message is intentionally disabled during transition.
-    // Render delegates to old functions that read from WidgetCaches.
-    // If we handled Pane events here (mutating self.states), the render
-    // path wouldn't see those mutations (split brain). Uncomment once
-    // render reads from self.states.
-    //
-    // The full implementation covers PaneFocusCycle, PaneResized,
-    // PaneDragged (Picked/Dropped/Canceled), and PaneClicked, resolving
-    // iced Pane handles to plushie string IDs via (window_id, grid_id)
-    // keyed state lookup.
+    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+        use crate::protocol::OutgoingEvent;
+        use iced::widget::pane_grid;
+
+        match msg {
+            Message::PaneFocusCycle(window_id, grid_id, pane) => {
+                let key = (window_id.to_string(), grid_id.to_string());
+                if let Some(state) = self.states.get(&key) {
+                    let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                    Some(vec![
+                        OutgoingEvent::pane_focus_cycle(grid_id.clone(), pane_id)
+                            .with_window_id(window_id.clone()),
+                    ])
+                } else {
+                    Some(vec![])
+                }
+            }
+            Message::PaneResized(window_id, grid_id, evt) => {
+                let key = (window_id.to_string(), grid_id.to_string());
+                if let Some(state) = self.states.get_mut(&key) {
+                    state.resize(evt.split, evt.ratio);
+                }
+                Some(vec![
+                    OutgoingEvent::pane_resized(
+                        grid_id.clone(),
+                        format!("{:?}", evt.split),
+                        evt.ratio,
+                    )
+                    .with_window_id(window_id.clone()),
+                ])
+            }
+            Message::PaneDragged(window_id, grid_id, evt) => {
+                let key = (window_id.to_string(), grid_id.to_string());
+                match evt {
+                    pane_grid::DragEvent::Picked { pane } => {
+                        if let Some(state) = self.states.get(&key) {
+                            let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                            Some(vec![
+                                OutgoingEvent::pane_dragged(
+                                    grid_id.clone(), "picked", pane_id,
+                                    None, None, None,
+                                )
+                                .with_window_id(window_id.clone()),
+                            ])
+                        } else {
+                            Some(vec![])
+                        }
+                    }
+                    pane_grid::DragEvent::Dropped { pane, target } => {
+                        if let Some(state) = self.states.get_mut(&key) {
+                            let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                            let (target_pane, region, edge) = match target {
+                                pane_grid::Target::Edge(e) => {
+                                    let edge_str = match e {
+                                        pane_grid::Edge::Top => "top",
+                                        pane_grid::Edge::Bottom => "bottom",
+                                        pane_grid::Edge::Left => "left",
+                                        pane_grid::Edge::Right => "right",
+                                    };
+                                    (None, None, Some(edge_str))
+                                }
+                                pane_grid::Target::Pane(p, region) => {
+                                    let target_id = state.get(*p).cloned().unwrap_or_default();
+                                    let region_str = match region {
+                                        pane_grid::Region::Center => "center",
+                                        pane_grid::Region::Edge(pane_grid::Edge::Top) => "top",
+                                        pane_grid::Region::Edge(pane_grid::Edge::Bottom) => "bottom",
+                                        pane_grid::Region::Edge(pane_grid::Edge::Left) => "left",
+                                        pane_grid::Region::Edge(pane_grid::Edge::Right) => "right",
+                                    };
+                                    (Some(target_id), Some(region_str), None)
+                                }
+                            };
+                            state.drop(*pane, *target);
+                            Some(vec![
+                                OutgoingEvent::pane_dragged(
+                                    grid_id.clone(), "dropped", pane_id,
+                                    target_pane, region, edge,
+                                )
+                                .with_window_id(window_id.clone()),
+                            ])
+                        } else {
+                            Some(vec![])
+                        }
+                    }
+                    pane_grid::DragEvent::Canceled { pane } => {
+                        if let Some(state) = self.states.get(&key) {
+                            let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                            Some(vec![
+                                OutgoingEvent::pane_dragged(
+                                    grid_id.clone(), "canceled", pane_id,
+                                    None, None, None,
+                                )
+                                .with_window_id(window_id.clone()),
+                            ])
+                        } else {
+                            Some(vec![])
+                        }
+                    }
+                }
+            }
+            Message::PaneClicked(window_id, grid_id, pane) => {
+                let key = (window_id.to_string(), grid_id.to_string());
+                if let Some(state) = self.states.get(&key) {
+                    let pane_id = state.get(*pane).cloned().unwrap_or_default();
+                    Some(vec![
+                        OutgoingEvent::pane_clicked(grid_id.clone(), pane_id)
+                            .with_window_id(window_id.clone()),
+                    ])
+                } else {
+                    Some(vec![])
+                }
+            }
+            _ => None,
+        }
+    }
 
     fn cleanup(&mut self, node_id: &str, window_id: &str) {
         let key = (window_id.to_string(), node_id.to_string());
@@ -453,27 +557,39 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, iced::Theme, R> {
-        // Delegate to existing render function during transition.
-        // render_text_editor reads Content from WidgetCaches, which is
-        // mutated by the old process_widget_message TextEditorAction arm.
-        // handle_message returns None to let the old path handle mutations
-        // so render sees the correct state.
-        // TODO: once render reads from self.contents, enable handle_message.
-        input::render_text_editor(node, *ctx)
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        match self.contents.get(&key) {
+            Some(content) => input::render_text_editor_with_content(node, *ctx, content),
+            None => {
+                log::warn!("text_editor factory cache miss for id={}", node.id);
+                iced::widget::text("(text_editor: cache miss)").into()
+            }
+        }
     }
 
-    // handle_message is intentionally disabled during transition.
-    // Render delegates to old functions that read from WidgetCaches.
-    // If we handled TextEditorAction here (mutating self.contents),
-    // the render path wouldn't see those mutations (split brain).
-    // Uncomment once render reads from self.contents.
-    //
-    // fn handle_message(&mut self, msg: &Message) -> Option<Vec<OutgoingEvent>> {
-    //     match msg {
-    //         Message::TextEditorAction(window_id, id, action) => { ... }
-    //         _ => None,
-    //     }
-    // }
+    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+        use crate::widgets::caches::hash_str;
+
+        match msg {
+            Message::TextEditorAction(window_id, id, action) => {
+                let key = (window_id.to_string(), id.to_string());
+                if let Some(content) = self.contents.get_mut(&key) {
+                    let is_edit = action.is_edit();
+                    content.perform(action.clone());
+                    if is_edit {
+                        let new_text = content.text();
+                        self.content_hashes.insert(key, hash_str(&new_text));
+                        return Some(vec![
+                            crate::protocol::OutgoingEvent::input(id.clone(), new_text)
+                                .with_window_id(window_id.clone()),
+                        ]);
+                    }
+                }
+                Some(vec![])
+            }
+            _ => None,
+        }
+    }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
         infer_placeholder_as_description(node)

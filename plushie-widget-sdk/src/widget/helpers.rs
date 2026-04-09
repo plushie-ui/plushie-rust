@@ -3,7 +3,7 @@
 //! This module re-exports the public [`prop_helpers`](crate::prop_helpers)
 //! and provides functions for parsing complex prop types (padding, fonts,
 //! borders, style maps) and applying style overrides to iced widget styles.
-//! Widget authors can access these via `plushie_ext::widget::helpers::*`.
+//! Widget authors can access these via `plushie_widget_sdk::widget::helpers::*`.
 
 use iced::widget::text::{LineHeight, Wrapping};
 use iced::widget::{

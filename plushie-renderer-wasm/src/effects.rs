@@ -7,9 +7,9 @@
 use iced::Task;
 use serde_json::Value;
 
-use plushie_ext::message::Message;
-use plushie_ext::protocol::EffectResponse;
 use plushie_renderer_lib::EffectHandler;
+use plushie_widget_sdk::message::Message;
+use plushie_widget_sdk::protocol::EffectResponse;
 
 pub struct WebEffectHandler;
 

@@ -3,8 +3,8 @@
 
 use std::io;
 
-use plushie_ext::engine::CoreEffect;
-use plushie_ext::protocol::IncomingMessage;
+use plushie_widget_sdk::engine::CoreEffect;
+use plushie_widget_sdk::protocol::IncomingMessage;
 
 use crate::App;
 use crate::emitters::{emit_effect_response, emit_event};
@@ -95,7 +95,7 @@ impl App {
                     emit_effect_response(response)?;
                 }
                 CoreEffect::EmitStubAck(ack) => {
-                    let codec = plushie_ext::codec::Codec::get_global();
+                    let codec = plushie_widget_sdk::codec::Codec::get_global();
                     let bytes = codec.encode(&ack).map_err(io::Error::other)?;
                     crate::emitters::write_output(&bytes)?;
                 }
@@ -152,7 +152,7 @@ impl App {
                     self.handle_image_op(&op, &handle, data, pixels, width, height);
                 }
                 CoreEffect::WidgetConfig(config) => {
-                    let ctx = plushie_ext::registry::InitCtx {
+                    let ctx = plushie_widget_sdk::registry::InitCtx {
                         config: &config,
                         theme: &self.theme,
                         default_text_size: self.core.default_text_size,
@@ -177,7 +177,7 @@ impl App {
             for win_id in window_ids {
                 if let Some(node) = self.core.tree.find_window(&win_id)
                     && let Some(theme_val) = node.props.get("theme")
-                    && let Some(theme) = plushie_ext::theming::resolve_theme_only(theme_val)
+                    && let Some(theme) = plushie_widget_sdk::theming::resolve_theme_only(theme_val)
                 {
                     self.windows.set_theme(&win_id, Some(theme));
                 }

@@ -13,9 +13,9 @@ use std::sync::{Mutex, OnceLock};
 
 use iced::Task;
 
-use plushie_ext::codec::Codec;
-use plushie_ext::message::Message;
-use plushie_ext::protocol::OutgoingEvent;
+use plushie_widget_sdk::codec::Codec;
+use plushie_widget_sdk::message::Message;
+use plushie_widget_sdk::protocol::OutgoingEvent;
 
 // ---------------------------------------------------------------------------
 // configurable output writer
@@ -99,7 +99,7 @@ pub fn emit_hello(
     widget_set_names: &[&str],
     transport: &str,
 ) -> io::Result<()> {
-    let builtin = plushie_ext::widget::widget_set::IcedWidgetSet::type_names();
+    let builtin = plushie_widget_sdk::widget::widget_set::IcedWidgetSet::type_names();
     let all_widgets: Vec<&str> = builtin
         .iter()
         .copied()
@@ -109,7 +109,7 @@ pub fn emit_hello(
     let msg = serde_json::json!({
         "type": "hello",
         "session": "",
-        "protocol": plushie_ext::protocol::PROTOCOL_VERSION,
+        "protocol": plushie_widget_sdk::protocol::PROTOCOL_VERSION,
         "version": env!("CARGO_PKG_VERSION"),
         "name": "plushie-renderer",
         "mode": mode,
@@ -128,8 +128,10 @@ pub fn emit_hello(
 // effect response emitter
 // ---------------------------------------------------------------------------
 
-/// Encode and write an [`EffectResponse`](plushie_ext::protocol::EffectResponse).
-pub fn emit_effect_response(response: plushie_ext::protocol::EffectResponse) -> io::Result<()> {
+/// Encode and write an [`EffectResponse`](plushie_widget_sdk::protocol::EffectResponse).
+pub fn emit_effect_response(
+    response: plushie_widget_sdk::protocol::EffectResponse,
+) -> io::Result<()> {
     let codec = Codec::get_global();
     let bytes = codec.encode(&response).map_err(io::Error::other)?;
     write_output(&bytes)
@@ -303,7 +305,7 @@ mod tests {
 
     #[test]
     fn message_to_event_canvas_events() {
-        let mods = plushie_ext::protocol::KeyModifiers::default();
+        let mods = plushie_widget_sdk::protocol::KeyModifiers::default();
         for kind in &["press", "release", "move"] {
             let extra = match *kind {
                 "press" | "release" => "left:mouse".to_string(),
@@ -345,7 +347,7 @@ mod tests {
             delta_x: 1.0,
             delta_y: -1.0,
             pointer_type: "mouse".into(),
-            modifiers: plushie_ext::protocol::KeyModifiers::default(),
+            modifiers: plushie_widget_sdk::protocol::KeyModifiers::default(),
         };
         let event = message_to_event(&msg).unwrap();
         assert_eq!(event.family, "scroll");

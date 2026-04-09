@@ -7,8 +7,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use plushie_ext::testing::*;
-//! use plushie_ext::prelude::*;
+//! use plushie_widget_sdk::testing::*;
+//! use plushie_widget_sdk::prelude::*;
 //!
 //! let test = TestEnv::default();
 //! let ctx = test.render_ctx();

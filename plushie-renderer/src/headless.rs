@@ -8,7 +8,7 @@
 //! protocol-level testing from any language.
 //!
 //! Both modes read framed messages from stdin, process them through
-//! [`Core`](plushie_ext::engine::Core), and write responses to stdout.
+//! [`Core`](plushie_widget_sdk::engine::Core), and write responses to stdout.
 //! No iced daemon, no windows, no GPU. Both modes maintain a persistent
 //! renderer and UI cache -- headless uses `iced::Renderer` (tiny-skia)
 //! for real screenshots, mock uses the null renderer `()` for speed.
@@ -29,13 +29,13 @@ use iced::mouse;
 use iced::{Event, Size, Theme};
 use serde::Serialize;
 
-use plushie_ext::PlushieRenderer;
-use plushie_ext::codec::Codec;
-use plushie_ext::engine::Core;
-use plushie_ext::image_registry::ImageRegistry;
-use plushie_ext::message::Message;
-use plushie_ext::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
-use plushie_ext::render_ctx::RenderCtx;
+use plushie_widget_sdk::PlushieRenderer;
+use plushie_widget_sdk::codec::Codec;
+use plushie_widget_sdk::engine::Core;
+use plushie_widget_sdk::image_registry::ImageRegistry;
+use plushie_widget_sdk::message::Message;
+use plushie_widget_sdk::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
+use plushie_widget_sdk::render_ctx::RenderCtx;
 
 use plushie_renderer_lib::scripting::{interaction_to_iced_events, resolve_widget_id};
 
@@ -151,13 +151,13 @@ struct UiState<R: PlushieRenderer> {
 struct Session<R: PlushieRenderer> {
     core: Core,
     theme: Theme,
-    registry: plushie_ext::registry::WidgetRegistry<R>,
+    registry: plushie_widget_sdk::registry::WidgetRegistry<R>,
     images: ImageRegistry,
     writer: WireWriter,
     ui: UiState<R>,
     mode: Mode,
     /// Renderer-side animation manager.
-    transition_manager: plushie_ext::animation::TransitionManager,
+    transition_manager: plushie_widget_sdk::animation::TransitionManager,
     /// Current keyboard modifier state, updated on every ModifiersChanged
     /// event. Included on all outgoing pointer events.
     current_modifiers: iced::keyboard::Modifiers,
@@ -182,8 +182,8 @@ impl<R: PlushieRenderer> Session<R> {
             cursor: mouse::Cursor::Unavailable,
         };
 
-        let mut registry = plushie_ext::registry::WidgetRegistry::new();
-        registry.register_set(&plushie_ext::widget::widget_set::iced_widget_set());
+        let mut registry = plushie_widget_sdk::registry::WidgetRegistry::new();
+        registry.register_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
 
         Self {
             core: Core::new(),
@@ -193,7 +193,7 @@ impl<R: PlushieRenderer> Session<R> {
             writer,
             ui,
             mode,
-            transition_manager: plushie_ext::animation::TransitionManager::new(),
+            transition_manager: plushie_widget_sdk::animation::TransitionManager::new(),
             current_modifiers: iced::keyboard::Modifiers::default(),
         }
     }
@@ -217,7 +217,12 @@ impl<R: PlushieRenderer> Session<R> {
     fn with_ui<Ret>(
         &mut self,
         f: impl FnOnce(
-            &mut iced_test::runtime::UserInterface<'_, plushie_ext::message::Message, Theme, R>,
+            &mut iced_test::runtime::UserInterface<
+                '_,
+                plushie_widget_sdk::message::Message,
+                Theme,
+                R,
+            >,
             &mut R,
             mouse::Cursor,
         ) -> Ret,
@@ -234,7 +239,7 @@ impl<R: PlushieRenderer> Session<R> {
             window_id: "",
             scale_factor: 1.0,
         };
-        let element = plushie_ext::widget::render(root, ctx);
+        let element = plushie_widget_sdk::widget::render(root, ctx);
 
         let cache = std::mem::take(&mut self.ui.ui_cache);
         let mut ui = iced_test::runtime::UserInterface::build(
@@ -345,7 +350,7 @@ impl<R: PlushieRenderer> Session<R> {
 
                 // Emit an interact_step so the host can process
                 // these events and send back an updated tree.
-                let step = plushie_ext::protocol::InteractResponse {
+                let step = plushie_widget_sdk::protocol::InteractResponse {
                     message_type: "interact_step",
                     session: session_id.to_string(),
                     id: interact_id.to_string(),
@@ -398,11 +403,11 @@ impl<R: PlushieRenderer> Session<R> {
                     }
                     let effects = self.core.apply(msg);
                     for effect in effects {
-                        use plushie_ext::engine::CoreEffect;
+                        use plushie_widget_sdk::engine::CoreEffect;
                         match effect {
                             CoreEffect::ThemeChanged(t) => self.theme = t,
                             CoreEffect::WidgetConfig(config) => {
-                                let ctx = plushie_ext::registry::InitCtx {
+                                let ctx = plushie_widget_sdk::registry::InitCtx {
                                     config: &config,
                                     theme: &self.theme,
                                     default_text_size: self.core.default_text_size,
@@ -430,7 +435,7 @@ impl<R: PlushieRenderer> Session<R> {
             let settle_events = self.settle_ui(session_id);
             if !settle_events.is_empty() {
                 emitted_steps = true;
-                let step = plushie_ext::protocol::InteractResponse {
+                let step = plushie_widget_sdk::protocol::InteractResponse {
                     message_type: "interact_step",
                     session: session_id.to_string(),
                     id: interact_id.to_string(),
@@ -507,7 +512,7 @@ fn handle_message<R: PlushieRenderer>(
             let effects = s.core.apply(msg);
 
             for effect in effects {
-                use plushie_ext::engine::CoreEffect;
+                use plushie_widget_sdk::engine::CoreEffect;
                 match effect {
                     CoreEffect::EmitEvent(event) => {
                         s.writer.emit(&event.with_session(session_id))?;
@@ -530,8 +535,10 @@ fn handle_message<R: PlushieRenderer>(
                             };
                             log::debug!("{mode}: async effect {kind} unsupported (no display)");
                             s.writer.emit(
-                                &plushie_ext::protocol::EffectResponse::unsupported(request_id)
-                                    .with_session(session_id),
+                                &plushie_widget_sdk::protocol::EffectResponse::unsupported(
+                                    request_id,
+                                )
+                                .with_session(session_id),
                             )?;
                         } else {
                             let response =
@@ -552,7 +559,7 @@ fn handle_message<R: PlushieRenderer>(
                             None,
                         ) {
                             let _ = s.writer.emit(
-                                &plushie_ext::protocol::OutgoingEvent::theme_changed(
+                                &plushie_widget_sdk::protocol::OutgoingEvent::theme_changed(
                                     entry.tag.clone(),
                                     mode_str.to_string(),
                                 )
@@ -579,7 +586,7 @@ fn handle_message<R: PlushieRenderer>(
                         }
                     }
                     CoreEffect::WidgetConfig(config) => {
-                        let ctx = plushie_ext::registry::InitCtx {
+                        let ctx = plushie_widget_sdk::registry::InitCtx {
                             config: &config,
                             theme: &s.theme,
                             default_text_size: s.core.default_text_size,
@@ -603,7 +610,7 @@ fn handle_message<R: PlushieRenderer>(
                             .and_then(|v| v.as_str())
                             .unwrap_or_default()
                             .to_string();
-                        let event = plushie_ext::protocol::OutgoingEvent::generic(
+                        let event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
                             "announce",
                             "",
                             Some(serde_json::json!({"text": announce_text})),
@@ -769,8 +776,8 @@ fn handle_message<R: PlushieRenderer>(
                 .events
             };
 
-            let resp =
-                plushie_ext::protocol::InteractResponse::new(id, events).with_session(session_id);
+            let resp = plushie_widget_sdk::protocol::InteractResponse::new(id, events)
+                .with_session(session_id);
             s.writer.emit(&resp)?;
         }
         IncomingMessage::TreeHash { id, name, .. } => {
@@ -834,7 +841,7 @@ fn handle_message<R: PlushieRenderer>(
 
             // Emit transition_complete events
             for c in completions {
-                let event = plushie_ext::protocol::OutgoingEvent::generic(
+                let event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
                     "transition_complete",
                     c.widget_id.clone(),
                     Some(serde_json::json!({
@@ -851,7 +858,7 @@ fn handle_message<R: PlushieRenderer>(
                 .matching_entries(plushie_renderer_lib::constants::SUB_ANIMATION_FRAME, None)
             {
                 s.writer.emit(
-                    &plushie_ext::protocol::OutgoingEvent::animation_frame(
+                    &plushie_widget_sdk::protocol::OutgoingEvent::animation_frame(
                         entry.tag.clone(),
                         timestamp as u128,
                     )
@@ -907,8 +914,8 @@ fn handle_screenshot<R: PlushieRenderer>(
         window_id: "",
         scale_factor: 1.0,
     };
-    let element: iced::Element<'_, plushie_ext::message::Message, Theme, R> =
-        plushie_ext::widget::render(root, ctx);
+    let element: iced::Element<'_, plushie_widget_sdk::message::Message, Theme, R> =
+        plushie_widget_sdk::widget::render(root, ctx);
 
     let cache = std::mem::take(&mut s.ui.ui_cache);
     let mut ui = iced_test::runtime::UserInterface::build(

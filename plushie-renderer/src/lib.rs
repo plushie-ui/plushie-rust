@@ -29,6 +29,6 @@ pub(crate) mod transport;
 ///
 /// Widget packages create a `PlushieAppBuilder`, register their widgets,
 /// and pass it here. The default `main.rs` simply passes an empty builder.
-pub fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result {
+pub fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::Result {
     renderer::run(builder)
 }

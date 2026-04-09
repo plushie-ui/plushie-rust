@@ -8,9 +8,9 @@ use std::thread;
 use iced::futures::SinkExt;
 use iced::stream;
 
-use plushie_ext::codec::Codec;
-use plushie_ext::message::StdinEvent;
-use plushie_ext::protocol::IncomingMessage;
+use plushie_widget_sdk::codec::Codec;
+use plushie_widget_sdk::message::StdinEvent;
+use plushie_widget_sdk::protocol::IncomingMessage;
 
 /// The generic reader type used throughout the transport layer.
 pub(crate) type TransportReader = BufReader<Box<dyn Read + Send>>;

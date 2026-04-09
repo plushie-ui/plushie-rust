@@ -52,7 +52,7 @@ pub(crate) mod validate;
 //
 // These are public so the binary crate can access them, but they are
 // NOT part of the stable widget SDK. Widget authors should use
-// the prelude and `plushie_ext::iced::*` instead.
+// the prelude and `plushie_widget_sdk::iced::*` instead.
 #[doc(hidden)]
 pub mod codec;
 #[doc(hidden)]
@@ -70,10 +70,10 @@ pub mod tree;
 #[doc(hidden)]
 pub mod widget;
 
-// Re-export iced so widget crates can use `plushie_ext::iced::*` without
+// Re-export iced so widget crates can use `plushie_widget_sdk::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when
 // plushie-core bumps its iced version. Widgets that use only
-// `plushie_ext::prelude::*` and `plushie_ext::iced::*` get the upgrade
+// `plushie_widget_sdk::prelude::*` and `plushie_widget_sdk::iced::*` get the upgrade
 // automatically.
 pub use iced;
 

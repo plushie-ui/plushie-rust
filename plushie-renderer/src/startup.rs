@@ -15,8 +15,8 @@
 
 use std::io::BufRead;
 
-use plushie_ext::codec::Codec;
-use plushie_ext::protocol::{IncomingMessage, SessionMessage};
+use plushie_widget_sdk::codec::Codec;
+use plushie_widget_sdk::protocol::{IncomingMessage, SessionMessage};
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
@@ -164,10 +164,10 @@ pub(crate) fn read_required_settings(codec: &Codec, reader: &mut impl BufRead) -
 /// - **Prop validation**: if `validate_props` is true, enables the
 ///   global prop validation flag via `OnceLock`.
 ///
-/// [`PROTOCOL_VERSION`]: plushie_ext::protocol::PROTOCOL_VERSION
+/// [`PROTOCOL_VERSION`]: plushie_widget_sdk::protocol::PROTOCOL_VERSION
 pub(crate) fn validate_settings(settings: &Value, expected_token: Option<&str>, codec: &Codec) {
     // Protocol version check (mandatory).
-    let expected = u64::from(plushie_ext::protocol::PROTOCOL_VERSION);
+    let expected = u64::from(plushie_widget_sdk::protocol::PROTOCOL_VERSION);
     match settings.get("protocol_version").and_then(|v| v.as_u64()) {
         Some(version) if version == expected => {}
         Some(version) => {

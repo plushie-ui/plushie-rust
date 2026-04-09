@@ -4,7 +4,7 @@
 use iced::widget::{container, text};
 use iced::{Element, Fill, window};
 
-use plushie_ext::message::Message;
+use plushie_widget_sdk::message::Message;
 
 use crate::App;
 
@@ -27,7 +27,7 @@ impl App {
 
         match self.core.tree.find_window(window_id) {
             Some(window_node) => {
-                let ctx = plushie_ext::render_ctx::RenderCtx {
+                let ctx = plushie_widget_sdk::render_ctx::RenderCtx {
                     caches: &self.core.caches,
                     images: &self.image_registry,
                     theme: resolved_theme,
@@ -37,7 +37,7 @@ impl App {
                     window_id,
                     scale_factor: self.scale_factor_for_window(iced_id),
                 };
-                plushie_ext::widget::render(window_node, ctx)
+                plushie_widget_sdk::widget::render(window_node, ctx)
             }
             None => container(text("waiting for snapshot..."))
                 .width(Fill)

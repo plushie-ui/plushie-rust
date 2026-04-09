@@ -5,9 +5,9 @@ use std::sync::Mutex;
 
 use iced::{Subscription, Task};
 
-use plushie_ext::codec::Codec;
-use plushie_ext::message::{Message, StdinEvent};
-use plushie_ext::protocol::IncomingMessage;
+use plushie_widget_sdk::codec::Codec;
+use plushie_widget_sdk::message::{Message, StdinEvent};
+use plushie_widget_sdk::protocol::IncomingMessage;
 
 use plushie_renderer_lib::App;
 use plushie_renderer_lib::emitters::emit_hello;
@@ -20,7 +20,7 @@ fn log_hello_error(err: &std::io::Error) {
     }
 }
 
-pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result {
+pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::Result {
     let args: Vec<String> = std::env::args().collect();
 
     // Levelled logging via RUST_LOG. Default: warn (quiet). Use
@@ -166,7 +166,7 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
 
     let settings_slot: Mutex<Option<(serde_json::Value, Vec<Vec<u8>>)>> =
         Mutex::new(Some((initial.settings, font_bytes)));
-    let builder_slot: Mutex<Option<plushie_ext::app::PlushieAppBuilder>> =
+    let builder_slot: Mutex<Option<plushie_widget_sdk::app::PlushieAppBuilder>> =
         Mutex::new(Some(builder));
 
     iced::daemon(
@@ -182,7 +182,7 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
                 .expect("builder_slot lock poisoned")
                 .take()
                 .expect("daemon init closure called more than once")
-                .widget_set(&plushie_ext::widget::widget_set::iced_widget_set());
+                .widget_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
             let registry = builder.build();
 
             let effect_handler = Box::new(crate::effects::NativeEffectHandler);
@@ -193,7 +193,7 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
                 settings
                     .get("scale_factor")
                     .and_then(|v| v.as_f64())
-                    .map(plushie_ext::prop_helpers::f64_to_f32)
+                    .map(plushie_widget_sdk::prop_helpers::f64_to_f32)
                     .unwrap_or(1.0),
             );
 
@@ -201,8 +201,8 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
             let effects = app.core.apply(IncomingMessage::Settings { settings });
             for effect in effects {
                 match effect {
-                    plushie_ext::engine::CoreEffect::WidgetConfig(config) => {
-                        let ctx = plushie_ext::registry::InitCtx {
+                    plushie_widget_sdk::engine::CoreEffect::WidgetConfig(config) => {
+                        let ctx = plushie_widget_sdk::registry::InitCtx {
                             config: &config,
                             theme: &app.theme,
                             default_text_size: app.core.default_text_size,

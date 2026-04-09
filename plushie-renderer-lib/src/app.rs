@@ -6,9 +6,9 @@
 
 use iced::{Task, Theme, keyboard, window};
 
-use plushie_ext::message::Message;
-use plushie_ext::protocol::OutgoingEvent;
-use plushie_ext::registry::WidgetRegistry;
+use plushie_widget_sdk::message::Message;
+use plushie_widget_sdk::protocol::OutgoingEvent;
+use plushie_widget_sdk::registry::WidgetRegistry;
 
 use crate::constants::*;
 use crate::effects::EffectHandler;
@@ -35,7 +35,7 @@ pub fn validate_scale_factor(sf: f32) -> f32 {
 /// state, widget registry, and all runtime state needed to translate
 /// between the wire protocol and iced's update/view cycle.
 pub struct App {
-    pub core: plushie_ext::engine::Core,
+    pub core: plushie_widget_sdk::engine::Core,
     pub theme: Theme,
     /// Widget ops and effects return iced Tasks, but `apply()` doesn't
     /// return them. They accumulate here and are drained via `Task::batch`
@@ -44,7 +44,7 @@ pub struct App {
     /// Bidirectional plushie ID <-> iced window ID mapping with per-window state.
     pub windows: window_map::WindowMap,
     /// In-memory image handles for use by Image widgets and canvas draw.
-    pub image_registry: plushie_ext::image_registry::ImageRegistry,
+    pub image_registry: plushie_widget_sdk::image_registry::ImageRegistry,
     /// Current system theme, tracked via ThemeChanged subscription.
     pub system_theme: Theme,
     /// True when the app-level theme is "system" (follow OS preference).
@@ -65,7 +65,7 @@ pub struct App {
     /// Renderer-side animation manager. Tracks transitions, springs,
     /// and exit ghosts. Advances on frame ticks and writes interpolated
     /// values to SharedState.interpolated_props.
-    pub transition_manager: plushie_ext::animation::TransitionManager,
+    pub transition_manager: plushie_widget_sdk::animation::TransitionManager,
     /// Current keyboard modifier state, updated on every ModifiersChanged
     /// event. Included on all outgoing pointer events.
     pub current_modifiers: keyboard::Modifiers,
@@ -74,11 +74,11 @@ pub struct App {
 impl App {
     pub fn new(registry: WidgetRegistry, effect_handler: Box<dyn EffectHandler>) -> Self {
         Self {
-            core: plushie_ext::engine::Core::new(),
+            core: plushie_widget_sdk::engine::Core::new(),
             theme: DEFAULT_THEME,
             pending_tasks: Vec::new(),
             windows: window_map::WindowMap::new(),
-            image_registry: plushie_ext::image_registry::ImageRegistry::new(),
+            image_registry: plushie_widget_sdk::image_registry::ImageRegistry::new(),
             system_theme: DEFAULT_THEME,
             theme_follows_system: false,
             scale_factor: 1.0,
@@ -86,7 +86,7 @@ impl App {
             animation_epoch: None,
             emitter: EventEmitter::new(),
             effect_handler,
-            transition_manager: plushie_ext::animation::TransitionManager::new(),
+            transition_manager: plushie_widget_sdk::animation::TransitionManager::new(),
             current_modifiers: keyboard::Modifiers::default(),
         }
     }

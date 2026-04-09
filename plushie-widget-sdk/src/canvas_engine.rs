@@ -9,8 +9,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use plushie_ext::prelude::*;
-//! use plushie_ext::canvas_engine::CanvasEngine;
+//! use plushie_widget_sdk::prelude::*;
+//! use plushie_widget_sdk::canvas_engine::CanvasEngine;
 //!
 //! struct GaugeWidget<R: PlushieRenderer> {
 //!     canvas: CanvasEngine<R>,

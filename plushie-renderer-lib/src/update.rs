@@ -3,8 +3,8 @@
 
 use iced::{Task, Theme, window};
 
-use plushie_ext::message::{Message, StdinEvent};
-use plushie_ext::protocol::{IncomingMessage, OutgoingEvent};
+use plushie_widget_sdk::message::{Message, StdinEvent};
+use plushie_widget_sdk::protocol::{IncomingMessage, OutgoingEvent};
 
 use crate::App;
 use crate::constants::*;
@@ -87,7 +87,7 @@ impl App {
             // message pipeline. This prevents them from being bundled into
             // interact_step event arrays during headless interactions.
             Message::StatusChanged(window_id, id, status) => {
-                let event = plushie_ext::protocol::OutgoingEvent::generic(
+                let event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
                     "status".to_string(),
                     id,
                     Some(serde_json::json!(status)),
@@ -327,7 +327,8 @@ impl App {
                         self.windows.clear();
 
                         // Reset remaining App-level state.
-                        self.image_registry = plushie_ext::image_registry::ImageRegistry::new();
+                        self.image_registry =
+                            plushie_widget_sdk::image_registry::ImageRegistry::new();
                         self.theme = DEFAULT_THEME;
                         self.theme_follows_system = false;
                         self.scale_factor = 1.0;

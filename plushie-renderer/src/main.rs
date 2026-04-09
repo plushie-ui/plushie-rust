@@ -1,3 +1,3 @@
 fn main() -> iced::Result {
-    plushie_renderer::run(plushie_ext::app::PlushieAppBuilder::new())
+    plushie_renderer::run(plushie_widget_sdk::app::PlushieAppBuilder::new())
 }

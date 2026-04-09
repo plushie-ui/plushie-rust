@@ -334,7 +334,7 @@ fn spawn_listen_child(command: &str, socket_addr: &str, token: &str) -> io::Resu
 
     let negotiation = format!(
         "{{\"token\":\"{token}\",\"protocol\":{}}}\n",
-        plushie_ext::protocol::PROTOCOL_VERSION
+        plushie_widget_sdk::protocol::PROTOCOL_VERSION
     );
 
     let mut child = Command::new(shell)

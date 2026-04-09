@@ -3192,22 +3192,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "plushie-ext"
-version = "0.6.1"
-dependencies = [
- "base64",
- "log",
- "plushie-iced",
- "proptest",
- "qrcode",
- "rmp-serde",
- "rmpv",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
 name = "plushie-iced"
 version = "0.8.3"
 dependencies = [
@@ -3448,10 +3432,10 @@ dependencies = [
  "getrandom 0.3.4",
  "log",
  "notify-rust",
- "plushie-ext",
  "plushie-iced",
  "plushie-iced-test",
  "plushie-renderer-lib",
+ "plushie-widget-sdk",
  "rfd",
  "serde",
  "serde_json",
@@ -3465,8 +3449,8 @@ version = "0.6.1"
 dependencies = [
  "base64",
  "log",
- "plushie-ext",
  "plushie-iced",
+ "plushie-widget-sdk",
  "serde",
  "serde_json",
  "sha2",
@@ -3483,14 +3467,30 @@ dependencies = [
  "futures",
  "js-sys",
  "log",
- "plushie-ext",
  "plushie-iced",
  "plushie-renderer-lib",
+ "plushie-widget-sdk",
  "serde",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasmtimer",
+]
+
+[[package]]
+name = "plushie-widget-sdk"
+version = "0.6.1"
+dependencies = [
+ "base64",
+ "log",
+ "plushie-iced",
+ "proptest",
+ "qrcode",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

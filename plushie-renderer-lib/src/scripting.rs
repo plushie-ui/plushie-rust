@@ -20,9 +20,9 @@ use smol_str::SmolStr;
 
 use serde_json::Value;
 
-use plushie_ext::codec::Codec;
-use plushie_ext::engine::Core;
-use plushie_ext::protocol::{
+use plushie_widget_sdk::codec::Codec;
+use plushie_widget_sdk::engine::Core;
+use plushie_widget_sdk::protocol::{
     InteractResponse, OutgoingEvent, QueryResponse, ResetResponse, TreeHashResponse, TreeNode,
 };
 
@@ -768,7 +768,7 @@ pub fn build_interact_response(
                 .and_then(|v| v.as_str())
                 .unwrap_or("left")
                 .to_string();
-            let mods = plushie_ext::protocol::KeyModifiers::default();
+            let mods = plushie_widget_sdk::protocol::KeyModifiers::default();
 
             // Hit test against the canvas tree to determine if an
             // interactive element was clicked. Coordinates are canvas-
@@ -776,12 +776,14 @@ pub fn build_interact_response(
             if let Some(node) = core.tree.root().and_then(|root| {
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
-                if let Some(element_id) = plushie_ext::widget::canvas::canvas_hit_test(node, x, y) {
+                if let Some(element_id) =
+                    plushie_widget_sdk::widget::canvas::canvas_hit_test(node, x, y)
+                {
                     vec![
                         OutgoingEvent::canvas_element_click(wid, element_id, x, y, button)
                             .with_window_id(window_id),
                     ]
-                } else if plushie_ext::widget::canvas::canvas_has_on_press(node) {
+                } else if plushie_widget_sdk::widget::canvas::canvas_has_on_press(node) {
                     vec![
                         OutgoingEvent::pointer_press(wid, x, y, &button, "mouse", None, mods)
                             .with_window_id(window_id),
@@ -801,12 +803,12 @@ pub fn build_interact_response(
                 .and_then(|v| v.as_str())
                 .unwrap_or("left")
                 .to_string();
-            let mods = plushie_ext::protocol::KeyModifiers::default();
+            let mods = plushie_widget_sdk::protocol::KeyModifiers::default();
 
             if let Some(node) = core.tree.root().and_then(|root| {
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
-                if plushie_ext::widget::canvas::canvas_has_on_press(node) {
+                if plushie_widget_sdk::widget::canvas::canvas_has_on_press(node) {
                     vec![
                         OutgoingEvent::pointer_release(wid, x, y, &button, "mouse", None, mods)
                             .with_window_id(window_id),
@@ -821,14 +823,16 @@ pub fn build_interact_response(
         ("canvas_move", Some((window_id, wid))) => {
             let x = payload.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
             let y = payload.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let mods = plushie_ext::protocol::KeyModifiers::default();
+            let mods = plushie_widget_sdk::protocol::KeyModifiers::default();
 
             if let Some(node) = core.tree.root().and_then(|root| {
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
                 // Check for element enter/leave + raw move event
                 let mut events = Vec::new();
-                if let Some(element_id) = plushie_ext::widget::canvas::canvas_hit_test(node, x, y) {
+                if let Some(element_id) =
+                    plushie_widget_sdk::widget::canvas::canvas_hit_test(node, x, y)
+                {
                     events.push(
                         OutgoingEvent::canvas_element_enter(wid.clone(), element_id, x, y)
                             .with_window_id(window_id.clone()),
@@ -872,7 +876,7 @@ pub fn build_interact_response(
                         });
 
                         if let Some(node) = found {
-                            if plushie_ext::widget::canvas::canvas_find_element_by_id(
+                            if plushie_widget_sdk::widget::canvas::canvas_find_element_by_id(
                                 node, element_id,
                             ) {
                                 vec![
@@ -963,12 +967,12 @@ fn find_first_window_id(core: &Core) -> Option<String> {
 }
 
 fn find_tree_node_by_id_with_window<'a>(
-    node: &'a plushie_ext::protocol::TreeNode,
+    node: &'a plushie_widget_sdk::protocol::TreeNode,
     target_id: &str,
     target_window_id: Option<&str>,
     current_window_id: Option<&'a str>,
     depth: usize,
-) -> Option<&'a plushie_ext::protocol::TreeNode> {
+) -> Option<&'a plushie_widget_sdk::protocol::TreeNode> {
     if depth > MAX_SEARCH_DEPTH {
         return None;
     }
@@ -997,7 +1001,7 @@ fn find_tree_node_by_id_with_window<'a>(
 }
 
 fn find_window_id_for_node(
-    node: &plushie_ext::protocol::TreeNode,
+    node: &plushie_widget_sdk::protocol::TreeNode,
     target_id: &str,
     current_window_id: Option<&str>,
 ) -> Option<String> {
@@ -1069,10 +1073,10 @@ pub fn handle_tree_hash(core: &Core, id: String, name: String) -> io::Result<()>
 #[allow(unused_must_use)]
 mod tests {
     use super::*;
-    use plushie_ext::testing::{node as make_node, node_with_props};
+    use plushie_widget_sdk::testing::{node as make_node, node_with_props};
     use serde_json::json;
 
-    fn make_text_node(id: &str, content: &str) -> plushie_ext::protocol::TreeNode {
+    fn make_text_node(id: &str, content: &str) -> plushie_widget_sdk::protocol::TreeNode {
         node_with_props(id, "text", json!({"content": content}))
     }
 
@@ -1271,7 +1275,7 @@ mod tests {
             n.props = json!({"min": 0.0, "max": 100.0, "value": 50.0});
             n
         });
-        core.apply(plushie_ext::protocol::IncomingMessage::Snapshot { tree: root });
+        core.apply(plushie_widget_sdk::protocol::IncomingMessage::Snapshot { tree: root });
         core
     }
 

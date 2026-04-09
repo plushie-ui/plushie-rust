@@ -15,8 +15,8 @@ use iced::time::{Duration, Instant};
 
 use iced::Task;
 
-use plushie_ext::message::Message;
-use plushie_ext::protocol::{CoalesceHint, OutgoingEvent};
+use plushie_widget_sdk::message::Message;
+use plushie_widget_sdk::protocol::{CoalesceHint, OutgoingEvent};
 
 use crate::emitters;
 
@@ -366,7 +366,7 @@ pub fn widget_coalesce_key(event: &OutgoingEvent) -> CoalesceKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use plushie_ext::protocol::{CoalesceHint, OutgoingEvent};
+    use plushie_widget_sdk::protocol::{CoalesceHint, OutgoingEvent};
     use serde_json::json;
 
     fn make_event(family: &str, id: &str) -> OutgoingEvent {
@@ -541,7 +541,7 @@ mod tests {
                 2.0,
                 "mouse",
                 None,
-                plushie_ext::protocol::KeyModifiers::default(),
+                plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
             OutgoingEvent::resize("s1".into(), 100.0, 200.0),
             OutgoingEvent::pane_resized("p1".into(), "s0".into(), 0.5),
@@ -550,7 +550,7 @@ mod tests {
             OutgoingEvent::finger_moved("t".into(), 1, 10.0, 20.0),
             OutgoingEvent::modifiers_changed(
                 "t".into(),
-                plushie_ext::protocol::KeyModifiers::default(),
+                plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
             OutgoingEvent::scroll("s1".into(), 0.0, 0.0, 0.0, 0.0, 100.0, 200.0, 300.0, 400.0),
         ];
@@ -574,7 +574,7 @@ mod tests {
                 0.0,
                 -3.0,
                 "mouse",
-                plushie_ext::protocol::KeyModifiers::default(),
+                plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
         ];
         for event in events {
@@ -603,7 +603,7 @@ mod tests {
                 "Left",
                 "mouse",
                 None,
-                plushie_ext::protocol::KeyModifiers::default(),
+                plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
             OutgoingEvent::pointer_release(
                 "c1".into(),
@@ -612,7 +612,7 @@ mod tests {
                 "Left",
                 "mouse",
                 None,
-                plushie_ext::protocol::KeyModifiers::default(),
+                plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
             OutgoingEvent::option_hovered("cb1".into(), "opt".into()),
             OutgoingEvent::cursor_entered("t".into()),

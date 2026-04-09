@@ -19,7 +19,7 @@
 //! # Usage from Rust (custom WASM builds with widgets)
 //!
 //! ```ignore
-//! let mut builder = plushie_ext::app::PlushieAppBuilder::new();
+//! let mut builder = plushie_widget_sdk::app::PlushieAppBuilder::new();
 //! builder.register(Box::new(MyWidget));
 //! let app = PlushieApp::with_widgets(settings, on_event, builder)?;
 //! app.send_message(snapshot_json)?;
@@ -38,9 +38,9 @@ use std::sync::Mutex;
 
 use wasm_bindgen::prelude::*;
 
-use plushie_ext::codec::Codec;
-use plushie_ext::message::{Message, StdinEvent};
-use plushie_ext::protocol::IncomingMessage;
+use plushie_widget_sdk::codec::Codec;
+use plushie_widget_sdk::message::{Message, StdinEvent};
+use plushie_widget_sdk::protocol::IncomingMessage;
 
 use plushie_renderer_lib::App;
 use plushie_renderer_lib::emitters::{emit_hello, init_output};
@@ -78,7 +78,7 @@ impl PlushieApp {
         Self::with_widgets(
             settings_json,
             on_event,
-            plushie_ext::app::PlushieAppBuilder::new(),
+            plushie_widget_sdk::app::PlushieAppBuilder::new(),
         )
     }
 
@@ -113,7 +113,7 @@ impl PlushieApp {
     pub fn with_widgets(
         settings_json: &str,
         on_event: js_sys::Function,
-        builder: plushie_ext::app::PlushieAppBuilder,
+        builder: plushie_widget_sdk::app::PlushieAppBuilder,
     ) -> Result<PlushieApp, JsValue> {
         console_log::init_with_level(log::Level::Warn).ok();
 
@@ -125,7 +125,7 @@ impl PlushieApp {
             .map_err(|e| JsValue::from_str(&format!("invalid settings JSON: {e}")))?;
 
         // Validate protocol version.
-        let expected = u64::from(plushie_ext::protocol::PROTOCOL_VERSION);
+        let expected = u64::from(plushie_widget_sdk::protocol::PROTOCOL_VERSION);
         if let Some(version) = settings.get("protocol_version").and_then(|v| v.as_u64())
             && version != expected
         {
@@ -181,7 +181,7 @@ impl PlushieApp {
         // Pack init data into a Mutex so the Fn closure can move it out once.
         type InitData = (
             serde_json::Value,
-            plushie_ext::app::PlushieAppBuilder,
+            plushie_widget_sdk::app::PlushieAppBuilder,
             Vec<Vec<u8>>,
         );
         let app_slot: Mutex<Option<InitData>> = Mutex::new(Some((settings, builder, font_bytes)));
@@ -198,8 +198,8 @@ impl PlushieApp {
                         .take()
                         .expect("daemon init closure called more than once");
 
-                    let builder =
-                        builder.widget_set(&plushie_ext::widget::widget_set::iced_widget_set());
+                    let builder = builder
+                        .widget_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
                     let registry = builder.build();
                     let effect_handler = Box::new(WebEffectHandler);
                     let mut app = App::new(registry, effect_handler);
@@ -208,14 +208,15 @@ impl PlushieApp {
                         settings
                             .get("scale_factor")
                             .and_then(|v| v.as_f64())
-                            .map(plushie_ext::prop_helpers::f64_to_f32)
+                            .map(plushie_widget_sdk::prop_helpers::f64_to_f32)
                             .unwrap_or(1.0),
                     );
 
                     let effects = app.core.apply(IncomingMessage::Settings { settings });
                     for effect in effects {
-                        if let plushie_ext::engine::CoreEffect::WidgetConfig(config) = effect {
-                            let ctx = plushie_ext::registry::InitCtx {
+                        if let plushie_widget_sdk::engine::CoreEffect::WidgetConfig(config) = effect
+                        {
+                            let ctx = plushie_widget_sdk::registry::InitCtx {
                                 config: &config,
                                 theme: &app.theme,
                                 default_text_size: app.core.default_text_size,

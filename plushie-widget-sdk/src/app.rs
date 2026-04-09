@@ -7,8 +7,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use plushie_ext::app::PlushieAppBuilder;
-//! use plushie_ext::widget::widget_set::iced_widget_set;
+//! use plushie_widget_sdk::app::PlushieAppBuilder;
+//! use plushie_widget_sdk::widget::widget_set::iced_widget_set;
 //!
 //! fn main() -> iced::Result {
 //!     plushie::run(

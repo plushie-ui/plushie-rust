@@ -7,13 +7,13 @@
 //! The tests don't render pixels -- they exercise the type system and verify
 //! that method calls, field access, and trait implementations are correct.
 
-use plushie_ext::prelude::*;
-use plushie_ext::testing::*;
+use plushie_widget_sdk::prelude::*;
+use plushie_widget_sdk::testing::*;
 use serde_json::json;
 
 // column and row are excluded from the prelude because the function
 // forms conflict with the column!/row! macros under glob import.
-use plushie_ext::iced::widget::{column, row};
+use plushie_widget_sdk::iced::widget::{column, row};
 
 // ============================================================================
 // Gauge example (PlushieWidget)

@@ -36,7 +36,7 @@
 
 use serde_json::{Value, json};
 
-use plushie_ext::protocol::EffectResponse;
+use plushie_widget_sdk::protocol::EffectResponse;
 
 /// Convert a file path to a JSON string value, logging a warning if the path
 /// contains non-UTF-8 bytes and lossy conversion is required.
@@ -519,7 +519,7 @@ impl plushie_renderer_lib::EffectHandler for NativeEffectHandler {
         id: &str,
         kind: &str,
         payload: &serde_json::Value,
-    ) -> Option<plushie_ext::protocol::EffectResponse> {
+    ) -> Option<plushie_widget_sdk::protocol::EffectResponse> {
         Some(handle_effect(id.to_string(), kind, payload))
     }
 
@@ -528,14 +528,14 @@ impl plushie_renderer_lib::EffectHandler for NativeEffectHandler {
         id: String,
         kind: String,
         payload: serde_json::Value,
-    ) -> iced::Task<plushie_ext::message::Message> {
+    ) -> iced::Task<plushie_widget_sdk::message::Message> {
         iced::Task::perform(
             async move { handle_async_effect(id, &kind, &payload).await },
             |response| {
                 if let Err(e) = plushie_renderer_lib::emitters::emit_effect_response(response) {
                     log::error!("write error in async effect: {e}");
                 }
-                plushie_ext::message::Message::NoOp
+                plushie_widget_sdk::message::Message::NoOp
             },
         )
     }

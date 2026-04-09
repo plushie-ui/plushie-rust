@@ -4,11 +4,11 @@
 //! needed to implement [`PlushieWidget`]:
 //!
 //! ```ignore
-//! use plushie_ext::prelude::*;
+//! use plushie_widget_sdk::prelude::*;
 //! ```
 //!
 //! For iced types not covered here (e.g. `canvas::Path`, advanced
-//! layout widgets), use `plushie_ext::iced::*` instead of adding a
+//! layout widgets), use `plushie_widget_sdk::iced::*` instead of adding a
 //! direct `iced` dependency. This avoids version conflicts when
 //! plushie-core bumps its iced version.
 
@@ -46,8 +46,8 @@ pub use crate::widget::helpers::{
 // Note: `column` and `row` are deliberately excluded. They conflict
 // with the `column!` and `row!` macros when glob-imported. Widget
 // authors should use the macros directly (available via
-// `plushie_ext::iced`) or import explicitly:
-//   use plushie_ext::iced::widget::{column, row};
+// `plushie_widget_sdk::iced`) or import explicitly:
+//   use plushie_widget_sdk::iced::widget::{column, row};
 pub use crate::iced::widget::{
     button, canvas, checkbox, container, image, pick_list, progress_bar, rule, scrollable, slider,
     space, stack, text, toggler, tooltip,

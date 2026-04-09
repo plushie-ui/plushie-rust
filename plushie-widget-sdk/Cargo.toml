@@ -1,5 +1,5 @@
 [package]
-name = "plushie-ext"
+name = "plushie-widget-sdk"
 description = "Widget SDK for Plushie"
 version.workspace = true
 edition.workspace = true
@@ -12,7 +12,7 @@ categories.workspace = true
 readme = "../README.md"
 
 [lib]
-name = "plushie_ext"
+name = "plushie_widget_sdk"
 path = "src/lib.rs"
 
 [lints]

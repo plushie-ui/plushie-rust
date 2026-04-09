@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use base64::Engine as _;
 use iced::{Point, Size, Task, window};
 
-use plushie_ext::message::Message;
+use plushie_widget_sdk::message::Message;
 
 use crate::App;
 use crate::emitters::{emit_effect_response, emit_query_response};
@@ -364,7 +364,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
@@ -388,7 +389,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
@@ -415,7 +417,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
@@ -437,7 +440,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
@@ -459,7 +463,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
@@ -481,7 +486,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
@@ -512,7 +518,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
@@ -617,7 +624,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
@@ -645,7 +653,8 @@ impl App {
                         if let Some(rid) = &req_id {
                             data["request_id"] = rid.clone();
                         }
-                        let resp = plushie_ext::protocol::EffectResponse::ok(wid.clone(), data);
+                        let resp =
+                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
                         if let Err(e) = emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }

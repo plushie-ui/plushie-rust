@@ -56,6 +56,7 @@
 pub mod command;
 pub mod event;
 pub mod prelude;
+pub mod runner;
 pub mod settings;
 pub mod subscription;
 pub mod types;
@@ -168,8 +169,7 @@ pub type Result = std::result::Result<(), Box<dyn std::error::Error>>;
 /// runs in the same process with no subprocess or serialization.
 #[cfg(feature = "direct")]
 pub fn run<A: App>() -> Result {
-    let _ = std::any::type_name::<A>();
-    todo!("Direct mode runner not yet implemented (Batch 4)")
+    runner::direct::run::<A>()
 }
 
 /// Run the app in wire mode (subprocess renderer).
@@ -177,7 +177,6 @@ pub fn run<A: App>() -> Result {
 /// Spawns the renderer binary at `binary_path` and communicates
 /// over stdin/stdout using the plushie wire protocol.
 #[cfg(feature = "wire")]
-pub fn run_wire<A: App>(_binary_path: &str) -> Result {
-    let _ = std::any::type_name::<A>();
-    todo!("Wire mode runner not yet implemented (Batch 5)")
+pub fn run_wire<A: App>(binary_path: &str) -> Result {
+    runner::wire::run_wire::<A>(binary_path)
 }

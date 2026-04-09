@@ -10,57 +10,12 @@ use std::cell::Cell;
 use iced::widget::text;
 use iced::{Color, Element, Theme};
 
-use crate::shared_state::MAX_TREE_DEPTH;
-
-/// Returns the list of all built-in widget type names that the renderer supports.
-pub fn builtin_widget_types() -> &'static [&'static str] {
-    &[
-        "column",
-        "row",
-        "container",
-        "stack",
-        "grid",
-        "pin",
-        "keyed_column",
-        "float",
-        "responsive",
-        "scrollable",
-        "pane_grid",
-        "text",
-        "rich_text",
-        "rich",
-        "space",
-        "rule",
-        "progress_bar",
-        "image",
-        "svg",
-        "markdown",
-        "qr_code",
-        "text_input",
-        "text_editor",
-        "checkbox",
-        "toggler",
-        "radio",
-        "slider",
-        "vertical_slider",
-        "pick_list",
-        "combo_box",
-        "button",
-        "pointer_area",
-        "sensor",
-        "tooltip",
-        "themer",
-        "window",
-        "overlay",
-        "canvas",
-        "table",
-    ]
-}
-use super::validate;
 use crate::PlushieRenderer;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::render_ctx::RenderCtx;
+use crate::shared_state::MAX_TREE_DEPTH;
+use crate::validate;
 
 // ---------------------------------------------------------------------------
 // Main render dispatch
@@ -114,14 +69,14 @@ pub fn render<'a, R: PlushieRenderer>(
 
     // Explicit a11y overrides take precedence. When no explicit a11y prop
     // exists, try widget-specific auto-inference via the registry.
-    let overrides = crate::widget::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
+    let overrides = crate::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
         ctx.registry
             .get_for_type(node.type_name.as_str())
             .and_then(|widget| widget.infer_a11y(node))
     });
 
     if let Some(overrides) = overrides {
-        return crate::widget::a11y::A11yOverride::wrap(element, overrides).into();
+        return crate::a11y::A11yOverride::wrap(element, overrides).into();
     }
 
     element
@@ -408,14 +363,15 @@ mod tests {
 
     /// Helper: extract auto-inferred overrides the same way render() does,
     /// without actually rendering (avoids needing image handles etc.).
-    fn infer_a11y_overrides(node: &TreeNode) -> Option<crate::widget::a11y::A11yOverrides> {
-        crate::widget::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
+    fn infer_a11y_overrides(node: &TreeNode) -> Option<crate::a11y::A11yOverrides> {
+        crate::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
             let props = node.props.as_object();
             match node.type_name.as_str() {
                 // Image and SVG use iced's native .alt()/.description() methods
                 // directly, so no A11yOverride wrapping needed for those.
-                "text_input" | "text_editor" | "combo_box" => prop_str(props, "placeholder")
-                    .map(crate::widget::a11y::A11yOverrides::with_description),
+                "text_input" | "text_editor" | "combo_box" => {
+                    prop_str(props, "placeholder").map(crate::a11y::A11yOverrides::with_description)
+                }
                 _ => None,
             }
         })

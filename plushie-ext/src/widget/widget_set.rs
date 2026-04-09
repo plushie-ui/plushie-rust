@@ -63,6 +63,57 @@ impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {
     }
 }
 
+impl IcedWidgetSet {
+    /// The complete list of built-in widget type names.
+    ///
+    /// This is the canonical source of truth for which types the iced
+    /// widget set provides. Matches the widgets registered by
+    /// `create_widgets()`.
+    pub fn type_names() -> &'static [&'static str] {
+        &[
+            "column",
+            "row",
+            "container",
+            "stack",
+            "grid",
+            "pin",
+            "keyed_column",
+            "float",
+            "responsive",
+            "scrollable",
+            "pane_grid",
+            "text",
+            "rich_text",
+            "rich",
+            "space",
+            "rule",
+            "progress_bar",
+            "image",
+            "svg",
+            "markdown",
+            "qr_code",
+            "text_input",
+            "text_editor",
+            "checkbox",
+            "toggler",
+            "radio",
+            "slider",
+            "vertical_slider",
+            "pick_list",
+            "combo_box",
+            "button",
+            "pointer_area",
+            "sensor",
+            "tooltip",
+            "themer",
+            "window",
+            "overlay",
+            "canvas",
+            "table",
+        ]
+    }
+}
+
 /// Create the default iced widget set. Convenience for builder registration.
 pub fn iced_widget_set() -> IcedWidgetSet {
     IcedWidgetSet

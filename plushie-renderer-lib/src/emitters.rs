@@ -99,7 +99,7 @@ pub fn emit_hello(
     widget_set_names: &[&str],
     transport: &str,
 ) -> io::Result<()> {
-    let builtin = plushie_ext::widget::render::builtin_widget_types();
+    let builtin = plushie_ext::widget::widget_set::IcedWidgetSet::type_names();
     let all_widgets: Vec<&str> = builtin
         .iter()
         .copied()

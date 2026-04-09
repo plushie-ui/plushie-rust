@@ -242,7 +242,7 @@ All fields inside `settings` are optional.
 **Log level.** Renderer log verbosity is controlled via the `RUST_LOG`
 environment variable on the renderer process, not via a Settings field.
 The renderer's built-in default level is `warn`. Examples:
-`RUST_LOG=plushie_renderer=debug`, `RUST_LOG=plushie_ext::widgets=trace`.
+`RUST_LOG=plushie_renderer=debug`, `RUST_LOG=plushie_ext::widget=trace`.
 
 ### Snapshot
 

@@ -14,7 +14,6 @@ use crate::protocol::{IncomingMessage, OutgoingEvent};
 use crate::shared_state::SharedState;
 use crate::theming;
 use crate::tree::Tree;
-use crate::widgets;
 
 /// Side effects produced by [`Core::apply`] that the host must handle.
 ///
@@ -354,7 +353,7 @@ impl Core {
                 }
                 self.caches.clear();
                 if let Some(root) = self.tree.root()
-                    && widgets::validate::is_validate_props_enabled()
+                    && crate::validate::is_validate_props_enabled()
                 {
                     Self::emit_prop_validation_warnings(root, &mut effects);
                 }
@@ -374,7 +373,7 @@ impl Core {
                     self.resolve_and_cache_theme(&theme_val, &mut effects);
                 }
                 if let Some(root) = self.tree.root()
-                    && widgets::validate::is_validate_props_enabled()
+                    && crate::validate::is_validate_props_enabled()
                 {
                     Self::emit_prop_validation_warnings(root, &mut effects);
                 }
@@ -589,7 +588,7 @@ impl Core {
     }
 
     fn validate_node_recursive(node: &crate::protocol::TreeNode, effects: &mut Vec<CoreEffect>) {
-        let warnings = widgets::validate::collect_prop_warnings(node);
+        let warnings = crate::validate::collect_prop_warnings(node);
         if !warnings.is_empty() {
             effects.push(CoreEffect::EmitEvent(OutgoingEvent::generic(
                 "prop_validation",

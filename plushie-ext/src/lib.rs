@@ -21,7 +21,7 @@
 //! - [`testing`] -- test factory helpers
 //!
 //! **Internal modules** (used by the plushie binary, not part of the SDK):
-//! `engine`, `tree`, `message`, `widgets`, `protocol`, `codec`,
+//! `engine`, `tree`, `message`, `widget`, `protocol`, `codec`,
 //! `theming`, `image_registry`
 
 // Ensure catch_unwind works: widget panic isolation requires unwinding.
@@ -69,12 +69,6 @@ pub mod theming;
 pub mod tree;
 #[doc(hidden)]
 pub mod widget;
-
-/// Backward-compatible alias for `widget`.
-#[doc(hidden)]
-pub mod widgets {
-    pub use crate::widget::*;
-}
 
 // Re-export iced so widget crates can use `plushie_ext::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when

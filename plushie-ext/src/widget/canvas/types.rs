@@ -360,8 +360,8 @@ pub(crate) struct InteractiveElement {
     /// field on the group using the same [`A11yOverrides`] struct that
     /// all other widgets use -- same fields, same parsing, same validation.
     ///
-    /// [`A11yOverrides`]: crate::widget::a11y::A11yOverrides
-    pub a11y: Option<crate::widget::a11y::A11yOverrides>,
+    /// [`A11yOverrides`]: crate::a11y::A11yOverrides
+    pub a11y: Option<crate::a11y::A11yOverrides>,
 }
 
 /// Active drag state tracked in `CanvasState`.

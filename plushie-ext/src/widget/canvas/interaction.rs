@@ -242,7 +242,7 @@ pub(super) fn parse_interactive_element(
             .map(|s| s.to_string()),
         a11y: group
             .get("a11y")
-            .and_then(crate::widget::a11y::A11yOverrides::from_a11y_value),
+            .and_then(crate::a11y::A11yOverrides::from_a11y_value),
     })
 }
 

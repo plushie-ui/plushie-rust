@@ -3,7 +3,7 @@
 //! This module re-exports the public [`prop_helpers`](crate::prop_helpers)
 //! and provides functions for parsing complex prop types (padding, fonts,
 //! borders, style maps) and applying style overrides to iced widget styles.
-//! Widget authors can access these via `plushie_ext::widgets::helpers::*`.
+//! Widget authors can access these via `plushie_ext::widget::helpers::*`.
 
 use iced::widget::text::{LineHeight, Wrapping};
 use iced::widget::{
@@ -536,7 +536,7 @@ pub fn get_style_overrides(
     obj: &serde_json::Map<String, Value>,
     caches: &super::SharedState,
 ) -> StyleOverrides {
-    if let Some(cached) = super::caches::cached_style_overrides(caches, node_id) {
+    if let Some(cached) = crate::shared_state::cached_style_overrides(caches, node_id) {
         return cached.clone();
     }
     parse_style_overrides(obj)

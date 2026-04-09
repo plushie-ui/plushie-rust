@@ -12,12 +12,10 @@
 
 // -- Infrastructure ----------------------------------------------------------
 
-pub(crate) mod a11y;
 pub mod canvas;
 pub mod helpers;
 pub(crate) mod overlay;
 pub mod render;
-pub mod validate;
 pub mod widget_set;
 
 // Re-export for backward compatibility (these types moved to crate root).
@@ -66,6 +64,3 @@ pub(crate) mod themer_widget;
 pub(crate) mod toggler_widget;
 pub(crate) mod tooltip_widget;
 pub(crate) mod window_widget;
-
-// -- Legacy re-export shims (kept for internal references) -------------------
-pub(crate) mod caches;

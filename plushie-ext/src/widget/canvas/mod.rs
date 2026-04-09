@@ -198,7 +198,7 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
     }
 
     if let Some(role_str) = prop_str(props, "role") {
-        if let Some(role) = super::a11y::parse_role_str(&role_str) {
+        if let Some(role) = crate::a11y::parse_role_str(&role_str) {
             c = c.role(role);
         } else {
             log::warn!("canvas '{}': unknown role '{role_str}'", node.id);

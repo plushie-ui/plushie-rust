@@ -219,7 +219,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
     }
 
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
-        use crate::widget::caches::hash_str;
+        use crate::shared_state::hash_str;
 
         let key = (window_id.to_string(), node.id.clone());
         let props = node.props.as_object();
@@ -262,7 +262,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
     }
 
     fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
-        use crate::widget::caches::hash_str;
+        use crate::shared_state::hash_str;
 
         match msg {
             Message::TextEditorAction(window_id, id, action) => {

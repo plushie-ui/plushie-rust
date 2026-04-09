@@ -493,10 +493,16 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
     }
 
-    /// Walk the tree depth-first, calling `prepare()` on each factory
-    /// for matching nodes and populating cross-cutting shared state
-    /// (style overrides). Also populates `node_factory_map` for message
-    /// routing and prunes stale shared state entries.
+    /// Walk the tree depth-first. This is the main mutable phase that
+    /// runs after every tree change (snapshot or patch). It:
+    ///
+    /// 1. Tracks the current `window_id` as it descends through window
+    ///    nodes, passing it to each factory's `prepare()`.
+    /// 2. Calls `prepare()` on the owning factory for each node.
+    /// 3. Populates `node_factory_map` for message and widget-op routing.
+    /// 4. Computes style override caches for nodes with a `style` prop.
+    /// 5. Prunes stale `SharedState` entries for nodes no longer in the
+    ///    tree (prevents unbounded memory growth across tree updates).
     pub fn prepare_walk(
         &mut self,
         root: &TreeNode,

@@ -96,7 +96,7 @@ fn infer_placeholder_as_description(node: &TreeNode) -> Option<A11yOverrides> {
 }
 
 // ---------------------------------------------------------------------------
-// Layout widgets (11)
+// Layout widgets
 // ---------------------------------------------------------------------------
 
 builtin_widget!(ColumnWidget, ["column"], layout::render_column);
@@ -113,9 +113,11 @@ builtin_widget!(
 builtin_widget!(FloatWidget, ["float"], layout::render_float);
 builtin_widget!(ResponsiveWidget, ["responsive"], layout::render_responsive);
 builtin_widget!(ScrollableWidget, ["scrollable"], layout::render_scrollable);
-// PaneGridWidget: extracted stateful factory (owns pane_grid::State).
-// Has complex prepare (pane reconciliation) and handle_message
-// (resolve pane handles to IDs, mutate state on resize/drop).
+/// Stateful pane_grid factory (owns `pane_grid::State`).
+///
+/// Prepare reconciles panes against tree children (add/remove).
+/// Handle_message resolves opaque pane handles to node IDs and
+/// mutates state on resize/drag/click.
 pub(crate) struct PaneGridWidget {
     /// pane_grid layout state per (window_id, node_id).
     states: std::collections::HashMap<(String, String), iced::widget::pane_grid::State<String>>,
@@ -442,7 +444,7 @@ fn find_pane_by_id(
 }
 
 // ---------------------------------------------------------------------------
-// Display widgets (9, counting rich_text alias)
+// Display widgets
 // ---------------------------------------------------------------------------
 
 builtin_widget!(TextWidget, ["text"], display::render_text);
@@ -460,7 +462,7 @@ builtin_widget!(
 );
 builtin_widget!(ImageWidget, ["image"], display::render_image);
 builtin_widget!(SvgWidget, ["svg"], display::render_svg);
-// MarkdownWidget: extracted stateful factory (owns parsed markdown items)
+/// Stateful markdown factory (owns parsed `markdown::Item` lists).
 pub(crate) struct MarkdownWidget {
     /// Parsed markdown items per (window_id, node_id), with content hash
     /// for invalidation. Rebuilt when the "content" or "code_theme" prop changes.
@@ -609,7 +611,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
         Box::new(MarkdownWidget::new())
     }
 }
-// QrCodeWidget: extracted stateful factory (owns R-generic canvas::Cache).
+
+/// Stateful QR code factory (owns R-generic `canvas::Cache`).
 pub(crate) struct QrCodeWidget<R: PlushieRenderer> {
     /// Per-qr_code cache with content hash for invalidation.
     /// Keyed by (window_id, node_id).
@@ -680,13 +683,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
 }
 
 // ---------------------------------------------------------------------------
-// Input widgets (9)
+// Input widgets
 // ---------------------------------------------------------------------------
 
 builtin_widget!(TextInputWidget,       ["text_input"],       input::render_text_input,
     infer_a11y: infer_placeholder_as_description);
-// TextEditorWidget: extracted stateful factory (owns text_editor::Content<R>).
-// The R-generic Content is why this factory is parameterized on R.
+/// Stateful text editor factory (owns `text_editor::Content<R>`).
+///
+/// Parameterized on R because `Content<R>` is renderer-generic.
 pub(crate) struct TextEditorWidget<R: PlushieRenderer> {
     /// text_editor Content per (window_id, node_id). Preserves cursor,
     /// undo history, and selection across renders.
@@ -829,6 +833,8 @@ fn handle_slider_message(
     }
 }
 
+/// Stateful slider factory. Tracks last-emitted value to deduplicate
+/// slide events (iced fires on every pixel move).
 pub(crate) struct SliderWidget {
     last_values: std::collections::HashMap<(String, String), f64>,
 }
@@ -868,6 +874,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
     }
 }
 
+/// Vertical variant of [`SliderWidget`].
 pub(crate) struct VerticalSliderWidget {
     last_values: std::collections::HashMap<(String, String), f64>,
 }
@@ -985,7 +992,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Interactive widgets (7)
+// Interactive widgets
 // ---------------------------------------------------------------------------
 
 builtin_widget!(ButtonWidget, ["button"], interactive::render_button);
@@ -996,8 +1003,7 @@ builtin_widget!(
 );
 builtin_widget!(SensorWidget, ["sensor"], interactive::render_sensor);
 builtin_widget!(TooltipWidget, ["tooltip"], interactive::render_tooltip);
-// ThemerWidget: extracted stateful factory (owns resolved theme cache)
-// See interactive::ensure_themer_cache for the original ensure logic.
+/// Stateful themer factory (caches resolved `Theme` per node).
 pub(crate) struct ThemerWidget {
     /// Resolved themes per (window_id, node_id). Populated during prepare,
     /// borrowed during render for child context theming.
@@ -1065,7 +1071,7 @@ builtin_widget!(WindowWidget, ["window"], interactive::render_window);
 builtin_widget!(OverlayWidget, ["overlay"], interactive::render_overlay);
 
 // ---------------------------------------------------------------------------
-// Canvas (1)
+// Canvas
 // ---------------------------------------------------------------------------
 
 /// Thin wrapper over [`CanvasEngine`](crate::canvas_engine::CanvasEngine).
@@ -1131,16 +1137,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
 }
 
 // ---------------------------------------------------------------------------
-// Table (1)
+// Table
 // ---------------------------------------------------------------------------
 
 builtin_widget!(TableWidget, ["table"], table::render_table);
 
 // ---------------------------------------------------------------------------
-// IcedWidgetSet: the default set of all 36 built-in widgets
+// IcedWidgetSet
 // ---------------------------------------------------------------------------
 
-/// The default widget set providing all 36 built-in iced widget wrappers.
+/// The default widget set providing all built-in iced widget wrappers.
 pub struct IcedWidgetSet;
 
 impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {

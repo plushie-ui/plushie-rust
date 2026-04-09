@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use plushie_ext::prelude::*;
+//! use plushie_ext::app::PlushieAppBuilder;
 //! use plushie_ext::widgets::builtins::iced_widget_set;
 //!
 //! fn main() -> iced::Result {

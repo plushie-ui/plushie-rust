@@ -1,12 +1,19 @@
-//! Thin wrapper factories for all 36 built-in widget types.
+//! Built-in widget implementations for the "iced" widget set.
 //!
-//! Each wrapper implements [`PlushieWidget`] by delegating to the existing
-//! `render_*` functions. These are transitional: as each widget is fully
-//! extracted into a proper `PlushieWidget` impl with owned state, the
-//! corresponding wrapper is removed.
+//! Contains both thin wrapper factories (stateless widgets that delegate
+//! to existing `render_*` functions via the [`builtin_widget!`] macro) and
+//! fully extracted stateful factories that own their per-instance state.
+//!
+//! Extracted stateful factories:
+//! - [`ThemerWidget`] -- owns resolved theme cache
+//! - [`MarkdownWidget`] -- owns parsed markdown items
+//! - [`TextEditorWidget`] -- owns `text_editor::Content<R>` (R-generic)
+//! - [`ComboBoxWidget`] -- owns `combo_box::State`
+//! - [`SliderWidget`] / [`VerticalSliderWidget`] -- own slide value tracking
+//! - [`PaneGridWidget`] -- owns `pane_grid::State` with full message handling
 //!
 //! The [`iced_widget_set`] function returns a [`WidgetSet`] containing all
-//! built-in wrappers, suitable for registering as the default set.
+//! built-in widgets, suitable for registering as the default set.
 
 use iced::{Element, Theme};
 
@@ -196,14 +203,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
 
         match msg {
             Message::PaneFocusCycle(window_id, grid_id, pane) => {
-                let state = self
-                    .states
-                    .values()
-                    .find(|s| s.panes.values().any(|id| id == grid_id))
-                    .or_else(|| {
-                        self.states.iter().find(|((_w, n), _)| n == grid_id).map(|(_, s)| s)
-                    });
-                if let Some(state) = state {
+                let key = (window_id.to_string(), grid_id.to_string());
+                if let Some(state) = self.states.get(&key) {
                     let pane_id = state.get(*pane).cloned().unwrap_or_default();
                     Some(vec![
                         OutgoingEvent::pane_focus_cycle(grid_id.clone(), pane_id)
@@ -214,13 +215,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                 }
             }
             Message::PaneResized(window_id, grid_id, evt) => {
-                // Find state by grid_id (node_id part of the key)
-                if let Some(state) = self
-                    .states
-                    .iter_mut()
-                    .find(|((_w, n), _)| n == grid_id)
-                    .map(|(_, s)| s)
-                {
+                let key = (window_id.to_string(), grid_id.to_string());
+                if let Some(state) = self.states.get_mut(&key) {
                     state.resize(evt.split, evt.ratio);
                 }
                 Some(vec![
@@ -233,24 +229,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                 ])
             }
             Message::PaneDragged(window_id, grid_id, evt) => {
-                let state = self
-                    .states
-                    .iter_mut()
-                    .find(|((_w, n), _)| n == grid_id)
-                    .map(|(_, s)| s);
-
+                let key = (window_id.to_string(), grid_id.to_string());
                 match evt {
                     pane_grid::DragEvent::Picked { pane } => {
-                        if let Some(state) = state {
+                        if let Some(state) = self.states.get(&key) {
                             let pane_id = state.get(*pane).cloned().unwrap_or_default();
                             Some(vec![
                                 OutgoingEvent::pane_dragged(
-                                    grid_id.clone(),
-                                    "picked",
-                                    pane_id,
-                                    None,
-                                    None,
-                                    None,
+                                    grid_id.clone(), "picked", pane_id,
+                                    None, None, None,
                                 )
                                 .with_window_id(window_id.clone()),
                             ])
@@ -259,7 +246,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                         }
                     }
                     pane_grid::DragEvent::Dropped { pane, target } => {
-                        if let Some(state) = state {
+                        if let Some(state) = self.states.get_mut(&key) {
                             let pane_id = state.get(*pane).cloned().unwrap_or_default();
                             let (target_pane, region, edge) = match target {
                                 pane_grid::Target::Edge(e) => {
@@ -276,9 +263,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                                     let region_str = match region {
                                         pane_grid::Region::Center => "center",
                                         pane_grid::Region::Edge(pane_grid::Edge::Top) => "top",
-                                        pane_grid::Region::Edge(pane_grid::Edge::Bottom) => {
-                                            "bottom"
-                                        }
+                                        pane_grid::Region::Edge(pane_grid::Edge::Bottom) => "bottom",
                                         pane_grid::Region::Edge(pane_grid::Edge::Left) => "left",
                                         pane_grid::Region::Edge(pane_grid::Edge::Right) => "right",
                                     };
@@ -288,12 +273,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                             state.drop(*pane, *target);
                             Some(vec![
                                 OutgoingEvent::pane_dragged(
-                                    grid_id.clone(),
-                                    "dropped",
-                                    pane_id,
-                                    target_pane,
-                                    region,
-                                    edge,
+                                    grid_id.clone(), "dropped", pane_id,
+                                    target_pane, region, edge,
                                 )
                                 .with_window_id(window_id.clone()),
                             ])
@@ -302,16 +283,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                         }
                     }
                     pane_grid::DragEvent::Canceled { pane } => {
-                        if let Some(state) = state {
+                        if let Some(state) = self.states.get(&key) {
                             let pane_id = state.get(*pane).cloned().unwrap_or_default();
                             Some(vec![
                                 OutgoingEvent::pane_dragged(
-                                    grid_id.clone(),
-                                    "canceled",
-                                    pane_id,
-                                    None,
-                                    None,
-                                    None,
+                                    grid_id.clone(), "canceled", pane_id,
+                                    None, None, None,
                                 )
                                 .with_window_id(window_id.clone()),
                             ])
@@ -322,14 +299,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                 }
             }
             Message::PaneClicked(window_id, grid_id, pane) => {
-                let state = self
-                    .states
-                    .values()
-                    .find(|s| s.panes.values().any(|id| id == grid_id))
-                    .or_else(|| {
-                        self.states.iter().find(|((_w, n), _)| n == grid_id).map(|(_, s)| s)
-                    });
-                if let Some(state) = state {
+                let key = (window_id.to_string(), grid_id.to_string());
+                if let Some(state) = self.states.get(&key) {
                     let pane_id = state.get(*pane).cloned().unwrap_or_default();
                     Some(vec![
                         OutgoingEvent::pane_clicked(grid_id.clone(), pane_id)
@@ -595,28 +566,17 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
 
         match msg {
             Message::TextEditorAction(window_id, id, action) => {
-                // During transition, Content lives in both self.contents
-                // and WidgetCaches. The old process_widget_message path
-                // mutates WidgetCaches. This handle_message is ready for
-                // when registry message dispatch takes over.
-                // For now, find by node_id alone (matching old behavior).
-                let key_match = self
-                    .contents
-                    .keys()
-                    .find(|(_, nid)| nid == id)
-                    .cloned();
-                if let Some(key) = key_match {
-                    if let Some(content) = self.contents.get_mut(&key) {
-                        let is_edit = action.is_edit();
-                        content.perform(action.clone());
-                        if is_edit {
-                            let new_text = content.text();
-                            self.content_hashes.insert(key, hash_str(&new_text));
-                            return Some(vec![
-                                crate::protocol::OutgoingEvent::input(id.clone(), new_text)
-                                    .with_window_id(window_id.clone()),
-                            ]);
-                        }
+                let key = (window_id.to_string(), id.to_string());
+                if let Some(content) = self.contents.get_mut(&key) {
+                    let is_edit = action.is_edit();
+                    content.perform(action.clone());
+                    if is_edit {
+                        let new_text = content.text();
+                        self.content_hashes.insert(key, hash_str(&new_text));
+                        return Some(vec![
+                            crate::protocol::OutgoingEvent::input(id.clone(), new_text)
+                                .with_window_id(window_id.clone()),
+                        ]);
                     }
                 }
                 Some(vec![])
@@ -642,11 +602,37 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
 builtin_widget!(CheckboxWidget,        ["checkbox"],         input::render_checkbox);
 builtin_widget!(TogglerWidget,         ["toggler"],          input::render_toggler);
 builtin_widget!(RadioWidget,           ["radio"],            input::render_radio);
-// SliderWidget: extracted factory with handle_message for value tracking.
-// Render delegates to the existing function (no slider-specific cache reads).
+// ---------------------------------------------------------------------------
+// Slider value tracking (shared by SliderWidget and VerticalSliderWidget)
+// ---------------------------------------------------------------------------
+
+/// Handle Slide/SlideRelease messages for sliders. Tracks the latest drag
+/// value per node ID so SlideRelease can report the final value (iced's
+/// release event doesn't carry the value itself).
+fn handle_slider_message(
+    last_values: &mut std::collections::HashMap<String, f64>,
+    msg: &Message,
+) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+    match msg {
+        Message::Slide(window_id, id, value) => {
+            last_values.insert(id.clone(), *value);
+            Some(vec![
+                crate::protocol::OutgoingEvent::slide(id.clone(), *value)
+                    .with_window_id(window_id.clone()),
+            ])
+        }
+        Message::SlideRelease(window_id, id) => {
+            let value = last_values.remove(id).unwrap_or(0.0);
+            Some(vec![
+                crate::protocol::OutgoingEvent::slide_release(id.clone(), value)
+                    .with_window_id(window_id.clone()),
+            ])
+        }
+        _ => None,
+    }
+}
+
 pub(crate) struct SliderWidget {
-    /// Last slider drag value per node ID, used to provide the final value
-    /// on SlideRelease (iced only sends the release event, not the value).
     last_values: std::collections::HashMap<String, f64>,
 }
 
@@ -672,23 +658,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
     }
 
     fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
-        match msg {
-            Message::Slide(window_id, id, value) => {
-                self.last_values.insert(id.clone(), *value);
-                Some(vec![
-                    crate::protocol::OutgoingEvent::slide(id.clone(), *value)
-                        .with_window_id(window_id.clone()),
-                ])
-            }
-            Message::SlideRelease(window_id, id) => {
-                let value = self.last_values.remove(id).unwrap_or(0.0);
-                Some(vec![
-                    crate::protocol::OutgoingEvent::slide_release(id.clone(), value)
-                        .with_window_id(window_id.clone()),
-                ])
-            }
-            _ => None,
-        }
+        handle_slider_message(&mut self.last_values, msg)
     }
 
     fn cleanup(&mut self, node_id: &str, _window_id: &str) {
@@ -700,7 +670,6 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
     }
 }
 
-// VerticalSliderWidget: shares the same value tracking as SliderWidget.
 pub(crate) struct VerticalSliderWidget {
     last_values: std::collections::HashMap<String, f64>,
 }
@@ -727,23 +696,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
     }
 
     fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
-        match msg {
-            Message::Slide(window_id, id, value) => {
-                self.last_values.insert(id.clone(), *value);
-                Some(vec![
-                    crate::protocol::OutgoingEvent::slide(id.clone(), *value)
-                        .with_window_id(window_id.clone()),
-                ])
-            }
-            Message::SlideRelease(window_id, id) => {
-                let value = self.last_values.remove(id).unwrap_or(0.0);
-                Some(vec![
-                    crate::protocol::OutgoingEvent::slide_release(id.clone(), value)
-                        .with_window_id(window_id.clone()),
-                ])
-            }
-            _ => None,
-        }
+        handle_slider_message(&mut self.last_values, msg)
     }
 
     fn cleanup(&mut self, node_id: &str, _window_id: &str) {

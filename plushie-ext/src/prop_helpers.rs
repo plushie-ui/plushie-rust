@@ -1,4 +1,4 @@
-//! Public prop extraction helpers for widget extensions.
+//! Public prop extraction helpers for widget authors.
 //!
 //! These functions provide a convenient API for reading typed values from
 //! a props map ([`Props`]). Extension authors use these in their `render()`

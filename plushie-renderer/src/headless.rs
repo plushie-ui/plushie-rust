@@ -401,8 +401,8 @@ impl<R: PlushieRenderer> Session<R> {
                         use plushie_ext::engine::CoreEffect;
                         match effect {
                             CoreEffect::ThemeChanged(t) => self.theme = t,
-                            CoreEffect::ExtensionConfig(config) => {
-                                let ctx = plushie_ext::extensions::InitCtx {
+                            CoreEffect::WidgetConfig(config) => {
+                                let ctx = plushie_ext::registry::InitCtx {
                                     config: &config,
                                     theme: &self.theme,
                                     default_text_size: self.core.default_text_size,
@@ -578,8 +578,8 @@ fn handle_message<R: PlushieRenderer>(
                             log::warn!("{mode}: image_op {op} failed: {e}");
                         }
                     }
-                    CoreEffect::ExtensionConfig(config) => {
-                        let ctx = plushie_ext::extensions::InitCtx {
+                    CoreEffect::WidgetConfig(config) => {
+                        let ctx = plushie_ext::registry::InitCtx {
                             config: &config,
                             theme: &s.theme,
                             default_text_size: s.core.default_text_size,

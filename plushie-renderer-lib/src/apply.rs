@@ -151,8 +151,8 @@ impl App {
                 } => {
                     self.handle_image_op(&op, &handle, data, pixels, width, height);
                 }
-                CoreEffect::ExtensionConfig(config) => {
-                    let ctx = plushie_ext::extensions::InitCtx {
+                CoreEffect::WidgetConfig(config) => {
+                    let ctx = plushie_ext::registry::InitCtx {
                         config: &config,
                         theme: &self.theme,
                         default_text_size: self.core.default_text_size,

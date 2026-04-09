@@ -13,11 +13,11 @@
 //!
 //! **Widget SDK (stable API):**
 //! - [`prelude`] -- common re-exports for widget authors
-//! - [`registry`] -- `PlushieWidget` trait, `WidgetRegistry`, `WidgetSet`
+//! - [`registry`] -- `PlushieWidget` trait, `WidgetRegistry`, `WidgetSet`,
+//!   `InitCtx`, `GenerationCounter`
 //! - [`app`] -- `PlushieAppBuilder` for registering widgets
 //! - [`prop_helpers`] -- public prop extraction helpers
 //! - [`render_ctx`] -- `RenderCtx`, the core rendering context for all widgets
-//! - [`extensions`] -- legacy `WidgetExtension` trait (being replaced by `PlushieWidget`)
 //! - [`testing`] -- test factory helpers
 //!
 //! **Internal modules** (used by the plushie binary, not part of the SDK):
@@ -30,14 +30,12 @@
 #[cfg(all(not(test), not(target_arch = "wasm32"), panic = "abort"))]
 compile_error!(
     "plushie-core requires panic=\"unwind\" (the default). \
-     Extension panic isolation via catch_unwind is a no-op with panic=\"abort\"."
+     Widget panic isolation via catch_unwind is a no-op with panic=\"abort\"."
 );
 
 // -- Public SDK modules (stable API for widget authors) --
 pub mod app;
 pub mod canvas_engine;
-pub mod extension_adapter;
-pub mod extensions;
 pub mod prelude;
 pub mod prop_helpers;
 pub mod registry;
@@ -70,7 +68,7 @@ pub mod widgets;
 
 // Re-export iced so widget crates can use `plushie_ext::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when
-// plushie-core bumps its iced version -- extensions that use only
+// plushie-core bumps its iced version. Widgets that use only
 // `plushie_ext::prelude::*` and `plushie_ext::iced::*` get the upgrade
 // automatically.
 pub use iced;

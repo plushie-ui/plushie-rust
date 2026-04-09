@@ -1,9 +1,8 @@
 //! Compilation tests for code examples in the widget development docs.
 //!
-//! These tests verify that the API patterns shown in docs/extension-guide.md
-//! and docs/core-widget-guide.md actually compile against the real plushie-core
-//! and iced APIs. If the API changes, these tests fail, signaling that the
-//! docs need updating.
+//! These tests verify that the API patterns shown in the docs actually
+//! compile against the real plushie-core and iced APIs. If the API
+//! changes, these tests fail, signaling that the docs need updating.
 //!
 //! The tests don't render pixels -- they exercise the type system and verify
 //! that method calls, field access, and trait implementations are correct.
@@ -17,21 +16,21 @@ use serde_json::json;
 use plushie_ext::iced::widget::{column, row};
 
 // ============================================================================
-// Extension guide: Gauge example (the opening example)
+// Gauge example (PlushieWidget)
 // ============================================================================
 
 struct DocGauge;
 
-impl WidgetExtension for DocGauge {
+impl<R: PlushieRenderer> PlushieWidget<R> for DocGauge {
     fn type_names(&self) -> &[&str] {
         &["doc_gauge"]
     }
 
-    fn config_key(&self) -> &str {
-        "doc_gauge"
-    }
-
-    fn render<'a>(&self, node: &'a TreeNode, _env: &WidgetEnv<'a>) -> Element<'a, Message> {
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        _ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, Theme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let label = node.prop_str("label").unwrap_or_default();
 
@@ -42,37 +41,36 @@ impl WidgetExtension for DocGauge {
         .spacing(4)
         .into()
     }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(DocGauge)
+    }
 }
 
-// Validates: extension-guide.md "The trait" section
 #[test]
-fn extension_guide_gauge_renders() {
-    let ext = DocGauge;
+fn doc_gauge_renders() {
     let node = node_with_props("g1", "doc_gauge", json!({"value": 50.0, "label": "CPU"}));
     let test = TestEnv::default();
     let ctx = test.render_ctx();
-    let env = test.env(&ctx);
-    let _element = ext.render(&node, &env);
+    let gauge = DocGauge;
+    let _element: Element<'_, Message, Theme, iced::Renderer> = gauge.render(&node, &ctx);
 }
 
-// Validates: extension-guide.md "The trait" section
 #[test]
-fn extension_guide_gauge_no_props() {
-    let ext = DocGauge;
+fn doc_gauge_no_props() {
     let node = node("g1", "doc_gauge");
     let test = TestEnv::default();
     let ctx = test.render_ctx();
-    let env = test.env(&ctx);
-    let _element = ext.render(&node, &env);
+    let gauge = DocGauge;
+    let _element: Element<'_, Message, Theme, iced::Renderer> = gauge.render(&node, &ctx);
 }
 
 // ============================================================================
-// Extension guide: prop parsing patterns
+// Prop parsing patterns
 // ============================================================================
 
-// Validates: extension-guide.md "Parsing props" section
 #[test]
-fn extension_guide_prop_parsing() {
+fn doc_prop_parsing() {
     let props_val = json!({
         "value": 42.5,
         "label": "test",
@@ -97,51 +95,51 @@ fn extension_guide_prop_parsing() {
 }
 
 // ============================================================================
-// Extension guide: rendering with theme
+// Theme access
 // ============================================================================
 
-// Validates: extension-guide.md "Using the theme" section
 #[test]
-fn extension_guide_theme_access() {
+fn doc_theme_access() {
     let test = TestEnv::default();
     let ctx = test.render_ctx();
-    let env = test.env(&ctx);
-
-    let theme = env.theme();
+    let theme = ctx.theme;
     let palette = theme.palette();
     let _primary = palette.primary.base.color;
     let _is_dark = palette.is_dark;
 }
 
 // ============================================================================
-// Extension guide: rendering children
+// Rendering children (container widget)
 // ============================================================================
 
 struct DocContainer;
 
-impl WidgetExtension for DocContainer {
+impl<R: PlushieRenderer> PlushieWidget<R> for DocContainer {
     fn type_names(&self) -> &[&str] {
         &["doc_container"]
     }
-    fn config_key(&self) -> &str {
-        "doc_container"
-    }
 
-    fn render<'a>(&self, node: &'a TreeNode, env: &WidgetEnv<'a>) -> Element<'a, Message> {
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, Theme, R> {
         let header = text(node.prop_str("title").unwrap_or_default());
-        let children: Vec<Element<'a, Message>> = env.ctx.render_children(node);
+        let children: Vec<Element<'a, Message, Theme, R>> = ctx.render_children(node);
         let mut col = column![header].spacing(8);
         for child in children {
             col = col.push(child);
         }
         col.into()
     }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(DocContainer)
+    }
 }
 
-// Validates: extension-guide.md "Rendering children" section
 #[test]
-fn extension_guide_container_renders() {
-    let ext = DocContainer;
+fn doc_container_renders() {
     let node = node_with_props_and_children(
         "c1",
         "doc_container",
@@ -150,125 +148,28 @@ fn extension_guide_container_renders() {
     );
     let test = TestEnv::default();
     let ctx = test.render_ctx();
-    let env = test.env(&ctx);
-    let _element = ext.render(&node, &env);
+    let widget = DocContainer;
+    let _element: Element<'_, Message, Theme, iced::Renderer> = widget.render(&node, &ctx);
 }
 
 // ============================================================================
-// Extension guide: state management with ExtensionCaches
+// GenerationCounter pattern
 // ============================================================================
 
-#[derive(Debug)]
-struct SparklineState {
-    data: Vec<f32>,
-    min: f32,
-    max: f32,
-}
-
-struct DocSparkline;
-
-impl WidgetExtension for DocSparkline {
-    fn type_names(&self) -> &[&str] {
-        &["doc_sparkline"]
-    }
-    fn config_key(&self) -> &str {
-        "doc_sparkline"
-    }
-
-    fn prepare(&mut self, node: &TreeNode, caches: &mut ExtensionCaches, _theme: &Theme) {
-        let data: Vec<f32> = prop_f32_array(node.props(), "data").unwrap_or_default();
-        let (min, max) = data
-            .iter()
-            .fold((f32::MAX, f32::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
-        caches.insert(
-            self.config_key(),
-            &node.id,
-            SparklineState { data, min, max },
-        );
-    }
-
-    fn render<'a>(&self, node: &'a TreeNode, env: &WidgetEnv<'a>) -> Element<'a, Message> {
-        let _state: Option<&SparklineState> = env.caches.get(self.config_key(), &node.id);
-        text("sparkline").into()
-    }
-}
-
-// Validates: extension-guide.md "Tier B: stateful with ExtensionCaches" section
 #[test]
-fn extension_guide_state_management() {
-    let mut ext = DocSparkline;
-    let node = node_with_props("s1", "doc_sparkline", json!({"data": [1.0, 2.0, 3.0]}));
-    let mut caches = ExtensionCaches::new();
-    ext.prepare(&node, &mut caches, &Theme::Dark);
-
-    let state: Option<&SparklineState> = caches.get("doc_sparkline", "s1");
-    let state = state.unwrap();
-    assert_eq!(state.data, vec![1.0, 2.0, 3.0]);
-    assert!((state.min - 1.0).abs() < f32::EPSILON);
-    assert!((state.max - 3.0).abs() < f32::EPSILON);
+fn doc_generation_counter() {
+    let mut counter = GenerationCounter::new();
+    let gen_before = counter.get();
+    counter.bump();
+    assert_ne!(gen_before, counter.get());
 }
 
 // ============================================================================
-// Extension guide: GenerationCounter pattern
+// CoalesceHint
 // ============================================================================
 
-struct ChartState {
-    data: Vec<f32>,
-    generation: GenerationCounter,
-}
-
-// Validates: extension-guide.md "Canvas cache invalidation" section
 #[test]
-fn extension_guide_generation_counter() {
-    let mut caches = ExtensionCaches::new();
-    let state = caches.get_or_insert("chart", "c1", || ChartState {
-        data: vec![],
-        generation: GenerationCounter::new(),
-    });
-    let gen_before = state.generation.get();
-    state.data = vec![1.0, 2.0];
-    state.generation.bump();
-    assert_ne!(gen_before, state.generation.get());
-}
-
-// ============================================================================
-// Extension guide: EventResult patterns
-// ============================================================================
-
-// Validates: extension-guide.md "Tier B: handling events" section
-#[test]
-fn extension_guide_event_result() {
-    // Consumed: suppress original, emit replacement
-    let result = EventResult::Consumed(vec![OutgoingEvent::extension_event(
-        "item_selected",
-        "w1",
-        Some(json!({"index": 3})),
-    )]);
-    match result {
-        EventResult::Consumed(events) => assert_eq!(events[0].family, "item_selected"),
-        _ => panic!("expected Consumed"),
-    }
-
-    // Observed: forward original + emit additional
-    let result = EventResult::Observed(vec![OutgoingEvent::extension_event(
-        "scroll_stats",
-        "w1",
-        None,
-    )]);
-    assert!(matches!(result, EventResult::Observed(_)));
-
-    // PassThrough: forward as-is
-    let result = EventResult::PassThrough;
-    assert!(matches!(result, EventResult::PassThrough));
-}
-
-// ============================================================================
-// Extension guide: CoalesceHint
-// ============================================================================
-
-// Validates: extension-guide.md "CoalesceHint for continuous events" section
-#[test]
-fn extension_guide_coalesce_hint() {
+fn doc_coalesce_hint() {
     let event =
         OutgoingEvent::extension_event("cursor_pos", "w1", Some(json!({"x": 10.0, "y": 20.0})))
             .with_coalesce(CoalesceHint::Replace);
@@ -276,116 +177,27 @@ fn extension_guide_coalesce_hint() {
 }
 
 // ============================================================================
-// Extension guide: handle_command pattern
-// ============================================================================
-
-struct DocCommandWidget;
-
-impl WidgetExtension for DocCommandWidget {
-    fn type_names(&self) -> &[&str] {
-        &["doc_cmd"]
-    }
-    fn config_key(&self) -> &str {
-        "doc_cmd"
-    }
-
-    fn render<'a>(&self, _node: &'a TreeNode, _env: &WidgetEnv<'a>) -> Element<'a, Message> {
-        text("cmd widget").into()
-    }
-
-    fn handle_command(
-        &mut self,
-        node_id: &str,
-        op: &str,
-        payload: &Value,
-        _caches: &mut ExtensionCaches,
-    ) -> Vec<OutgoingEvent> {
-        match op {
-            "export" => {
-                let format = payload
-                    .get("format")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("png");
-                vec![OutgoingEvent::extension_event(
-                    "exported",
-                    node_id,
-                    Some(json!({"format": format, "size": 1024})),
-                )]
-            }
-            _ => vec![],
-        }
-    }
-}
-
-// Validates: extension-guide.md "Tier C: receiving commands from the host" section
-#[test]
-fn extension_guide_handle_command() {
-    let mut ext = DocCommandWidget;
-    let mut caches = ExtensionCaches::new();
-    let events = ext.handle_command("w1", "export", &json!({"format": "svg"}), &mut caches);
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].family, "exported");
-}
-
-// ============================================================================
-// Extension guide: cleanup pattern
-// ============================================================================
-
-struct DocCleanupWidget {
-    closed_connections: Vec<String>,
-}
-
-impl WidgetExtension for DocCleanupWidget {
-    fn type_names(&self) -> &[&str] {
-        &["doc_cleanup"]
-    }
-    fn config_key(&self) -> &str {
-        "doc_cleanup"
-    }
-
-    fn render<'a>(&self, _node: &'a TreeNode, _env: &WidgetEnv<'a>) -> Element<'a, Message> {
-        text("cleanup widget").into()
-    }
-
-    fn cleanup(&mut self, node_id: &str, _caches: &mut ExtensionCaches) {
-        // Cache entry is auto-removed after this method returns.
-        // Only implement this for external resource cleanup.
-        self.closed_connections.push(node_id.to_string());
-    }
-}
-
-// Validates: extension-guide.md "Cleanup" section
-#[test]
-fn extension_guide_cleanup_external_resources() {
-    let mut ext = DocCleanupWidget {
-        closed_connections: vec![],
-    };
-    let mut caches = ExtensionCaches::new();
-    ext.cleanup("w1", &mut caches);
-    assert_eq!(ext.closed_connections, vec!["w1"]);
-}
-
-// ============================================================================
-// Extension guide: Rating widget (complete example)
+// Rating widget (PlushieWidget, complete example)
 // ============================================================================
 
 struct DocRating;
 
-impl WidgetExtension for DocRating {
+impl<R: PlushieRenderer> PlushieWidget<R> for DocRating {
     fn type_names(&self) -> &[&str] {
         &["doc_rating"]
     }
-    fn config_key(&self) -> &str {
-        "doc_rating"
-    }
 
-    fn render<'a>(&self, node: &'a TreeNode, env: &WidgetEnv<'a>) -> Element<'a, Message> {
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, Theme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0) as usize;
         let max = prop_u32(node.props(), "max").unwrap_or(5) as usize;
         let size = node.prop_f32("size").unwrap_or(24.0);
         let color = node
             .prop_color("color")
-            .unwrap_or(env.theme().palette().primary.base.color);
+            .unwrap_or(ctx.theme.palette().primary.base.color);
         let disabled_color = Color {
             a: color.a * 0.3,
             ..color
@@ -417,15 +229,13 @@ impl WidgetExtension for DocRating {
         stars.into()
     }
 
-    fn new_instance(&self) -> Box<dyn WidgetExtension> {
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(DocRating)
     }
 }
 
-// Validates: extension-guide.md "Complete example: a rating widget" section
 #[test]
-fn extension_guide_rating_renders() {
-    let ext = DocRating;
+fn doc_rating_renders() {
     let node = node_with_props(
         "r1",
         "doc_rating",
@@ -433,28 +243,26 @@ fn extension_guide_rating_renders() {
     );
     let test = TestEnv::default();
     let ctx = test.render_ctx();
-    let env = test.env(&ctx);
-    let _element = ext.render(&node, &env);
+    let widget = DocRating;
+    let _element: Element<'_, Message, Theme, iced::Renderer> = widget.render(&node, &ctx);
 }
 
-// Validates: extension-guide.md "Complete example: a rating widget" section
 #[test]
-fn extension_guide_rating_no_props() {
-    let ext = DocRating;
+fn doc_rating_no_props() {
     let node = node("r1", "doc_rating");
     let test = TestEnv::default();
     let ctx = test.render_ctx();
-    let env = test.env(&ctx);
-    let _element = ext.render(&node, &env);
+    let widget = DocRating;
+    let _element: Element<'_, Message, Theme, iced::Renderer> = widget.render(&node, &ctx);
 }
 
 // ============================================================================
-// Extension guide: new_instance
+// clone_for_session
 // ============================================================================
 
-// Validates: extension-guide.md "Multi-session support" section
 #[test]
-fn extension_guide_new_instance() {
-    let ext = DocRating;
-    let _instance: Box<dyn WidgetExtension> = ext.new_instance();
+fn doc_clone_for_session() {
+    let widget = DocRating;
+    let cloned: Box<dyn PlushieWidget<iced::Renderer>> = widget.clone_for_session();
+    assert_eq!(cloned.type_names(), &["doc_rating"]);
 }

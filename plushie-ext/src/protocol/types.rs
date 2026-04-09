@@ -15,8 +15,8 @@ use serde_json::Value;
 /// of widget-specific properties, and optional `children` for container
 /// widgets.
 ///
-/// Extension authors receive `&TreeNode` in their
-/// [`render`](crate::extensions::WidgetExtension::render) method.
+/// Widget authors receive `&TreeNode` in their
+/// [`render`](crate::registry::PlushieWidget::render) method.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TreeNode {
     /// Unique identifier for this node within the tree.

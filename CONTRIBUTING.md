@@ -60,19 +60,19 @@ Use conventional commits:
     test(codec): add msgpack round-trip tests
     refactor(widgets): extract common prop parsing
 
-## Extension Development
+## Widget Development
 
-plushie-ext is the public SDK for writing widget extensions. The quick path:
+plushie-ext is the public SDK for writing custom widgets. The quick path:
 
 1. Create a Rust crate that depends on `plushie-ext`.
 2. Import everything from `plushie_ext::prelude::*`.
-3. Implement the `WidgetExtension` trait (three required methods:
-   `type_names()`, `config_key()`, `render()`).
+3. Implement the `PlushieWidget` trait (three required methods:
+   `type_names()`, `render()`, `clone_for_session()`).
 4. For iced types not in the prelude, use `plushie_ext::iced::*` instead
    of adding a direct `iced` dependency -- this avoids version conflicts.
 
-See the `WidgetExtension` trait docs and examples in
-`plushie-ext/src/extensions.rs` for the full API reference.
+See the `PlushieWidget` trait docs in `plushie-ext/src/registry.rs`
+for the full API reference.
 
 ## Pull Requests
 

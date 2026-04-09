@@ -14,7 +14,7 @@ my-gauge/               depends on iced (via plushie-iced)
   Cargo.toml
 
 my-gauge-plushie/         depends on plushie-ext + my-gauge
-  src/lib.rs            WidgetExtension wrapper -- prop parsing, event bridging
+  src/lib.rs            PlushieWidget wrapper -- prop parsing, event bridging
   Cargo.toml
 ```
 
@@ -42,19 +42,22 @@ wrapper -- no per-language duplication:
 use plushie_ext::prelude::*;
 use my_gauge::gauge;
 
-pub struct GaugeExtension;
+pub struct GaugeWidget;
 
-impl WidgetExtension for GaugeExtension {
+impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
     fn type_names(&self) -> &[&str] { &["gauge"] }
-    fn config_key(&self) -> &str { "gauge" }
 
-    fn render<'a>(&self, node: &'a TreeNode, env: &WidgetEnv<'a>) -> Element<'a, Message> {
+    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>) -> Element<'a, Message, Theme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let width = prop_length(node.props(), "width", Length::Fixed(100.0));
         let color = node.prop_color("color")
-            .unwrap_or(env.theme().palette().primary.base.color);
+            .unwrap_or(ctx.theme.palette().primary.base.color);
 
         gauge(value).width(width).color(color).into()
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(GaugeWidget)
     }
 }
 ```
@@ -388,16 +391,15 @@ my-gauge = { path = "../my-gauge" }
 use plushie_ext::prelude::*;
 use my_gauge::gauge;
 
-pub struct GaugeExtension;
+pub struct GaugeWidget;
 
-impl WidgetExtension for GaugeExtension {
+impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
     fn type_names(&self) -> &[&str] { &["gauge"] }
-    fn config_key(&self) -> &str { "gauge" }
 
-    fn render<'a>(&self, node: &'a TreeNode, env: &WidgetEnv<'a>) -> Element<'a, Message> {
+    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>) -> Element<'a, Message, Theme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let color = node.prop_color("color")
-            .unwrap_or(env.theme().palette().primary.base.color);
+            .unwrap_or(ctx.theme.palette().primary.base.color);
         let width = prop_length(node.props(), "width", Length::Fixed(100.0));
         let height = prop_length(node.props(), "height", Length::Fixed(100.0));
 
@@ -408,8 +410,8 @@ impl WidgetExtension for GaugeExtension {
             .into()
     }
 
-    fn new_instance(&self) -> Box<dyn WidgetExtension> {
-        Box::new(GaugeExtension)
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(GaugeWidget)
     }
 }
 ```
@@ -425,29 +427,25 @@ translates JSON props to typed parameters.
 | Layout, drawing, events, a11y | Widget crate (`my-gauge`) |
 | Prop parsing (JSON -> types) | Wrapper crate (`my-gauge-plushie`) |
 | Event bridging (plushie Message -> host) | Wrapper crate |
-| State management (ExtensionCaches) | Wrapper crate (if needed) |
+| State management | Wrapper crate (if needed) |
 | Compilation, binary generation | Host SDK (automatic) |
 
 ### Events from your widget
 
 If your iced widget emits messages via `shell.publish()`, the
-wrapper catches them in `handle_event()` and translates to
+wrapper catches them in `handle_message()` and translates to
 `OutgoingEvent`:
 
 ```rust
-fn handle_event(
-    &mut self,
-    node_id: &str,
-    family: &str,
-    data: &Value,
-    _caches: &mut ExtensionCaches,
-) -> EventResult {
-    match family {
-        "click" => EventResult::Consumed(vec![
-            OutgoingEvent::extension_event("gauge_clicked", node_id, None)
-        ]),
-        _ => EventResult::PassThrough,
+fn handle_message(&mut self, msg: &Message) -> Option<Vec<OutgoingEvent>> {
+    if let Message::Event { id, family, .. } = msg {
+        if family == "click" {
+            return Some(vec![
+                OutgoingEvent::extension_event("gauge_clicked", id, None)
+            ]);
+        }
     }
+    None
 }
 ```
 
@@ -477,7 +475,7 @@ mod tests {
 
     #[test]
     fn renders_with_props() {
-        let ext = GaugeExtension;
+        let widget = GaugeWidget;
         let node = node_with_props("g1", "gauge", json!({
             "value": 0.75,
             "color": "#4CAF50"
@@ -485,21 +483,19 @@ mod tests {
 
         let test = TestEnv::default();
         let ctx = test.render_ctx();
-        let env = test.env(&ctx);
 
-        let _element = ext.render(&node, &env);
+        let _element = widget.render(&node, &ctx);
     }
 
     #[test]
     fn renders_with_no_props() {
-        let ext = GaugeExtension;
+        let widget = GaugeWidget;
         let node = node("g1", "gauge");
 
         let test = TestEnv::default();
         let ctx = test.render_ctx();
-        let env = test.env(&ctx);
 
-        let _element = ext.render(&node, &env); // should use defaults
+        let _element = widget.render(&node, &ctx); // should use defaults
     }
 }
 ```
@@ -547,8 +543,8 @@ emission, validation) belongs in plushie-ext.
 
 ## Further reading
 
-- [Extension Guide](extension-guide.md) for building
-  application-specific widgets (simpler, no iced Widget trait)
+- [PlushieWidget](../plushie-ext/src/registry.rs) trait docs for
+  building application-specific widgets (simpler, no iced Widget trait)
 - [Widget Development](widget-development.md) for the decision
   framework
 - iced widget examples in the

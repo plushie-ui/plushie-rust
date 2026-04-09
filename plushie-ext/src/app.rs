@@ -1,9 +1,8 @@
-//! Application builder for registering widgets and extensions.
+//! Application builder for registering widgets.
 //!
 //! Create a [`PlushieAppBuilder`], register widgets (via
-//! [`PlushieWidget`](crate::registry::PlushieWidget) or the legacy
-//! [`WidgetExtension`](crate::extensions::WidgetExtension) trait), and
-//! pass it to `plushie::run()`.
+//! [`PlushieWidget`](crate::registry::PlushieWidget)), and pass it
+//! to `plushie::run()`.
 //!
 //! # Example
 //!
@@ -21,14 +20,12 @@
 //! ```
 
 use crate::PlushieRenderer;
-use crate::extensions::WidgetExtension;
 use crate::registry::{PlushieWidget, WidgetRegistry, WidgetSet};
 
 /// Builder for registering widgets before starting the renderer.
 ///
-/// All widgets (both [`PlushieWidget`] and [`WidgetExtension`]) are
-/// registered in the [`WidgetRegistry`]. Extensions are wrapped via
-/// [`ExtensionAdapter`](crate::extension_adapter::ExtensionAdapter).
+/// All widgets are registered in the [`WidgetRegistry`] via the
+/// [`PlushieWidget`] trait.
 ///
 /// The `R` parameter selects the renderer backend. Defaults to
 /// `iced::Renderer` which is used by headless and windowed modes.
@@ -51,8 +48,6 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
             registry: WidgetRegistry::new(),
         }
     }
-
-    // -- New PlushieWidget API ------------------------------------------------
 
     /// Register a [`PlushieWidget`] implementation.
     ///
@@ -82,31 +77,8 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
         self.registry
     }
 
-    /// Register a [`WidgetExtension`] via the [`ExtensionAdapter`], adding
-    /// it to the widget registry. The adapter bridges the WidgetExtension
-    /// API to PlushieWidget so extensions work through unified dispatch.
-    ///
-    /// [`ExtensionAdapter`]: crate::extension_adapter::ExtensionAdapter
-    pub fn extension(mut self, ext: impl WidgetExtension<R> + 'static) -> Self {
-        self.registry
-            .register(Box::new(crate::extension_adapter::ExtensionAdapter::new(
-                ext,
-            )));
-        self
-    }
-
-    /// Register a pre-boxed [`WidgetExtension`] via the
-    /// [`ExtensionAdapter`](crate::extension_adapter::ExtensionAdapter).
-    pub fn extension_boxed(mut self, ext: Box<dyn WidgetExtension<R>>) -> Self {
-        // Create adapter from the boxed extension directly.
-        self.registry.register(Box::new(
-            crate::extension_adapter::ExtensionAdapter::from_boxed(ext),
-        ));
-        self
-    }
-
-    /// Return type names for non-built-in widgets (custom widgets and
-    /// extensions). Used by the hello message.
+    /// Return type names for non-built-in widgets (custom widgets).
+    /// Used by the hello message.
     pub fn custom_type_names(&self) -> Vec<&str> {
         let builtins = crate::widgets::render::builtin_widget_types();
         self.registry

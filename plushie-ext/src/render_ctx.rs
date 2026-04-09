@@ -15,10 +15,9 @@ use crate::widgets::SharedState;
 
 /// Renders child nodes through the main dispatch. Copy-able (all shared refs).
 ///
-/// Extensions receive this via [`WidgetEnv`](crate::extensions::WidgetEnv)
-/// in their `render()` method. Built-in widgets receive it directly.
-/// It carries everything needed for rendering: the widget tree state,
-/// image handles, theme, text defaults, and per-window context.
+/// All widgets (built-in and custom) receive this in their `render()`
+/// method. It carries everything needed for rendering: the widget tree
+/// state, image handles, theme, text defaults, and per-window context.
 ///
 /// The `R` parameter selects the renderer backend: `iced::Renderer` for
 /// headless/windowed modes, `()` (null renderer) for mock mode.

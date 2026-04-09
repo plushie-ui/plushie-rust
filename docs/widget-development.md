@@ -16,9 +16,9 @@ the interaction pattern is standard (click, hover, drag).
 See the [interactive canvas shapes](protocol.md#interactive-canvas-shapes)
 section in the protocol docs.
 
-## Extension widgets
+## Custom widgets
 
-A Rust crate that implements `WidgetExtension` from `plushie-ext`.
+A Rust crate that implements `PlushieWidget` from `plushie-ext`.
 Your host SDK handles compilation and binary generation. You write
 the widget logic.
 
@@ -27,16 +27,16 @@ rendering performance, complex state management, or access to iced's
 widget library beyond what canvas provides. Most custom Rust widgets
 use this path.
 
-See the [Extension Guide](extension-guide.md).
+See the `PlushieWidget` trait docs in `plushie-ext/src/registry.rs`.
 
 ## Reusable iced widgets
 
 An iced widget that works directly in Rust applications AND across
 every plushie SDK. You build the widget once as a standard iced
-widget, then add a thin WidgetExtension wrapper for plushie
+widget, then add a thin `PlushieWidget` wrapper for plushie
 compatibility.
 
-Use this for: widgets you want to share across the ecosystem --
+Use this for: widgets you want to share across the ecosystem,
 a chart library, a date picker, a color wheel. Rust developers
 use the widget directly. Elixir, Gleam, and other SDK users get
 it through plushie without any per-language widget code.
@@ -51,10 +51,10 @@ See the [Core Widget Guide](core-widget-guide.md).
 | Custom visuals + text editing | Compose canvas + `text_input` | no |
 | Custom visuals + scrolling | Compose canvas + `scrollable` | no |
 | Custom visuals + dropdown | Compose canvas + `overlay` | no |
-| Application-specific native widget | Extension (`WidgetExtension`) | yes (basic) |
-| Reusable widget (Rust + all SDKs) | iced widget + extension wrapper | yes (intermediate) |
-| Maximum rendering performance | Extension or core widget | yes |
+| Application-specific native widget | `PlushieWidget` | yes (basic) |
+| Reusable widget (Rust + all SDKs) | iced widget + `PlushieWidget` wrapper | yes (intermediate) |
+| Maximum rendering performance | `PlushieWidget` | yes |
 
 **Start with canvas.** Most custom widgets can be built from
 canvas interactive shapes composed with built-in widgets. Move to
-an extension only when canvas can't do what you need.
+a custom widget only when canvas can't do what you need.

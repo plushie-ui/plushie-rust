@@ -1,6 +1,6 @@
 [package]
 name = "plushie-ext"
-description = "Extension SDK for Plushie"
+description = "Widget SDK for Plushie"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

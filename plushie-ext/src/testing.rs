@@ -1,4 +1,4 @@
-//! Test factory helpers for widget extension authors.
+//! Test factory helpers for widget authors.
 //!
 //! Provides [`TestEnv`] for setting up a render environment and
 //! [`node`] / [`node_with_props`] / [`node_with_children`] for
@@ -11,14 +11,13 @@
 //! use plushie_ext::prelude::*;
 //!
 //! let test = TestEnv::default();
-//! let env = test.env();
-//! let element = my_extension.render(&node, &env);
+//! let ctx = test.render_ctx();
+//! let element = my_widget.render(&node, &ctx);
 //! ```
 
 use iced::Theme;
 use serde_json::{Value, json};
 
-use crate::extensions::{ExtensionCaches, WidgetEnv};
 use crate::image_registry::ImageRegistry;
 use crate::protocol::TreeNode;
 use crate::registry::WidgetRegistry;
@@ -61,7 +60,7 @@ pub fn node_with_children(id: &str, type_name: &str, children: Vec<TreeNode>) ->
 
 /// Create a [`TreeNode`] with both props and children.
 ///
-/// For container-type extension widgets that need both configuration
+/// For container-type widgets that need both configuration
 /// (via props) and nested content (via children).
 pub fn node_with_props_and_children(
     id: &str,
@@ -81,17 +80,18 @@ pub fn node_with_props_and_children(
 // TestEnv: owns all render dependencies
 // ---------------------------------------------------------------------------
 
-/// Owns all the dependencies needed to construct a [`WidgetEnv`] for
-/// testing extension `render()` methods.
+/// Owns all the dependencies needed to construct a [`RenderCtx`] for
+/// testing widget `render()` methods.
 ///
-/// All fields are public so tests can customize before calling [`env`](Self::env).
+/// All fields are public so tests can customize before calling
+/// [`render_ctx`](Self::render_ctx).
 ///
 /// # Example
 ///
 /// ```ignore
 /// let test = TestEnv::default();
-/// let env = test.env();
-/// let element = my_extension.render(&node, &env);
+/// let ctx = test.render_ctx();
+/// let element = my_widget.render(&node, &ctx);
 /// ```
 ///
 /// With customization:
@@ -101,10 +101,9 @@ pub fn node_with_props_and_children(
 ///     theme: Theme::Light,
 ///     ..TestEnv::default()
 /// };
-/// let env = test.env();
+/// let ctx = test.render_ctx();
 /// ```
 pub struct TestEnv {
-    pub ext_caches: ExtensionCaches,
     pub shared_state: SharedState,
     pub images: ImageRegistry,
     pub theme: Theme,
@@ -116,7 +115,6 @@ pub struct TestEnv {
 impl std::fmt::Debug for TestEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TestEnv")
-            .field("ext_caches", &self.ext_caches)
             .field("images", &self.images)
             .field("registry", &self.registry)
             .field("default_text_size", &self.default_text_size)
@@ -130,7 +128,6 @@ impl Default for TestEnv {
         let mut registry = WidgetRegistry::new();
         registry.register_set(&crate::widgets::builtins::iced_widget_set());
         Self {
-            ext_caches: ExtensionCaches::new(),
             shared_state: SharedState::new(),
             images: ImageRegistry::new(),
             theme: Theme::Dark,
@@ -155,22 +152,6 @@ impl TestEnv {
             scale_factor: 1.0,
         }
     }
-
-    /// Borrow a [`WidgetEnv`] using an externally-held [`RenderCtx`].
-    ///
-    /// Usage:
-    /// ```ignore
-    /// let test = TestEnv::default();
-    /// let ctx = test.render_ctx();
-    /// let env = test.env(&ctx);
-    /// let element = my_extension.render(&node, &env);
-    /// ```
-    pub fn env<'a>(&'a self, ctx: &RenderCtx<'a>) -> WidgetEnv<'a> {
-        WidgetEnv {
-            caches: &self.ext_caches,
-            ctx: *ctx,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -180,8 +161,8 @@ impl TestEnv {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::extensions::GenerationCounter;
     use crate::prop_helpers::{prop_f32, prop_str};
+    use crate::registry::GenerationCounter;
 
     // -- TreeNode constructors ------------------------------------------------
 
@@ -224,17 +205,8 @@ mod tests {
     fn default_env_has_no_text_defaults() {
         let test = TestEnv::default();
         let ctx = test.render_ctx();
-        let env = test.env(&ctx);
-        assert!(env.default_text_size().is_none());
-        assert!(env.default_font().is_none());
-    }
-
-    #[test]
-    fn default_env_has_empty_state() {
-        let test = TestEnv::default();
-        let ctx = test.render_ctx();
-        let env = test.env(&ctx);
-        assert!(!env.caches.contains("test", "anything"));
+        assert!(ctx.default_text_size.is_none());
+        assert!(ctx.default_font.is_none());
     }
 
     #[test]
@@ -246,22 +218,19 @@ mod tests {
         };
 
         let ctx = test.render_ctx();
-        let env = test.env(&ctx);
-        assert_eq!(env.default_text_size(), Some(18.0));
-        assert_eq!(env.default_font(), Some(iced::Font::MONOSPACE));
+        assert_eq!(ctx.default_text_size, Some(18.0));
+        assert_eq!(ctx.default_font, Some(iced::Font::MONOSPACE));
     }
 
     #[test]
     fn env_theme_is_customizable() {
-        let test = TestEnv {
+        let _test = TestEnv {
             theme: Theme::Light,
             ..TestEnv::default()
         };
-        let ctx = test.render_ctx();
-        let _env = test.env(&ctx);
     }
 
-    // -- GenerationCounter in ExtensionCaches ---------------------------------
+    // -- GenerationCounter ----------------------------------------------------
 
     #[test]
     fn generation_counter_lifecycle() {
@@ -270,24 +239,5 @@ mod tests {
         counter.bump();
         counter.bump();
         assert_eq!(counter.get(), 2);
-    }
-
-    #[test]
-    fn generation_counter_in_caches() {
-        let mut test = TestEnv::default();
-        test.ext_caches
-            .insert("spark", "spark-1:gen", GenerationCounter::new());
-
-        let counter = test
-            .ext_caches
-            .get_mut::<GenerationCounter>("spark", "spark-1:gen")
-            .unwrap();
-        counter.bump();
-
-        let counter = test
-            .ext_caches
-            .get::<GenerationCounter>("spark", "spark-1:gen")
-            .unwrap();
-        assert_eq!(counter.get(), 1);
     }
 }

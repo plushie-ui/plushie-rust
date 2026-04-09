@@ -35,11 +35,97 @@ use iced::{Element, Theme};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
-use crate::extensions::InitCtx;
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
 use crate::render_ctx::RenderCtx;
 use crate::widgets::a11y::A11yOverrides;
+
+// ---------------------------------------------------------------------------
+// InitCtx
+// ---------------------------------------------------------------------------
+
+/// Context passed to [`PlushieWidget::init`].
+///
+/// Provides the widget's config (from the host's Settings message)
+/// along with the current theme and text rendering defaults. This
+/// allows widgets to do theme-dependent initialization without
+/// deferring to the first `prepare()` call.
+#[derive(Debug)]
+pub struct InitCtx<'a> {
+    /// Widget-specific config from `Settings.extension_config[namespace]`.
+    /// `Value::Null` if the host didn't provide config for this widget.
+    pub config: &'a Value,
+    /// The current theme at init time.
+    pub theme: &'a Theme,
+    /// Global default text size, if set by the host.
+    pub default_text_size: Option<f32>,
+    /// Global default font, if set by the host.
+    pub default_font: Option<iced::Font>,
+}
+
+// ---------------------------------------------------------------------------
+// GenerationCounter
+// ---------------------------------------------------------------------------
+
+/// A monotonically increasing counter for tracking data changes.
+///
+/// Useful for cache invalidation in widgets that use `canvas::Cache`.
+/// Call `bump()` when data changes (in `prepare` or `handle_widget_op`).
+/// In your `canvas::Program` implementation, compare the generation
+/// against a saved value in your `Program::State` to decide whether
+/// to clear and redraw the cache.
+///
+/// # Example
+///
+/// ```ignore
+/// struct MyState {
+///     generation: u64,
+///     cache: canvas::Cache,
+/// }
+///
+/// impl canvas::Program<Message> for MyProgram {
+///     type State = MyState;
+///
+///     fn update(&self, state: &mut MyState, ...) -> Option<Action<Message>> {
+///         if state.generation != self.current_generation {
+///             state.cache.clear();
+///             state.generation = self.current_generation;
+///         }
+///         None
+///     }
+///
+///     fn draw(&self, state: &MyState, ...) -> Vec<Geometry> {
+///         vec![state.cache.draw(renderer, bounds.size(), |frame| { ... })]
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct GenerationCounter {
+    value: u64,
+}
+
+impl GenerationCounter {
+    /// Create a new counter starting at zero.
+    pub fn new() -> Self {
+        Self { value: 0 }
+    }
+
+    /// Return the current generation value.
+    pub fn get(&self) -> u64 {
+        self.value
+    }
+
+    /// Increment the generation. Wraps on overflow (u64, effectively never).
+    pub fn bump(&mut self) {
+        self.value = self.value.wrapping_add(1);
+    }
+}
+
+impl Default for GenerationCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Check if panic isolation is disabled via the PLUSHIE_NO_CATCH_UNWIND env var.
 /// When true, extension panics propagate normally, preserving stack traces for

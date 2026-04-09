@@ -201,8 +201,8 @@ pub(crate) fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result 
             let effects = app.core.apply(IncomingMessage::Settings { settings });
             for effect in effects {
                 match effect {
-                    plushie_ext::engine::CoreEffect::ExtensionConfig(config) => {
-                        let ctx = plushie_ext::extensions::InitCtx {
+                    plushie_ext::engine::CoreEffect::WidgetConfig(config) => {
+                        let ctx = plushie_ext::registry::InitCtx {
                             config: &config,
                             theme: &app.theme,
                             default_text_size: app.core.default_text_size,

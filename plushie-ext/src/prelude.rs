@@ -15,23 +15,17 @@
 // -- Renderer trait alias --
 pub use crate::PlushieRenderer;
 
-// -- PlushieWidget trait and registry --
-pub use crate::registry::{PlushieWidget, WidgetRegistry, WidgetSet};
+// -- PlushieWidget trait, registry, and lifecycle types --
+pub use crate::registry::{GenerationCounter, InitCtx, PlushieWidget, WidgetRegistry, WidgetSet};
 
 // -- Rendering context --
 pub use crate::render_ctx::RenderCtx;
-
-// -- Extension trait and lifecycle types --
-pub use crate::extensions::{
-    EventResult, ExtensionCaches, GenerationCounter, InitCtx, WidgetEnv, WidgetExtension,
-};
 
 // -- A11y types (needed for PlushieWidget::infer_a11y) --
 pub use crate::widgets::a11y::A11yOverrides;
 
 // -- Canvas engine (for composing canvas-based widgets) --
 pub use crate::canvas_engine::CanvasEngine;
-pub use crate::extension_adapter::ExtensionAdapter;
 
 // -- Wire protocol types --
 pub use crate::message::Message;
@@ -50,7 +44,7 @@ pub use crate::widgets::helpers::{
 // -- Commonly needed iced types --
 //
 // Note: `column` and `row` are deliberately excluded. They conflict
-// with the `column!` and `row!` macros when glob-imported. Extension
+// with the `column!` and `row!` macros when glob-imported. Widget
 // authors should use the macros directly (available via
 // `plushie_ext::iced`) or import explicitly:
 //   use plushie_ext::iced::widget::{column, row};
@@ -62,5 +56,5 @@ pub use crate::iced::{
     Color, Element, Font, Length, Padding, Pixels, Point, Size, Theme, alignment,
 };
 
-// -- JSON (extensions parse props from serde_json::Value) --
+// -- JSON (widgets parse props from serde_json::Value) --
 pub use serde_json::Value;

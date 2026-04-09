@@ -371,7 +371,7 @@ impl Message {
             | Message::PaneDragged(_, grid_id, ..)
             | Message::PaneClicked(_, grid_id, ..)
             | Message::PaneFocusCycle(_, grid_id, ..) => Some(grid_id),
-            // Extension events
+            // Widget events
             Message::Event { id, .. } => Some(id),
             // Diagnostic
             Message::Diagnostic { canvas_id, .. } => Some(canvas_id),
@@ -384,7 +384,7 @@ impl Message {
     ///
     /// Returns `None` for messages that don't map directly to a single
     /// outgoing event (system messages, slider tracking, text editor
-    /// actions, extension events, pane grid state changes).
+    /// actions, widget events, pane grid state changes).
     pub fn to_outgoing_event(&self) -> Option<OutgoingEvent> {
         match self {
             Message::Click(window_id, id) => {
@@ -734,7 +734,7 @@ impl Message {
     }
 
     /// Create a widget event message for use in `on_press`, `on_submit`,
-    /// and other iced widget callbacks inside extension `render()` methods.
+    /// and other iced widget callbacks inside widget `render()` methods.
     ///
     /// ```ignore
     /// button("Click me")

@@ -211,8 +211,8 @@ This workspace contains four crates:
 
 - **plushie-ext** -- Library crate and public SDK. Wire protocol,
   tree management, widget rendering, theming, platform effects, and the
-  `WidgetExtension` trait for custom widgets. Extension authors depend
-  on this crate.
+  `PlushieWidget` trait for custom widgets. Widget authors depend on
+  this crate.
 
 - **plushie-renderer-lib** -- Shared renderer logic that compiles to
   both native and wasm32. Contains the App struct, effect handler trait,

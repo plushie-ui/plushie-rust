@@ -99,10 +99,10 @@ impl PlushieApp {
 }
 
 impl PlushieApp {
-    /// Create a renderer with pre-registered extensions.
+    /// Create a renderer with pre-registered custom widgets.
     ///
     /// Rust callers building custom WASM modules use this to register
-    /// extensions at compile time. Extensions are Rust code compiled
+    /// widgets at compile time. Widgets are Rust code compiled
     /// into the WASM binary -- they cannot be added at runtime from JS.
     ///
     /// ```ignore
@@ -214,8 +214,8 @@ impl PlushieApp {
 
                     let effects = app.core.apply(IncomingMessage::Settings { settings });
                     for effect in effects {
-                        if let plushie_ext::engine::CoreEffect::ExtensionConfig(config) = effect {
-                            let ctx = plushie_ext::extensions::InitCtx {
+                        if let plushie_ext::engine::CoreEffect::WidgetConfig(config) = effect {
+                            let ctx = plushie_ext::registry::InitCtx {
                                 config: &config,
                                 theme: &app.theme,
                                 default_text_size: app.core.default_text_size,

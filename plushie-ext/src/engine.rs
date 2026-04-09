@@ -139,11 +139,11 @@ pub enum CoreEffect {
         height: Option<u32>,
     },
 
-    /// Extension configuration received from the host's Settings message.
+    /// Widget configuration received from the host's Settings message.
     ///
     /// The host should call `dispatcher.init_all(&config, &theme, ...)`
-    /// to pass configuration and context to registered extensions.
-    ExtensionConfig(Value),
+    /// to pass configuration and context to registered widgets.
+    WidgetConfig(Value),
 }
 
 /// A single subscription entry within a kind. Multiple entries per kind
@@ -351,10 +351,7 @@ impl Core {
                         })),
                     )));
                 }
-                // Clear built-in caches but NOT adapter caches. Adapter
-                // cleanup callbacks run later via prepare_all() in the host,
-                // which needs the old cache entries to still be accessible.
-                self.caches.clear_builtin();
+                self.caches.clear();
                 if let Some(root) = self.tree.root()
                     && widgets::validate::is_validate_props_enabled()
                 {
@@ -512,7 +509,7 @@ impl Core {
                     .get("extension_config")
                     .cloned()
                     .unwrap_or(Value::Null);
-                effects.push(CoreEffect::ExtensionConfig(ext_config));
+                effects.push(CoreEffect::WidgetConfig(ext_config));
             }
             IncomingMessage::ImageOp {
                 op,
@@ -870,7 +867,7 @@ mod tests {
         assert_eq!(effects.len(), 1);
         assert!(matches!(
             effects[0],
-            CoreEffect::ExtensionConfig(serde_json::Value::Null)
+            CoreEffect::WidgetConfig(serde_json::Value::Null)
         ));
     }
 
@@ -888,7 +885,7 @@ mod tests {
         let effects = core.apply(msg);
         let has_ext_config = effects
             .iter()
-            .any(|e| matches!(e, CoreEffect::ExtensionConfig(_)));
+            .any(|e| matches!(e, CoreEffect::WidgetConfig(_)));
         assert!(has_ext_config);
     }
 
@@ -903,7 +900,7 @@ mod tests {
         };
         let effects = core.apply(msg);
         let ext_config = effects.iter().find_map(|e| match e {
-            CoreEffect::ExtensionConfig(v) => Some(v),
+            CoreEffect::WidgetConfig(v) => Some(v),
             _ => None,
         });
         assert_eq!(
@@ -985,30 +982,6 @@ mod tests {
         };
         let effects = core.apply(msg);
         assert!(effects.is_empty());
-    }
-
-    // -- Snapshot preserves adapter caches for prepare_all --
-
-    #[test]
-    fn snapshot_preserves_adapter_caches() {
-        let mut core: Core = Core::new();
-
-        // Simulate a widget storing data in adapter caches.
-        core.caches.adapter_caches.insert("ext", "node-1", 42u32);
-
-        // Snapshot replaces the tree.
-        let msg = IncomingMessage::Snapshot {
-            tree: make_node("root", "column"),
-        };
-        core.apply(msg);
-
-        // Adapter caches must survive -- clear_builtin() must NOT
-        // wipe them. The host calls prepare_all() after apply() to
-        // handle adapter cleanup properly.
-        assert_eq!(
-            core.caches.adapter_caches.get::<u32>("ext", "node-1"),
-            Some(&42)
-        );
     }
 
     #[test]

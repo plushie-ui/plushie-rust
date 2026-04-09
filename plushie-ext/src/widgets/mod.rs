@@ -4,6 +4,7 @@
 //! (mutable cache pre-population). See `WidgetCaches` for the cache bundle.
 
 pub(crate) mod a11y;
+pub mod builtins;
 mod caches;
 pub mod canvas;
 mod display;

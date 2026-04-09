@@ -32,7 +32,7 @@ use serde_json::Value;
 ///
 /// [`operate`]: iced::advanced::widget::Widget::operate
 #[derive(Debug, Clone, Default)]
-pub(crate) struct A11yOverrides {
+pub struct A11yOverrides {
     /// Semantic role override.
     pub role: Option<accessible::Role>,
     /// Human-readable name override.

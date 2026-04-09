@@ -1,9 +1,9 @@
 //! # plushie-core
 //!
-//! The public SDK for plushie. Extension authors depend on this crate to
-//! implement the [`WidgetExtension`](extensions::WidgetExtension) trait
-//! and build custom native widgets. The [`prelude`] module re-exports
-//! everything an extension needs; [`iced`] is re-exported so extensions
+//! The public SDK for plushie. Widget authors depend on this crate to
+//! implement the [`PlushieWidget`](registry::PlushieWidget) trait and
+//! build custom native widgets. The [`prelude`] module re-exports
+//! everything a widget author needs; [`iced`] is re-exported so widgets
 //! don't need a direct iced dependency.
 //!
 //! This crate also provides the rendering engine, wire protocol, and
@@ -11,12 +11,13 @@
 //!
 //! ## Module guide
 //!
-//! **Extension SDK (stable API):**
-//! - [`prelude`] -- common re-exports for extension authors
-//! - [`extensions`] -- `WidgetExtension` trait, `ExtensionDispatcher`, `ExtensionCaches`
-//! - [`app`] -- `PlushieAppBuilder` for registering extensions
-//! - [`prop_helpers`] -- public prop extraction helpers for extension authors
-//! - [`testing`] -- test factory helpers for extension authors
+//! **Widget SDK (stable API):**
+//! - [`prelude`] -- common re-exports for widget authors
+//! - [`registry`] -- `PlushieWidget` trait, `WidgetRegistry`, `WidgetSet`
+//! - [`app`] -- `PlushieAppBuilder` for registering widgets
+//! - [`prop_helpers`] -- public prop extraction helpers
+//! - [`extensions`] -- legacy `WidgetExtension` trait (being replaced by `PlushieWidget`)
+//! - [`testing`] -- test factory helpers
 //!
 //! **Internal modules** (used by the plushie binary, not part of the SDK):
 //! `engine`, `tree`, `message`, `widgets`, `protocol`, `codec`,
@@ -36,6 +37,7 @@ pub mod app;
 pub mod extensions;
 pub mod prelude;
 pub mod prop_helpers;
+pub mod registry;
 pub mod testing;
 
 pub mod animation;

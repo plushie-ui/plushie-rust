@@ -15,10 +15,16 @@
 // -- Renderer trait alias --
 pub use crate::PlushieRenderer;
 
+// -- PlushieWidget trait and registry --
+pub use crate::registry::{PlushieWidget, WidgetRegistry, WidgetSet};
+
 // -- Extension trait and lifecycle types --
 pub use crate::extensions::{
     EventResult, ExtensionCaches, GenerationCounter, InitCtx, RenderCtx, WidgetEnv, WidgetExtension,
 };
+
+// -- A11y types (needed for PlushieWidget::infer_a11y) --
+pub use crate::widgets::a11y::A11yOverrides;
 
 // -- Wire protocol types --
 pub use crate::message::Message;

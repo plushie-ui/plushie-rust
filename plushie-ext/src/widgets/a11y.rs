@@ -26,11 +26,15 @@ use serde_json::Value;
 
 /// Accessibility overrides parsed from the `a11y` JSON prop.
 ///
-/// When present on a node, wraps the child widget in an [`A11yOverride`]
-/// that intercepts [`operate`] to apply these overrides to the
-/// accessibility tree.
+/// When present on a node, the renderer wraps the child widget in an
+/// internal a11y override layer that intercepts iced's `operate` call
+/// to apply these overrides to the accessibility tree.
 ///
-/// [`operate`]: iced::advanced::widget::Widget::operate
+/// Widget authors return this from [`PlushieWidget::infer_a11y`] to
+/// provide automatic accessibility annotations (e.g., using a
+/// placeholder prop as the accessible description).
+///
+/// [`PlushieWidget::infer_a11y`]: crate::registry::PlushieWidget::infer_a11y
 #[derive(Debug, Clone, Default)]
 pub struct A11yOverrides {
     /// Semantic role override.
@@ -45,7 +49,7 @@ pub struct A11yOverrides {
     pub expanded: Option<bool>,
     /// Whether the widget is required (e.g. a required form field).
     pub required: bool,
-    /// Heading level (1--6) for widgets with [`Role::Heading`].
+    /// Heading level (1-6) for widgets with the heading role.
     pub level: Option<usize>,
     /// Live region urgency override.
     pub live: Option<accessible::Live>,

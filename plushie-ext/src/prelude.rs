@@ -1,7 +1,7 @@
-//! Common re-exports for widget extension authors.
+//! Common re-exports for widget authors.
 //!
 //! Import the entire prelude to get the types, traits, and helpers
-//! needed to implement [`WidgetExtension`]:
+//! needed to implement [`PlushieWidget`]:
 //!
 //! ```ignore
 //! use plushie_ext::prelude::*;

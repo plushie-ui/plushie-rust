@@ -16,4 +16,4 @@ mod undo;
 pub use data::{Query, QueryResult};
 pub use route::{Route, RouteEntry};
 pub use selection::{Selection, SelectionMode};
-pub use undo::UndoStack;
+pub use undo::{UndoCommand, UndoStack};

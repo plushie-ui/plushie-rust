@@ -33,6 +33,11 @@ pub enum Command {
         tag: String,
         task: Box<dyn std::any::Any + Send>,
     },
+    /// Run a streaming async task that emits multiple values.
+    Stream {
+        tag: String,
+        task: Box<dyn std::any::Any + Send>,
+    },
     /// Cancel a running async task or stream by tag.
     Cancel { tag: String },
     /// Deliver an event after a delay.
@@ -251,6 +256,8 @@ pub enum WindowOp {
     ShowSystemMenu(String),
     /// Set the window icon from raw RGBA pixel data.
     SetIcon { window_id: String, data: Vec<u8>, width: u32, height: u32 },
+    /// Set window resize increment constraints.
+    SetResizeIncrements { window_id: String, width: f32, height: f32 },
 }
 
 /// A query for window state. Results arrive as [`SystemEvent`](crate::event::SystemEvent).
@@ -270,6 +277,8 @@ pub enum WindowQuery {
     GetScaleFactor { window_id: String, tag: String },
     /// Query the size of the monitor the window is on.
     MonitorSize { window_id: String, tag: String },
+    /// Get the platform-native window ID.
+    RawId { window_id: String, tag: String },
 }
 
 /// A system-level operation.

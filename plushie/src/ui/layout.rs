@@ -115,6 +115,16 @@ impl WindowBuilder {
         self
     }
 
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
@@ -184,6 +194,11 @@ impl ColumnBuilder {
         self
     }
 
+    pub fn max_width(mut self, w: impl Into<Length>) -> Self {
+        super::set_prop(&mut self.props, "max_width", super::length_to_value(w.into()));
+        self
+    }
+
     pub fn align_x(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_x", super::align_to_value(a));
         self
@@ -191,6 +206,21 @@ impl ColumnBuilder {
 
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
+        self
+    }
+
+    pub fn wrap(mut self, enabled: bool) -> Self {
+        super::set_prop(&mut self.props, "wrap", enabled);
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -263,13 +293,38 @@ impl RowBuilder {
         self
     }
 
+    pub fn max_width(mut self, w: impl Into<Length>) -> Self {
+        super::set_prop(&mut self.props, "max_width", super::length_to_value(w.into()));
+        self
+    }
+
     pub fn align_x(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_x", super::align_to_value(a));
         self
     }
 
+    pub fn align_y(mut self, a: Align) -> Self {
+        super::set_prop(&mut self.props, "align_y", super::align_to_value(a));
+        self
+    }
+
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
+        self
+    }
+
+    pub fn wrap(mut self, enabled: bool) -> Self {
+        super::set_prop(&mut self.props, "wrap", enabled);
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -372,9 +427,44 @@ impl ContainerBuilder {
         self
     }
 
+    pub fn background(mut self, c: impl Into<Color>) -> Self {
+        super::set_prop(&mut self.props, "background", super::color_to_value(&c.into()));
+        self
+    }
+
+    pub fn color(mut self, c: impl Into<Color>) -> Self {
+        super::set_prop(&mut self.props, "color", super::color_to_value(&c.into()));
+        self
+    }
+
+    pub fn border(mut self, b: Border) -> Self {
+        super::set_prop(&mut self.props, "border", serde_json::to_value(&b).unwrap());
+        self
+    }
+
+    pub fn shadow(mut self, s: Shadow) -> Self {
+        super::set_prop(&mut self.props, "shadow", serde_json::to_value(&s).unwrap());
+        self
+    }
+
+    pub fn center(mut self, enabled: bool) -> Self {
+        super::set_prop(&mut self.props, "center", enabled);
+        self
+    }
+
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         let s = s.into();
         super::set_prop(&mut self.props, "style", super::style_to_value(&s));
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -430,6 +520,16 @@ impl StackBuilder {
 
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -512,6 +612,16 @@ impl GridBuilder {
         self
     }
 
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
@@ -578,6 +688,16 @@ impl PinBuilder {
 
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -653,6 +773,16 @@ impl KeyedColumnBuilder {
 
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -734,6 +864,16 @@ impl FloatingBuilder {
         self
     }
 
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
     /// Set the single child of this floating container.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.child = Some(child.into());
@@ -783,6 +923,16 @@ impl ResponsiveBuilder {
 
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -868,6 +1018,16 @@ impl ScrollableBuilder {
         self
     }
 
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
     /// Set the single child of this scrollable container.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.child = Some(child.into());
@@ -923,6 +1083,16 @@ impl PaneGridBuilder {
 
     pub fn split_axis(mut self, axis: &str) -> Self {
         super::set_prop(&mut self.props, "split_axis", axis);
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 

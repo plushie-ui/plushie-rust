@@ -52,6 +52,11 @@ impl CanvasBuilder {
     pub fn on_scroll(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "on_scroll", v); self }
     pub fn interactive(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "interactive", v); self }
     pub fn arrow_mode(mut self, mode: &str) -> Self { super::set_prop(&mut self.props, "arrow_mode", mode); self }
+    pub fn alt(mut self, text: &str) -> Self { super::set_prop(&mut self.props, "alt", text); self }
+    pub fn description(mut self, text: &str) -> Self { super::set_prop(&mut self.props, "description", text); self }
+    pub fn role(mut self, role: &str) -> Self { super::set_prop(&mut self.props, "role", role); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
@@ -145,6 +150,8 @@ impl GroupBuilder {
     pub fn draggable(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "draggable", enabled); self }
     pub fn cursor(mut self, c: &str) -> Self { super::set_prop(&mut self.props, "cursor", c); self }
     pub fn tooltip(mut self, text: &str) -> Self { super::set_prop(&mut self.props, "tooltip", text); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());

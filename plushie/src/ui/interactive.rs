@@ -70,6 +70,16 @@ impl ButtonBuilder {
         super::set_prop(&mut self.props, "clip", v);
         self
     }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
 }
 
 impl From<ButtonBuilder> for View {
@@ -152,6 +162,16 @@ impl PointerAreaBuilder {
         self
     }
 
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
     /// Set the single child of this pointer area.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.child = Some(child.into());
@@ -197,6 +217,16 @@ impl SensorBuilder {
 
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -260,6 +290,16 @@ impl TooltipBuilder {
         self
     }
 
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
     /// Set the single child of this tooltip.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.child = Some(child.into());
@@ -299,6 +339,16 @@ pub fn themer(id: &str) -> ThemerBuilder {
 impl ThemerBuilder {
     pub fn theme(mut self, theme: &str) -> Self {
         super::set_prop(&mut self.props, "theme", theme);
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 
@@ -367,6 +417,16 @@ impl OverlayBuilder {
 
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
+        self
+    }
+
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
 

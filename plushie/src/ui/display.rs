@@ -45,6 +45,8 @@ impl TextBuilder {
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
     pub fn ellipsis(mut self, e: &str) -> Self { super::set_prop(&mut self.props, "ellipsis", e); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<TextBuilder> for View {
@@ -87,6 +89,8 @@ impl RichTextBuilder {
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
     pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
     pub fn ellipsis(mut self, e: &str) -> Self { super::set_prop(&mut self.props, "ellipsis", e); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<RichTextBuilder> for View {
@@ -115,6 +119,8 @@ impl SpaceBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<SpaceBuilder> for View {
@@ -145,6 +151,8 @@ impl RuleBuilder {
     pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
     pub fn direction(mut self, d: &str) -> Self { super::set_prop(&mut self.props, "direction", d); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<RuleBuilder> for View {
@@ -181,6 +189,8 @@ impl ProgressBarBuilder {
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<ProgressBarBuilder> for View {
@@ -220,6 +230,8 @@ impl ImageBuilder {
     pub fn rotation(mut self, degrees: f32) -> Self { super::set_prop(&mut self.props, "rotation", degrees); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<ImageBuilder> for View {
@@ -259,6 +271,8 @@ impl SvgBuilder {
     pub fn rotation(mut self, degrees: f32) -> Self { super::set_prop(&mut self.props, "rotation", degrees); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<SvgBuilder> for View {
@@ -300,6 +314,8 @@ impl MarkdownBuilder {
     pub fn spacing(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "spacing", s); self }
     pub fn link_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "link_color", super::color_to_value(&c.into())); self }
     pub fn code_theme(mut self, theme: &str) -> Self { super::set_prop(&mut self.props, "code_theme", theme); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<MarkdownBuilder> for View {
@@ -338,6 +354,8 @@ impl QrCodeBuilder {
     pub fn error_correction(mut self, level: &str) -> Self { super::set_prop(&mut self.props, "error_correction", level); self }
     pub fn cell_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "cell_color", super::color_to_value(&c.into())); self }
     pub fn background(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "background", super::color_to_value(&c.into())); self }
+    pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
 
 impl From<QrCodeBuilder> for View {

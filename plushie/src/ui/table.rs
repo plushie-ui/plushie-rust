@@ -62,6 +62,16 @@ impl TableBuilder {
         self
     }
 
+    pub fn event_rate(mut self, rate: u32) -> Self {
+        super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+
+    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
     /// Add child rows to the table.
     pub fn child(mut self, c: impl Into<View>) -> Self {
         self.children.push(c.into());

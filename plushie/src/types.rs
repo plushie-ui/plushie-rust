@@ -201,8 +201,11 @@ impl From<(f32, f32, f32, f32)> for Padding {
 /// Horizontal or vertical alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Align {
+    /// Align to the start (left or top).
     Start,
+    /// Align to the center.
     Center,
+    /// Align to the end (right or bottom).
     End,
 }
 
@@ -336,22 +339,36 @@ impl Default for Font {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Font weight (CSS numeric equivalents in parentheses).
 pub enum FontWeight {
+    /// Weight 100.
     Thin,
+    /// Weight 200.
     ExtraLight,
+    /// Weight 300.
     Light,
+    /// Weight 400 (default).
     Normal,
+    /// Weight 500.
     Medium,
+    /// Weight 600.
     SemiBold,
+    /// Weight 700.
     Bold,
+    /// Weight 800.
     ExtraBold,
+    /// Weight 900.
     Black,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Font style (upright, italic, or oblique).
 pub enum FontStyle {
+    /// Upright (roman) style.
     Normal,
+    /// Italic style, using the font's italic glyphs.
     Italic,
+    /// Oblique style, a slanted version of the upright glyphs.
     Oblique,
 }
 

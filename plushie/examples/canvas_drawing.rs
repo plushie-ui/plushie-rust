@@ -6,7 +6,7 @@
 //! Run with: `cargo run -p plushie --example canvas_drawing`
 
 use plushie::prelude::*;
-use plushie::ui::{canvas, layer, group, rect, circle, line, canvas_text};
+use plushie::ui::{canvas, layer, rect, circle, line, canvas_text};
 
 struct CanvasApp;
 

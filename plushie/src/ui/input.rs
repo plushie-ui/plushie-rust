@@ -73,7 +73,7 @@ impl TextEditorBuilder {
     pub fn placeholder(mut self, p: &str) -> Self { super::set_prop(&mut self.props, "placeholder", p); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
-    pub fn padding(mut self, p: f32) -> Self { super::set_prop(&mut self.props, "padding", p); self }
+    pub fn padding(mut self, p: impl Into<Padding>) -> Self { super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into())); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", serde_json::to_value(&f).unwrap()); self }
     pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
@@ -231,7 +231,7 @@ pub fn slider(id: &str, range: (f32, f32), value: f32) -> SliderBuilder {
 impl SliderBuilder {
     pub fn step(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "step", s); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
-    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
+    pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn default(mut self, d: f32) -> Self { super::set_prop(&mut self.props, "default", d); self }
     pub fn shift_step(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "shift_step", s); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }

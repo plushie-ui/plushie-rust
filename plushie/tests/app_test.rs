@@ -4,7 +4,6 @@
 
 use plushie::prelude::*;
 use plushie::test::TestSession;
-use serde_json::json;
 
 // ---------------------------------------------------------------------------
 // Counter app

@@ -32,7 +32,6 @@
 
 use serde_json::Value;
 
-use crate::command::Command;
 use crate::event::{Event, EventType, WidgetEvent};
 use crate::runtime::normalize;
 use crate::App;

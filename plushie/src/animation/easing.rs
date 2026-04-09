@@ -10,13 +10,14 @@ use serde::{Deserialize, Serialize};
 /// `Linear` is constant speed. `EaseIn*` starts slow and
 /// accelerates. `EaseOut*` starts fast and decelerates.
 /// `EaseInOut*` does both.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub enum Easing {
     Linear,
 
     // Sine
     EaseIn,
     EaseOut,
+    #[default]
     EaseInOut,
 
     // Quad
@@ -68,8 +69,3 @@ pub enum Easing {
     CubicBezier(f32, f32, f32, f32),
 }
 
-impl Default for Easing {
-    fn default() -> Self {
-        Self::EaseInOut
-    }
-}

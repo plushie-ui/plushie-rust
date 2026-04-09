@@ -1,3 +1,5 @@
+#![allow(dead_code)] // Used by wire mode runner; dead when only direct feature is enabled.
+
 //! Tree diffing: produce minimal patch operations between two JSON trees.
 //!
 //! Ports the Elixir SDK's `Tree.diff` algorithm. Walks old and new trees
@@ -176,7 +178,7 @@ fn id_keyed_list_equal(old: &Value, new: &Value) -> bool {
     new_arr.iter().all(|v| {
         v.get("id")
             .and_then(|id| old_by_id.get(id))
-            .map_or(false, |old_v| *old_v == v)
+            .is_some_and(|old_v| *old_v == v)
     })
 }
 

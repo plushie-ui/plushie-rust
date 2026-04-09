@@ -22,7 +22,7 @@ use plushie_widget_sdk::widget::widget_set::iced_widget_set;
 
 use crate::App;
 use crate::command::Command;
-use crate::event::{self, Event, EventType, WidgetEvent};
+use crate::event::{Event, EventType, WidgetEvent};
 use crate::runtime::normalize;
 
 // ---------------------------------------------------------------------------
@@ -30,6 +30,7 @@ use crate::runtime::normalize;
 // ---------------------------------------------------------------------------
 
 /// Internal state for the direct mode iced daemon.
+#[allow(dead_code)] // window_iced_ids reserved for multi-window support
 struct DirectApp<A: App> {
     model: A::Model,
     registry: WidgetRegistry,
@@ -87,7 +88,7 @@ impl<A: App> DirectApp<A> {
         Task::none()
     }
 
-    fn view_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> Element<Message, Theme, plushie_widget_sdk::iced::Renderer> {
+    fn view_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> Element<'_, Message, Theme, plushie_widget_sdk::iced::Renderer> {
         if let Some(tree) = &self.current_tree {
             let ctx = RenderCtx {
                 caches: &self.shared_state,
@@ -106,19 +107,17 @@ impl<A: App> DirectApp<A> {
     }
 
     fn title_for_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> String {
-        // Extract title from the window node's props if available.
         if let Some(tree) = &self.current_tree {
-            if tree.type_name == "window" {
-                if let Some(title) = tree.props.get("title").and_then(|v| v.as_str()) {
-                    return title.to_string();
-                }
+            if tree.type_name == "window"
+                && let Some(title) = tree.props.get("title").and_then(|v| v.as_str())
+            {
+                return title.to_string();
             }
-            // Look for window in children.
             for child in &tree.children {
-                if child.type_name == "window" {
-                    if let Some(title) = child.props.get("title").and_then(|v| v.as_str()) {
-                        return title.to_string();
-                    }
+                if child.type_name == "window"
+                    && let Some(title) = child.props.get("title").and_then(|v| v.as_str())
+                {
+                    return title.to_string();
                 }
             }
         }
@@ -503,7 +502,7 @@ fn canvas_element_event(
 ) -> Event {
     Event::Widget(WidgetEvent {
         event_type,
-        id: element_id.clone().to_string(),
+        id: element_id.to_string(),
         window_id: window_id.to_string(),
         scope: extract_scope_from_canvas(canvas_id, element_id),
         value: serde_json::Value::Null,

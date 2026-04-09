@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)] // Query closures are inherently complex types
+
 //! Composable query pipeline: filter, sort, paginate.
 //!
 //! Build a query with chained methods, then call `run()` to

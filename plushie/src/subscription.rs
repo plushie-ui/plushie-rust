@@ -22,6 +22,7 @@ use std::time::Duration;
 /// }
 /// ```
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields read by runners during subscription management
 pub struct Subscription {
     pub(crate) kind: SubscriptionKind,
     pub(crate) tag: String,
@@ -30,6 +31,7 @@ pub struct Subscription {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Variants used by subscription diffing in runners
 pub(crate) enum SubscriptionKind {
     Every(Duration),
     OnKeyPress,

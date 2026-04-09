@@ -26,6 +26,9 @@ pub use crate::extensions::{
 // -- A11y types (needed for PlushieWidget::infer_a11y) --
 pub use crate::widgets::a11y::A11yOverrides;
 
+// -- Canvas engine (for composing canvas-based widgets) --
+pub use crate::canvas_engine::CanvasEngine;
+
 // -- Wire protocol types --
 pub use crate::message::Message;
 pub use crate::protocol::{CoalesceHint, OutgoingEvent, TreeNode};

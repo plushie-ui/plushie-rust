@@ -24,7 +24,7 @@ use crate::protocol::TreeNode;
 use crate::registry::{PlushieWidget, WidgetSet};
 use crate::widgets::a11y::A11yOverrides;
 
-use super::{canvas, display, input, interactive, layout, table};
+use super::{display, input, interactive, layout, table};
 
 // ---------------------------------------------------------------------------
 // Macro: generate a zero-sized wrapper struct + PlushieWidget impl
@@ -972,29 +972,16 @@ builtin_widget!(OverlayWidget, ["overlay"], interactive::render_overlay);
 // Canvas (1)
 // ---------------------------------------------------------------------------
 
-/// Stateful factory owning R-generic canvas layer caches, interactive
-/// element data, and pending programmatic focus. The most complex
-/// built-in widget with 3700+ lines of rendering, hit testing,
-/// keyboard navigation, and drag tracking infrastructure.
-#[allow(clippy::type_complexity)]
+/// Thin wrapper over [`CanvasEngine`](crate::canvas_engine::CanvasEngine).
+/// Delegates all canvas logic to the reusable engine.
 pub(crate) struct CanvasWidget<R: PlushieRenderer> {
-    /// Per-canvas, per-layer tessellation caches with content hashing.
-    layer_caches: std::collections::HashMap<
-        (String, String),
-        std::collections::HashMap<String, (u64, iced::widget::canvas::Cache<R>)>,
-    >,
-    /// Pre-parsed interactive elements per (window_id, canvas_id).
-    interactions: std::collections::HashMap<(String, String), Vec<canvas::InteractiveElement>>,
-    /// Pending programmatic focus per (window_id, canvas_id).
-    pending_focus: std::collections::HashMap<(String, String), String>,
+    engine: crate::canvas_engine::CanvasEngine<R>,
 }
 
 impl<R: PlushieRenderer> CanvasWidget<R> {
     pub(crate) fn new() -> Self {
         Self {
-            layer_caches: std::collections::HashMap::new(),
-            interactions: std::collections::HashMap::new(),
-            pending_focus: std::collections::HashMap::new(),
+            engine: crate::canvas_engine::CanvasEngine::new(),
         }
     }
 }
@@ -1005,68 +992,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
     }
 
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::Hasher;
-
-        use crate::widgets::caches::{canvas_layers_from_node, hash_json_value};
-
-        let key = (window_id.to_string(), node.id.clone());
-        let layer_map = canvas_layers_from_node(node);
-
-        // Parse interactive elements from all layers.
-        let mut interactive_elements = Vec::new();
-        for (layer_name, shapes_val) in &layer_map {
-            if let Some(shapes_arr) = shapes_val.as_array() {
-                canvas::collect_interactive_elements(
-                    shapes_arr,
-                    layer_name,
-                    canvas::TransformMatrix::identity(),
-                    None,
-                    None,
-                    "",
-                    &mut interactive_elements,
-                );
-            }
-        }
-        // Validate a11y annotations and emit diagnostics as log warnings
-        // (prepare has no outgoing event channel).
-        let diags = canvas::validate_interactive_elements(&node.id, &interactive_elements);
-        for diag in &diags {
-            if let Some(msg) = diag
-                .data
-                .as_ref()
-                .and_then(|d| d.get("message"))
-                .and_then(|m| m.as_str())
-            {
-                log::warn!("[canvas {}] {}", node.id, msg);
-            }
-        }
-        self.interactions.insert(key.clone(), interactive_elements);
-
-        // Update or create per-layer tessellation caches.
-        let node_caches = self.layer_caches.entry(key).or_default();
-        for (layer_name, shapes_val) in &layer_map {
-            let hash = {
-                let mut hasher = DefaultHasher::new();
-                hash_json_value(shapes_val, &mut hasher);
-                hasher.finish()
-            };
-            match node_caches.get_mut(layer_name) {
-                Some((existing_hash, cache)) => {
-                    if *existing_hash != hash {
-                        cache.clear();
-                        *existing_hash = hash;
-                    }
-                }
-                None => {
-                    node_caches.insert(
-                        layer_name.clone(),
-                        (hash, iced::widget::canvas::Cache::new()),
-                    );
-                }
-            }
-        }
-        node_caches.retain(|name, _| layer_map.contains_key(name));
+        self.engine.prepare(node, window_id);
     }
 
     fn render<'a>(
@@ -1074,84 +1000,26 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, iced::Theme, R> {
-        let key = (ctx.window_id.to_string(), node.id.clone());
-        // Check both factory-owned pending_focus and SharedState pending_focus
-        // (widget_ops.rs writes to SharedState for programmatic focus commands).
-        let pending = self
-            .pending_focus
-            .get(&key)
-            .cloned()
-            .or_else(|| ctx.caches.canvas_pending_focus.get(&node.id).cloned());
-        canvas::render_canvas_with_state(
-            node,
-            *ctx,
-            self.layer_caches.get(&key),
-            self.interactions
-                .get(&key)
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]),
-            pending,
-        )
+        let extra = ctx.caches.canvas_pending_focus.get(&node.id).cloned();
+        self.engine.render(node, ctx, extra)
     }
 
     fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
-        // CanvasElementFocusChanged splits into separate blur + focus events.
-        // All other canvas messages use the default message_to_event conversion.
-        match msg {
-            Message::CanvasElementFocusChanged {
-                window_id,
-                canvas_id,
-                old_element_id,
-                new_element_id,
-            } => {
-                let mut events = Vec::with_capacity(2);
-                if let Some(old_id) = old_element_id {
-                    events.push(
-                        crate::protocol::OutgoingEvent::canvas_element_blurred(
-                            canvas_id.clone(),
-                            old_id.clone(),
-                        )
-                        .with_window_id(window_id.clone()),
-                    );
-                }
-                if let Some(new_id) = new_element_id {
-                    events.push(
-                        crate::protocol::OutgoingEvent::canvas_element_focused(
-                            canvas_id.clone(),
-                            new_id.clone(),
-                        )
-                        .with_window_id(window_id.clone()),
-                    );
-                }
-                Some(events)
-            }
-            _ => None,
-        }
+        self.engine.handle_message(msg)
     }
 
     fn handle_widget_op(
         &mut self,
         node_id: &str,
         op: &str,
-        payload: &serde_json::Value,
+        _payload: &serde_json::Value,
     ) -> Option<Vec<crate::protocol::OutgoingEvent>> {
-        // Handle programmatic focus for canvas elements.
-        // The node_id may be "canvas_id/element_id" via prefix routing.
         if op == "focus" {
             if let Some(slash) = node_id.find('/') {
                 let canvas_id = &node_id[..slash];
                 let element_id = &node_id[slash + 1..];
-                // Find the key by canvas_id (any window).
-                if let Some(key) = self
-                    .interactions
-                    .keys()
-                    .find(|(_, nid)| nid == canvas_id)
-                    .cloned()
-                {
-                    self.pending_focus.insert(key, element_id.to_string());
-                }
+                self.engine.set_pending_focus(canvas_id, element_id);
             }
-            let _ = payload;
             Some(vec![])
         } else {
             None
@@ -1159,10 +1027,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
     }
 
     fn cleanup(&mut self, node_id: &str, window_id: &str) {
-        let key = (window_id.to_string(), node_id.to_string());
-        self.layer_caches.remove(&key);
-        self.interactions.remove(&key);
-        self.pending_focus.remove(&key);
+        self.engine.cleanup(node_id, window_id);
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {

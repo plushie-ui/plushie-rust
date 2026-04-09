@@ -34,6 +34,7 @@ compile_error!(
 
 // -- Public SDK modules (stable API for extension authors) --
 pub mod app;
+pub mod canvas_engine;
 pub mod extensions;
 pub mod prelude;
 pub mod prop_helpers;

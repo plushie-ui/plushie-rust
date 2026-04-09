@@ -18,7 +18,6 @@ use iced::widget::{
 use iced::{Element, Font, Length, Pixels, Theme, keyboard, widget};
 use serde_json::Value;
 
-use super::caches::{WidgetCaches, hash_str};
 use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
@@ -1667,72 +1666,9 @@ pub(crate) fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     container(cb).id(widget::Id::from(node.id.clone())).into()
 }
 
-// ---------------------------------------------------------------------------
-// Cache ensure functions
-// ---------------------------------------------------------------------------
-
-/// Maximum text_editor content size in bytes. Content exceeding this limit
-/// is truncated with a warning.
-const MAX_TEXT_EDITOR_CONTENT: usize = 10_485_760; // 10 MB
-
-pub(crate) fn ensure_text_editor_cache<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut WidgetCaches<R>,
-) {
-    let props = node.props.as_object();
-    let mut content_str = prop_str(props, "content").unwrap_or_default();
-    if content_str.len() > MAX_TEXT_EDITOR_CONTENT {
-        log::warn!(
-            "[id={}] text_editor content ({} bytes) exceeds limit ({} bytes), truncating",
-            node.id,
-            content_str.len(),
-            MAX_TEXT_EDITOR_CONTENT,
-        );
-        let mut end = MAX_TEXT_EDITOR_CONTENT;
-        while !content_str.is_char_boundary(end) && end > 0 {
-            end -= 1;
-        }
-        content_str.truncate(end);
-    }
-    let prop_hash = hash_str(&content_str);
-    let prev_hash = caches.editor_content_hashes.get(&node.id).copied();
-    if prev_hash != Some(prop_hash) {
-        // Host changed the content prop -- (re)create the Content.
-        caches.editor_contents.insert(
-            node.id.clone(),
-            text_editor::Content::with_text(&content_str),
-        );
-        caches
-            .editor_content_hashes
-            .insert(node.id.clone(), prop_hash);
-    }
-    // If hash matches, Content is already initialized and we preserve
-    // any user edits that happened since the last prop sync.
-}
-
-pub(crate) fn ensure_combo_box_cache<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut WidgetCaches<R>,
-) {
-    let props = node.props.as_object();
-    let options: Vec<String> = props
-        .and_then(|p| p.get("options"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(str::to_owned))
-                .collect()
-        })
-        .unwrap_or_default();
-    let cached_options = caches.combo_options.get(&node.id);
-    let options_changed = cached_options.is_none_or(|cached| *cached != options);
-    if options_changed {
-        caches
-            .combo_states
-            .insert(node.id.clone(), combo_box::State::new(options.clone()));
-        caches.combo_options.insert(node.id.clone(), options);
-    }
-}
+// Cache ensure functions for text_editor and combo_box: removed.
+// Logic lives in TextEditorWidget::prepare() and ComboBoxWidget::prepare()
+// in widgets/builtins.rs.
 
 /// Parse an input purpose string into the corresponding iced `Purpose`.
 ///

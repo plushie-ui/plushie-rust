@@ -241,13 +241,12 @@ fn ensure_caches_walk<R: PlushieRenderer>(
     }
     live_ids.insert(node.id.clone());
 
+    // Widget-specific cache population. Types handled by extracted
+    // PlushieWidget factories (themer, markdown, combo_box, text_editor,
+    // pane_grid) are no longer populated here; their factories own the
+    // state and populate it via prepare_walk.
     match node.type_name.as_str() {
-        "text_editor" => super::input::ensure_text_editor_cache(node, caches),
-        "markdown" => super::display::ensure_markdown_cache(node, caches),
-        "combo_box" => super::input::ensure_combo_box_cache(node, caches),
-        "pane_grid" => super::layout::ensure_pane_grid_cache(node, caches),
         "canvas" => diagnostics.extend(super::canvas::ensure_canvas_cache(node, caches)),
-        "themer" => super::interactive::ensure_themer_cache(node, caches),
         "qr_code" => super::display::ensure_qr_code_cache(node, caches),
         _ => {}
     }

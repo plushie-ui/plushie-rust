@@ -68,7 +68,6 @@ impl App {
                     &mut self.core.caches,
                     &mut self.dispatcher,
                     &mut self.registry,
-                    &mut self.last_slide_values,
                 );
                 let mut task = Task::none();
                 for event in events {

@@ -14,7 +14,6 @@ use std::time::Duration;
 use iced::widget::{Space, button, container, mouse_area, sensor, text, tooltip};
 use iced::{Element, Fill, Length, Theme, mouse, widget};
 
-use super::caches::WidgetCaches;
 use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
@@ -511,22 +510,4 @@ pub(crate) fn render_overlay<'a, R: PlushieRenderer>(
     overlay::OverlayWrapper::new(anchor, content, pos, gap, offset_x, offset_y, flip, align).into()
 }
 
-// ---------------------------------------------------------------------------
-// Cache ensure function
-// ---------------------------------------------------------------------------
-
-pub(crate) fn ensure_themer_cache<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut WidgetCaches<R>,
-) {
-    let props = node.props.as_object();
-    if let Some(resolved) = props
-        .and_then(|p| p.get("theme"))
-        .and_then(crate::theming::resolve_theme_only)
-    {
-        caches.themer_themes.insert(node.id.clone(), resolved);
-    } else {
-        // No valid theme prop -- remove stale cache entry if present.
-        caches.themer_themes.remove(&node.id);
-    }
-}
+// ensure_themer_cache: removed, logic lives in ThemerWidget::prepare()

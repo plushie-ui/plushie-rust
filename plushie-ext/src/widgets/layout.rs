@@ -13,7 +13,7 @@
 //! - `pane_grid` -- resizable split panes with drag handles
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use iced::widget::scrollable::Anchor;
@@ -22,7 +22,6 @@ use iced::widget::{
 };
 use iced::{Element, Fill, Length, Point, Theme, Vector, widget};
 
-use super::caches::WidgetCaches;
 use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
@@ -737,65 +736,4 @@ pub(crate) fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     pg.into()
 }
 
-// ---------------------------------------------------------------------------
-// Cache ensure functions
-// ---------------------------------------------------------------------------
-
-pub(crate) fn ensure_pane_grid_cache<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut WidgetCaches<R>,
-) {
-    let props = node.props.as_object();
-    let axis = match prop_str(props, "split_axis").as_deref() {
-        Some("horizontal") => pane_grid::Axis::Horizontal,
-        _ => pane_grid::Axis::Vertical,
-    };
-    let child_ids: HashSet<String> = node.children.iter().map(|c| c.id.clone()).collect();
-
-    if let Some(state) = caches.pane_grid_states.get_mut(&node.id) {
-        // Prune panes whose child nodes no longer exist.
-        let stale_panes: Vec<pane_grid::Pane> = state
-            .panes
-            .iter()
-            .filter(|(_pane, id)| !child_ids.contains(*id))
-            .map(|(pane, _id)| *pane)
-            .collect();
-        for pane in stale_panes {
-            state.close(pane);
-        }
-        // Add panes for new children that don't have a pane yet.
-        // Collect owned IDs to avoid holding an immutable borrow on
-        // state.panes while we call state.split() (mutable).
-        let existing_ids: HashSet<String> = state.panes.values().cloned().collect();
-        let new_child_ids: Vec<String> = node
-            .children
-            .iter()
-            .filter(|c| !existing_ids.contains(&c.id))
-            .map(|c| c.id.clone())
-            .collect();
-        for new_id in new_child_ids {
-            if let Some((&anchor, _)) = state.panes.iter().next() {
-                let _ = state.split(axis, anchor, new_id);
-            }
-        }
-    } else {
-        let child_list: Vec<String> = node.children.iter().map(|c| c.id.clone()).collect();
-        let new_state = if child_list.is_empty() {
-            let (state, _) = pane_grid::State::new("default".to_string());
-            state
-        } else if child_list.len() == 1 {
-            let (state, _) = pane_grid::State::new(child_list[0].clone());
-            state
-        } else {
-            let (mut state, first_pane) = pane_grid::State::new(child_list[0].clone());
-            let mut last_pane = first_pane;
-            for id in child_list.iter().skip(1) {
-                if let Some((new_pane, _)) = state.split(axis, last_pane, id.clone()) {
-                    last_pane = new_pane;
-                }
-            }
-            state
-        };
-        caches.pane_grid_states.insert(node.id.clone(), new_state);
-    }
-}
+// ensure_pane_grid_cache: removed, logic lives in PaneGridWidget::prepare()

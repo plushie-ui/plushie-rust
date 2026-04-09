@@ -1027,23 +1027,26 @@ mod tests {
     fn snapshot_clears_builtin_caches() {
         let mut core: Core = Core::new();
 
-        // Populate a built-in cache by applying a snapshot with a text_editor.
-        let editor_node = make_node_with_props(
-            "ed1",
-            "text_editor",
-            serde_json::json!({"content": "hello"}),
+        // Populate a built-in cache by applying a snapshot with a qr_code.
+        // (text_editor, markdown, combo_box, themer, pane_grid caches are
+        // now factory-owned via PlushieWidget::prepare(), not populated
+        // by ensure_caches_walk. qr_code and canvas still use the old path.)
+        let qr_node = make_node_with_props(
+            "qr1",
+            "qr_code",
+            serde_json::json!({"data": "hello"}),
         );
         let mut root = make_node("root", "column");
-        root.children.push(editor_node);
+        root.children.push(qr_node);
         core.apply(IncomingMessage::Snapshot { tree: root });
-        assert!(core.caches.editor_contents.contains_key("ed1"));
+        assert!(core.caches.qr_code_caches.contains_key("qr1"));
 
-        // Second snapshot without the editor -- built-in caches should
-        // be cleared and repopulated (without the editor).
+        // Second snapshot without the qr_code -- built-in caches should
+        // be cleared and repopulated (without the qr_code).
         core.apply(IncomingMessage::Snapshot {
             tree: make_node("root2", "column"),
         });
-        assert!(!core.caches.editor_contents.contains_key("ed1"));
+        assert!(!core.caches.qr_code_caches.contains_key("qr1"));
     }
 
     // -- Multi-window sequence -----------------------------------------------

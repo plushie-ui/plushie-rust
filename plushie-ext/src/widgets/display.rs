@@ -20,7 +20,7 @@ use iced::{
 };
 use serde_json::Value;
 
-use super::caches::{WidgetCaches, hash_str};
+use super::caches::WidgetCaches;
 use super::helpers::*;
 use crate::PlushieRenderer;
 use crate::extensions::RenderCtx;
@@ -707,57 +707,7 @@ pub(crate) fn render_qr_code<'a, R: PlushieRenderer>(
 // Cache ensure functions
 // ---------------------------------------------------------------------------
 
-/// Maximum markdown content size in bytes. Content exceeding this limit
-/// is truncated with a warning.
-const MAX_MARKDOWN_CONTENT: usize = 1_048_576; // 1 MB
-
-pub(crate) fn ensure_markdown_cache<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut WidgetCaches<R>,
-) {
-    let props = node.props.as_object();
-    let mut content_str = prop_str(props, "content").unwrap_or_default();
-    if content_str.len() > MAX_MARKDOWN_CONTENT {
-        log::warn!(
-            "[id={}] markdown content ({} bytes) exceeds limit ({} bytes), truncating",
-            node.id,
-            content_str.len(),
-            MAX_MARKDOWN_CONTENT,
-        );
-        let mut end = MAX_MARKDOWN_CONTENT;
-        while !content_str.is_char_boundary(end) && end > 0 {
-            end -= 1;
-        }
-        content_str.truncate(end);
-    }
-    let code_theme_str = prop_str(props, "code_theme").unwrap_or_default();
-    let hash = hash_str(&format!("{content_str}\0{code_theme_str}"));
-    match caches.markdown_items.get(&node.id) {
-        Some((existing_hash, _)) if *existing_hash == hash => {}
-        _ => {
-            let code_theme = match code_theme_str.as_str() {
-                "base16_mocha" => Some(iced::highlighter::Theme::Base16Mocha),
-                "base16_ocean" => Some(iced::highlighter::Theme::Base16Ocean),
-                "base16_eighties" => Some(iced::highlighter::Theme::Base16Eighties),
-                "solarized_dark" => Some(iced::highlighter::Theme::SolarizedDark),
-                "inspired_github" => Some(iced::highlighter::Theme::InspiredGitHub),
-                "" => None,
-                other => {
-                    log::warn!("unknown code_theme {:?}, using default", other);
-                    None
-                }
-            };
-            let items: Vec<_> = if let Some(theme) = code_theme {
-                let mut md = markdown::Content::new().code_theme(theme);
-                md.push_str(&content_str);
-                md.items().to_vec()
-            } else {
-                markdown::parse(&content_str).collect()
-            };
-            caches.markdown_items.insert(node.id.clone(), (hash, items));
-        }
-    }
-}
+// ensure_markdown_cache: removed, logic lives in MarkdownWidget::prepare()
 
 pub(crate) fn ensure_qr_code_cache<R: PlushieRenderer>(
     node: &TreeNode,

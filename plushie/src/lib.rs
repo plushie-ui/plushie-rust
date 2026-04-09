@@ -65,6 +65,7 @@ pub mod test;
 pub mod types;
 pub mod ui;
 pub mod util;
+pub mod widget;
 
 // Re-export the widget SDK for widget authors who also use the app SDK.
 pub use plushie_widget_sdk as widget_sdk;

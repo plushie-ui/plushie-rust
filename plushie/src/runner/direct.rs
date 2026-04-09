@@ -170,7 +170,37 @@ impl<A: App> DirectApp<A> {
             }
             Command::FocusNext => plushie_widget_sdk::iced::widget::operation::focus_next(),
             Command::FocusPrevious => plushie_widget_sdk::iced::widget::operation::focus_previous(),
+
+            // Text operations
+            Command::SelectAll(id) => plushie_widget_sdk::iced::widget::operation::select_all(
+                plushie_widget_sdk::iced::widget::Id::from(id)),
+            Command::MoveCursorToFront(id) => plushie_widget_sdk::iced::widget::operation::move_cursor_to_front(
+                plushie_widget_sdk::iced::widget::Id::from(id)),
+            Command::MoveCursorToEnd(id) => plushie_widget_sdk::iced::widget::operation::move_cursor_to_end(
+                plushie_widget_sdk::iced::widget::Id::from(id)),
+            Command::MoveCursorTo { target, position } => plushie_widget_sdk::iced::widget::operation::move_cursor_to(
+                plushie_widget_sdk::iced::widget::Id::from(target), position),
+            Command::SelectRange { target, start, end } => plushie_widget_sdk::iced::widget::operation::select_range(
+                plushie_widget_sdk::iced::widget::Id::from(target), start, end),
+
+            // Scroll
+            Command::ScrollTo { target, x, y } => plushie_widget_sdk::iced::widget::operation::scroll_to(
+                plushie_widget_sdk::iced::widget::Id::from(target),
+                plushie_widget_sdk::iced::widget::operation::AbsoluteOffset { x, y }),
+            Command::ScrollBy { target, x, y } => plushie_widget_sdk::iced::widget::operation::scroll_by(
+                plushie_widget_sdk::iced::widget::Id::from(target),
+                plushie_widget_sdk::iced::widget::operation::AbsoluteOffset { x, y }),
+            Command::SnapTo { target, x, y } => plushie_widget_sdk::iced::widget::operation::snap_to(
+                plushie_widget_sdk::iced::widget::Id::from(target),
+                plushie_widget_sdk::iced::widget::operation::RelativeOffset { x: Some(x), y: Some(y) }),
+            Command::SnapToEnd(id) => plushie_widget_sdk::iced::widget::operation::snap_to_end(
+                plushie_widget_sdk::iced::widget::Id::from(id)),
+
+            // Accessibility
+            Command::Announce(text) => plushie_widget_sdk::iced::announce(text),
+
             Command::Window(op) => self.execute_window_op(op),
+
             _ => {
                 log::debug!("unhandled command in direct runner: {cmd:?}");
                 Task::none()
@@ -279,7 +309,61 @@ fn message_to_event(msg: &Message) -> Option<Event> {
             value: data.clone(),
         })),
 
-        // Canvas events
+        Message::OptionHovered(window_id, id, option) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::OptionHovered,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::Value::String(option.clone()),
+        })),
+
+        Message::SensorResize(window_id, id, w, h) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::Resize,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::json!({"width": w, "height": h}),
+        })),
+
+        Message::ScrollEvent(window_id, id, viewport) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::Scrolled,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::json!({
+                "absolute_x": viewport.absolute_x,
+                "absolute_y": viewport.absolute_y,
+                "relative_x": viewport.relative_x,
+                "relative_y": viewport.relative_y,
+            }),
+        })),
+
+        // Mouse area events
+        Message::MouseAreaEvent(window_id, id, kind, x, y) => Some(Event::Widget(WidgetEvent {
+            event_type: mouse_area_kind_to_event_type(kind),
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::json!({"x": x, "y": y}),
+        })),
+
+        Message::MouseAreaMove(window_id, id, x, y) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::Move,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::json!({"x": x, "y": y}),
+        })),
+
+        Message::MouseAreaScroll(window_id, id, delta_x, delta_y, _x, _y) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::Scroll,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::json!({"delta_x": delta_x, "delta_y": delta_y}),
+        })),
+
+        // Canvas element events
         Message::CanvasEvent { window_id, id, .. } => Some(Event::Widget(WidgetEvent {
             event_type: EventType::Press,
             id: local_id(id),
@@ -288,20 +372,91 @@ fn message_to_event(msg: &Message) -> Option<Event> {
             value: serde_json::Value::Null,
         })),
 
-        Message::CanvasElementClick {
-            window_id,
-            canvas_id,
-            element_id,
-            ..
-        } => Some(Event::Widget(WidgetEvent {
-            event_type: EventType::Click,
-            id: element_id.clone(),
+        Message::CanvasElementClick { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::Click, window_id, canvas_id, element_id)),
+
+        Message::CanvasElementEnter { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::Enter, window_id, canvas_id, element_id)),
+
+        Message::CanvasElementLeave { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::Exit, window_id, canvas_id, element_id)),
+
+        Message::CanvasElementDrag { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::Drag, window_id, canvas_id, element_id)),
+
+        Message::CanvasElementDragEnd { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::DragEnd, window_id, canvas_id, element_id)),
+
+        Message::CanvasElementFocused { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::Focused, window_id, canvas_id, element_id)),
+
+        Message::CanvasElementBlurred { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::Blurred, window_id, canvas_id, element_id)),
+
+        Message::CanvasElementKeyPress { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::KeyPress, window_id, canvas_id, element_id)),
+
+        Message::CanvasElementKeyRelease { window_id, canvas_id, element_id, .. } =>
+            Some(canvas_element_event(EventType::KeyRelease, window_id, canvas_id, element_id)),
+
+        Message::CanvasFocused { window_id, canvas_id, .. } => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::Focused,
+            id: local_id(canvas_id),
             window_id: window_id.clone(),
-            scope: extract_scope_from_canvas(canvas_id, element_id),
+            scope: extract_scope(canvas_id),
             value: serde_json::Value::Null,
         })),
 
-        // Messages that don't produce SDK events.
+        Message::CanvasBlurred { window_id, canvas_id, .. } => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::Blurred,
+            id: local_id(canvas_id),
+            window_id: window_id.clone(),
+            scope: extract_scope(canvas_id),
+            value: serde_json::Value::Null,
+        })),
+
+        Message::CanvasScroll { window_id, id, .. } => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::Scroll,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::Value::Null,
+        })),
+
+        // Pane grid events
+        Message::PaneFocusCycle(window_id, id, _) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::PaneFocusCycle,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::Value::Null,
+        })),
+
+        Message::PaneResized(window_id, id, _) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::PaneResized,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::Value::Null,
+        })),
+
+        Message::PaneDragged(window_id, id, _) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::PaneDragged,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::Value::Null,
+        })),
+
+        Message::PaneClicked(window_id, id, _) => Some(Event::Widget(WidgetEvent {
+            event_type: EventType::PaneClicked,
+            id: local_id(id),
+            window_id: window_id.clone(),
+            scope: extract_scope(id),
+            value: serde_json::Value::Null,
+        })),
+
+        // Messages that don't produce SDK events (internal state).
         _ => None,
     }
 }
@@ -331,7 +486,44 @@ fn extract_scope(scoped: &str) -> Vec<String> {
 
 /// Extract scope for canvas element events.
 fn extract_scope_from_canvas(canvas_id: &str, _element_id: &str) -> Vec<String> {
-    extract_scope(canvas_id)
+    let mut scope = extract_scope(canvas_id);
+    let canvas_local = local_id(canvas_id);
+    if !canvas_local.is_empty() {
+        scope.insert(0, canvas_local);
+    }
+    scope
+}
+
+/// Create a canvas element event.
+fn canvas_element_event(
+    event_type: EventType,
+    window_id: &str,
+    canvas_id: &str,
+    element_id: &str,
+) -> Event {
+    Event::Widget(WidgetEvent {
+        event_type,
+        id: element_id.clone().to_string(),
+        window_id: window_id.to_string(),
+        scope: extract_scope_from_canvas(canvas_id, element_id),
+        value: serde_json::Value::Null,
+    })
+}
+
+/// Convert MouseAreaEvent kind string to EventType.
+fn mouse_area_kind_to_event_type(kind: &str) -> EventType {
+    match kind {
+        "press" => EventType::Press,
+        "release" => EventType::Release,
+        "middle_press" => EventType::Press,
+        "middle_release" => EventType::Release,
+        "right_press" => EventType::Press,
+        "right_release" => EventType::Release,
+        "enter" => EventType::Enter,
+        "exit" => EventType::Exit,
+        "double_click" => EventType::DoubleClick,
+        _ => EventType::Other(0),
+    }
 }
 
 /// Convert an event family string to an EventType.

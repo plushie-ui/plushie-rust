@@ -277,8 +277,118 @@ builtin_widget!(TextEditorWidget,      ["text_editor"],      input::render_text_
 builtin_widget!(CheckboxWidget,        ["checkbox"],         input::render_checkbox);
 builtin_widget!(TogglerWidget,         ["toggler"],          input::render_toggler);
 builtin_widget!(RadioWidget,           ["radio"],            input::render_radio);
-builtin_widget!(SliderWidget,          ["slider"],           input::render_slider);
-builtin_widget!(VerticalSliderWidget,  ["vertical_slider"],  input::render_vertical_slider);
+// SliderWidget: extracted factory with handle_message for value tracking.
+// Render delegates to the existing function (no slider-specific cache reads).
+pub(crate) struct SliderWidget {
+    /// Last slider drag value per node ID, used to provide the final value
+    /// on SlideRelease (iced only sends the release event, not the value).
+    last_values: std::collections::HashMap<String, f64>,
+}
+
+impl SliderWidget {
+    pub(crate) fn new() -> Self {
+        Self {
+            last_values: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
+    fn type_names(&self) -> &[&str] {
+        &["slider"]
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, iced::Theme, R> {
+        input::render_slider(node, *ctx)
+    }
+
+    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+        match msg {
+            Message::Slide(window_id, id, value) => {
+                self.last_values.insert(id.clone(), *value);
+                Some(vec![
+                    crate::protocol::OutgoingEvent::slide(id.clone(), *value)
+                        .with_window_id(window_id.clone()),
+                ])
+            }
+            Message::SlideRelease(window_id, id) => {
+                let value = self.last_values.remove(id).unwrap_or(0.0);
+                Some(vec![
+                    crate::protocol::OutgoingEvent::slide_release(id.clone(), value)
+                        .with_window_id(window_id.clone()),
+                ])
+            }
+            _ => None,
+        }
+    }
+
+    fn cleanup(&mut self, node_id: &str, _window_id: &str) {
+        self.last_values.remove(node_id);
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(SliderWidget::new())
+    }
+}
+
+// VerticalSliderWidget: shares the same value tracking as SliderWidget.
+pub(crate) struct VerticalSliderWidget {
+    last_values: std::collections::HashMap<String, f64>,
+}
+
+impl VerticalSliderWidget {
+    pub(crate) fn new() -> Self {
+        Self {
+            last_values: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
+    fn type_names(&self) -> &[&str] {
+        &["vertical_slider"]
+    }
+
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, iced::Theme, R> {
+        input::render_vertical_slider(node, *ctx)
+    }
+
+    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+        match msg {
+            Message::Slide(window_id, id, value) => {
+                self.last_values.insert(id.clone(), *value);
+                Some(vec![
+                    crate::protocol::OutgoingEvent::slide(id.clone(), *value)
+                        .with_window_id(window_id.clone()),
+                ])
+            }
+            Message::SlideRelease(window_id, id) => {
+                let value = self.last_values.remove(id).unwrap_or(0.0);
+                Some(vec![
+                    crate::protocol::OutgoingEvent::slide_release(id.clone(), value)
+                        .with_window_id(window_id.clone()),
+                ])
+            }
+            _ => None,
+        }
+    }
+
+    fn cleanup(&mut self, node_id: &str, _window_id: &str) {
+        self.last_values.remove(node_id);
+    }
+
+    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(VerticalSliderWidget::new())
+    }
+}
 builtin_widget!(PickListWidget,        ["pick_list"],        input::render_pick_list);
 builtin_widget!(ComboBoxWidget,        ["combo_box"],        input::render_combo_box,
     infer_a11y: infer_placeholder_as_description);
@@ -411,8 +521,8 @@ impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {
             Box::new(CheckboxWidget),
             Box::new(TogglerWidget),
             Box::new(RadioWidget),
-            Box::new(SliderWidget),
-            Box::new(VerticalSliderWidget),
+            Box::new(SliderWidget::new()),
+            Box::new(VerticalSliderWidget::new()),
             Box::new(PickListWidget),
             Box::new(ComboBoxWidget),
             // Interactive

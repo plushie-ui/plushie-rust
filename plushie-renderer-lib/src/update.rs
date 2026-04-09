@@ -67,6 +67,7 @@ impl App {
                     msg,
                     &mut self.core.caches,
                     &mut self.dispatcher,
+                    &mut self.registry,
                     &mut self.last_slide_values,
                 );
                 let mut task = Task::none();

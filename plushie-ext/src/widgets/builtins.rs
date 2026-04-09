@@ -412,12 +412,67 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, iced::Theme, R> {
-        // Delegate to existing render function during transition.
-        // MarkdownWidget.prepare() populates self.items, but the registry
-        // prepare_walk is not yet wired in. The old ensure_markdown_cache
-        // populates WidgetCaches.markdown_items, which render_markdown reads.
-        // TODO: once registry prepare_walk is active, render from self.items.
-        display::render_markdown(node, *ctx)
+        use crate::prop_helpers::*;
+        use crate::widgets::helpers::value_to_length_opt;
+
+        let key = (ctx.window_id.to_string(), node.id.clone());
+        let items = match self.items.get(&key) {
+            Some((_hash, items)) => items.as_slice(),
+            None => {
+                log::warn!("markdown cache miss for id={}", node.id);
+                return iced::widget::text("(markdown: cache miss)").into();
+            }
+        };
+
+        let props = node.props.as_object();
+        let mut settings = if let Some(text_size) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "text_size")
+                .or(ctx.default_text_size)
+        {
+            iced::widget::markdown::Settings::with_text_size(
+                text_size,
+                iced::widget::markdown::Style::from(ctx.theme),
+            )
+        } else {
+            iced::widget::markdown::Settings::from(ctx.theme)
+        };
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h1_size")
+        {
+            settings.h1_size = iced::Pixels(v);
+        }
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h2_size")
+        {
+            settings.h2_size = iced::Pixels(v);
+        }
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h3_size")
+        {
+            settings.h3_size = iced::Pixels(v);
+        }
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "code_size")
+        {
+            settings.code_size = iced::Pixels(v);
+        }
+        if let Some(v) =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing")
+        {
+            settings.spacing = iced::Pixels(v);
+        }
+        if let Some(lc) = prop_color(props, "link_color") {
+            settings.style.link_color = lc;
+        }
+
+        let mut md: Element<'a, Message, iced::Theme, R> =
+            iced::widget::markdown::view(items, settings).map(Message::MarkdownUrl);
+
+        if let Some(w) = value_to_length_opt(props.and_then(|p| p.get("width"))) {
+            md = iced::widget::container(md).width(w).into();
+        }
+
+        md
     }
 
     fn cleanup(&mut self, node_id: &str, window_id: &str) {

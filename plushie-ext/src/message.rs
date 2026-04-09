@@ -324,6 +324,63 @@ pub enum Message {
 }
 
 impl Message {
+    /// Extract the widget/node ID from this message, if it carries one.
+    ///
+    /// Returns the primary node ID that produced this message. For canvas
+    /// element messages, returns the canvas ID (not the element ID).
+    /// Returns `None` for system messages (keyboard, mouse, window
+    /// lifecycle, animation, stdin) that aren't widget-specific.
+    pub fn node_id(&self) -> Option<&str> {
+        match self {
+            // Standard widget events
+            Message::Click(_, id, ..)
+            | Message::Input(_, id, ..)
+            | Message::Submit(_, id, ..)
+            | Message::Toggle(_, id, ..)
+            | Message::Slide(_, id, ..)
+            | Message::SlideRelease(_, id)
+            | Message::Select(_, id, ..)
+            | Message::Paste(_, id, ..)
+            | Message::OptionHovered(_, id, ..)
+            | Message::SensorResize(_, id, ..)
+            | Message::ScrollEvent(_, id, ..)
+            | Message::StatusChanged(_, id, ..)
+            | Message::TextEditorAction(_, id, ..) => Some(id),
+            // Mouse area events
+            Message::MouseAreaEvent(_, id, ..)
+            | Message::MouseAreaMove(_, id, ..)
+            | Message::MouseAreaScroll(_, id, ..) => Some(id),
+            // Canvas events (use canvas ID, not element ID)
+            Message::CanvasEvent { id, .. }
+            | Message::CanvasScroll { id, .. } => Some(id),
+            Message::CanvasElementEnter { canvas_id, .. }
+            | Message::CanvasElementLeave { canvas_id, .. }
+            | Message::CanvasElementClick { canvas_id, .. }
+            | Message::CanvasElementDrag { canvas_id, .. }
+            | Message::CanvasElementDragEnd { canvas_id, .. }
+            | Message::CanvasElementKeyPress { canvas_id, .. }
+            | Message::CanvasElementKeyRelease { canvas_id, .. }
+            | Message::CanvasElementFocused { canvas_id, .. }
+            | Message::CanvasElementBlurred { canvas_id, .. }
+            | Message::CanvasElementFocusChanged { canvas_id, .. }
+            | Message::CanvasFocused { canvas_id, .. }
+            | Message::CanvasBlurred { canvas_id, .. }
+            | Message::CanvasGroupFocused { canvas_id, .. }
+            | Message::CanvasGroupBlurred { canvas_id, .. } => Some(canvas_id),
+            // Pane grid events
+            Message::PaneResized(_, grid_id, ..)
+            | Message::PaneDragged(_, grid_id, ..)
+            | Message::PaneClicked(_, grid_id, ..)
+            | Message::PaneFocusCycle(_, grid_id, ..) => Some(grid_id),
+            // Extension events
+            Message::Event { id, .. } => Some(id),
+            // Diagnostic
+            Message::Diagnostic { canvas_id, .. } => Some(canvas_id),
+            // System messages (no widget ID)
+            _ => None,
+        }
+    }
+
     /// Create a widget event message for use in `on_press`, `on_submit`,
     /// and other iced widget callbacks inside extension `render()` methods.
     ///

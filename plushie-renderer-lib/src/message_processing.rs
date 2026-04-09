@@ -42,8 +42,22 @@ pub fn process_widget_message<R: PlushieRenderer>(
     msg: Message,
     caches: &mut WidgetCaches<R>,
     dispatcher: &mut ExtensionDispatcher<R>,
+    registry: &mut plushie_ext::registry::WidgetRegistry<R>,
     last_slide_values: &mut HashMap<String, f64>,
 ) -> Vec<OutgoingEvent> {
+    // Try registry dispatch first. If the factory handles the message
+    // (returns Some), use that result. Otherwise fall through to the
+    // legacy dispatch below.
+    if let Some(node_id) = msg.node_id() {
+        if let Some((idx, _matched_id)) = registry.get_for_node_id(node_id) {
+            if let Some(factory) = registry.get_mut(idx) {
+                if let Some(events) = factory.handle_message(&msg) {
+                    return events;
+                }
+            }
+        }
+    }
+
     match msg {
         // Simple widget events -- stateless conversion.
         ref m @ (Message::Click(..)

@@ -468,6 +468,7 @@ impl<R: PlushieRenderer> Session<R> {
                     msg,
                     &mut self.core.caches,
                     &mut self.dispatcher,
+                    &mut self.registry,
                     &mut self.last_slide_values,
                 ),
             );

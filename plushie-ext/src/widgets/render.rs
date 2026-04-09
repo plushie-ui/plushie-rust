@@ -58,9 +58,9 @@ pub fn builtin_widget_types() -> &'static [&'static str] {
 }
 use super::validate;
 use crate::PlushieRenderer;
-use crate::extensions::RenderCtx;
 use crate::message::Message;
 use crate::protocol::TreeNode;
+use crate::render_ctx::RenderCtx;
 
 // ---------------------------------------------------------------------------
 // Main render dispatch

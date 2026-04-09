@@ -14,9 +14,9 @@ use serde_json::Value;
 use super::a11y::{A11yOverride, A11yOverrides};
 use super::helpers::*;
 use crate::PlushieRenderer;
-use crate::extensions::RenderCtx;
 use crate::message::Message;
 use crate::protocol::TreeNode;
+use crate::render_ctx::RenderCtx;
 
 /// Wrap an element with an accessibility role override.
 fn with_role<'a, R: PlushieRenderer>(

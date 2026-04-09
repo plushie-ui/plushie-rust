@@ -24,10 +24,10 @@ use serde_json::Value;
 use super::caches::canvas_layers_from_node;
 use super::helpers::*;
 use crate::PlushieRenderer;
-use crate::extensions::RenderCtx;
 use crate::message::{Message, serialize_modifiers};
 use crate::protocol::OutgoingEvent;
 use crate::protocol::TreeNode;
+use crate::render_ctx::RenderCtx;
 
 /// Maximum number of shapes per canvas layer. Layers exceeding this limit
 /// are truncated with a warning to prevent excessive tessellation work from

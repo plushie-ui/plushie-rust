@@ -35,9 +35,10 @@ use iced::{Element, Theme};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
-use crate::extensions::{InitCtx, RenderCtx};
+use crate::extensions::InitCtx;
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
+use crate::render_ctx::RenderCtx;
 use crate::widgets::a11y::A11yOverrides;
 
 /// Check if panic isolation is disabled via the PLUSHIE_NO_CATCH_UNWIND env var.
@@ -321,7 +322,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     pub fn render_node<'a>(
         &'a self,
         node: &'a TreeNode,
-        ctx: &crate::extensions::RenderCtx<'a, R>,
+        ctx: &crate::render_ctx::RenderCtx<'a, R>,
     ) -> iced::Element<'a, crate::message::Message, iced::Theme, R> {
         let type_name = node.type_name.as_str();
         let Some(&idx) = self.type_index.get(type_name) else {

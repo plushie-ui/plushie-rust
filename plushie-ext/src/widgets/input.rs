@@ -20,9 +20,9 @@ use serde_json::Value;
 
 use super::helpers::*;
 use crate::PlushieRenderer;
-use crate::extensions::RenderCtx;
 use crate::message::Message;
 use crate::protocol::TreeNode;
+use crate::render_ctx::RenderCtx;
 
 // ---------------------------------------------------------------------------
 // Text Input

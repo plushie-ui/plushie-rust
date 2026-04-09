@@ -16,9 +16,9 @@ use iced::{Element, Fill, Length, Theme, mouse, widget};
 
 use super::helpers::*;
 use crate::PlushieRenderer;
-use crate::extensions::RenderCtx;
 use crate::message::Message;
 use crate::protocol::TreeNode;
+use crate::render_ctx::RenderCtx;
 
 // ---------------------------------------------------------------------------
 // Button

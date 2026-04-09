@@ -18,9 +18,12 @@ pub use crate::PlushieRenderer;
 // -- PlushieWidget trait and registry --
 pub use crate::registry::{PlushieWidget, WidgetRegistry, WidgetSet};
 
+// -- Rendering context --
+pub use crate::render_ctx::RenderCtx;
+
 // -- Extension trait and lifecycle types --
 pub use crate::extensions::{
-    EventResult, ExtensionCaches, GenerationCounter, InitCtx, RenderCtx, WidgetEnv, WidgetExtension,
+    EventResult, ExtensionCaches, GenerationCounter, InitCtx, WidgetEnv, WidgetExtension,
 };
 
 // -- A11y types (needed for PlushieWidget::infer_a11y) --

@@ -18,10 +18,11 @@
 use iced::Theme;
 use serde_json::{Value, json};
 
-use crate::extensions::{ExtensionCaches, RenderCtx, WidgetEnv};
+use crate::extensions::{ExtensionCaches, WidgetEnv};
 use crate::image_registry::ImageRegistry;
 use crate::protocol::TreeNode;
 use crate::registry::WidgetRegistry;
+use crate::render_ctx::RenderCtx;
 use crate::widgets::SharedState;
 
 // ---------------------------------------------------------------------------

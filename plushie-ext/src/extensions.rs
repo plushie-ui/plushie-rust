@@ -1,14 +1,22 @@
-//! Widget extension system.
+//! Widget extension trait and supporting types.
 //!
-//! Extensions let Rust crates add custom widget types to the plushie
-//! renderer. Each extension implements [`WidgetExtension`] and is
-//! registered at startup via [`PlushieAppBuilder`](crate::app::PlushieAppBuilder).
-//! The [`WidgetRegistry`](crate::registry::WidgetRegistry) dispatches
-//! render and message handling via
-//! [`ExtensionAdapter`](crate::extension_adapter::ExtensionAdapter).
+//! [`WidgetExtension`] lets Rust crates add custom widget types to the
+//! plushie renderer. Each extension is registered at startup via
+//! [`PlushieAppBuilder`](crate::app::PlushieAppBuilder) and wrapped
+//! by [`ExtensionAdapter`](crate::extension_adapter::ExtensionAdapter)
+//! to integrate with the unified
+//! [`WidgetRegistry`](crate::registry::WidgetRegistry).
 //!
-//! State is managed through [`ExtensionCaches`], a type-erased
-//! key-value store namespaced by extension. Mutation happens in
+//! Supporting types:
+//! - [`ExtensionCaches`] -- type-erased key-value store namespaced by
+//!   extension, for per-node state
+//! - [`WidgetEnv`] -- immutable render context passed to extension
+//!   `render()` methods
+//! - [`EventResult`] -- return type for extension event handling
+//! - [`InitCtx`] -- context for extension initialization
+//! - [`GenerationCounter`] -- helper for cache invalidation
+//!
+//! State is managed through [`ExtensionCaches`]. Mutation happens in
 //! `prepare()` / `handle_event()` / `handle_command()` (mutable
 //! phase), reads happen in `render()` (immutable phase), matching
 //! iced's `update()`/`view()` split.
@@ -23,7 +31,6 @@ use crate::PlushieRenderer;
 use crate::image_registry::ImageRegistry;
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
-use crate::widgets::SharedState;
 
 // ---------------------------------------------------------------------------
 // WidgetExtension trait
@@ -442,8 +449,11 @@ impl Default for ExtensionCaches {
 }
 
 // ---------------------------------------------------------------------------
-// WidgetEnv and RenderCtx
+// WidgetEnv
 // ---------------------------------------------------------------------------
+
+// Re-export RenderCtx from its own module for backward compat.
+pub use crate::render_ctx::RenderCtx;
 
 /// Context provided to extension `render()` methods.
 ///
@@ -516,73 +526,6 @@ pub struct InitCtx<'a> {
     pub default_text_size: Option<f32>,
     /// Global default font, if set by the host.
     pub default_font: Option<iced::Font>,
-}
-
-/// Renders child nodes through the main dispatch. Copy-able (all shared refs).
-///
-/// Extensions receive this via [`WidgetEnv`] in their `render()` method.
-/// It carries everything needed for rendering: the widget tree state,
-/// image handles, theme, text defaults, and per-window context.
-///
-/// The `R` parameter selects the renderer backend: `iced::Renderer` for
-/// headless/windowed modes, `()` (null renderer) for mock mode.
-pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
-    pub caches: &'a SharedState,
-    pub images: &'a ImageRegistry,
-    pub theme: &'a Theme,
-    /// Widget registry for unified dispatch. All widget types (built-in
-    /// and extension) are registered here.
-    pub registry: &'a crate::registry::WidgetRegistry<R>,
-    pub default_text_size: Option<f32>,
-    pub default_font: Option<iced::Font>,
-    /// The plushie window ID this render is for.
-    ///
-    /// Top-level helper contexts may start empty before a `window` node
-    /// sets the real id for its subtree.
-    pub window_id: &'a str,
-    /// The display scale factor for this window (1.0 = no scaling).
-    /// Useful for DPI-aware canvas rendering.
-    pub scale_factor: f32,
-}
-
-impl<R: PlushieRenderer> Clone for RenderCtx<'_, R> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<R: PlushieRenderer> Copy for RenderCtx<'_, R> {}
-
-impl<R: PlushieRenderer> std::fmt::Debug for RenderCtx<'_, R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RenderCtx")
-            .field("window_id", &self.window_id)
-            .field("scale_factor", &self.scale_factor)
-            .field("default_text_size", &self.default_text_size)
-            .field("default_font", &self.default_font)
-            .finish_non_exhaustive()
-    }
-}
-
-impl<'a, R: PlushieRenderer> RenderCtx<'a, R> {
-    /// Render a child node through the main dispatch.
-    pub fn render_child(&self, node: &'a TreeNode) -> Element<'a, Message, Theme, R> {
-        crate::widgets::render(node, *self)
-    }
-
-    /// Create a new RenderCtx with a different theme, preserving all other fields.
-    pub fn with_theme(&self, theme: &'a Theme) -> Self {
-        RenderCtx { theme, ..*self }
-    }
-
-    /// Create a new RenderCtx for a child window subtree.
-    pub fn with_window_id(&self, window_id: &'a str) -> Self {
-        RenderCtx { window_id, ..*self }
-    }
-
-    /// Render all children of a node through the main dispatch.
-    pub fn render_children(&self, node: &'a TreeNode) -> Vec<Element<'a, Message, Theme, R>> {
-        node.children.iter().map(|c| self.render_child(c)).collect()
-    }
 }
 
 // ---------------------------------------------------------------------------

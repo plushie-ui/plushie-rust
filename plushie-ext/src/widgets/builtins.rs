@@ -18,10 +18,10 @@
 use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
-use crate::extensions::RenderCtx;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::{PlushieWidget, WidgetSet};
+use crate::render_ctx::RenderCtx;
 use crate::widgets::a11y::A11yOverrides;
 
 use super::{display, input, interactive, layout, table};

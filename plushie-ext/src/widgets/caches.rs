@@ -1,7 +1,7 @@
 //! Shared renderer state and cross-cutting cache management.
 //!
 //! [`SharedState`] holds cross-cutting state shared by all widget types:
-//! style overrides, animation interpolated props, and extension caches.
+//! style overrides, animation interpolated props, and adapter caches.
 //! It also holds pane_grid layout state and canvas pending focus, which
 //! are shared with widget_ops.rs for programmatic operations.
 //!
@@ -41,9 +41,10 @@ pub struct SharedState {
     /// Populated in `prepare_walk` for any node with a `style`
     /// object prop; read during render to avoid re-parsing every frame.
     pub(crate) style_overrides: HashMap<String, (u64, super::helpers::StyleOverrides)>,
-    /// Extension-owned caches. Public so extension authors can
-    /// access their own cached state during render/prepare/cleanup.
-    pub extension: crate::extensions::ExtensionCaches,
+    /// Caches owned by the ExtensionAdapter layer. Public so
+    /// extension authors can access their own cached state during
+    /// render/prepare/cleanup.
+    pub adapter_caches: crate::extensions::ExtensionCaches,
     /// Interpolated prop values from active renderer-side animations.
     /// Keyed by widget ID -> prop name -> current value.
     /// Populated by the TransitionManager on each frame tick.
@@ -55,7 +56,7 @@ impl SharedState {
     pub fn new() -> Self {
         Self {
             style_overrides: HashMap::new(),
-            extension: crate::extensions::ExtensionCaches::new(),
+            adapter_caches: crate::extensions::ExtensionCaches::new(),
             interpolated_props: HashMap::new(),
         }
     }
@@ -69,7 +70,7 @@ impl SharedState {
     /// Clear all shared state including extension caches.
     pub fn clear(&mut self) {
         self.clear_builtin();
-        self.extension.clear();
+        self.adapter_caches.clear();
     }
 
     /// Remove stale cross-cutting entries. Called by registry.prepare_walk().
@@ -292,34 +293,34 @@ mod tests {
     // -- clear_builtin vs clear --
 
     #[test]
-    fn clear_builtin_preserves_extension_caches() {
+    fn clear_builtin_preserves_adapter_caches() {
         let mut caches: SharedState = SharedState::new();
 
         caches
             .interpolated_props
             .insert("w1".into(), serde_json::Map::new());
-        caches.extension.insert("ext", "key", 42u32);
+        caches.adapter_caches.insert("ext", "key", 42u32);
 
         caches.clear_builtin();
 
         assert!(caches.interpolated_props.is_empty());
-        // Extension caches should survive.
-        assert_eq!(caches.extension.get::<u32>("ext", "key"), Some(&42));
+        // Adapter caches should survive.
+        assert_eq!(caches.adapter_caches.get::<u32>("ext", "key"), Some(&42));
     }
 
     #[test]
-    fn clear_wipes_both_builtin_and_extension() {
+    fn clear_wipes_both_builtin_and_adapter_caches() {
         let mut caches: SharedState = SharedState::new();
 
         caches
             .interpolated_props
             .insert("w1".into(), serde_json::Map::new());
-        caches.extension.insert("ext", "key", 42u32);
+        caches.adapter_caches.insert("ext", "key", 42u32);
 
         caches.clear();
 
         assert!(caches.interpolated_props.is_empty());
-        assert!(!caches.extension.contains("ext", "key"));
+        assert!(!caches.adapter_caches.contains("ext", "key"));
     }
 
     // -- hash_json_value --

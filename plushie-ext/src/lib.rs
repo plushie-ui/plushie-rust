@@ -16,6 +16,7 @@
 //! - [`registry`] -- `PlushieWidget` trait, `WidgetRegistry`, `WidgetSet`
 //! - [`app`] -- `PlushieAppBuilder` for registering widgets
 //! - [`prop_helpers`] -- public prop extraction helpers
+//! - [`render_ctx`] -- `RenderCtx`, the core rendering context for all widgets
 //! - [`extensions`] -- legacy `WidgetExtension` trait (being replaced by `PlushieWidget`)
 //! - [`testing`] -- test factory helpers
 //!
@@ -40,6 +41,7 @@ pub mod extensions;
 pub mod prelude;
 pub mod prop_helpers;
 pub mod registry;
+pub mod render_ctx;
 pub mod testing;
 
 pub mod animation;

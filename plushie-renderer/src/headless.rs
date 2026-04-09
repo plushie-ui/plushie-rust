@@ -32,10 +32,10 @@ use serde::Serialize;
 use plushie_ext::PlushieRenderer;
 use plushie_ext::codec::Codec;
 use plushie_ext::engine::Core;
-use plushie_ext::extensions::RenderCtx;
 use plushie_ext::image_registry::ImageRegistry;
 use plushie_ext::message::Message;
 use plushie_ext::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
+use plushie_ext::render_ctx::RenderCtx;
 
 use plushie_renderer_lib::scripting::{interaction_to_iced_events, resolve_widget_id};
 

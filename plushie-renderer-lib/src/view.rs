@@ -27,7 +27,7 @@ impl App {
 
         match self.core.tree.find_window(window_id) {
             Some(window_node) => {
-                let ctx = plushie_ext::extensions::RenderCtx {
+                let ctx = plushie_ext::render_ctx::RenderCtx {
                     caches: &self.core.caches,
                     images: &self.image_registry,
                     theme: resolved_theme,

@@ -45,10 +45,10 @@ use iced::widget::canvas;
 use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
-use crate::extensions::RenderCtx;
 use crate::message::Message;
 use crate::protocol::OutgoingEvent;
 use crate::protocol::TreeNode;
+use crate::render_ctx::RenderCtx;
 use crate::widgets::canvas as canvas_widgets;
 
 /// Reusable canvas rendering engine.

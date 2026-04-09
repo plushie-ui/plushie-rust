@@ -20,10 +20,11 @@ use iced::{Element, Theme};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
-use crate::extensions::{ExtensionCaches, InitCtx, RenderCtx, WidgetEnv, WidgetExtension};
+use crate::extensions::{ExtensionCaches, InitCtx, WidgetEnv, WidgetExtension};
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
 use crate::registry::PlushieWidget;
+use crate::render_ctx::RenderCtx;
 use crate::widgets::a11y::A11yOverrides;
 
 /// Wraps a [`WidgetExtension`] implementation as a [`PlushieWidget`].

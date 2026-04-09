@@ -24,9 +24,9 @@ use iced::{Element, Fill, Length, Point, Theme, Vector, widget};
 
 use super::helpers::*;
 use crate::PlushieRenderer;
-use crate::extensions::RenderCtx;
 use crate::message::{Message, ScrollViewport};
 use crate::protocol::TreeNode;
+use crate::render_ctx::RenderCtx;
 
 // ---------------------------------------------------------------------------
 // Column

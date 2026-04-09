@@ -987,14 +987,14 @@ mod tests {
         assert!(effects.is_empty());
     }
 
-    // -- Snapshot preserves extension caches for prepare_all --
+    // -- Snapshot preserves adapter caches for prepare_all --
 
     #[test]
-    fn snapshot_preserves_extension_caches() {
+    fn snapshot_preserves_adapter_caches() {
         let mut core: Core = Core::new();
 
-        // Simulate extension storing data in extension caches.
-        core.caches.extension.insert("ext", "node-1", 42u32);
+        // Simulate extension storing data in adapter caches.
+        core.caches.adapter_caches.insert("ext", "node-1", 42u32);
 
         // Snapshot replaces the tree.
         let msg = IncomingMessage::Snapshot {
@@ -1002,10 +1002,13 @@ mod tests {
         };
         core.apply(msg);
 
-        // Extension caches must survive -- clear_builtin() must NOT
+        // Adapter caches must survive -- clear_builtin() must NOT
         // wipe them. The host calls prepare_all() after apply() to
         // handle extension cleanup properly.
-        assert_eq!(core.caches.extension.get::<u32>("ext", "node-1"), Some(&42));
+        assert_eq!(
+            core.caches.adapter_caches.get::<u32>("ext", "node-1"),
+            Some(&42)
+        );
     }
 
     #[test]

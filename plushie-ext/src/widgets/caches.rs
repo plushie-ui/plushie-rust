@@ -41,16 +41,8 @@ const MAX_HASH_DEPTH: usize = 256;
 /// (text_editor Content, canvas Cache) are parameterized on the
 /// renderer type because iced's widget state depends on it.
 pub struct SharedState<R: PlushieRenderer = iced::Renderer> {
-    /// Phantom: R parameter preserved for API stability. No R-generic
-    /// fields remain (all R-generic widget state moved to factories).
+    /// Phantom: R parameter preserved for API stability.
     _renderer: std::marker::PhantomData<R>,
-
-    // -- Widget-specific caches (shared with widget_ops.rs) --
-    /// pane_grid layout state. Shared with widget_ops.rs for split/close/swap.
-    pub(crate) pane_grid_states: HashMap<String, iced::widget::pane_grid::State<String>>,
-    /// Pending programmatic focus for a canvas element. Written by widget_ops.rs
-    /// on focus commands, read by CanvasWidget during render.
-    pub(crate) canvas_pending_focus: HashMap<String, String>,
 
     // -- Cross-cutting shared state (used by all widget types) --
     /// Parsed style overrides with content hash for invalidation.
@@ -71,35 +63,25 @@ impl<R: PlushieRenderer> SharedState<R> {
     pub fn new() -> Self {
         Self {
             _renderer: std::marker::PhantomData,
-            pane_grid_states: HashMap::new(),
-            canvas_pending_focus: HashMap::new(),
             style_overrides: HashMap::new(),
             extension: crate::extensions::ExtensionCaches::new(),
             interpolated_props: HashMap::new(),
         }
     }
 
-    /// Clear per-node widget caches without touching extension caches.
-    ///
-    /// Used by the Snapshot handler so that extension cleanup callbacks
-    /// (via `ExtensionDispatcher::prepare_all`) can run before the
-    /// extension cache entries are removed.
+    /// Clear all shared state without touching extension caches.
     pub fn clear_builtin(&mut self) {
-        self.pane_grid_states.clear();
-        self.canvas_pending_focus.clear();
         self.style_overrides.clear();
         self.interpolated_props.clear();
     }
 
-    /// Remove stale entries for the ensure_caches path (pane_grid, canvas focus).
-    fn prune_stale(&mut self, live_ids: &HashSet<String>) {
-        self.pane_grid_states.retain(|id, _| live_ids.contains(id));
-        self.canvas_pending_focus
-            .retain(|id, _| live_ids.contains(id));
+    /// Clear all shared state including extension caches.
+    pub fn clear(&mut self) {
+        self.clear_builtin();
+        self.extension.clear();
     }
 
-    /// Remove stale cross-cutting entries. Called by registry.prepare_walk()
-    /// which tracks its own live_ids set.
+    /// Remove stale cross-cutting entries. Called by registry.prepare_walk().
     pub fn prune_shared(&mut self, live_ids: &HashSet<String>) {
         self.style_overrides.retain(|id, _| live_ids.contains(id));
         self.interpolated_props
@@ -113,141 +95,9 @@ impl<R: PlushieRenderer> Default for SharedState<R> {
     }
 }
 
-impl<R: PlushieRenderer> SharedState<R> {
-    pub fn clear(&mut self) {
-        self.clear_builtin();
-        self.extension.clear();
-    }
-
-    // -- Accessor methods for renderer crate --
-
-    /// Get a mutable reference to a pane_grid State by node ID.
-    /// Used by widget_ops.rs for split/close/swap operations.
-    pub fn pane_grid_state_mut(
-        &mut self,
-        id: &str,
-    ) -> Option<&mut iced::widget::pane_grid::State<String>> {
-        self.pane_grid_states.get_mut(id)
-    }
-
-    /// Get an immutable reference to a pane_grid State by node ID.
-    pub fn pane_grid_state(&self, id: &str) -> Option<&iced::widget::pane_grid::State<String>> {
-        self.pane_grid_states.get(id)
-    }
-
-    /// Set pending programmatic focus for a canvas element.
-    /// Written by widget_ops.rs, read by CanvasWidget during render.
-    pub fn set_canvas_pending_focus(&mut self, canvas_id: String, element_id: String) {
-        self.canvas_pending_focus.insert(canvas_id, element_id);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Cache pre-population
 // ---------------------------------------------------------------------------
-
-/// Walk the tree and ensure that every `canvas` and `qr_code` node has
-/// an entry in the corresponding cache. Other stateful widget types
-/// (text_editor, markdown, combo_box, pane_grid, themer) are now handled
-/// by their PlushieWidget factories via `registry.prepare_walk()`.
-///
-/// After populating caches, prunes stale entries for nodes no longer in the
-/// tree across all cache types.
-///
-/// The full-tree walk is intentional: it collects all live node IDs for
-/// the pruning step. The expensive work (parsing styles, hashing canvas
-/// layers, etc.) is guarded by per-node content hashes, so unchanged
-/// nodes are O(1). A dirty-flag optimization would only skip those hash
-/// lookups, which are already cheap relative to the tree walk itself.
-/// Walk the tree and populate pane_grid state (shared with widget_ops.rs).
-/// Style overrides and other cross-cutting state are handled by
-/// `registry.prepare_walk()`.
-pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut SharedState<R>) {
-    let mut live_ids = HashSet::new();
-    ensure_pane_grid_walk(node, caches, &mut live_ids, 0);
-    caches.prune_stale(&live_ids);
-}
-
-fn ensure_pane_grid_walk<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut SharedState<R>,
-    live_ids: &mut HashSet<String>,
-    depth: usize,
-) {
-    if depth > MAX_TREE_DEPTH {
-        return;
-    }
-    live_ids.insert(node.id.clone());
-
-    if node.type_name == "pane_grid" {
-        ensure_pane_grid_cache(node, caches);
-    }
-
-    for child in &node.children {
-        ensure_pane_grid_walk(child, caches, live_ids, depth + 1);
-    }
-}
-
-/// Populate pane_grid layout state in SharedState.
-///
-/// Shared with widget_ops.rs which reads pane state for split, close,
-/// swap, maximize, and restore operations.
-fn ensure_pane_grid_cache<R: PlushieRenderer>(node: &TreeNode, caches: &mut SharedState<R>) {
-    use iced::widget::pane_grid;
-    use std::collections::HashSet;
-
-    let props = node.props.as_object();
-    let axis = match crate::prop_helpers::prop_str(props, "split_axis").as_deref() {
-        Some("horizontal") => pane_grid::Axis::Horizontal,
-        _ => pane_grid::Axis::Vertical,
-    };
-    let child_ids: HashSet<String> = node.children.iter().map(|c| c.id.clone()).collect();
-
-    if let Some(state) = caches.pane_grid_states.get_mut(&node.id) {
-        // Prune panes whose child nodes no longer exist.
-        let stale: Vec<pane_grid::Pane> = state
-            .panes
-            .iter()
-            .filter(|(_, id)| !child_ids.contains(*id))
-            .map(|(pane, _)| *pane)
-            .collect();
-        for pane in stale {
-            state.close(pane);
-        }
-        // Add panes for new children.
-        let existing: HashSet<String> = state.panes.values().cloned().collect();
-        let new_ids: Vec<String> = node
-            .children
-            .iter()
-            .filter(|c| !existing.contains(&c.id))
-            .map(|c| c.id.clone())
-            .collect();
-        for id in new_ids {
-            if let Some((&anchor, _)) = state.panes.iter().next() {
-                let _ = state.split(axis, anchor, id);
-            }
-        }
-    } else {
-        let ids: Vec<String> = node.children.iter().map(|c| c.id.clone()).collect();
-        let new_state = if ids.is_empty() {
-            let (s, _) = pane_grid::State::new("default".to_string());
-            s
-        } else if ids.len() == 1 {
-            let (s, _) = pane_grid::State::new(ids[0].clone());
-            s
-        } else {
-            let (mut s, first) = pane_grid::State::new(ids[0].clone());
-            let mut last = first;
-            for id in ids.iter().skip(1) {
-                if let Some((new, _)) = s.split(axis, last, id.clone()) {
-                    last = new;
-                }
-            }
-            s
-        };
-        caches.pane_grid_states.insert(node.id.clone(), new_state);
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Cache helpers (used by ensure_* functions in widget modules)
@@ -438,8 +288,6 @@ mod tests {
     #[test]
     fn shared_state_new_is_empty() {
         let c: SharedState = SharedState::new();
-        assert!(c.pane_grid_states.is_empty());
-        assert!(c.canvas_pending_focus.is_empty());
         assert!(c.style_overrides.is_empty());
         assert!(c.interpolated_props.is_empty());
     }

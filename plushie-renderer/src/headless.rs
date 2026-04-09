@@ -224,7 +224,6 @@ impl<R: PlushieRenderer> Session<R> {
     ) -> Option<Ret> {
         let root = self.core.tree.root()?;
 
-        plushie_ext::widgets::ensure_caches(root, &mut self.core.caches);
         let ctx = RenderCtx {
             caches: &self.core.caches,
             images: &self.images,
@@ -903,7 +902,6 @@ fn handle_screenshot<R: PlushieRenderer>(
         None => return emit_stub(s),
     };
 
-    plushie_ext::widgets::ensure_caches(root, &mut s.core.caches);
     let ctx = RenderCtx {
         caches: &s.core.caches,
         images: &s.images,

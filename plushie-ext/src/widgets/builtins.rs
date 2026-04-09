@@ -335,6 +335,90 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
         }
     }
 
+    fn handle_widget_op(
+        &mut self,
+        node_id: &str,
+        op: &str,
+        payload: &serde_json::Value,
+    ) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+        use iced::widget::pane_grid;
+
+        // Find state by node_id (any window).
+        let key = self
+            .states
+            .keys()
+            .find(|(_, nid)| nid == node_id)
+            .cloned()?;
+        let state = self.states.get_mut(&key)?;
+
+        match op {
+            "pane_split" => {
+                let pane_id = payload
+                    .get("pane")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let new_pane_id = payload
+                    .get("new_pane_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let axis = match payload
+                    .get("axis")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("vertical")
+                {
+                    "horizontal" => pane_grid::Axis::Horizontal,
+                    _ => pane_grid::Axis::Vertical,
+                };
+                if let Some(pane) = find_pane_by_id(state, pane_id) {
+                    let _ = state.split(axis, pane, new_pane_id);
+                }
+                Some(vec![])
+            }
+            "pane_close" => {
+                let pane_id = payload
+                    .get("pane")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                if let Some(pane) = find_pane_by_id(state, pane_id) {
+                    let _ = state.close(pane);
+                }
+                Some(vec![])
+            }
+            "pane_swap" => {
+                let a_id = payload
+                    .get("a")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let b_id = payload
+                    .get("b")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                if let (Some(a), Some(b)) =
+                    (find_pane_by_id(state, a_id), find_pane_by_id(state, b_id))
+                {
+                    state.swap(a, b);
+                }
+                Some(vec![])
+            }
+            "pane_maximize" => {
+                let pane_id = payload
+                    .get("pane")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                if let Some(pane) = find_pane_by_id(state, pane_id) {
+                    state.maximize(pane);
+                }
+                Some(vec![])
+            }
+            "pane_restore" => {
+                state.restore();
+                Some(vec![])
+            }
+            _ => None,
+        }
+    }
+
     fn cleanup(&mut self, node_id: &str, window_id: &str) {
         let key = (window_id.to_string(), node_id.to_string());
         self.states.remove(&key);
@@ -343,6 +427,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(PaneGridWidget::new())
     }
+}
+
+/// Find a pane by its ID string in a pane_grid::State.
+fn find_pane_by_id(
+    state: &iced::widget::pane_grid::State<String>,
+    pane_id: &str,
+) -> Option<iced::widget::pane_grid::Pane> {
+    state
+        .panes
+        .iter()
+        .find(|(_, id)| id.as_str() == pane_id)
+        .map(|(pane, _)| *pane)
 }
 
 // ---------------------------------------------------------------------------
@@ -1000,8 +1096,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, iced::Theme, R> {
-        let extra = ctx.caches.canvas_pending_focus.get(&node.id).cloned();
-        self.engine.render(node, ctx, extra)
+        self.engine.render(node, ctx, None)
     }
 
     fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {

@@ -2,7 +2,6 @@
 //! tree hash queries, image management. Dispatched from [`CoreEffect::WidgetOp`]
 //! via the `op` string and JSON `payload`.
 
-use iced::widget::pane_grid;
 use iced::{Task, window};
 
 use plushie_ext::message::Message;
@@ -44,20 +43,15 @@ impl App {
         match op {
             "focus" => {
                 let target = get_target();
-                // Check if the target is a canvas element (contains "/").
-                // If so, focus the canvas widget and set the pending element
-                // focus so the canvas picks it up on the next update.
-                if let Some((parent, element)) = target.rsplit_once('/') {
-                    if self.core.tree.find_by_type(parent) == Some("canvas") {
-                        self.core
-                            .caches
-                            .set_canvas_pending_focus(parent.to_string(), element.to_string());
-                        iced::widget::operation::focus::<Message>(iced::widget::Id::from(
-                            parent.to_string(),
-                        ))
-                    } else {
-                        iced::widget::operation::focus::<Message>(iced::widget::Id::from(target))
-                    }
+                // Canvas element focus (target contains "/"): route through
+                // the registry so CanvasWidget sets pending focus.
+                if target.contains('/') {
+                    self.registry.handle_widget_op(&target, "focus", payload);
+                    // Also focus the iced widget (the canvas container).
+                    let parent = target.rsplit_once('/').map(|(p, _)| p).unwrap_or(&target);
+                    iced::widget::operation::focus::<Message>(iced::widget::Id::from(
+                        parent.to_string(),
+                    ))
                 } else {
                     iced::widget::operation::focus::<Message>(iced::widget::Id::from(target))
                 }
@@ -165,92 +159,10 @@ impl App {
             }
             "exit" => iced::exit(),
             // -- PaneGrid operations --
-            // The host sends: target (grid id), pane, axis, new_pane_id, a, b
-            "pane_split" => {
+            // Routed through the registry to PaneGridWidget::handle_widget_op.
+            "pane_split" | "pane_close" | "pane_swap" | "pane_maximize" | "pane_restore" => {
                 let target = get_target();
-                let pane_id = payload
-                    .get("pane")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let new_pane_id = payload
-                    .get("new_pane_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let axis = match payload
-                    .get("axis")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("vertical")
-                {
-                    "horizontal" => pane_grid::Axis::Horizontal,
-                    _ => pane_grid::Axis::Vertical,
-                };
-
-                if let Some(state) = self.core.caches.pane_grid_state_mut(&target)
-                    && let Some(pane) = find_pane_by_id(state, &pane_id)
-                {
-                    let _ = state.split(axis, pane, new_pane_id);
-                }
-                Task::none()
-            }
-            "pane_close" => {
-                let target = get_target();
-                let pane_id = payload
-                    .get("pane")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-
-                if let Some(state) = self.core.caches.pane_grid_state_mut(&target)
-                    && let Some(pane) = find_pane_by_id(state, &pane_id)
-                {
-                    let _ = state.close(pane);
-                }
-                Task::none()
-            }
-            "pane_swap" => {
-                let target = get_target();
-                let a_id = payload
-                    .get("a")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let b_id = payload
-                    .get("b")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-
-                if let Some(state) = self.core.caches.pane_grid_state_mut(&target)
-                    && let (Some(a), Some(b)) =
-                        (find_pane_by_id(state, &a_id), find_pane_by_id(state, &b_id))
-                {
-                    state.swap(a, b);
-                }
-                Task::none()
-            }
-            "pane_maximize" => {
-                let target = get_target();
-                let pane_id = payload
-                    .get("pane")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-
-                if let Some(state) = self.core.caches.pane_grid_state_mut(&target)
-                    && let Some(pane) = find_pane_by_id(state, &pane_id)
-                {
-                    state.maximize(pane);
-                }
-                Task::none()
-            }
-            "pane_restore" => {
-                let target = get_target();
-
-                if let Some(state) = self.core.caches.pane_grid_state_mut(&target) {
-                    state.restore();
-                }
+                self.registry.handle_widget_op(&target, op, payload);
                 Task::none()
             }
             "find_focused" => {
@@ -388,12 +300,3 @@ impl App {
 // ---------------------------------------------------------------------------
 // PaneGrid helpers
 // ---------------------------------------------------------------------------
-
-/// Find a pane_grid::Pane by its ID string.
-pub fn find_pane_by_id(state: &pane_grid::State<String>, pane_id: &str) -> Option<pane_grid::Pane> {
-    state
-        .panes
-        .iter()
-        .find(|(_, id)| id.as_str() == pane_id)
-        .map(|(pane, _)| *pane)
-}

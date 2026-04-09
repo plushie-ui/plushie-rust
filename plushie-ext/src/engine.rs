@@ -361,11 +361,10 @@ impl<R: PlushieRenderer> Core<R> {
                 // cleanup callbacks run later via prepare_all() in the host,
                 // which needs the old cache entries to still be accessible.
                 self.caches.clear_builtin();
-                if let Some(root) = self.tree.root() {
-                    widgets::ensure_caches(root, &mut self.caches);
-                    if widgets::validate::is_validate_props_enabled() {
-                        Self::emit_prop_validation_warnings(root, &mut effects);
-                    }
+                if let Some(root) = self.tree.root()
+                    && widgets::validate::is_validate_props_enabled()
+                {
+                    Self::emit_prop_validation_warnings(root, &mut effects);
                 }
                 effects.push(CoreEffect::SyncWindows);
             }
@@ -382,11 +381,10 @@ impl<R: PlushieRenderer> Core<R> {
                     let theme_val = theme_val.clone();
                     self.resolve_and_cache_theme(&theme_val, &mut effects);
                 }
-                if let Some(root) = self.tree.root() {
-                    widgets::ensure_caches(root, &mut self.caches);
-                    if widgets::validate::is_validate_props_enabled() {
-                        Self::emit_prop_validation_warnings(root, &mut effects);
-                    }
+                if let Some(root) = self.tree.root()
+                    && widgets::validate::is_validate_props_enabled()
+                {
+                    Self::emit_prop_validation_warnings(root, &mut effects);
                 }
                 effects.push(CoreEffect::SyncWindows);
             }
@@ -1020,19 +1018,15 @@ mod tests {
     fn snapshot_clears_shared_state() {
         let mut core: Core = Core::new();
 
-        // Test that shared state is cleared on snapshot. Use pane_grid
-        // state (populated by ensure_caches for widget_ops compatibility).
-        let pane_node = make_node("pg1", "pane_grid");
-        let mut root = make_node("root", "column");
-        root.children.push(pane_node);
-        core.apply(IncomingMessage::Snapshot { tree: root });
-        assert!(core.caches.pane_grid_states.contains_key("pg1"));
-
-        // Second snapshot without the pane_grid.
+        // Test that shared state is cleared on snapshot.
+        // Manually insert a value and verify it's cleared.
+        core.caches
+            .interpolated_props
+            .insert("w1".into(), serde_json::Map::new());
         core.apply(IncomingMessage::Snapshot {
-            tree: make_node("root2", "column"),
+            tree: make_node("root", "column"),
         });
-        assert!(!core.caches.pane_grid_states.contains_key("pg1"));
+        assert!(core.caches.interpolated_props.is_empty());
     }
 
     // -- Multi-window sequence -----------------------------------------------

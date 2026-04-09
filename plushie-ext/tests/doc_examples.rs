@@ -171,7 +171,7 @@ fn doc_generation_counter() {
 #[test]
 fn doc_coalesce_hint() {
     let event =
-        OutgoingEvent::extension_event("cursor_pos", "w1", Some(json!({"x": 10.0, "y": 20.0})))
+        OutgoingEvent::widget_event("cursor_pos", "w1", Some(json!({"x": 10.0, "y": 20.0})))
             .with_coalesce(CoalesceHint::Replace);
     assert!(event.coalesce.is_some());
 }

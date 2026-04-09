@@ -91,7 +91,7 @@ pub fn emit_event(event: OutgoingEvent) -> io::Result<()> {
 ///
 /// The `widget_sets` field reports which named widget sets are registered.
 /// The "iced" set is always present (provides the 36 built-in widget types).
-/// Extension widgets are reported separately in `native_widgets`.
+/// Custom widgets are reported separately in `native_widgets`.
 pub fn emit_hello(
     mode: &str,
     backend: &str,
@@ -352,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn message_to_event_extension_event_returns_none() {
+    fn message_to_event_custom_event_returns_none() {
         let msg = Message::Event {
             window_id: "main".into(),
             id: "node1".into(),

@@ -118,16 +118,16 @@ pub enum IncomingMessage {
         #[serde(default)]
         height: Option<u32>,
     },
-    /// A single extension command pushed to a native extension widget.
+    /// A single command pushed to a native widget.
     /// Bypasses the normal tree update / diff / patch cycle.
-    ExtensionCommand {
+    WidgetCommand {
         node_id: String,
         op: String,
         #[serde(default)]
         payload: Value,
     },
-    /// A batch of extension commands processed in one cycle.
-    ExtensionCommands { commands: Vec<ExtensionCommandItem> },
+    /// A batch of widget commands processed in one cycle.
+    WidgetCommands { commands: Vec<WidgetCommandItem> },
     /// Advance the animation clock by one frame (headless/test mode).
     /// Emits an `animation_frame` event if `on_animation_frame` is subscribed.
     AdvanceFrame { timestamp: u64 },
@@ -143,9 +143,9 @@ pub enum IncomingMessage {
     UnregisterEffectStub { kind: String },
 }
 
-/// A single item within an `ExtensionCommands` batch.
+/// A single item within a `WidgetCommands` batch.
 #[derive(Debug, Clone, Deserialize)]
-pub struct ExtensionCommandItem {
+pub struct WidgetCommandItem {
     pub node_id: String,
     pub op: String,
     #[serde(default)]
@@ -528,20 +528,20 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // ExtensionCommand deserialization
+    // WidgetCommand deserialization
     // -----------------------------------------------------------------------
 
     #[test]
-    fn extension_command_deserializes() {
+    fn widget_command_deserializes() {
         let msg: IncomingMessage = serde_json::from_value(json!({
-            "type": "extension_command",
+            "type": "widget_command",
             "node_id": "term-1",
             "op": "write",
             "payload": { "data": "hello" }
         }))
         .unwrap();
         match msg {
-            IncomingMessage::ExtensionCommand {
+            IncomingMessage::WidgetCommand {
                 node_id,
                 op,
                 payload,
@@ -555,9 +555,9 @@ mod tests {
     }
 
     #[test]
-    fn extension_commands_deserializes() {
+    fn widget_commands_deserializes() {
         let msg: IncomingMessage = serde_json::from_value(json!({
-            "type": "extension_commands",
+            "type": "widget_commands",
             "commands": [
                 { "node_id": "term-1", "op": "write", "payload": { "data": "a" } },
                 { "node_id": "log-1", "op": "append", "payload": { "line": "x" } }
@@ -565,7 +565,7 @@ mod tests {
         }))
         .unwrap();
         match msg {
-            IncomingMessage::ExtensionCommands { commands } => {
+            IncomingMessage::WidgetCommands { commands } => {
                 assert_eq!(commands.len(), 2);
                 assert_eq!(commands[0].node_id, "term-1");
                 assert_eq!(commands[1].op, "append");
@@ -575,11 +575,11 @@ mod tests {
     }
 
     #[test]
-    fn extension_command_with_default_payload() {
-        let json = r#"{"type":"extension_command","node_id":"ext-1","op":"reset"}"#;
+    fn widget_command_with_default_payload() {
+        let json = r#"{"type":"widget_command","node_id":"wgt-1","op":"reset"}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
         match msg {
-            IncomingMessage::ExtensionCommand { payload, .. } => {
+            IncomingMessage::WidgetCommand { payload, .. } => {
                 assert!(payload.is_null());
             }
             _ => panic!("wrong variant"),

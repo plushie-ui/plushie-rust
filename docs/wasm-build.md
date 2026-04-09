@@ -54,10 +54,10 @@ The constructor validates the protocol version, emits the hello
 handshake, and starts the iced daemon in the background. Messages
 sent via `send_message()` are processed on the next event loop tick.
 
-## Custom builds with extensions
+## Custom builds with widgets
 
-Extensions are Rust code compiled into the WASM binary. Create a
-crate that depends on `plushie-wasm` and registers extensions:
+Widgets are Rust code compiled into the WASM binary. Create a
+crate that depends on `plushie-wasm` and registers widgets:
 
 ```rust
 use plushie_wasm::PlushieApp;
@@ -71,7 +71,7 @@ pub fn create_app(
 ) -> Result<PlushieApp, JsValue> {
     let mut builder = PlushieAppBuilder::new();
     builder.register(Box::new(MyCustomWidget));
-    PlushieApp::with_extensions(settings, on_event, builder)
+    PlushieApp::with_widgets(settings, on_event, builder)
 }
 ```
 

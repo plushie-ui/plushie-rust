@@ -212,7 +212,7 @@ Sent as the first message. Configures the renderer.
     "fonts": ["/path/to/font.ttf"],
     "scale_factor": 1.0,
     "validate_props": false,
-    "extension_config": {}
+    "widget_config": {}
   }
 }
 ```
@@ -229,14 +229,14 @@ All fields inside `settings` are optional.
 | `fonts` | array | [] | Paths to font files to load (startup only) |
 | `scale_factor` | number | 1.0 | Global scale factor (startup only) |
 | `validate_props` | bool | false | Enable prop validation warnings in release builds |
-| `extension_config` | object | {} | Configuration passed to widget extensions |
+| `widget_config` | object | {} | Configuration passed to custom widgets |
 | `default_event_rate` | number | -- | Default max events per second for all coalescable events. Omit for unlimited. |
 
 **Startup-only fields** (ignored if sent after the first Settings):
 `antialiasing`, `vsync`, `fonts`, `scale_factor`, `validate_props`.
 
 **Runtime fields** (can be updated by sending Settings again):
-`default_text_size`, `default_font`, `extension_config`,
+`default_text_size`, `default_font`, `widget_config`,
 `default_event_rate`.
 
 **Log level.** Renderer log verbosity is controlled via the `RUST_LOG`
@@ -654,15 +654,15 @@ Or with raw RGBA pixels:
 In MessagePack mode, `data` and `pixels` can be sent as raw binary
 (no base64 encoding needed).
 
-### ExtensionCommand
+### WidgetCommand
 
-Send a command directly to a native widget extension, bypassing the
+Send a command directly to a custom widget, bypassing the
 tree update cycle. Used for high-frequency data (e.g. pushing plot
-data to a chart extension).
+data to a chart widget).
 
 ```json
 {
-  "type": "extension_command",
+  "type": "widget_command",
   "session": "s1",
   "node_id": "chart-1",
   "op": "append_data",
@@ -670,13 +670,13 @@ data to a chart extension).
 }
 ```
 
-### ExtensionCommands
+### WidgetCommands
 
-Send multiple extension commands in a single message.
+Send multiple widget commands in a single message.
 
 ```json
 {
-  "type": "extension_commands",
+  "type": "widget_commands",
   "session": "s1",
   "commands": [
     { "node_id": "chart-1", "op": "append_data", "payload": {...} },
@@ -955,7 +955,7 @@ when the same fonts are loaded.
 
 ### Reset
 
-Reset all session state: tree, caches, images, theme, extensions.
+Reset all session state: tree, caches, images, theme, widgets.
 In multiplexed mode, the session thread is torn down and the session
 ID can be reused.
 
@@ -1055,7 +1055,7 @@ Every request message produces exactly one response. The `id` and
 Messages without responses: Settings, Snapshot, Patch,
 Subscribe, Unsubscribe, WidgetOp
 (non-query), WindowOp (non-query), SystemOp, ImageOp,
-ExtensionCommand, ExtensionCommands, AdvanceFrame.
+WidgetCommand, WidgetCommands, AdvanceFrame.
 
 ### event
 
@@ -1129,7 +1129,7 @@ Current renderer error payloads include:
 
 | `data.kind` | Other fields | Description |
 |-------------|--------------|-------------|
-| `extension_command` | `reason`, `node_id`, `op`, `message`, `extension` (optional) | Native extension command failed. `reason` is currently `"unknown_node"`, `"poisoned"`, or `"panic"`. |
+| `widget_command` | `reason`, `node_id`, `op`, `message`, `widget_type` (optional) | Widget command failed. `reason` is currently `"unknown_node"`, `"poisoned"`, or `"panic"`. |
 
 #### Pointer events
 
@@ -1652,8 +1652,8 @@ The renderer processes messages sequentially within each session,
 so responses arrive in the order requests were sent.
 
 Fire-and-forget messages (Settings, Snapshot, Patch, Subscribe,
-Unsubscribe, WidgetOp, WindowOp, ImageOp, ExtensionCommand,
-ExtensionCommands, AdvanceFrame) can be sent freely at any time.
+Unsubscribe, WidgetOp, WindowOp, ImageOp, WidgetCommand,
+WidgetCommands, AdvanceFrame) can be sent freely at any time.
 
 Request messages (Query, Interact, TreeHash, Screenshot, Reset,
 Effect) can also be pipelined -- the renderer queues them and
@@ -1816,14 +1816,14 @@ then remaining fields override individual properties:
 ### PLUSHIE_NO_CATCH_UNWIND
 
 Set `PLUSHIE_NO_CATCH_UNWIND=1` on the renderer process to disable
-panic isolation for widget extensions. When set, extension panics
+panic isolation for custom widgets. When set, widget panics
 propagate normally instead of being caught by `catch_unwind`, which
 preserves full stack traces and allows debuggers (gdb, lldb) to
 break at the panic site.
 
 **Use this only during development.** In production, `catch_unwind`
-prevents one misbehaving extension from crashing the entire renderer.
-With the env var set, any extension panic takes down the process.
+prevents one misbehaving widget from crashing the entire renderer.
+With the env var set, any widget panic takes down the process.
 
 ---
 
@@ -1888,10 +1888,10 @@ Incoming stdin messages also flush the buffer, providing adaptive
 throughput matching -- when the host sends a message, it gets all
 pending coalesced events immediately.
 
-### Extension events
+### Custom widget events
 
-Extension widget events participate in rate limiting and coalescing
-when they carry a `CoalesceHint`. Extension authors set hints on
+Custom widget events participate in rate limiting and coalescing
+when they carry a `CoalesceHint`. Widget authors set hints on
 outgoing events via `.with_coalesce(CoalesceHint::Replace)` or
 `.with_coalesce(CoalesceHint::Accumulate(vec!["field_x".into(), "field_y".into()]))`.
 `Replace` uses the standard latest-value-wins strategy.
@@ -1917,7 +1917,7 @@ thousands of nodes). Practical considerations for large trees:
 - **Snapshot vs Patch.** For trees with many nodes, prefer Patch for
   incremental updates rather than replacing the entire tree with
   Snapshot on every change. Snapshot triggers a full tree walk for
-  extension prepare, cache invalidation, and window reconciliation.
+  widget prepare, cache invalidation, and window reconciliation.
 - **Tree depth.** Rendering and tree search are bounded to 256 levels
   of nesting. Deeply nested trees also increase layout cost.
 - **Canvas caching.** Canvas widgets cache per-layer tessellation.

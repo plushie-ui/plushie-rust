@@ -506,7 +506,7 @@ impl Core {
                     }
                 });
                 let ext_config = settings
-                    .get("extension_config")
+                    .get("widget_config")
                     .cloned()
                     .unwrap_or(Value::Null);
                 effects.push(CoreEffect::WidgetConfig(ext_config));
@@ -548,16 +548,16 @@ impl Core {
             IncomingMessage::Reset { .. } => {
                 log::debug!("Reset message ignored by Core (handled by scripting layer)");
             }
-            IncomingMessage::ExtensionCommand { .. } => {
-                log::debug!("ExtensionCommand message ignored by Core (handled by renderer App)");
+            IncomingMessage::WidgetCommand { .. } => {
+                log::debug!("WidgetCommand message ignored by Core (handled by renderer App)");
             }
             IncomingMessage::AdvanceFrame { .. } => {
                 log::warn!(
                     "AdvanceFrame is only supported in headless/test mode; ignored in daemon mode"
                 );
             }
-            IncomingMessage::ExtensionCommands { .. } => {
-                log::debug!("ExtensionCommands message ignored by Core (handled by renderer App)");
+            IncomingMessage::WidgetCommands { .. } => {
+                log::debug!("WidgetCommands message ignored by Core (handled by renderer App)");
             }
             IncomingMessage::RegisterEffectStub { kind, response } => {
                 log::info!("effect stub registered: {kind}");
@@ -858,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_without_extension_config_emits_null_config() {
+    fn settings_without_widget_config_emits_null_config() {
         let mut core: Core = Core::new();
         let msg = IncomingMessage::Settings {
             settings: serde_json::json!({"default_text_size": 14.0}),
@@ -872,12 +872,12 @@ mod tests {
     }
 
     #[test]
-    fn settings_with_extension_config_emits_effect() {
+    fn settings_with_widget_config_emits_effect() {
         let mut core: Core = Core::new();
         let msg = IncomingMessage::Settings {
             settings: serde_json::json!({
                 "default_text_size": 14.0,
-                "extension_config": {
+                "widget_config": {
                     "terminal": {"shell": "/bin/bash"}
                 }
             }),
@@ -890,12 +890,12 @@ mod tests {
     }
 
     #[test]
-    fn settings_with_extension_config_contains_correct_value() {
+    fn settings_with_widget_config_contains_correct_value() {
         let mut core: Core = Core::new();
         let config_val = serde_json::json!({"terminal": {"shell": "/bin/zsh"}});
         let msg = IncomingMessage::Settings {
             settings: serde_json::json!({
-                "extension_config": config_val,
+                "widget_config": config_val,
             }),
         };
         let effects = core.apply(msg);

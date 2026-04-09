@@ -17,7 +17,7 @@ mod types;
 /// and checked against the value the host embeds in Settings.
 pub const PROTOCOL_VERSION: u32 = 1;
 
-pub use incoming::{ExtensionCommandItem, IncomingMessage};
+pub use incoming::{IncomingMessage, WidgetCommandItem};
 pub use outgoing::{
     CoalesceHint, EffectResponse, EffectStubAck, InteractResponse, KeyModifiers, OutgoingEvent,
     QueryResponse, ResetResponse, TreeHashResponse,

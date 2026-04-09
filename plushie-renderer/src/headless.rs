@@ -19,7 +19,7 @@
 //! separate threads. A reader thread dispatches incoming messages by
 //! the `session` field to per-session threads. A writer thread
 //! collects responses from all sessions and writes them to stdout.
-//! Each session is fully isolated (own Core, caches, extensions, UI).
+//! Each session is fully isolated (own Core, caches, widgets, UI).
 
 use std::io::{self, BufRead, BufReader, Read};
 use std::sync::mpsc;
@@ -281,7 +281,7 @@ impl<R: PlushieRenderer> Session<R> {
     /// 3. An `interact_step` is emitted with those events
     /// 4. The `read_next` callback is called, which blocks until the
     ///    host sends back a tree update (Snapshot or Patch)
-    /// 5. The tree update is applied, caches/extensions prepared, UI settled
+    /// 5. The tree update is applied, caches prepared, UI settled
     ///
     /// This matches the production flow where each iced event triggers
     /// a full host round-trip before the next event is processed.
@@ -383,8 +383,8 @@ impl<R: PlushieRenderer> Session<R> {
                             IncomingMessage::Unsubscribe { .. } => "unsubscribe",
                             IncomingMessage::TreeHash { .. } => "tree_hash",
                             IncomingMessage::Screenshot { .. } => "screenshot",
-                            IncomingMessage::ExtensionCommand { .. } => "extension_command",
-                            IncomingMessage::ExtensionCommands { .. } => "extension_commands",
+                            IncomingMessage::WidgetCommand { .. } => "widget_command",
+                            IncomingMessage::WidgetCommands { .. } => "widget_commands",
                             IncomingMessage::AdvanceFrame { .. } => "advance_frame",
                             IncomingMessage::RegisterEffectStub { .. } => "register_effect_stub",
                             IncomingMessage::UnregisterEffectStub { .. } => {
@@ -803,7 +803,7 @@ fn handle_message<R: PlushieRenderer>(
                 .with_session(session_id);
             s.writer.emit(&resp)?;
         }
-        IncomingMessage::ExtensionCommand {
+        IncomingMessage::WidgetCommand {
             node_id,
             op,
             payload,
@@ -814,7 +814,7 @@ fn handle_message<R: PlushieRenderer>(
                 }
             }
         }
-        IncomingMessage::ExtensionCommands { commands } => {
+        IncomingMessage::WidgetCommands { commands } => {
             for cmd in commands {
                 if let Some(events) =
                     s.registry
@@ -1178,7 +1178,7 @@ fn run_single<R: PlushieRenderer>(
     let mut session = Session::<R>::new(mode, WireWriter::stdout());
 
     // Process the initial Settings through the session so Core.apply()
-    // picks up default_event_rate, default_text_size, extensions, etc.
+    // picks up default_event_rate, default_text_size, widget config, etc.
     {
         let (session_id, msg) = initial.into_parts();
         let mut read_next = || read_message(codec, reader).map(|sm| sm.message);

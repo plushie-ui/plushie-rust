@@ -1,7 +1,7 @@
 //! Public prop extraction helpers for widget authors.
 //!
 //! These functions provide a convenient API for reading typed values from
-//! a props map ([`Props`]). Extension authors use these in their `render()`
+//! a props map ([`Props`]). Widget authors use these in their `render()`
 //! and `prepare()` implementations instead of manually traversing
 //! `serde_json::Value`.
 //!

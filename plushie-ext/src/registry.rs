@@ -52,7 +52,7 @@ use crate::widgets::a11y::A11yOverrides;
 /// deferring to the first `prepare()` call.
 #[derive(Debug)]
 pub struct InitCtx<'a> {
-    /// Widget-specific config from `Settings.extension_config[namespace]`.
+    /// Widget-specific config from `Settings.widget_config[namespace]`.
     /// `Value::Null` if the host didn't provide config for this widget.
     pub config: &'a Value,
     /// The current theme at init time.
@@ -128,9 +128,9 @@ impl Default for GenerationCounter {
 }
 
 /// Check if panic isolation is disabled via the PLUSHIE_NO_CATCH_UNWIND env var.
-/// When true, extension panics propagate normally, preserving stack traces for
+/// When true, widget panics propagate normally, preserving stack traces for
 /// debugging. Only use during development. In production, catch_unwind
-/// prevents one extension from crashing the entire renderer.
+/// prevents one widget from crashing the entire renderer.
 fn catch_unwind_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| {
@@ -173,7 +173,7 @@ pub trait PlushieWidget<R: PlushieRenderer> {
 
     /// Unique namespace for config routing from Settings.
     ///
-    /// When the host sends a Settings message with extension config,
+    /// When the host sends a Settings message with widget config,
     /// the registry delivers the config slice matching this namespace
     /// to [`init`](Self::init). Empty string means no config.
     fn namespace(&self) -> &str {
@@ -546,7 +546,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// Tries factory dispatch first (registry-aware widgets like sliders,
     /// text editors, pane grids handle their own messages). Falls back to
     /// [`Message::to_outgoing_event`] for simple widget events, and
-    /// passes through extension events as generic outgoing events.
+    /// passes through widget events as generic outgoing events.
     ///
     /// Returns an empty vec for messages that don't produce outgoing
     /// events (subscription events, `NoOp`, `MarkdownUrl`, etc.).
@@ -605,7 +605,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                 vec![]
             }
 
-            // Extension events: if the registry's handle_message (above) didn't
+            // Widget events: if the registry's handle_message (above) didn't
             // match, pass through as a generic outgoing event.
             Message::Event {
                 window_id,
@@ -637,7 +637,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
     }
 
-    /// Route a widget operation (extension command) to the factory
+    /// Route a widget command to the factory
     /// that owns the target node ID.
     pub fn handle_widget_op(
         &mut self,

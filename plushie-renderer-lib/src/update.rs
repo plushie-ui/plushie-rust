@@ -23,9 +23,9 @@ impl App {
             // mutation and pane grid state.
             //
             // Redraw contract: iced::daemon rebuilds UIs after every
-            // update() call regardless of the returned Task. Extensions
+            // update() call regardless of the returned Task. Widgets
             // using canvas::Cache must clear caches themselves (see
-            // GenerationCounter in extensions.rs).
+            // GenerationCounter in registry.rs).
             msg @ (Message::Click(..)
             | Message::Input(..)
             | Message::Submit(..)

@@ -326,7 +326,7 @@ impl EventEmitter {
     ///
     /// If the existing entry uses a different strategy (e.g. Replace vs
     /// Accumulate), the old entry is flushed first and a fresh buffer is
-    /// started. This handles the edge case where an extension changes
+    /// started. This handles the edge case where a widget changes
     /// its coalesce hint between events for the same key.
     fn buffer_event(&mut self, key: &CoalesceKey, event: OutgoingEvent, hint: &CoalesceHint) {
         if let Some(existing) = self.pending.get_mut(key) {
@@ -674,7 +674,7 @@ mod tests {
         assert!(emitter.pending.is_empty());
     }
 
-    // -- Strategy mismatch (extension changes hint between events) --
+    // -- Strategy mismatch (widget changes hint between events) --
 
     #[test]
     fn buffer_event_flushes_on_strategy_mismatch() {
@@ -700,7 +700,7 @@ mod tests {
         ));
     }
 
-    // -- Accumulate with custom fields (extension parity) --
+    // -- Accumulate with custom fields --
 
     #[test]
     fn accumulate_custom_fields() {

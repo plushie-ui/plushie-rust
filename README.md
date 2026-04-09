@@ -141,10 +141,10 @@ overrides.
 notifications -- requested over the protocol, results delivered as
 events.
 
-**Custom widget extensions.** The extension SDK (plushie-ext) lets you
-write new widget types in Rust without forking the renderer. Extensions
-range from simple render-only widgets to full interactive components
-with their own state, event handling, and lifecycle management.
+**Custom widgets.** The widget SDK (plushie-ext) lets you write new
+widget types in Rust without forking the renderer. Custom widgets range
+from simple render-only widgets to full interactive components with
+their own state, event handling, and lifecycle management.
 
 ## Use cases
 
@@ -253,7 +253,7 @@ Both tools can also be installed via cargo:
 
 ## Status
 
-Early stage. The protocol and extension API are functional but not yet
+Early stage. The protocol and widget API are functional but not yet
 stable -- breaking changes between versions are expected. The wire
 protocol includes a version handshake so host libraries can detect
 incompatibilities.

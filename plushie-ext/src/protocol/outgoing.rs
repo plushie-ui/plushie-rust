@@ -9,17 +9,17 @@ use serde_json::Value;
 
 /// Hint for the renderer's event coalescing system.
 ///
-/// Set by event constructors or extension authors via
+/// Set by event constructors or widget authors via
 /// [`OutgoingEvent::with_coalesce`]. The renderer uses this to decide
 /// whether and how to buffer events during rate-limited delivery. Not
 /// serialized to the wire -- renderer-internal metadata.
 ///
-/// # For extension authors
+/// # For widget authors
 ///
-/// Set on events returned from `handle_event()`:
+/// Set on events returned from `handle_message()`:
 ///
 /// ```ignore
-/// let event = OutgoingEvent::extension_event("cursor_pos", node_id, data)
+/// let event = OutgoingEvent::widget_event("cursor_pos", node_id, data)
 ///     .with_coalesce(CoalesceHint::Replace);
 /// ```
 ///
@@ -50,8 +50,8 @@ pub enum CoalesceHint {
 ///   etc.) use `tag` to identify the subscription that requested them.
 ///   Built via the internal `tagged()` constructor. The `id` field is empty.
 ///
-/// Extension authors emit custom events via
-/// [`extension_event`](Self::extension_event).
+/// Widget authors emit custom events via
+/// [`widget_event`](Self::widget_event).
 #[derive(Debug, Serialize)]
 pub struct OutgoingEvent {
     /// Always `"event"`.
@@ -114,12 +114,12 @@ impl OutgoingEvent {
     /// Set the primary `value` field on this event.
     ///
     /// For built-in widget events, `value` carries the widget's primary
-    /// datum (input text, slider position, selected option). Extension
+    /// datum (input text, slider position, selected option). Widget
     /// authors wrapping built-in widgets can use this to emit events
     /// compatible with the built-in shape:
     ///
     /// ```ignore
-    /// OutgoingEvent::extension_event("input", id, data)
+    /// OutgoingEvent::widget_event("input", id, data)
     ///     .with_value(serde_json::Value::String(text))
     /// ```
     pub fn with_value(mut self, value: Value) -> Self {
@@ -208,11 +208,11 @@ impl OutgoingEvent {
         }
     }
 
-    /// Convenience constructor for extension-emitted events.
+    /// Convenience constructor for widget-emitted events.
     ///
     /// Identical to [`generic`](Self::generic) -- exists for discoverability
-    /// so extension authors searching docs for "extension" find it.
-    pub fn extension_event(
+    /// so widget authors searching docs for "widget" find it.
+    pub fn widget_event(
         family: impl Into<String>,
         id: impl Into<String>,
         data: Option<Value>,

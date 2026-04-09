@@ -33,7 +33,7 @@ fn view(&self) -> Element<Message> {
 }
 ```
 
-**The extension crate** (`my-gauge-plushie`) wraps the widget for
+**The widget crate** (`my-gauge-plushie`) wraps the widget for
 plushie's protocol. It parses JSON props, constructs the widget, and
 bridges events. Every host SDK gets the widget through this single
 wrapper -- no per-language duplication:
@@ -82,10 +82,10 @@ Separation of concerns. The widget crate has zero plushie knowledge
 - **Usable outside plushie.** Any iced application can use it. The
   widget isn't locked to plushie's ecosystem.
 - **Clean API.** The widget has typed Rust parameters (`f32`,
-  `Color`, `Length`), not `&Value` JSON blobs. The extension
+  `Color`, `Length`), not `&Value` JSON blobs. The widget
   wrapper handles the JSON-to-typed conversion.
 
-The extension wrapper is intentionally thin. It parses props,
+The widget wrapper is intentionally thin. It parses props,
 constructs the widget, and maybe bridges events. The real logic
 lives in the widget crate.
 
@@ -367,7 +367,7 @@ state that implements the `Focusable` trait.
 
 ---
 
-## Part 2: The plushie extension wrapper
+## Part 2: The plushie widget wrapper
 
 The wrapper crate bridges your iced widget to plushie's protocol.
 It's intentionally thin -- just prop parsing and event bridging.
@@ -441,7 +441,7 @@ fn handle_message(&mut self, msg: &Message) -> Option<Vec<OutgoingEvent>> {
     if let Message::Event { id, family, .. } = msg {
         if family == "click" {
             return Some(vec![
-                OutgoingEvent::extension_event("gauge_clicked", id, None)
+                OutgoingEvent::widget_event("gauge_clicked", id, None)
             ]);
         }
     }
@@ -453,7 +453,7 @@ For high-frequency events (continuous value changes), set a
 `CoalesceHint`:
 
 ```rust
-OutgoingEvent::extension_event("value_changed", node_id, data)
+OutgoingEvent::widget_event("value_changed", node_id, data)
     .with_coalesce(CoalesceHint::Replace)
 ```
 
@@ -511,7 +511,7 @@ crates.io:
   my-gauge-plushie   -- the plushie wrapper (SDKs reference this)
 ```
 
-Host SDK authors add the plushie wrapper to their extension list.
+Host SDK authors add the plushie wrapper to their widget list.
 The SDK's build system compiles it into the renderer binary
 automatically.
 

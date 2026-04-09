@@ -1,5 +1,5 @@
 //! Processes incoming protocol messages (snapshots, patches, settings,
-//! extension commands) by delegating to Core and handling resulting effects.
+//! widget commands) by delegating to Core and handling resulting effects.
 
 use std::io;
 
@@ -11,10 +11,10 @@ use crate::emitters::{emit_effect_response, emit_event};
 
 impl App {
     pub fn apply(&mut self, message: IncomingMessage) -> io::Result<()> {
-        // Extension commands bypass the normal tree update / diff / patch cycle.
+        // Widget commands bypass the normal tree update / diff / patch cycle.
         // Route through the unified widget registry.
         match &message {
-            IncomingMessage::ExtensionCommand {
+            IncomingMessage::WidgetCommand {
                 node_id,
                 op,
                 payload,
@@ -26,7 +26,7 @@ impl App {
                 }
                 return Ok(());
             }
-            IncomingMessage::ExtensionCommands { commands } => {
+            IncomingMessage::WidgetCommands { commands } => {
                 for cmd in commands {
                     if let Some(events) =
                         self.registry

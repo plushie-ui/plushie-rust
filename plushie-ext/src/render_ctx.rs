@@ -2,7 +2,7 @@
 //!
 //! [`RenderCtx`] carries everything needed for rendering: the widget tree
 //! state, image handles, theme, text defaults, and per-window context.
-//! It is used by all widget types (built-in and extension) during the
+//! It is used by all widget types during the
 //! immutable view phase.
 
 use iced::{Element, Theme};
@@ -25,8 +25,8 @@ pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
     pub caches: &'a SharedState,
     pub images: &'a ImageRegistry,
     pub theme: &'a Theme,
-    /// Widget registry for unified dispatch. All widget types (built-in
-    /// and extension) are registered here.
+    /// Widget registry for unified dispatch. All widget types are
+    /// registered here.
     pub registry: &'a crate::registry::WidgetRegistry<R>,
     pub default_text_size: Option<f32>,
     pub default_font: Option<iced::Font>,

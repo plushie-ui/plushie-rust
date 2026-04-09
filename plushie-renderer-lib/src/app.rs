@@ -51,8 +51,8 @@ pub struct App {
     pub theme_follows_system: bool,
     /// Global scale factor multiplier (1.0 = follow OS DPI).
     pub scale_factor: f32,
-    /// Unified widget registry. All widget types (built-in and extension)
-    /// are dispatched through this registry.
+    /// Unified widget registry. All widget types are dispatched through
+    /// this registry.
     pub registry: WidgetRegistry,
     /// Epoch for animation_frame timestamp calculation.
     pub animation_epoch: Option<iced::time::Instant>,

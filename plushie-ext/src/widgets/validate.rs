@@ -15,9 +15,6 @@ use serde_json::Value;
 use crate::protocol::TreeNode;
 
 /// Props accepted by all widget types (skipped during per-widget validation).
-/// Extension widgets may register additional universal props via
-/// [`register_extension_props`] so they don't appear as "unexpected"
-/// in validation warnings.
 const UNIVERSAL_PROPS: &[&str] = &["a11y", "event_rate", "id"];
 
 /// Global flag to enable prop validation in release builds.

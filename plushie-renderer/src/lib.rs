@@ -27,7 +27,7 @@ pub(crate) mod transport;
 
 /// Entry point for the plushie renderer.
 ///
-/// Extension packages create a `PlushieAppBuilder`, register their extensions,
+/// Widget packages create a `PlushieAppBuilder`, register their widgets,
 /// and pass it here. The default `main.rs` simply passes an empty builder.
 pub fn run(builder: plushie_ext::app::PlushieAppBuilder) -> iced::Result {
     renderer::run(builder)

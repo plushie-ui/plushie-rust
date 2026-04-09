@@ -16,12 +16,12 @@
 //! app.send_message(snapshotJson);
 //! ```
 //!
-//! # Usage from Rust (custom WASM builds with extensions)
+//! # Usage from Rust (custom WASM builds with widgets)
 //!
 //! ```ignore
 //! let mut builder = plushie_ext::app::PlushieAppBuilder::new();
 //! builder.register(Box::new(MyWidget));
-//! let app = PlushieApp::with_extensions(settings, on_event, builder)?;
+//! let app = PlushieApp::with_widgets(settings, on_event, builder)?;
 //! app.send_message(snapshot_json)?;
 //! ```
 //!
@@ -65,7 +65,7 @@ pub struct PlushieApp {
 
 #[wasm_bindgen]
 impl PlushieApp {
-    /// Create a new plushie renderer with no extensions.
+    /// Create a new plushie renderer with no custom widgets.
     ///
     /// Parses settings, validates the protocol version, initializes the
     /// output writer, and starts the iced daemon in the background.
@@ -75,7 +75,7 @@ impl PlushieApp {
     /// event strings whenever the renderer emits an outgoing event.
     #[wasm_bindgen(constructor)]
     pub fn new(settings_json: &str, on_event: js_sys::Function) -> Result<PlushieApp, JsValue> {
-        Self::with_extensions(
+        Self::with_widgets(
             settings_json,
             on_event,
             plushie_ext::app::PlushieAppBuilder::new(),
@@ -90,7 +90,7 @@ impl PlushieApp {
     ///
     /// Accepts any valid protocol message: Snapshot, Patch, Settings,
     /// Subscribe, Unsubscribe, WidgetOp, WindowOp, Effect,
-    /// ExtensionCommand, etc.
+    /// WidgetCommand, etc.
     pub fn send_message(&self, json: &str) -> Result<(), JsValue> {
         self.sender
             .unbounded_send(json.to_string())
@@ -103,14 +103,14 @@ impl PlushieApp {
     ///
     /// Rust callers building custom WASM modules use this to register
     /// widgets at compile time. Widgets are Rust code compiled
-    /// into the WASM binary -- they cannot be added at runtime from JS.
+    /// into the WASM binary, they cannot be added at runtime from JS.
     ///
     /// ```ignore
     /// let mut builder = PlushieAppBuilder::new();
     /// builder.register(Box::new(MyWidget));
-    /// let app = PlushieApp::with_extensions(settings, on_event, builder)?;
+    /// let app = PlushieApp::with_widgets(settings, on_event, builder)?;
     /// ```
-    pub fn with_extensions(
+    pub fn with_widgets(
         settings_json: &str,
         on_event: js_sys::Function,
         builder: plushie_ext::app::PlushieAppBuilder,

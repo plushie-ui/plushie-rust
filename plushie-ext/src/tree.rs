@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 
 use crate::protocol::{PatchOp, TreeNode};
-use crate::widgets::MAX_TREE_DEPTH;
+use crate::shared_state::MAX_TREE_DEPTH;
 
 /// Retained tree store. Holds the current root node (if any) and supports
 /// full replacement (snapshot) and incremental patch application.

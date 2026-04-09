@@ -506,7 +506,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     pub fn prepare_walk(
         &mut self,
         root: &TreeNode,
-        shared: &mut crate::widgets::SharedState,
+        shared: &mut crate::shared_state::SharedState,
         theme: &Theme,
     ) {
         self.node_factory_map.clear();
@@ -519,7 +519,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         &mut self,
         node: &TreeNode,
         window_id: &str,
-        shared: &mut crate::widgets::SharedState,
+        shared: &mut crate::shared_state::SharedState,
         theme: &Theme,
         live_ids: &mut std::collections::HashSet<String>,
     ) {
@@ -534,7 +534,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
 
         // Cross-cutting: populate style overrides for any node with
         // a style prop. Populated for all nodes during prepare_walk.
-        crate::widgets::caches::ensure_style_overrides_cache(node, shared);
+        crate::shared_state::ensure_style_overrides_cache(node, shared);
 
         // Factory-specific prepare.
         if let Some(&idx) = self.type_index.get(node.type_name.as_str()) {

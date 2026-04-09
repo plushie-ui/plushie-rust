@@ -19,9 +19,7 @@ pub mod validate;
 
 // --- Public re-exports -----------------------------------------------------
 
-pub(crate) use caches::MAX_TREE_DEPTH;
 pub use caches::SharedState;
-pub(crate) use caches::hash_json_value;
 pub use helpers::parse_padding_value;
 pub use render::render;
 pub use validate::{is_validate_props_enabled, set_validate_props};

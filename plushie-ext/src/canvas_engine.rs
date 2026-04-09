@@ -87,7 +87,8 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::Hasher;
 
-        use crate::widgets::caches::{canvas_layers_from_node, hash_json_value};
+        use crate::widgets::canvas::canvas_layers_from_node;
+        use crate::widgets::caches::hash_json_value;
 
         let key = (window_id.to_string(), node.id.clone());
         let layer_map = canvas_layers_from_node(node);

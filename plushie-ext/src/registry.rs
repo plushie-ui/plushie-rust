@@ -38,7 +38,7 @@ use crate::PlushieRenderer;
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
 use crate::render_ctx::RenderCtx;
-use crate::widgets::a11y::A11yOverrides;
+use crate::a11y::A11yOverrides;
 
 // ---------------------------------------------------------------------------
 // InitCtx

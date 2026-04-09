@@ -44,6 +44,10 @@ pub mod testing;
 
 pub mod animation;
 
+pub(crate) mod a11y;
+pub mod shared_state;
+pub(crate) mod validate;
+
 // -- Internal modules used by the plushie binary --
 //
 // These are public so the binary crate can access them, but they are

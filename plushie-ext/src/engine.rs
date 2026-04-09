@@ -13,7 +13,8 @@ use serde_json::Value;
 use crate::protocol::{IncomingMessage, OutgoingEvent};
 use crate::theming;
 use crate::tree::Tree;
-use crate::widgets::{self, SharedState};
+use crate::shared_state::SharedState;
+use crate::widgets;
 
 /// Side effects produced by [`Core::apply`] that the host must handle.
 ///
@@ -309,7 +310,7 @@ impl Core {
         use std::hash::Hasher;
 
         let mut hasher = DefaultHasher::new();
-        crate::widgets::hash_json_value(theme_val, &mut hasher);
+        crate::shared_state::hash_json_value(theme_val, &mut hasher);
         let hash = hasher.finish();
 
         if self.cached_theme_hash == Some(hash) {

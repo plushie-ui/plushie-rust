@@ -22,7 +22,7 @@ use crate::image_registry::ImageRegistry;
 use crate::protocol::TreeNode;
 use crate::registry::WidgetRegistry;
 use crate::render_ctx::RenderCtx;
-use crate::widgets::SharedState;
+use crate::shared_state::SharedState;
 
 // ---------------------------------------------------------------------------
 // TreeNode constructors

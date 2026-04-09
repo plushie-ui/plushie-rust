@@ -11,7 +11,7 @@ use crate::PlushieRenderer;
 use crate::image_registry::ImageRegistry;
 use crate::message::Message;
 use crate::protocol::TreeNode;
-use crate::widgets::SharedState;
+use crate::shared_state::SharedState;
 
 /// Renders child nodes through the main dispatch. Copy-able (all shared refs).
 ///

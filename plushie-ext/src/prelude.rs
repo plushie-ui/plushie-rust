@@ -22,7 +22,7 @@ pub use crate::registry::{GenerationCounter, InitCtx, PlushieWidget, WidgetRegis
 pub use crate::render_ctx::RenderCtx;
 
 // -- A11y types (needed for PlushieWidget::infer_a11y) --
-pub use crate::widgets::a11y::A11yOverrides;
+pub use crate::a11y::A11yOverrides;
 
 // -- Canvas engine (for composing canvas-based widgets) --
 pub use crate::canvas_engine::CanvasEngine;

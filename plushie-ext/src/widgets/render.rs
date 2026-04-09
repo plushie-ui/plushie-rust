@@ -81,7 +81,59 @@ pub fn render<'a, R: PlushieRenderer>(
         validate::validate_props(node);
     }
 
-    let element = match node.type_name.as_str() {
+    // Dispatch through the WidgetRegistry when available. The registry
+    // holds PlushieWidget impls for all built-in types (via wrapper
+    // factories) and falls through to the legacy ExtensionDispatcher
+    // for custom extension types.
+    let element = if let Some(registry) = ctx.registry {
+        if let Some(widget) = registry.get_for_type(node.type_name.as_str()) {
+            widget.render(node, &ctx)
+        } else {
+            // Not in the registry: try legacy extension dispatch
+            render_via_extension(node, ctx)
+        }
+    } else {
+        // No registry (test paths, transition): use hardcoded match
+        render_via_match(node, ctx)
+    };
+
+    // Explicit a11y overrides take precedence.
+    //
+    // NOTE: Auto-inference only applies to built-in widget types listed
+    // below. Extension widgets do NOT get auto-inferred a11y overrides.
+    // Extension authors must set explicit a11y props on their nodes for
+    // accessible labels, descriptions, and roles.
+    let overrides = crate::widgets::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
+        // Auto-infer accessibility overrides from widget-specific props
+        // when the host hasn't set an explicit a11y block.
+        let props = node.props.as_object();
+        match node.type_name.as_str() {
+            // Image and SVG use iced's native .alt()/.description() methods
+            // directly, so no A11yOverride wrapping needed for those.
+            "text_input" | "text_editor" | "combo_box" => prop_str(props, "placeholder")
+                .map(crate::widgets::a11y::A11yOverrides::with_description),
+            _ => None,
+        }
+    });
+
+    if let Some(overrides) = overrides {
+        return crate::widgets::a11y::A11yOverride::wrap(element, overrides).into();
+    }
+
+    element
+}
+
+// ---------------------------------------------------------------------------
+// Legacy dispatch helpers (used when no registry is available)
+// ---------------------------------------------------------------------------
+
+/// Dispatch via the hardcoded match statement. Used when no WidgetRegistry
+/// is present (test paths, transition).
+fn render_via_match<'a, R: PlushieRenderer>(
+    node: &'a TreeNode,
+    ctx: RenderCtx<'a, R>,
+) -> Element<'a, Message, Theme, R> {
+    match node.type_name.as_str() {
         // Layout widgets
         "column" => layout::render_column(node, ctx),
         "row" => layout::render_row(node, ctx),
@@ -127,82 +179,60 @@ pub fn render<'a, R: PlushieRenderer>(
         // Table
         "table" => table::render_table(node, ctx),
         // Extension dispatch
-        unknown => {
-            if ctx.extensions.handles_type(unknown) {
-                let env = crate::extensions::WidgetEnv {
-                    caches: &ctx.caches.extension,
-                    ctx,
-                };
-                // catch_unwind at the render boundary: extension panics produce
-                // a red placeholder instead of crashing the renderer.
-                // We track consecutive render panics via an atomic counter
-                // on the dispatcher; after N consecutive panics, the
-                // extension is poisoned on the next prepare_all cycle.
-                if crate::extensions::catch_unwind_enabled() {
-                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        ctx.extensions.render(node, &env)
-                    })) {
-                        Ok(Some(element)) => element,
-                        Ok(None) => container(Space::new()).into(),
-                        Err(_) => {
-                            let at_threshold = ctx.extensions.record_render_panic(unknown);
-                            if at_threshold {
-                                log::error!(
-                                    "[id={}] extension for type `{unknown}` hit render panic \
-                                     threshold, will be poisoned on next prepare cycle",
-                                    node.id
-                                );
-                            } else {
-                                log::error!("extension panicked in render for node `{}`", node.id);
-                            }
-                            iced::widget::text(format!(
-                                "Extension error: type `{unknown}`, node `{}`",
-                                node.id
-                            ))
-                            .color(iced::Color::from_rgb(1.0, 0.0, 0.0))
-                            .into()
-                        }
+        _ => render_via_extension(node, ctx),
+    }
+}
+
+/// Dispatch to the legacy ExtensionDispatcher for extension types,
+/// or render a placeholder for unknown types.
+fn render_via_extension<'a, R: PlushieRenderer>(
+    node: &'a TreeNode,
+    ctx: RenderCtx<'a, R>,
+) -> Element<'a, Message, Theme, R> {
+    let type_name = node.type_name.as_str();
+    if ctx.extensions.handles_type(type_name) {
+        let env = crate::extensions::WidgetEnv {
+            caches: &ctx.caches.extension,
+            ctx,
+        };
+        if crate::extensions::catch_unwind_enabled() {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                ctx.extensions.render(node, &env)
+            })) {
+                Ok(Some(element)) => element,
+                Ok(None) => container(Space::new()).into(),
+                Err(_) => {
+                    let at_threshold = ctx.extensions.record_render_panic(type_name);
+                    if at_threshold {
+                        log::error!(
+                            "[id={}] extension for type `{type_name}` hit render panic \
+                             threshold, will be poisoned on next prepare cycle",
+                            node.id
+                        );
+                    } else {
+                        log::error!("extension panicked in render for node `{}`", node.id);
                     }
-                } else {
-                    match ctx.extensions.render(node, &env) {
-                        Some(element) => element,
-                        None => container(Space::new()).into(),
-                    }
+                    iced::widget::text(format!(
+                        "Extension error: type `{type_name}`, node `{}`",
+                        node.id
+                    ))
+                    .color(iced::Color::from_rgb(1.0, 0.0, 0.0))
+                    .into()
                 }
-            } else {
-                log::warn!(
-                    "[id={}] unknown node type `{unknown}`, rendering as empty container",
-                    node.id
-                );
-                container(Space::new()).into()
+            }
+        } else {
+            match ctx.extensions.render(node, &env) {
+                Some(element) => element,
+                None => container(Space::new()).into(),
             }
         }
-    };
-
-    // Explicit a11y overrides take precedence.
-    //
-    // NOTE: Auto-inference only applies to built-in widget types listed
-    // below. Extension widgets do NOT get auto-inferred a11y overrides.
-    // Extension authors must set explicit a11y props on their nodes for
-    // accessible labels, descriptions, and roles.
-    let overrides = crate::widgets::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
-        // Auto-infer accessibility overrides from widget-specific props
-        // when the host hasn't set an explicit a11y block.
-        let props = node.props.as_object();
-        match node.type_name.as_str() {
-            // Image and SVG use iced's native .alt()/.description() methods
-            // directly, so no A11yOverride wrapping needed for those.
-            "text_input" | "text_editor" | "combo_box" => prop_str(props, "placeholder")
-                .map(crate::widgets::a11y::A11yOverrides::with_description),
-            _ => None,
-        }
-    });
-
-    if let Some(overrides) = overrides {
-        return crate::widgets::a11y::A11yOverride::wrap(element, overrides).into();
+    } else {
+        log::warn!(
+            "[id={}] unknown node type `{type_name}`, rendering as empty container",
+            node.id
+        );
+        container(Space::new()).into()
     }
-
-    element
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +299,7 @@ mod tests {
             images,
             theme,
             extensions: dispatcher,
+            registry: None,
             default_text_size: None,
             default_font: None,
             window_id: "",

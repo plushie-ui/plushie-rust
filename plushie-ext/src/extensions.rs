@@ -550,6 +550,10 @@ pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
     pub images: &'a ImageRegistry,
     pub theme: &'a Theme,
     pub extensions: &'a ExtensionDispatcher<R>,
+    /// Widget registry for unified dispatch. When present, render()
+    /// uses the registry instead of the hardcoded match. Extension types
+    /// still fall through to the ExtensionDispatcher.
+    pub registry: Option<&'a crate::registry::WidgetRegistry<R>>,
     pub default_text_size: Option<f32>,
     pub default_font: Option<iced::Font>,
     /// The plushie window ID this render is for.
@@ -1908,6 +1912,7 @@ mod tests {
                 images: &images,
                 theme: &theme,
                 extensions: &dispatcher,
+                registry: None,
                 default_text_size: None,
                 default_font: None,
                 window_id: "",
@@ -1942,6 +1947,7 @@ mod tests {
             images: &images,
             theme: &theme,
             extensions: &dispatcher,
+            registry: None,
             default_text_size: None,
             default_font: None,
             window_id: "",

@@ -145,6 +145,7 @@ impl TestEnv {
             images: &self.images,
             theme: &self.theme,
             extensions: &self.dispatcher,
+            registry: None,
             default_text_size: self.default_text_size,
             default_font: self.default_font,
             window_id: "",

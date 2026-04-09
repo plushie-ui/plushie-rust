@@ -19,11 +19,15 @@ mod layout;
 mod display;
 mod input;
 mod interactive;
+mod canvas;
+mod memo;
 
 pub use layout::*;
 pub use display::*;
 pub use input::*;
 pub use interactive::*;
+pub use canvas::*;
+pub use memo::*;
 
 use serde_json::{Map, Value, json};
 

@@ -267,25 +267,21 @@ impl<R: PlushieRenderer> Core<R> {
     /// The tag includes window scope when present, so rate limiting is
     /// isolated per subscription entry.
     pub fn subscription_rates(&self) -> impl Iterator<Item = (&str, u32)> {
-        self.active_subscriptions
-            .values()
-            .flat_map(|entries| {
-                entries
-                    .iter()
-                    .filter_map(|e| e.max_rate.map(|r| (e.tag.as_str(), r)))
-            })
+        self.active_subscriptions.values().flat_map(|entries| {
+            entries
+                .iter()
+                .filter_map(|e| e.max_rate.map(|r| (e.tag.as_str(), r)))
+        })
     }
 
     /// Collect all tags that have a max_rate set.
     pub fn subscription_rate_tags(&self) -> impl Iterator<Item = &str> {
-        self.active_subscriptions
-            .values()
-            .flat_map(|entries| {
-                entries
-                    .iter()
-                    .filter(|e| e.max_rate.is_some())
-                    .map(|e| e.tag.as_str())
-            })
+        self.active_subscriptions.values().flat_map(|entries| {
+            entries
+                .iter()
+                .filter(|e| e.max_rate.is_some())
+                .map(|e| e.tag.as_str())
+        })
     }
 
     /// Compute a SHA-256 hash of the current tree (serialized as JSON).
@@ -886,7 +882,10 @@ mod tests {
         };
         let effects = core.apply(msg);
         assert_eq!(effects.len(), 1);
-        assert!(matches!(effects[0], CoreEffect::ExtensionConfig(serde_json::Value::Null)));
+        assert!(matches!(
+            effects[0],
+            CoreEffect::ExtensionConfig(serde_json::Value::Null)
+        ));
     }
 
     #[test]
@@ -1031,11 +1030,7 @@ mod tests {
         // (text_editor, markdown, combo_box, themer, pane_grid caches are
         // now factory-owned via PlushieWidget::prepare(), not populated
         // by ensure_caches_walk. qr_code and canvas still use the old path.)
-        let qr_node = make_node_with_props(
-            "qr1",
-            "qr_code",
-            serde_json::json!({"data": "hello"}),
-        );
+        let qr_node = make_node_with_props("qr1", "qr_code", serde_json::json!({"data": "hello"}));
         let mut root = make_node("root", "column");
         root.children.push(qr_node);
         core.apply(IncomingMessage::Snapshot { tree: root });

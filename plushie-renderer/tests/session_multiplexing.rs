@@ -341,7 +341,10 @@ fn reset_tears_down_session() {
     // message processing, then session_closed as its last action
     // before exiting. The ordering is deterministic.
     let r1 = stdout.recv();
-    assert_eq!(r1["type"], "reset_response", "expected reset_response first");
+    assert_eq!(
+        r1["type"], "reset_response",
+        "expected reset_response first"
+    );
     let r2 = stdout.recv();
     assert_eq!(r2["type"], "event");
     assert_eq!(r2["family"], "session_closed");
@@ -530,7 +533,9 @@ fn mock_text_input_emits_input_event() {
         }
     }
 
-    let input_event = all_events.iter().find(|e| e["family"] == "input")
+    let input_event = all_events
+        .iter()
+        .find(|e| e["family"] == "input")
         .unwrap_or_else(|| panic!("expected an input event in: {all_events:?}"));
     assert_eq!(input_event["id"], "inp1");
     assert_eq!(input_event["value"], "hello");
@@ -701,7 +706,9 @@ fn mock_slider_emits_slide_event() {
     let events = resp["events"]
         .as_array()
         .expect("events should be an array");
-    let slide_event = events.iter().find(|e| e["family"] == "slide")
+    let slide_event = events
+        .iter()
+        .find(|e| e["family"] == "slide")
         .expect("expected a slide event");
     assert_eq!(slide_event["id"], "sld1");
     assert_eq!(events[0]["value"], 75.0);

@@ -99,16 +99,20 @@ fn infer_placeholder_as_description(node: &TreeNode) -> Option<A11yOverrides> {
 // Layout widgets (11)
 // ---------------------------------------------------------------------------
 
-builtin_widget!(ColumnWidget,          ["column"],       layout::render_column);
-builtin_widget!(RowWidget,             ["row"],          layout::render_row);
-builtin_widget!(ContainerWidget,       ["container"],    layout::render_container);
-builtin_widget!(StackWidget,           ["stack"],        layout::render_stack);
-builtin_widget!(GridWidget,            ["grid"],         layout::render_grid);
-builtin_widget!(PinWidget,             ["pin"],          layout::render_pin);
-builtin_widget!(KeyedColumnWidget,     ["keyed_column"], layout::render_keyed_column);
-builtin_widget!(FloatWidget,           ["float"],        layout::render_float);
-builtin_widget!(ResponsiveWidget,      ["responsive"],   layout::render_responsive);
-builtin_widget!(ScrollableWidget,      ["scrollable"],   layout::render_scrollable);
+builtin_widget!(ColumnWidget, ["column"], layout::render_column);
+builtin_widget!(RowWidget, ["row"], layout::render_row);
+builtin_widget!(ContainerWidget, ["container"], layout::render_container);
+builtin_widget!(StackWidget, ["stack"], layout::render_stack);
+builtin_widget!(GridWidget, ["grid"], layout::render_grid);
+builtin_widget!(PinWidget, ["pin"], layout::render_pin);
+builtin_widget!(
+    KeyedColumnWidget,
+    ["keyed_column"],
+    layout::render_keyed_column
+);
+builtin_widget!(FloatWidget, ["float"], layout::render_float);
+builtin_widget!(ResponsiveWidget, ["responsive"], layout::render_responsive);
+builtin_widget!(ScrollableWidget, ["scrollable"], layout::render_scrollable);
 // PaneGridWidget: extracted stateful factory (owns pane_grid::State).
 // Has complex prepare (pane reconciliation) and handle_message
 // (resolve pane handles to IDs, mutate state on resize/drop).
@@ -239,8 +243,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                             let pane_id = state.get(*pane).cloned().unwrap_or_default();
                             Some(vec![
                                 OutgoingEvent::pane_dragged(
-                                    grid_id.clone(), "picked", pane_id,
-                                    None, None, None,
+                                    grid_id.clone(),
+                                    "picked",
+                                    pane_id,
+                                    None,
+                                    None,
+                                    None,
                                 )
                                 .with_window_id(window_id.clone()),
                             ])
@@ -266,7 +274,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                                     let region_str = match region {
                                         pane_grid::Region::Center => "center",
                                         pane_grid::Region::Edge(pane_grid::Edge::Top) => "top",
-                                        pane_grid::Region::Edge(pane_grid::Edge::Bottom) => "bottom",
+                                        pane_grid::Region::Edge(pane_grid::Edge::Bottom) => {
+                                            "bottom"
+                                        }
                                         pane_grid::Region::Edge(pane_grid::Edge::Left) => "left",
                                         pane_grid::Region::Edge(pane_grid::Edge::Right) => "right",
                                     };
@@ -276,8 +286,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                             state.drop(*pane, *target);
                             Some(vec![
                                 OutgoingEvent::pane_dragged(
-                                    grid_id.clone(), "dropped", pane_id,
-                                    target_pane, region, edge,
+                                    grid_id.clone(),
+                                    "dropped",
+                                    pane_id,
+                                    target_pane,
+                                    region,
+                                    edge,
                                 )
                                 .with_window_id(window_id.clone()),
                             ])
@@ -290,8 +304,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                             let pane_id = state.get(*pane).cloned().unwrap_or_default();
                             Some(vec![
                                 OutgoingEvent::pane_dragged(
-                                    grid_id.clone(), "canceled", pane_id,
-                                    None, None, None,
+                                    grid_id.clone(),
+                                    "canceled",
+                                    pane_id,
+                                    None,
+                                    None,
+                                    None,
                                 )
                                 .with_window_id(window_id.clone()),
                             ])
@@ -331,13 +349,21 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
 // Display widgets (9, counting rich_text alias)
 // ---------------------------------------------------------------------------
 
-builtin_widget!(TextWidget,            ["text"],         display::render_text);
-builtin_widget!(RichTextWidget,        ["rich_text", "rich"], display::render_rich_text);
-builtin_widget!(SpaceWidget,           ["space"],        display::render_space);
-builtin_widget!(RuleWidget,            ["rule"],         display::render_rule);
-builtin_widget!(ProgressBarWidget,     ["progress_bar"], display::render_progress_bar);
-builtin_widget!(ImageWidget,           ["image"],        display::render_image);
-builtin_widget!(SvgWidget,             ["svg"],          display::render_svg);
+builtin_widget!(TextWidget, ["text"], display::render_text);
+builtin_widget!(
+    RichTextWidget,
+    ["rich_text", "rich"],
+    display::render_rich_text
+);
+builtin_widget!(SpaceWidget, ["space"], display::render_space);
+builtin_widget!(RuleWidget, ["rule"], display::render_rule);
+builtin_widget!(
+    ProgressBarWidget,
+    ["progress_bar"],
+    display::render_progress_bar
+);
+builtin_widget!(ImageWidget, ["image"], display::render_image);
+builtin_widget!(SvgWidget, ["svg"], display::render_svg);
 // MarkdownWidget: extracted stateful factory (owns parsed markdown items)
 pub(crate) struct MarkdownWidget {
     /// Parsed markdown items per (window_id, node_id), with content hash
@@ -487,7 +513,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
         Box::new(MarkdownWidget::new())
     }
 }
-builtin_widget!(QrCodeWidget,          ["qr_code"],      display::render_qr_code);
+builtin_widget!(QrCodeWidget, ["qr_code"], display::render_qr_code);
 
 // ---------------------------------------------------------------------------
 // Input widgets (9)
@@ -605,9 +631,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
         Box::new(TextEditorWidget::new())
     }
 }
-builtin_widget!(CheckboxWidget,        ["checkbox"],         input::render_checkbox);
-builtin_widget!(TogglerWidget,         ["toggler"],          input::render_toggler);
-builtin_widget!(RadioWidget,           ["radio"],            input::render_radio);
+builtin_widget!(CheckboxWidget, ["checkbox"], input::render_checkbox);
+builtin_widget!(TogglerWidget, ["toggler"], input::render_toggler);
+builtin_widget!(RadioWidget, ["radio"], input::render_radio);
 // ---------------------------------------------------------------------------
 // Slider value tracking (shared by SliderWidget and VerticalSliderWidget)
 // ---------------------------------------------------------------------------
@@ -713,7 +739,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
         Box::new(VerticalSliderWidget::new())
     }
 }
-builtin_widget!(PickListWidget,        ["pick_list"],        input::render_pick_list);
+builtin_widget!(PickListWidget, ["pick_list"], input::render_pick_list);
 // ComboBoxWidget: extracted stateful factory (owns combo_box::State).
 // Render delegates to existing function during transition. Once render
 // reads from factory state instead of WidgetCaches, the delegation
@@ -751,7 +777,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
                     .collect()
             })
             .unwrap_or_default();
-        let options_changed = self.options.get(&key).is_none_or(|cached| *cached != new_options);
+        let options_changed = self
+            .options
+            .get(&key)
+            .is_none_or(|cached| *cached != new_options);
         if options_changed {
             self.states.insert(
                 key.clone(),
@@ -795,10 +824,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
 // Interactive widgets (7)
 // ---------------------------------------------------------------------------
 
-builtin_widget!(ButtonWidget,          ["button"],       interactive::render_button);
-builtin_widget!(PointerAreaWidget,     ["pointer_area"], interactive::render_mouse_area);
-builtin_widget!(SensorWidget,          ["sensor"],       interactive::render_sensor);
-builtin_widget!(TooltipWidget,         ["tooltip"],      interactive::render_tooltip);
+builtin_widget!(ButtonWidget, ["button"], interactive::render_button);
+builtin_widget!(
+    PointerAreaWidget,
+    ["pointer_area"],
+    interactive::render_mouse_area
+);
+builtin_widget!(SensorWidget, ["sensor"], interactive::render_sensor);
+builtin_widget!(TooltipWidget, ["tooltip"], interactive::render_tooltip);
 // ThemerWidget: extracted stateful factory (owns resolved theme cache)
 // See interactive::ensure_themer_cache for the original ensure logic.
 pub(crate) struct ThemerWidget {
@@ -864,20 +897,20 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
         Box::new(ThemerWidget::new())
     }
 }
-builtin_widget!(WindowWidget,          ["window"],       interactive::render_window);
-builtin_widget!(OverlayWidget,         ["overlay"],      interactive::render_overlay);
+builtin_widget!(WindowWidget, ["window"], interactive::render_window);
+builtin_widget!(OverlayWidget, ["overlay"], interactive::render_overlay);
 
 // ---------------------------------------------------------------------------
 // Canvas (1)
 // ---------------------------------------------------------------------------
 
-builtin_widget!(CanvasWidget,          ["canvas"],       canvas::render_canvas);
+builtin_widget!(CanvasWidget, ["canvas"], canvas::render_canvas);
 
 // ---------------------------------------------------------------------------
 // Table (1)
 // ---------------------------------------------------------------------------
 
-builtin_widget!(TableWidget,           ["table"],        table::render_table);
+builtin_widget!(TableWidget, ["table"], table::render_table);
 
 // ---------------------------------------------------------------------------
 // IcedWidgetSet: the default set of all 36 built-in widgets

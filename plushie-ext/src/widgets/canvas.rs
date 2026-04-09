@@ -2125,19 +2125,23 @@ fn draw_canvas_shape<R: PlushieRenderer>(
                 } else if let Some(obj) = radius_val.as_object() {
                     // Per-corner radius
                     iced::border::Radius {
-                        top_left: obj.get("top_left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
-                        top_right: obj.get("top_right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
-                        bottom_right: obj.get("bottom_right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
-                        bottom_left: obj.get("bottom_left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32,
+                        top_left: obj.get("top_left").and_then(|v| v.as_f64()).unwrap_or(0.0)
+                            as f32,
+                        top_right: obj.get("top_right").and_then(|v| v.as_f64()).unwrap_or(0.0)
+                            as f32,
+                        bottom_right: obj
+                            .get("bottom_right")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.0) as f32,
+                        bottom_left: obj
+                            .get("bottom_left")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.0) as f32,
                     }
                 } else {
                     iced::border::Radius::from(0.0)
                 };
-                canvas::Path::rounded_rectangle(
-                    Point::new(x, y),
-                    Size::new(w, h),
-                    radius,
-                )
+                canvas::Path::rounded_rectangle(Point::new(x, y), Size::new(w, h), radius)
             } else {
                 canvas::Path::rectangle(Point::new(x, y), Size::new(w, h))
             };
@@ -3063,8 +3067,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
             }
 
             let local_rect = hit_region_to_rect(&element.hit_region);
-            let element_bounds =
-                transformed_bounds(local_rect, &element.transform, canvas_pos);
+            let element_bounds = transformed_bounds(local_rect, &element.transform, canvas_pos);
 
             let wid = iced::widget::Id::from(element.id.clone());
 
@@ -3084,8 +3087,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                                 continue;
                             }
                             let cr = hit_region_to_rect(&child.hit_region);
-                            let child_bounds =
-                                transformed_bounds(cr, &child.transform, canvas_pos);
+                            let child_bounds = transformed_bounds(cr, &child.transform, canvas_pos);
                             let child_wid = iced::widget::Id::from(child.id.clone());
                             child_op.accessible(
                                 Some(&child_wid),
@@ -3199,7 +3201,8 @@ pub(crate) fn render_canvas<'a, R: PlushieRenderer>(
 
     // Build sorted layer data from children (shapes as tree nodes).
     let layer_map = canvas_layers_from_node(node);
-    let layers: Vec<(String, Vec<Value>)> = layer_map.into_iter()
+    let layers: Vec<(String, Vec<Value>)> = layer_map
+        .into_iter()
         .map(|(name, val)| {
             let shapes = val.as_array().cloned().unwrap_or_default();
             (name.clone(), truncate_shapes(&name, shapes))
@@ -3479,7 +3482,10 @@ fn intersect_rects(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> (f32, f3
 
 /// Validate interactive elements and return diagnostic events for common
 /// accessibility issues. Called once per tree snapshot/patch.
-fn validate_interactive_elements(canvas_id: &str, elements: &[InteractiveElement]) -> Vec<OutgoingEvent> {
+fn validate_interactive_elements(
+    canvas_id: &str,
+    elements: &[InteractiveElement],
+) -> Vec<OutgoingEvent> {
     let mut diagnostics = Vec::new();
 
     for element in elements {
@@ -3757,14 +3763,27 @@ mod tests {
 
     #[test]
     fn canvas_layers_from_layer_children() {
-        let node = make_canvas_node(json!({}), vec![
-            make_layer_node("background", vec![
-                make_shape_node("auto:shape:bg:0", "rect", json!({"width": 100})),
-            ]),
-            make_layer_node("foreground", vec![
-                make_shape_node("auto:shape:fg:0", "circle", json!({"radius": 50})),
-            ]),
-        ]);
+        let node = make_canvas_node(
+            json!({}),
+            vec![
+                make_layer_node(
+                    "background",
+                    vec![make_shape_node(
+                        "auto:shape:bg:0",
+                        "rect",
+                        json!({"width": 100}),
+                    )],
+                ),
+                make_layer_node(
+                    "foreground",
+                    vec![make_shape_node(
+                        "auto:shape:fg:0",
+                        "circle",
+                        json!({"radius": 50}),
+                    )],
+                ),
+            ],
+        );
         let result = canvas_layers_from_node(&node);
         assert_eq!(result.len(), 2);
         assert!(result.contains_key("background"));
@@ -3781,9 +3800,14 @@ mod tests {
     #[test]
     fn canvas_flat_shape_children() {
         // Direct shape children without layer wrappers go into "default".
-        let node = make_canvas_node(json!({}), vec![
-            make_shape_node("auto:shape:0", "line", json!({"x1": 0, "y1": 0, "x2": 100, "y2": 100})),
-        ]);
+        let node = make_canvas_node(
+            json!({}),
+            vec![make_shape_node(
+                "auto:shape:0",
+                "line",
+                json!({"x1": 0, "y1": 0, "x2": 100, "y2": 100}),
+            )],
+        );
         let result = canvas_layers_from_node(&node);
         assert_eq!(result.len(), 1);
         assert!(result.contains_key("default"));
@@ -3810,17 +3834,23 @@ mod tests {
 
     #[test]
     fn canvas_layer_sort_order() {
-        let node = make_canvas_node(json!({}), vec![
-            make_layer_node("charlie", vec![
-                make_shape_node("auto:shape:c:0", "rect", json!({})),
-            ]),
-            make_layer_node("alpha", vec![
-                make_shape_node("auto:shape:a:0", "circle", json!({})),
-            ]),
-            make_layer_node("bravo", vec![
-                make_shape_node("auto:shape:b:0", "line", json!({})),
-            ]),
-        ]);
+        let node = make_canvas_node(
+            json!({}),
+            vec![
+                make_layer_node(
+                    "charlie",
+                    vec![make_shape_node("auto:shape:c:0", "rect", json!({}))],
+                ),
+                make_layer_node(
+                    "alpha",
+                    vec![make_shape_node("auto:shape:a:0", "circle", json!({}))],
+                ),
+                make_layer_node(
+                    "bravo",
+                    vec![make_shape_node("auto:shape:b:0", "line", json!({}))],
+                ),
+            ],
+        );
         let result = canvas_layers_from_node(&node);
         let keys: Vec<&String> = result.keys().collect();
         assert_eq!(keys, vec!["alpha", "bravo", "charlie"]);

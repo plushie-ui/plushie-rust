@@ -351,8 +351,7 @@ impl Message {
             | Message::MouseAreaMove(_, id, ..)
             | Message::MouseAreaScroll(_, id, ..) => Some(id),
             // Canvas events (use canvas ID, not element ID)
-            Message::CanvasEvent { id, .. }
-            | Message::CanvasScroll { id, .. } => Some(id),
+            Message::CanvasEvent { id, .. } | Message::CanvasScroll { id, .. } => Some(id),
             Message::CanvasElementEnter { canvas_id, .. }
             | Message::CanvasElementLeave { canvas_id, .. }
             | Message::CanvasElementClick { canvas_id, .. }

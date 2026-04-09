@@ -181,9 +181,7 @@ pub(crate) fn validate_settings(settings: &Value, expected_token: Option<&str>, 
         None => {
             startup_exit(
                 codec,
-                &format!(
-                    "missing protocol_version in Settings (expected {expected})"
-                ),
+                &format!("missing protocol_version in Settings (expected {expected})"),
             );
         }
     }

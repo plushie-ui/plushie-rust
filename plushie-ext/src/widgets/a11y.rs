@@ -242,11 +242,14 @@ impl A11yOverrides {
             .and_then(|v| v.as_str())
             .map(|s| widget::Id::from(s.to_owned()));
 
-        let radio_group = a11y.get("radio_group").and_then(|v| v.as_array()).map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(|s| widget::Id::from(s.to_owned())))
-                .collect()
-        });
+        let radio_group = a11y
+            .get("radio_group")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| widget::Id::from(s.to_owned())))
+                    .collect()
+            });
 
         let result = Self {
             role,

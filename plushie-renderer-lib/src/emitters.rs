@@ -95,7 +95,11 @@ pub fn emit_hello(
     transport: &str,
 ) -> io::Result<()> {
     let builtin = plushie_ext::widgets::render::builtin_widget_types();
-    let all_widgets: Vec<&str> = builtin.iter().copied().chain(native_widgets.iter().copied()).collect();
+    let all_widgets: Vec<&str> = builtin
+        .iter()
+        .copied()
+        .chain(native_widgets.iter().copied())
+        .collect();
 
     let msg = serde_json::json!({
         "type": "hello",

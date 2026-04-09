@@ -241,7 +241,8 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             }
             self.type_index.insert(name.to_string(), idx);
             if !set_name.is_empty() {
-                self.provenance.insert(name.to_string(), set_name.to_string());
+                self.provenance
+                    .insert(name.to_string(), set_name.to_string());
             }
         }
         self.impls.push(widget);
@@ -370,8 +371,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
 
         // Look up factory for this node type and call prepare.
         if let Some(&idx) = self.type_index.get(node.type_name.as_str()) {
-            self.node_factory_map
-                .insert(node.id.clone(), idx);
+            self.node_factory_map.insert(node.id.clone(), idx);
             // Split borrow: index into impls while self.type_index/node_factory_map
             // are not borrowed mutably (they were used above, but the borrow ended).
             self.impls[idx].prepare(node, current_window_id, theme);

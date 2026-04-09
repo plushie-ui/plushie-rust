@@ -43,14 +43,12 @@ pub fn process_widget_message<R: PlushieRenderer>(
     // Try registry dispatch first. If the factory handles the message
     // (returns Some), use that result. Otherwise fall through to the
     // legacy dispatch below.
-    if let Some(node_id) = msg.node_id() {
-        if let Some((idx, _matched_id)) = registry.get_for_node_id(node_id) {
-            if let Some(factory) = registry.get_mut(idx) {
-                if let Some(events) = factory.handle_message(&msg) {
-                    return events;
-                }
-            }
-        }
+    if let Some(node_id) = msg.node_id()
+        && let Some((idx, _matched_id)) = registry.get_for_node_id(node_id)
+        && let Some(factory) = registry.get_mut(idx)
+        && let Some(events) = factory.handle_message(&msg)
+    {
+        return events;
     }
 
     match msg {
@@ -163,4 +161,3 @@ pub fn process_widget_message<R: PlushieRenderer>(
         _ => vec![],
     }
 }
-

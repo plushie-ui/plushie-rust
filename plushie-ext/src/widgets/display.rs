@@ -14,7 +14,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use iced::widget::text::LineHeight;
-use iced::widget::{Space, canvas, container, markdown, progress_bar, rich_text, rule, span, text};
+use iced::widget::{Space, canvas, progress_bar, rich_text, rule, span, text};
 use iced::{
     Color, Element, Font, Length, Padding, Pixels, Point, Radians, Rotation, Size, Theme, mouse,
 };
@@ -398,62 +398,8 @@ pub(crate) fn render_svg<'a, R: PlushieRenderer>(
     s.into()
 }
 
-// ---------------------------------------------------------------------------
-// Markdown
-// ---------------------------------------------------------------------------
-
-pub(crate) fn render_markdown<'a, R: PlushieRenderer>(
-    node: &'a TreeNode,
-    ctx: RenderCtx<'a, R>,
-) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
-    let items = match ctx.caches.markdown_items.get(&node.id) {
-        Some((_hash, items)) => items.as_slice(),
-        None => {
-            log::warn!("markdown cache miss for id={}", node.id);
-            return text("(markdown: cache miss)").into();
-        }
-    };
-
-    // Build markdown Settings from props, falling back to theme defaults.
-    let mut settings = if let Some(text_size) =
-        prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "text_size")
-            .or(ctx.default_text_size)
-    {
-        markdown::Settings::with_text_size(text_size, markdown::Style::from(ctx.theme))
-    } else {
-        markdown::Settings::from(ctx.theme)
-    };
-    if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h1_size") {
-        settings.h1_size = Pixels(v);
-    }
-    if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h2_size") {
-        settings.h2_size = Pixels(v);
-    }
-    if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "h3_size") {
-        settings.h3_size = Pixels(v);
-    }
-    if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "code_size")
-    {
-        settings.code_size = Pixels(v);
-    }
-    if let Some(v) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing") {
-        settings.spacing = Pixels(v);
-    }
-    if let Some(lc) = prop_color(props, "link_color") {
-        settings.style.link_color = lc;
-    }
-
-    let mut md: Element<'a, Message, Theme, R> =
-        markdown::view(items, settings).map(Message::MarkdownUrl);
-
-    // Wrap in container if width is specified
-    if let Some(w) = value_to_length_opt(props.and_then(|p| p.get("width"))) {
-        md = container(md).width(w).into();
-    }
-
-    md
-}
+// render_markdown: removed. MarkdownWidget::render() in builtins.rs
+// handles all markdown rendering from factory-owned state.
 
 // ---------------------------------------------------------------------------
 // Progress Bar

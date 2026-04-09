@@ -12,8 +12,8 @@
 //! - `scrollable` -- scrolling container (vertical, horizontal, or both)
 //! - `pane_grid` -- resizable split panes with drag handles
 
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use iced::widget::scrollable::Anchor;
@@ -628,29 +628,13 @@ pub(crate) fn render_scrollable<'a, R: PlushieRenderer>(
 // PaneGrid
 // ---------------------------------------------------------------------------
 
-/// Render a pane_grid widget with resizable split panes.
+/// Render a pane_grid with the provided State.
 ///
-/// # Accessibility
+/// Called by PaneGridWidget::render() with factory-owned State.
 ///
 /// The pane_grid renders as nested containers with no inherent semantic
-/// structure. For screen reader users, each pane's content should be
-/// independently labelable. Hosts should set `a11y.label` on each pane
-/// node to give it a meaningful name (e.g. "Editor", "Preview"). The
-/// pane_grid node itself can use `a11y.role = "group"` with
-/// `a11y.label` to describe the overall layout (e.g. "Split editor").
-pub(crate) fn render_pane_grid<'a, R: PlushieRenderer>(
-    node: &'a TreeNode,
-    ctx: RenderCtx<'a, R>,
-) -> Element<'a, Message, Theme, R> {
-    let state = match ctx.caches.pane_grid_states.get(&node.id) {
-        Some(s) => s,
-        None => return text("(pane_grid: no state)").into(),
-    };
-    render_pane_grid_with_state(node, ctx, state)
-}
-
-/// Inner render function that accepts pane_grid::State as a parameter.
-/// Called by both the legacy WidgetCaches path and the PlushieWidget factory.
+/// structure. Hosts should set `a11y.label` on each pane node and use
+/// `a11y.role = "group"` on the grid node for accessibility.
 pub(crate) fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,

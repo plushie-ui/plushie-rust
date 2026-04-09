@@ -912,10 +912,7 @@ pub fn parse_menu_style(props: Props<'_>) -> Option<MenuStyleOverrides> {
 }
 
 /// Apply `MenuStyleOverrides` on top of a base `menu::Style`.
-pub fn apply_menu_style_overrides(
-    style: &mut iced::overlay::menu::Style,
-    ov: &MenuStyleOverrides,
-) {
+pub fn apply_menu_style_overrides(style: &mut iced::overlay::menu::Style, ov: &MenuStyleOverrides) {
     if let Some(bg) = ov.background {
         style.background = bg;
     }

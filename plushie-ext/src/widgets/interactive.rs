@@ -416,29 +416,8 @@ pub(crate) fn render_tooltip<'a, R: PlushieRenderer>(
 // Themer (applies a sub-theme to child content)
 // ---------------------------------------------------------------------------
 
-pub(crate) fn render_themer<'a, R: PlushieRenderer>(
-    node: &'a TreeNode,
-    ctx: RenderCtx<'a, R>,
-) -> Element<'a, Message, Theme, R> {
-    // The resolved theme lives in ctx.caches.themer_themes (populated by
-    // ensure_caches) so we can borrow it with lifetime 'a for child rendering.
-    let cached_theme = ctx.caches.themer_themes.get(&node.id);
-    let child_theme = cached_theme.unwrap_or(ctx.theme);
-
-    // Build a child ctx with the resolved sub-theme so children render
-    // against the overridden theme.
-    let child_ctx = ctx.with_theme(child_theme);
-
-    let child: Element<'a, Message, Theme, R> = node
-        .children
-        .first()
-        .map(|c| child_ctx.render_child(c))
-        .unwrap_or_else(|| Space::new().into());
-
-    // Clone the cached theme into an owned Option for the Themer wrapper.
-    let themer_theme = cached_theme.cloned();
-    iced::widget::Themer::new(themer_theme, child).into()
-}
+// render_themer: removed. ThemerWidget::render() in builtins.rs
+// handles all themer rendering from factory-owned state.
 
 // ---------------------------------------------------------------------------
 // Window (top-level container)

@@ -12,7 +12,7 @@
 
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    checkbox, combo_box, container, pick_list, slider, text, text_editor, text_input, toggler,
+    checkbox, combo_box, container, pick_list, slider, text_editor, text_input, toggler,
     vertical_slider,
 };
 use iced::{Element, Font, Length, Pixels, Theme, keyboard, widget};
@@ -374,22 +374,11 @@ struct KeyRule {
 // Text Editor
 // ---------------------------------------------------------------------------
 
-pub(crate) fn render_text_editor<'a, R: PlushieRenderer>(
-    node: &'a TreeNode,
-    ctx: RenderCtx<'a, R>,
-) -> Element<'a, Message, Theme, R> {
-    let content = match ctx.caches.editor_contents.get(&node.id) {
-        Some(c) => c,
-        None => {
-            log::warn!("text_editor cache miss for id={}", node.id);
-            return text("(text_editor: cache miss)").into();
-        }
-    };
-    render_text_editor_with_content(node, ctx, content)
-}
+// render_text_editor WidgetCaches wrapper: removed.
+// TextEditorWidget::render() calls render_text_editor_with_content directly.
 
-/// Inner render function that accepts Content as a parameter.
-/// Called by both the legacy WidgetCaches path and the PlushieWidget factory.
+/// Render a text_editor with the provided Content.
+/// Called by TextEditorWidget::render() with factory-owned Content.
 pub(crate) fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
@@ -1494,28 +1483,16 @@ pub(crate) fn render_pick_list<'a, R: PlushieRenderer>(
 // Combo Box
 // ---------------------------------------------------------------------------
 
-pub(crate) fn render_combo_box<'a, R: PlushieRenderer>(
-    node: &'a TreeNode,
-    ctx: RenderCtx<'a, R>,
-) -> Element<'a, Message, Theme, R> {
-    let state = match ctx.caches.combo_states.get(&node.id) {
-        Some(s) => s,
-        None => {
-            log::warn!("combo_box cache miss for id={}", node.id);
-            return text("(combo_box: cache miss)").into();
-        }
-    };
-    render_combo_box_with_state(node, ctx, state)
-}
+// render_combo_box WidgetCaches wrapper: removed.
+// ComboBoxWidget::render() calls render_combo_box_with_state directly.
 
-/// Inner render function that accepts state as a parameter.
-/// Called by both the legacy WidgetCaches path and the PlushieWidget factory.
+/// Render a combo_box with the provided State.
+/// Called by ComboBoxWidget::render() with factory-owned State.
 pub(crate) fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
     state: &'a combo_box::State<String>,
 ) -> Element<'a, Message, Theme, R> {
-
     let props = node.props.as_object();
     let selected: Option<String> = prop_str(props, "selected");
     let placeholder = prop_str(props, "placeholder").unwrap_or_default();

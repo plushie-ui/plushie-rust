@@ -15,15 +15,45 @@ use super::caches::MAX_TREE_DEPTH;
 /// Returns the list of all built-in widget type names that the renderer supports.
 pub fn builtin_widget_types() -> &'static [&'static str] {
     &[
-        "column", "row", "container", "stack", "grid", "pin",
-        "keyed_column", "float", "responsive", "scrollable", "pane_grid",
-        "text", "rich_text", "rich", "space", "rule", "progress_bar",
-        "image", "svg", "markdown", "qr_code",
-        "text_input", "text_editor", "checkbox", "toggler", "radio",
-        "slider", "vertical_slider", "pick_list", "combo_box",
-        "button", "pointer_area", "sensor", "tooltip", "themer",
-        "window", "overlay",
-        "canvas", "table",
+        "column",
+        "row",
+        "container",
+        "stack",
+        "grid",
+        "pin",
+        "keyed_column",
+        "float",
+        "responsive",
+        "scrollable",
+        "pane_grid",
+        "text",
+        "rich_text",
+        "rich",
+        "space",
+        "rule",
+        "progress_bar",
+        "image",
+        "svg",
+        "markdown",
+        "qr_code",
+        "text_input",
+        "text_editor",
+        "checkbox",
+        "toggler",
+        "radio",
+        "slider",
+        "vertical_slider",
+        "pick_list",
+        "combo_box",
+        "button",
+        "pointer_area",
+        "sensor",
+        "tooltip",
+        "themer",
+        "window",
+        "overlay",
+        "canvas",
+        "table",
     ]
 }
 use super::helpers::*;
@@ -137,8 +167,13 @@ fn render_via_match<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
+    // Stateful widget types whose caches have been migrated to
+    // PlushieWidget factories are not listed here. They require
+    // the registry path (which provides factory-owned state).
+    // This match only covers stateless widgets and those still
+    // using WidgetCaches (canvas, qr_code).
     match node.type_name.as_str() {
-        // Layout widgets
+        // Layout widgets (stateless)
         "column" => layout::render_column(node, ctx),
         "row" => layout::render_row(node, ctx),
         "container" => layout::render_container(node, ctx),
@@ -149,8 +184,7 @@ fn render_via_match<'a, R: PlushieRenderer>(
         "float" => layout::render_float(node, ctx),
         "responsive" => layout::render_responsive(node, ctx),
         "scrollable" => layout::render_scrollable(node, ctx),
-        "pane_grid" => layout::render_pane_grid(node, ctx),
-        // Display widgets
+        // Display widgets (stateless + qr_code which still uses WidgetCaches)
         "text" => display::render_text(node, ctx),
         "rich_text" | "rich" => display::render_rich_text(node, ctx),
         "space" => display::render_space(node, ctx),
@@ -158,31 +192,27 @@ fn render_via_match<'a, R: PlushieRenderer>(
         "progress_bar" => display::render_progress_bar(node, ctx),
         "image" => display::render_image(node, ctx),
         "svg" => display::render_svg(node, ctx),
-        "markdown" => display::render_markdown(node, ctx),
         "qr_code" => display::render_qr_code(node, ctx),
-        // Input widgets
+        // Input widgets (stateless only)
         "text_input" => input::render_text_input(node, ctx),
-        "text_editor" => input::render_text_editor(node, ctx),
         "checkbox" => input::render_checkbox(node, ctx),
         "toggler" => input::render_toggler(node, ctx),
         "radio" => input::render_radio(node, ctx),
         "slider" => input::render_slider(node, ctx),
         "vertical_slider" => input::render_vertical_slider(node, ctx),
         "pick_list" => input::render_pick_list(node, ctx),
-        "combo_box" => input::render_combo_box(node, ctx),
-        // Interactive widgets
+        // Interactive widgets (stateless only)
         "button" => interactive::render_button(node, ctx),
         "pointer_area" => interactive::render_mouse_area(node, ctx),
         "sensor" => interactive::render_sensor(node, ctx),
         "tooltip" => interactive::render_tooltip(node, ctx),
-        "themer" => interactive::render_themer(node, ctx),
         "window" => interactive::render_window(node, ctx),
         "overlay" => interactive::render_overlay(node, ctx),
-        // Canvas
+        // Canvas (still uses WidgetCaches)
         "canvas" => canvas::render_canvas(node, ctx),
-        // Table
+        // Table (stateless)
         "table" => table::render_table(node, ctx),
-        // Extension dispatch
+        // Extension dispatch / unknown type
         _ => render_via_extension(node, ctx),
     }
 }

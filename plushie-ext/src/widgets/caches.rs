@@ -1,21 +1,19 @@
 //! Widget cache management.
 //!
-//! Several iced widgets (`text_editor`, `markdown`, `combo_box`, `canvas`,
-//! `pane_grid`) require mutable state that must persist across renders, but
-//! iced's `view()` only has `&self`. The solution: [`ensure_caches`] runs
-//! during `apply()` (mutable context) to populate [`WidgetCaches`], and
-//! `render()` in `view()` reads them immutably. No `RefCell` needed.
+//! Manages shared state that must persist across renders for widgets
+//! not yet migrated to PlushieWidget factories (canvas, qr_code), plus
+//! cross-cutting shared state used by all widgets (style_overrides,
+//! interpolated_props, extension caches).
 //!
-//! Caches are keyed by node ID and automatically pruned when nodes leave
-//! the tree. Content-addressed hashing detects prop changes without
-//! clobbering user edits (e.g. a text_editor's cursor position).
+//! Most stateful widgets (text_editor, markdown, combo_box, pane_grid,
+//! themer, slider) are now handled by PlushieWidget factories which own
+//! their state directly. See `widgets/builtins.rs`.
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use iced::widget::canvas as iced_canvas;
-use iced::widget::{combo_box, markdown, pane_grid, text_editor};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
@@ -45,19 +43,12 @@ const MAX_HASH_DEPTH: usize = 256;
 /// (text_editor Content, canvas Cache) are parameterized on the
 /// renderer type because iced's widget state depends on it.
 pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
-    /// text_editor Content state (preserves cursor, undo history).
-    pub(crate) editor_contents: HashMap<String, text_editor::Content<R>>,
-    /// Hash of last-synced "content" prop per text_editor. Detects
-    /// host-side prop changes without clobbering user edits.
-    pub(crate) editor_content_hashes: HashMap<String, u64>,
-    /// Parsed markdown items with content hash for invalidation.
-    pub(crate) markdown_items: HashMap<String, (u64, Vec<markdown::Item>)>,
-    /// combo_box filter/selection state.
-    pub(crate) combo_states: HashMap<String, combo_box::State<String>>,
-    /// combo_box option lists for change detection.
-    pub(crate) combo_options: HashMap<String, Vec<String>>,
-    /// pane_grid layout state.
-    pub(crate) pane_grid_states: HashMap<String, pane_grid::State<String>>,
+    // -- Widget-specific caches (remaining, not yet factory-extracted) --
+    /// pane_grid layout state. Still in WidgetCaches because widget_ops.rs
+    /// accesses it directly for split/close/swap operations. Will move to
+    /// PaneGridWidget once handle_widget_op routing is implemented.
+    pub(crate) pane_grid_states: HashMap<String, iced::widget::pane_grid::State<String>>,
+
     /// Per-canvas, per-layer geometry caches. Inner key is layer name,
     /// u64 is content hash for invalidation.
     pub(crate) canvas_caches: HashMap<String, HashMap<String, (u64, iced_canvas::Cache<R>)>>,
@@ -71,8 +62,8 @@ pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
     pub(crate) canvas_pending_focus: HashMap<String, String>,
     /// Per-qr_code caches (content hash, canvas Cache).
     pub(crate) qr_code_caches: HashMap<String, (u64, iced_canvas::Cache<R>)>,
-    /// Resolved themes for Themer widget nodes.
-    pub(crate) themer_themes: HashMap<String, iced::Theme>,
+
+    // -- Cross-cutting shared state (used by all widget types) --
     /// Parsed style overrides with content hash for invalidation.
     /// Populated in `ensure_caches_walk` for any node with a `style`
     /// object prop; read during render to avoid re-parsing every frame.
@@ -90,17 +81,11 @@ pub struct WidgetCaches<R: PlushieRenderer = iced::Renderer> {
 impl<R: PlushieRenderer> WidgetCaches<R> {
     pub fn new() -> Self {
         Self {
-            editor_contents: HashMap::new(),
-            editor_content_hashes: HashMap::new(),
-            markdown_items: HashMap::new(),
-            combo_states: HashMap::new(),
-            combo_options: HashMap::new(),
             pane_grid_states: HashMap::new(),
             canvas_caches: HashMap::new(),
             canvas_interactions: HashMap::new(),
             canvas_pending_focus: HashMap::new(),
             qr_code_caches: HashMap::new(),
-            themer_themes: HashMap::new(),
             style_overrides: HashMap::new(),
             extension: crate::extensions::ExtensionCaches::new(),
             interpolated_props: HashMap::new(),
@@ -113,29 +98,17 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
     /// (via `ExtensionDispatcher::prepare_all`) can run before the
     /// extension cache entries are removed.
     pub fn clear_builtin(&mut self) {
-        self.editor_contents.clear();
-        self.editor_content_hashes.clear();
-        self.markdown_items.clear();
-        self.combo_states.clear();
-        self.combo_options.clear();
         self.pane_grid_states.clear();
         self.canvas_caches.clear();
         self.canvas_interactions.clear();
         self.canvas_pending_focus.clear();
         self.qr_code_caches.clear();
-        self.themer_themes.clear();
         self.style_overrides.clear();
         self.interpolated_props.clear();
     }
 
     /// Remove entries whose node IDs are no longer in the live set.
     fn prune_stale(&mut self, live_ids: &HashSet<String>) {
-        self.editor_contents.retain(|id, _| live_ids.contains(id));
-        self.editor_content_hashes
-            .retain(|id, _| live_ids.contains(id));
-        self.markdown_items.retain(|id, _| live_ids.contains(id));
-        self.combo_states.retain(|id, _| live_ids.contains(id));
-        self.combo_options.retain(|id, _| live_ids.contains(id));
         self.pane_grid_states.retain(|id, _| live_ids.contains(id));
         self.canvas_caches.retain(|id, _| live_ids.contains(id));
         self.canvas_interactions
@@ -143,7 +116,6 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
         self.canvas_pending_focus
             .retain(|id, _| live_ids.contains(id));
         self.qr_code_caches.retain(|id, _| live_ids.contains(id));
-        self.themer_themes.retain(|id, _| live_ids.contains(id));
         self.style_overrides.retain(|id, _| live_ids.contains(id));
         self.interpolated_props
             .retain(|id, _| live_ids.contains(id));
@@ -163,21 +135,18 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
     }
 
     // -- Accessor methods for renderer crate --
-    // Fields are pub(crate) to avoid leaking internal HashMap structure to
-    // extension authors, but the renderer binary needs access to a few.
-
-    /// Get a mutable reference to a text_editor Content by node ID.
-    pub fn editor_content_mut(&mut self, id: &str) -> Option<&mut text_editor::Content<R>> {
-        self.editor_contents.get_mut(id)
-    }
 
     /// Get a mutable reference to a pane_grid State by node ID.
-    pub fn pane_grid_state_mut(&mut self, id: &str) -> Option<&mut pane_grid::State<String>> {
+    /// Used by widget_ops.rs for split/close/swap operations.
+    pub fn pane_grid_state_mut(
+        &mut self,
+        id: &str,
+    ) -> Option<&mut iced::widget::pane_grid::State<String>> {
         self.pane_grid_states.get_mut(id)
     }
 
     /// Get an immutable reference to a pane_grid State by node ID.
-    pub fn pane_grid_state(&self, id: &str) -> Option<&pane_grid::State<String>> {
+    pub fn pane_grid_state(&self, id: &str) -> Option<&iced::widget::pane_grid::State<String>> {
         self.pane_grid_states.get(id)
     }
 
@@ -187,26 +156,16 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
     pub fn set_canvas_pending_focus(&mut self, canvas_id: String, element_id: String) {
         self.canvas_pending_focus.insert(canvas_id, element_id);
     }
-
-    /// Update the cached prop hash for a text_editor after the Content
-    /// was mutated by a `TextEditorAction`. This prevents
-    /// `ensure_text_editor_cache` from resetting the Content (and losing
-    /// cursor position) when the host's prop lags one frame behind.
-    pub fn update_editor_content_hash(&mut self, id: &str, text: &str) {
-        self.editor_content_hashes
-            .insert(id.to_string(), hash_str(text));
-    }
 }
 
 // ---------------------------------------------------------------------------
 // Cache pre-population
 // ---------------------------------------------------------------------------
 
-/// Walk the tree and ensure that every `text_editor`, `markdown`,
-/// `combo_box`, `pane_grid`, `canvas`, `qr_code`, and `themer` node has
-/// an entry in the corresponding cache. This must be called *before*
-/// `render` so that `render` can work with shared (`&`) references to
-/// the caches.
+/// Walk the tree and ensure that every `canvas` and `qr_code` node has
+/// an entry in the corresponding cache. Other stateful widget types
+/// (text_editor, markdown, combo_box, pane_grid, themer) are now handled
+/// by their PlushieWidget factories via `registry.prepare_walk()`.
 ///
 /// After populating caches, prunes stale entries for nodes no longer in the
 /// tree across all cache types.
@@ -216,7 +175,10 @@ impl<R: PlushieRenderer> WidgetCaches<R> {
 /// layers, etc.) is guarded by per-node content hashes, so unchanged
 /// nodes are O(1). A dirty-flag optimization would only skip those hash
 /// lookups, which are already cheap relative to the tree walk itself.
-pub fn ensure_caches<R: PlushieRenderer>(node: &TreeNode, caches: &mut WidgetCaches<R>) -> Vec<OutgoingEvent> {
+pub fn ensure_caches<R: PlushieRenderer>(
+    node: &TreeNode,
+    caches: &mut WidgetCaches<R>,
+) -> Vec<OutgoingEvent> {
     let mut live_ids = HashSet::new();
     let mut diagnostics = Vec::new();
     ensure_caches_walk(node, caches, &mut live_ids, &mut diagnostics, 0);
@@ -283,9 +245,7 @@ fn tree_node_to_shape_value(node: &TreeNode) -> Value {
 
     // Recursively convert children (for group shapes)
     if !node.children.is_empty() {
-        let child_shapes: Vec<Value> = node.children.iter()
-            .map(tree_node_to_shape_value)
-            .collect();
+        let child_shapes: Vec<Value> = node.children.iter().map(tree_node_to_shape_value).collect();
         map.insert("children".to_string(), Value::Array(child_shapes));
     }
 
@@ -311,13 +271,17 @@ pub(crate) fn canvas_layers_from_node(
     if has_layers {
         for child in &node.children {
             if child.type_name == "__layer__" {
-                let layer_name = child.props.as_object()
+                let layer_name = child
+                    .props
+                    .as_object()
                     .and_then(|p| p.get("name"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("default")
                     .to_string();
 
-                let shapes: Vec<Value> = child.children.iter()
+                let shapes: Vec<Value> = child
+                    .children
+                    .iter()
                     .map(tree_node_to_shape_value)
                     .collect();
                 map.insert(layer_name, Value::Array(shapes));
@@ -325,9 +289,7 @@ pub(crate) fn canvas_layers_from_node(
         }
     } else if !node.children.is_empty() {
         // Direct shape children (flat canvas)
-        let shapes: Vec<Value> = node.children.iter()
-            .map(tree_node_to_shape_value)
-            .collect();
+        let shapes: Vec<Value> = node.children.iter().map(tree_node_to_shape_value).collect();
         map.insert("default".to_string(), Value::Array(shapes));
     }
 
@@ -447,19 +409,19 @@ mod tests {
     #[test]
     fn widget_caches_new_is_empty() {
         let c: WidgetCaches = WidgetCaches::new();
-        assert!(c.editor_contents.is_empty());
-        assert!(c.markdown_items.is_empty());
-        assert!(c.combo_states.is_empty());
-        assert!(c.combo_options.is_empty());
         assert!(c.pane_grid_states.is_empty());
+        assert!(c.canvas_caches.is_empty());
+        assert!(c.qr_code_caches.is_empty());
+        assert!(c.style_overrides.is_empty());
     }
 
     #[test]
     fn widget_caches_clear_empties_maps() {
         let mut c: WidgetCaches = WidgetCaches::new();
-        c.combo_options.insert("x".into(), vec!["a".into()]);
+        // Use canvas_pending_focus as a simple test field.
+        c.canvas_pending_focus.insert("c1".into(), "elem".into());
         c.clear();
-        assert!(c.combo_options.is_empty());
+        assert!(c.canvas_pending_focus.is_empty());
     }
 
     // -- clear_builtin vs clear --
@@ -468,16 +430,14 @@ mod tests {
     fn clear_builtin_preserves_extension_caches() {
         let mut caches: WidgetCaches = WidgetCaches::new();
 
-        // Add a built-in cache entry and an extension cache entry.
         caches
-            .editor_contents
-            .insert("ed1".to_string(), iced::widget::text_editor::Content::new());
+            .canvas_pending_focus
+            .insert("c1".into(), "elem".into());
         caches.extension.insert("ext", "key", 42u32);
 
         caches.clear_builtin();
 
-        // Built-in caches should be empty.
-        assert!(caches.editor_contents.is_empty());
+        assert!(caches.canvas_pending_focus.is_empty());
         // Extension caches should survive.
         assert_eq!(caches.extension.get::<u32>("ext", "key"), Some(&42));
     }
@@ -487,13 +447,13 @@ mod tests {
         let mut caches: WidgetCaches = WidgetCaches::new();
 
         caches
-            .editor_contents
-            .insert("ed1".to_string(), iced::widget::text_editor::Content::new());
+            .canvas_pending_focus
+            .insert("c1".into(), "elem".into());
         caches.extension.insert("ext", "key", 42u32);
 
         caches.clear();
 
-        assert!(caches.editor_contents.is_empty());
+        assert!(caches.canvas_pending_focus.is_empty());
         assert!(!caches.extension.contains("ext", "key"));
     }
 

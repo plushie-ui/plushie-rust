@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use iced::Font;
 use serde_json::Value;
 
-use crate::PlushieRenderer;
 use crate::protocol::{IncomingMessage, OutgoingEvent};
 use crate::theming;
 use crate::tree::Tree;
@@ -162,16 +161,11 @@ pub struct SubscriptionEntry {
 /// Owns the retained UI tree, widget caches, active subscriptions, and
 /// global rendering defaults. The host calls [`apply`](Self::apply) with
 /// each incoming message and executes the returned [`CoreEffect`]s.
-///
-/// The `R` parameter selects the renderer backend for widget caches.
-/// `iced::Renderer` for headless/windowed modes, `()` (null renderer)
-/// for mock mode. Defaults to `iced::Renderer` so existing non-generic
-/// code continues to work unchanged.
-pub struct Core<R: PlushieRenderer = iced::Renderer> {
+pub struct Core {
     /// The retained UI tree (snapshots replace it, patches update it).
     pub tree: Tree,
     /// Caches for stateful widgets (text_editor content, markdown items, etc.).
-    pub caches: SharedState<R>,
+    pub caches: SharedState,
     /// Active event subscriptions: kind -> list of entries.
     /// Each kind can have multiple entries with different tags and
     /// optional window scoping.
@@ -200,13 +194,13 @@ pub struct Core<R: PlushieRenderer = iced::Renderer> {
     pub effect_stubs: HashMap<String, Value>,
 }
 
-impl<R: PlushieRenderer> Default for Core<R> {
+impl Default for Core {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<R: PlushieRenderer> Core<R> {
+impl Core {
     pub fn new() -> Self {
         Self {
             tree: Tree::new(),

@@ -395,7 +395,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     pub fn prepare_walk(
         &mut self,
         root: &TreeNode,
-        shared: &mut crate::widgets::SharedState<R>,
+        shared: &mut crate::widgets::SharedState,
         theme: &Theme,
     ) {
         self.node_factory_map.clear();
@@ -408,7 +408,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         &mut self,
         node: &TreeNode,
         window_id: &str,
-        shared: &mut crate::widgets::SharedState<R>,
+        shared: &mut crate::widgets::SharedState,
         theme: &Theme,
         live_ids: &mut std::collections::HashSet<String>,
     ) {

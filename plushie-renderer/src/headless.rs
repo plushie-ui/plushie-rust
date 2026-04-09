@@ -149,7 +149,7 @@ struct UiState<R: PlushieRenderer> {
 /// The `R` parameter selects the renderer: `iced::Renderer` for
 /// headless (real screenshots), `()` for mock (stub screenshots).
 struct Session<R: PlushieRenderer> {
-    core: Core<R>,
+    core: Core,
     theme: Theme,
     registry: plushie_ext::registry::WidgetRegistry<R>,
     images: ImageRegistry,

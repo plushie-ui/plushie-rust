@@ -546,7 +546,7 @@ pub struct InitCtx<'a> {
 /// The `R` parameter selects the renderer backend: `iced::Renderer` for
 /// headless/windowed modes, `()` (null renderer) for mock mode.
 pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
-    pub caches: &'a SharedState<R>,
+    pub caches: &'a SharedState,
     pub images: &'a ImageRegistry,
     pub theme: &'a Theme,
     /// Widget registry for unified dispatch. All widget types (built-in

@@ -531,10 +531,10 @@ pub struct StyleOverrides {
 /// Look up cached StyleOverrides for a node, falling back to parsing
 /// if the cache doesn't have an entry (shouldn't happen in practice
 /// since ensure_caches_walk populates it, but safe to fall back).
-pub fn get_style_overrides<R: crate::PlushieRenderer>(
+pub fn get_style_overrides(
     node_id: &str,
     obj: &serde_json::Map<String, Value>,
-    caches: &super::SharedState<R>,
+    caches: &super::SharedState,
 ) -> StyleOverrides {
     if let Some(cached) = super::caches::cached_style_overrides(caches, node_id) {
         return cached.clone();

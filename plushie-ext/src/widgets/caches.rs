@@ -14,7 +14,6 @@ use std::hash::{Hash, Hasher};
 
 use serde_json::Value;
 
-use crate::PlushieRenderer;
 use crate::protocol::TreeNode;
 
 /// Maximum recursion depth for tree walks (render, ensure_caches, prepare).
@@ -36,14 +35,7 @@ const MAX_HASH_DEPTH: usize = 256;
 /// Fields are `pub(crate)` to avoid leaking internal HashMap
 /// structure to extension authors. The renderer binary accesses
 /// specific entries through the accessor methods below.
-///
-/// The `R` parameter selects the renderer backend. Some caches
-/// (text_editor Content, canvas Cache) are parameterized on the
-/// renderer type because iced's widget state depends on it.
-pub struct SharedState<R: PlushieRenderer = iced::Renderer> {
-    /// Phantom: R parameter preserved for API stability.
-    _renderer: std::marker::PhantomData<R>,
-
+pub struct SharedState {
     // -- Cross-cutting shared state (used by all widget types) --
     /// Parsed style overrides with content hash for invalidation.
     /// Populated in `ensure_caches_walk` for any node with a `style`
@@ -59,10 +51,9 @@ pub struct SharedState<R: PlushieRenderer = iced::Renderer> {
     pub interpolated_props: HashMap<String, serde_json::Map<String, serde_json::Value>>,
 }
 
-impl<R: PlushieRenderer> SharedState<R> {
+impl SharedState {
     pub fn new() -> Self {
         Self {
-            _renderer: std::marker::PhantomData,
             style_overrides: HashMap::new(),
             extension: crate::extensions::ExtensionCaches::new(),
             interpolated_props: HashMap::new(),
@@ -89,7 +80,7 @@ impl<R: PlushieRenderer> SharedState<R> {
     }
 }
 
-impl<R: PlushieRenderer> Default for SharedState<R> {
+impl Default for SharedState {
     fn default() -> Self {
         Self::new()
     }
@@ -174,10 +165,7 @@ pub(crate) fn canvas_layers_from_node(
 
 /// Cache parsed `StyleOverrides` for a node's `style` prop. Only
 /// re-parses when the content hash of the JSON value changes.
-pub(crate) fn ensure_style_overrides_cache<R: PlushieRenderer>(
-    node: &TreeNode,
-    caches: &mut SharedState<R>,
-) {
+pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedState) {
     let style_val = match node.props.get("style").and_then(|v| v.as_object()) {
         Some(obj) => obj,
         None => return,
@@ -203,8 +191,8 @@ pub(crate) fn ensure_style_overrides_cache<R: PlushieRenderer>(
 /// node has no `style` prop or if `ensure_caches` hasn't run yet.
 /// Used by widget render functions to avoid re-parsing the style JSON
 /// on every frame.
-pub(crate) fn cached_style_overrides<'a, R: PlushieRenderer>(
-    caches: &'a SharedState<R>,
+pub(crate) fn cached_style_overrides<'a>(
+    caches: &'a SharedState,
     node_id: &str,
 ) -> Option<&'a super::helpers::StyleOverrides> {
     caches.style_overrides.get(node_id).map(|(_, ov)| ov)

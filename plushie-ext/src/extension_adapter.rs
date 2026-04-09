@@ -36,10 +36,18 @@ pub struct ExtensionAdapter<R: PlushieRenderer> {
 }
 
 impl<R: PlushieRenderer> ExtensionAdapter<R> {
-    /// Wrap an extension for registration in the WidgetRegistry.
+    /// Wrap a concrete extension type for registration in the WidgetRegistry.
     pub fn new(extension: impl WidgetExtension<R> + 'static) -> Self {
         Self {
             extension: Box::new(extension),
+            caches: ExtensionCaches::new(),
+        }
+    }
+
+    /// Wrap a pre-boxed extension for registration in the WidgetRegistry.
+    pub fn from_boxed(extension: Box<dyn WidgetExtension<R>>) -> Self {
+        Self {
+            extension,
             caches: ExtensionCaches::new(),
         }
     }

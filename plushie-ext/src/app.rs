@@ -26,30 +26,28 @@ use crate::registry::{PlushieWidget, WidgetRegistry, WidgetSet};
 
 /// Builder for registering widgets before starting the renderer.
 ///
-/// Supports both the new [`PlushieWidget`] trait and the legacy
-/// [`WidgetExtension`] trait (during the transition period).
+/// All widgets (both [`PlushieWidget`] and [`WidgetExtension`]) are
+/// registered in the [`WidgetRegistry`]. Extensions are wrapped via
+/// [`ExtensionAdapter`](crate::extension_adapter::ExtensionAdapter).
 ///
 /// The `R` parameter selects the renderer backend. Defaults to
 /// `iced::Renderer` which is used by headless and windowed modes.
 pub struct PlushieAppBuilder<R: PlushieRenderer = iced::Renderer> {
-    extensions: Vec<Box<dyn WidgetExtension<R>>>,
     registry: WidgetRegistry<R>,
 }
 
 impl<R: PlushieRenderer> std::fmt::Debug for PlushieAppBuilder<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PlushieAppBuilder")
-            .field("extensions", &self.extensions.len())
             .field("registry", &self.registry)
             .finish()
     }
 }
 
 impl<R: PlushieRenderer> PlushieAppBuilder<R> {
-    /// Create an empty builder with no widgets or extensions registered.
+    /// Create an empty builder with no widgets registered.
     pub fn new() -> Self {
         Self {
-            extensions: vec![],
             registry: WidgetRegistry::new(),
         }
     }
@@ -84,10 +82,11 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
         self.registry
     }
 
-    /// Consume the builder and produce both the [`WidgetRegistry`] and
-    /// the legacy [`ExtensionDispatcher`] (transition period).
+    /// Consume the builder and produce the [`WidgetRegistry`] and an
+    /// empty [`ExtensionDispatcher`] (for infrastructure that still
+    /// references it).
     pub fn build(self) -> (WidgetRegistry<R>, ExtensionDispatcher<R>) {
-        let dispatcher = ExtensionDispatcher::new(self.extensions);
+        let dispatcher = ExtensionDispatcher::new(vec![]);
         (self.registry, dispatcher)
     }
 
@@ -107,24 +106,28 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
     /// Register a pre-boxed [`WidgetExtension`] via the
     /// [`ExtensionAdapter`](crate::extension_adapter::ExtensionAdapter).
     pub fn extension_boxed(mut self, ext: Box<dyn WidgetExtension<R>>) -> Self {
-        self.extensions.push(ext);
+        // Create adapter from the boxed extension directly.
+        self.registry.register(Box::new(
+            crate::extension_adapter::ExtensionAdapter::from_boxed(ext),
+        ));
         self
     }
 
-    /// Return all type names handled by registered legacy extensions.
+    /// Return type names for non-built-in widgets (extensions registered
+    /// via `.extension()`). Used by the hello message.
     pub fn extension_type_names(&self) -> Vec<&str> {
-        self.extensions
-            .iter()
-            .flat_map(|e| e.type_names().iter().copied())
+        let builtins = crate::widgets::render::builtin_widget_types();
+        self.registry
+            .type_names()
+            .into_iter()
+            .filter(|name| !builtins.contains(name))
             .collect()
     }
 
     /// Consume the builder and produce an [`ExtensionDispatcher`].
-    ///
-    /// This is the legacy path. During the transition, both
-    /// `build_registry()` and `build_dispatcher()` are available.
+    /// Returns an empty dispatcher (all extensions are in the registry).
     pub fn build_dispatcher(self) -> ExtensionDispatcher<R> {
-        ExtensionDispatcher::new(self.extensions)
+        ExtensionDispatcher::new(vec![])
     }
 }
 

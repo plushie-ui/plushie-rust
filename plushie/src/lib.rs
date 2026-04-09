@@ -61,6 +61,7 @@ pub mod runner;
 pub(crate) mod runtime;
 pub mod settings;
 pub mod subscription;
+pub mod test;
 pub mod types;
 pub mod ui;
 pub mod util;

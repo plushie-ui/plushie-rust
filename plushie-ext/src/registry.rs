@@ -295,6 +295,45 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         result
     }
 
+    /// Render a tree node by dispatching to the registered factory.
+    ///
+    /// Third-party factories (from non-"iced" sets) are wrapped in
+    /// `catch_unwind` for panic isolation. A panic produces a red error
+    /// placeholder instead of crashing the renderer.
+    pub fn render_node<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &crate::extensions::RenderCtx<'a, R>,
+    ) -> iced::Element<'a, crate::message::Message, iced::Theme, R> {
+        let type_name = node.type_name.as_str();
+        let Some(&idx) = self.type_index.get(type_name) else {
+            log::warn!(
+                "[id={}] unknown node type `{}`, rendering as empty container",
+                node.id,
+                type_name
+            );
+            return iced::widget::container(iced::widget::Space::new()).into();
+        };
+
+        let is_trusted = self.provenance.get(type_name).is_some_and(|s| s == "iced");
+
+        if is_trusted || !crate::extensions::catch_unwind_enabled() {
+            self.impls[idx].render(node, ctx)
+        } else {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.impls[idx].render(node, ctx)
+            })) {
+                Ok(element) => element,
+                Err(_) => {
+                    log::error!("[id={}] widget `{}` panicked in render", node.id, type_name,);
+                    iced::widget::text(format!("Widget error: `{}`", type_name))
+                        .color(iced::Color::from_rgb(1.0, 0.0, 0.0))
+                        .into()
+                }
+            }
+        }
+    }
+
     /// Whether a type name is registered.
     pub fn handles_type(&self, type_name: &str) -> bool {
         self.type_index.contains_key(type_name)

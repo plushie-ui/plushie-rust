@@ -7,7 +7,7 @@
 
 use std::cell::Cell;
 
-use iced::widget::{Space, container, text};
+use iced::widget::text;
 use iced::{Color, Element, Theme};
 
 use super::caches::MAX_TREE_DEPTH;
@@ -110,18 +110,7 @@ pub fn render<'a, R: PlushieRenderer>(
         validate::validate_props(node);
     }
 
-    // Dispatch through the WidgetRegistry. All widget types (built-in
-    // and extension) are registered here.
-    let element = if let Some(widget) = ctx.registry.get_for_type(node.type_name.as_str()) {
-        widget.render(node, &ctx)
-    } else {
-        log::warn!(
-            "[id={}] unknown node type `{}`, rendering as empty container",
-            node.id,
-            node.type_name
-        );
-        container(Space::new()).into()
-    };
+    let element = ctx.registry.render_node(node, &ctx);
 
     // Explicit a11y overrides take precedence. When no explicit a11y prop
     // exists, try widget-specific auto-inference via the registry.

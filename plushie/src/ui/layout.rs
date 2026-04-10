@@ -261,10 +261,24 @@ impl ColumnBuilder {
         self
     }
 
-    /// Attach a transition animation to a property.
+    /// Animate a property with a timed transition.
+    ///
+    /// The transition descriptor replaces the prop value. The renderer
+    /// interpolates from the current value to the transition's `to`.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        let key = format!("__transition__{prop}");
-        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&t).unwrap_or_default());
+        self
+    }
+
+    /// Animate a property with spring physics.
+    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&s).unwrap_or_default());
+        self
+    }
+
+    /// Animate a property with a sequence of steps.
+    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&seq).unwrap_or_default());
         self
     }
 
@@ -372,10 +386,24 @@ impl RowBuilder {
         self
     }
 
-    /// Attach a transition animation to a property.
+    /// Animate a property with a timed transition.
+    ///
+    /// The transition descriptor replaces the prop value. The renderer
+    /// interpolates from the current value to the transition's `to`.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        let key = format!("__transition__{prop}");
-        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&t).unwrap_or_default());
+        self
+    }
+
+    /// Animate a property with spring physics.
+    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&s).unwrap_or_default());
+        self
+    }
+
+    /// Animate a property with a sequence of steps.
+    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&seq).unwrap_or_default());
         self
     }
 
@@ -519,10 +547,24 @@ impl ContainerBuilder {
         self
     }
 
-    /// Attach a transition animation to a property.
+    /// Animate a property with a timed transition.
+    ///
+    /// The transition descriptor replaces the prop value. The renderer
+    /// interpolates from the current value to the transition's `to`.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        let key = format!("__transition__{prop}");
-        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&t).unwrap_or_default());
+        self
+    }
+
+    /// Animate a property with spring physics.
+    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&s).unwrap_or_default());
+        self
+    }
+
+    /// Animate a property with a sequence of steps.
+    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
+        super::set_prop(&mut self.props, prop, serde_json::to_value(&seq).unwrap_or_default());
         self
     }
 

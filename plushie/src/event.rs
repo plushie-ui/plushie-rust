@@ -258,15 +258,21 @@ impl WidgetEvent {
                 &self.id,
                 self.value.as_str().unwrap_or_default(),
             ),
-            Press => WidgetMatch::Press(&self.id),
-            Release => WidgetMatch::Release(&self.id),
+            Press => WidgetMatch::Press(
+                &self.id,
+                self.value.as_str().unwrap_or("Left"),
+            ),
+            Release => WidgetMatch::Release(
+                &self.id,
+                self.value.as_str().unwrap_or("Left"),
+            ),
             Enter => WidgetMatch::Enter(&self.id),
             Exit => WidgetMatch::Exit(&self.id),
-            Drag => WidgetMatch::Drag(&self.id),
-            DragEnd => WidgetMatch::DragEnd(&self.id),
+            Drag => WidgetMatch::Drag(&self.id, &self.value),
+            DragEnd => WidgetMatch::DragEnd(&self.id, &self.value),
             Focused => WidgetMatch::Focused(&self.id),
             Blurred => WidgetMatch::Blurred(&self.id),
-            Resize => WidgetMatch::Resize(&self.id),
+            Resize => WidgetMatch::Resize(&self.id, &self.value),
             _ => WidgetMatch::Other(&self.id, self.event_type),
         }
     }
@@ -304,15 +310,20 @@ pub enum WidgetMatch<'a> {
     Slide(&'a str, f64),
     SlideRelease(&'a str, f64),
     Paste(&'a str, &'a str),
-    Press(&'a str),
-    Release(&'a str),
+    /// Pointer press with button name (`"Left"`, `"Right"`, `"Middle"`).
+    Press(&'a str, &'a str),
+    /// Pointer release with button name.
+    Release(&'a str, &'a str),
     Enter(&'a str),
     Exit(&'a str),
-    Drag(&'a str),
-    DragEnd(&'a str),
+    /// Drag with coordinates and delta from the event data.
+    Drag(&'a str, &'a Value),
+    /// Drag ended with final coordinates.
+    DragEnd(&'a str, &'a Value),
     Focused(&'a str),
     Blurred(&'a str),
-    Resize(&'a str),
+    /// Resize with the event data (typically `{width, height}`).
+    Resize(&'a str, &'a Value),
     Timer(&'a str),
     /// Catch-all for event types not covered by named variants.
     Other(&'a str, EventType),

@@ -1,10 +1,9 @@
 //! Composite widget system for reusable, stateful components.
 //!
 //! A composite widget composes existing widgets (text, button, canvas,
-//! etc.) with internal state and event interception. It's the Rust
-//! equivalent of the Elixir SDK's `use Plushie.Widget`.
+//! etc.) with internal state and event interception.
 //!
-//! # Creating a widget
+//! # Defining a widget
 //!
 //! ```ignore
 //! use plushie::prelude::*;
@@ -12,14 +11,13 @@
 //!
 //! struct StarRating;
 //!
-//! #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
+//! #[derive(Default)]
 //! struct StarState { hover: Option<usize> }
 //!
 //! impl Widget for StarRating {
 //!     type State = StarState;
 //!
 //!     fn view(id: &str, props: &Value, state: &StarState) -> View {
-//!         // Build view from existing widgets
 //!         row().id(id).spacing(4.0).children(
 //!             (0..5).map(|i| button(&format!("star-{i}"), "★"))
 //!         ).into()
@@ -41,15 +39,15 @@
 //! ```ignore
 //! fn view(model: &Self) -> View {
 //!     window("main").child(
-//!         column().children([
-//!             WidgetView::<StarRating>::new("rating")
-//!                 .prop("rating", model.rating),
-//!             text(&format!("Rating: {}", model.rating)),
-//!         ])
+//!         column()
+//!             .child(WidgetView::<StarRating>::new("rating")
+//!                 .prop("rating", model.rating))
+//!             .child(text(&format!("Rating: {}", model.rating)))
 //!     ).into()
 //! }
 //! ```
 
+use std::any::Any;
 use std::collections::HashMap;
 
 use serde_json::Value;
@@ -64,16 +62,12 @@ use crate::View;
 
 /// A reusable, stateful widget that composes other widgets.
 ///
-/// Composite widgets have internal state that persists across renders,
-/// can intercept events from their children, and can declare their
-/// own scoped subscriptions.
-///
-/// State must implement `Default` (for initial creation), `Clone`
-/// (for undo support), and `Serialize`/`Deserialize` (for state
-/// persistence across renders).
+/// State must implement `Default` for initial creation. No
+/// serialization constraints: state is stored in memory as the
+/// concrete Rust type using `Box<dyn Any>`.
 pub trait Widget: Send + Sync + 'static {
     /// Per-instance state persisted across renders.
-    type State: Default + Clone + Send + serde::Serialize + serde::de::DeserializeOwned + 'static;
+    type State: Default + Send + 'static;
 
     /// Build the widget's view tree from props and internal state.
     fn view(id: &str, props: &Value, state: &Self::State) -> View;
@@ -128,17 +122,8 @@ impl EventResult {
 
 /// A view placeholder for a composite widget.
 ///
-/// Created via `WidgetView::<MyWidget>::new("id")`. When the view
-/// tree is expanded, the widget's `view()` method is called with
-/// the stored props and the widget's persisted state.
-///
-/// ```ignore
-/// use plushie::widget::WidgetView;
-///
-/// WidgetView::<StarRating>::new("rating")
-///     .prop("rating", 4)
-///     .prop("readonly", false)
-/// ```
+/// When the view tree is expanded, the widget's `view()` method is
+/// called with the stored props and the widget's persisted state.
 pub struct WidgetView<W: Widget> {
     id: String,
     props: serde_json::Map<String, Value>,
@@ -164,10 +149,8 @@ impl<W: Widget> WidgetView<W> {
 
 impl<W: Widget> From<WidgetView<W>> for View {
     fn from(wv: WidgetView<W>) -> View {
-        // Store the widget's type info as a special __widget__ node.
-        // The expansion function is stored as a boxed trait object
-        // in a thread-local registry, keyed by the node ID.
-        let expander = Box::new(WidgetExpander::<W>(std::marker::PhantomData));
+        let expander: Box<dyn DynWidgetExpander> =
+            Box::new(WidgetExpander::<W>(std::marker::PhantomData));
         register_widget_expander(&wv.id, expander);
 
         let mut props = wv.props;
@@ -183,40 +166,37 @@ impl<W: Widget> From<WidgetView<W>> for View {
 }
 
 // ---------------------------------------------------------------------------
-// Type-erased widget expansion
+// Type-erased widget expansion (using Box<dyn Any> for state)
 // ---------------------------------------------------------------------------
 
-/// Type-erased interface for expanding and handling widget events.
+/// Type-erased interface for expanding widgets and handling events.
 pub(crate) trait DynWidgetExpander: Send {
-    fn expand(&self, id: &str, props: &Value, state_json: &Value) -> View;
-    fn handle_event(&self, event: &Event, state_json: &mut Value) -> EventResult;
-    fn default_state_json(&self) -> Value;
+    fn expand(&self, id: &str, props: &Value, state: &dyn Any) -> View;
+    fn handle_event(&self, event: &Event, state: &mut dyn Any) -> EventResult;
+    fn default_state(&self) -> Box<dyn Any + Send>;
 }
 
 struct WidgetExpander<W: Widget>(std::marker::PhantomData<W>);
 
 impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
-    fn expand(&self, id: &str, props: &Value, state_json: &Value) -> View {
-        let state: W::State = serde_json::from_value(state_json.clone())
-            .unwrap_or_default();
-        W::view(id, props, &state)
+    fn expand(&self, id: &str, props: &Value, state: &dyn Any) -> View {
+        let state = state.downcast_ref::<W::State>()
+            .expect("widget state type mismatch");
+        W::view(id, props, state)
     }
 
-    fn handle_event(&self, event: &Event, state_json: &mut Value) -> EventResult {
-        let mut state: W::State = serde_json::from_value(state_json.clone())
-            .unwrap_or_default();
-        let result = W::handle_event(event, &mut state);
-        *state_json = serde_json::to_value(&state).unwrap_or(Value::Null);
-        result
+    fn handle_event(&self, event: &Event, state: &mut dyn Any) -> EventResult {
+        let state = state.downcast_mut::<W::State>()
+            .expect("widget state type mismatch");
+        W::handle_event(event, state)
     }
 
-    fn default_state_json(&self) -> Value {
-        serde_json::to_value(W::State::default()).unwrap_or(Value::Null)
+    fn default_state(&self) -> Box<dyn Any + Send> {
+        Box::new(W::State::default())
     }
 }
 
-// Thread-local registry for widget expanders. Populated during view()
-// construction, consumed during expansion.
+// Thread-local registry for widget expanders.
 thread_local! {
     static WIDGET_EXPANDERS: std::cell::RefCell<HashMap<String, Box<dyn DynWidgetExpander>>>
         = std::cell::RefCell::new(HashMap::new());
@@ -228,7 +208,6 @@ fn register_widget_expander(id: &str, expander: Box<dyn DynWidgetExpander>) {
     });
 }
 
-/// Take a widget expander from the thread-local registry.
 pub(crate) fn take_widget_expander(id: &str) -> Option<Box<dyn DynWidgetExpander>> {
     WIDGET_EXPANDERS.with(|map| {
         map.borrow_mut().remove(id)
@@ -236,12 +215,12 @@ pub(crate) fn take_widget_expander(id: &str) -> Option<Box<dyn DynWidgetExpander
 }
 
 // ---------------------------------------------------------------------------
-// Widget state store (used by TestSession and runners)
+// Widget state store
 // ---------------------------------------------------------------------------
 
 /// Stores per-widget-instance state and expanders.
 pub(crate) struct WidgetStateStore {
-    states: HashMap<String, Value>,
+    states: HashMap<String, Box<dyn Any + Send>>,
     expanders: HashMap<String, Box<dyn DynWidgetExpander>>,
 }
 
@@ -254,17 +233,11 @@ impl WidgetStateStore {
     }
 
     /// Expand all __widget__ nodes in a view tree.
-    ///
-    /// Walks the tree, finds nodes with type "__widget__", and replaces
-    /// them with the expanded view from `Widget::view()`. Widget state
-    /// is persisted between expansions.
     pub fn expand_widgets(&mut self, tree: &Value) -> Value {
         self.collect_expanders(tree);
         self.expand_node(tree)
     }
 
-    /// Collect expanders from the thread-local registry for all
-    /// __widget__ nodes in the tree.
     fn collect_expanders(&mut self, node: &Value) {
         let type_name = node["type"].as_str().unwrap_or("");
         let id = node["id"].as_str().unwrap_or("");
@@ -273,7 +246,7 @@ impl WidgetStateStore {
             && let Some(expander) = take_widget_expander(id)
         {
             if !self.states.contains_key(id) {
-                self.states.insert(id.to_string(), expander.default_state_json());
+                self.states.insert(id.to_string(), expander.default_state());
             }
             self.expanders.insert(id.to_string(), expander);
         }
@@ -292,15 +265,12 @@ impl WidgetStateStore {
         if type_name == "__widget__"
             && let Some(expander) = self.expanders.get(id)
         {
-            let state = self.states.get(id)
-                .cloned()
-                .unwrap_or(Value::Null);
+            let state = self.states.get(id).expect("widget state missing");
             let props = &node["props"];
-            let expanded = expander.expand(id, props, &state);
+            let expanded = expander.expand(id, props, state.as_ref());
             return self.expand_node(&expanded.0);
         }
 
-        // Recursively expand children.
         let children = node["children"]
             .as_array()
             .map(|arr| arr.iter().map(|c| self.expand_node(c)).collect::<Vec<_>>())
@@ -314,23 +284,16 @@ impl WidgetStateStore {
     }
 
     /// Handle an event through widget interception.
-    ///
-    /// Checks if the event targets a child of a registered widget.
-    /// If so, calls the widget's handle_event and returns the result.
     pub fn intercept_event(&mut self, event: &Event) -> Option<EventResult> {
-        // Get the widget ID from the event's scope.
         let scope = match event {
             Event::Widget(w) => &w.scope,
             _ => return None,
         };
 
-        // Walk the scope chain (innermost to outermost) looking
-        // for a registered widget.
         for ancestor_id in scope {
             if let Some(expander) = self.expanders.get(ancestor_id) {
-                let state = self.states.entry(ancestor_id.clone())
-                    .or_insert_with(|| expander.default_state_json());
-                let result = expander.handle_event(event, state);
+                let state = self.states.get_mut(ancestor_id)?;
+                let result = expander.handle_event(event, state.as_mut());
                 match result {
                     EventResult::Ignored => continue,
                     other => return Some(other),

@@ -11,7 +11,7 @@ cargo run -p plushie --example <name>
 | Name | Description |
 |------|-------------|
 | `counter` | Minimal counter with increment/decrement buttons |
-| `todo` | Todo list with add, toggle, delete, and dynamic list rendering |
+| `todo` | Todo list with add, toggle, delete, filter, and scoped events |
 | `clock` | Timer subscriptions updating a clock display every second |
 | `async_fetch` | Async data fetching with loading/error/success states |
 | `shortcuts` | Global keyboard event logging with modifier display |
@@ -20,16 +20,9 @@ cargo run -p plushie --example <name>
 | `color_picker` | HSV color picker with sliders and live color preview |
 | `rate_plushie` | App rating page with star rating, form validation, and reviews |
 
-## Widget Examples
-
-The `widgets/` directory contains reusable widget implementations
-using the composite `Widget` trait:
-
-| Name | Description |
-|------|-------------|
-| `star_rating` | 5-star rating with click interaction |
-| `theme_toggle` | Animated theme toggle switch |
-| `color_picker` | HSV color picker with slider controls |
+The `color_picker` and `rate_plushie` examples include inline
+composite widget definitions (using the `Widget` trait) that
+demonstrate reusable stateful components with event interception.
 
 ## Getting Started
 

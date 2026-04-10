@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 
 struct ToggleButton;
 
-#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 struct ToggleState {
     pressed: bool,
 }

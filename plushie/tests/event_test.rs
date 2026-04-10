@@ -308,3 +308,62 @@ fn as_key_press_returns_none_for_release() {
     assert!(event.as_key_press().is_none());
     assert!(event.as_key_release().is_some());
 }
+
+// ---------------------------------------------------------------------------
+// family_to_event_type
+// ---------------------------------------------------------------------------
+
+#[test]
+fn family_to_event_type_maps_all_known_families() {
+    use plushie::event::family_to_event_type;
+
+    let cases: &[(&str, EventType)] = &[
+        ("click", EventType::Click),
+        ("double_click", EventType::DoubleClick),
+        ("input", EventType::Input),
+        ("submit", EventType::Submit),
+        ("toggle", EventType::Toggle),
+        ("select", EventType::Select),
+        ("slide", EventType::Slide),
+        ("slide_release", EventType::SlideRelease),
+        ("paste", EventType::Paste),
+        ("press", EventType::Press),
+        ("release", EventType::Release),
+        ("move", EventType::Move),
+        ("scroll", EventType::Scroll),
+        ("scrolled", EventType::Scrolled),
+        ("enter", EventType::Enter),
+        ("exit", EventType::Exit),
+        ("resize", EventType::Resize),
+        ("focused", EventType::Focused),
+        ("blurred", EventType::Blurred),
+        ("drag", EventType::Drag),
+        ("drag_end", EventType::DragEnd),
+        ("sort", EventType::Sort),
+        ("status", EventType::Status),
+        ("transition_complete", EventType::TransitionComplete),
+        ("open", EventType::Open),
+        ("close", EventType::Close),
+        ("option_hovered", EventType::OptionHovered),
+        ("key_binding", EventType::KeyBinding),
+        ("key_press", EventType::KeyPress),
+        ("key_release", EventType::KeyRelease),
+        ("pane_focus_cycle", EventType::PaneFocusCycle),
+        ("pane_resized", EventType::PaneResized),
+        ("pane_dragged", EventType::PaneDragged),
+        ("pane_clicked", EventType::PaneClicked),
+    ];
+
+    for (family, expected) in cases {
+        assert_eq!(
+            family_to_event_type(family), *expected,
+            "family_to_event_type({family:?}) returned wrong variant"
+        );
+    }
+}
+
+#[test]
+fn family_to_event_type_returns_other_for_unknown() {
+    use plushie::event::family_to_event_type;
+    assert!(matches!(family_to_event_type("nonsense"), EventType::Other(_)));
+}

@@ -345,6 +345,16 @@ pub fn family_to_event_type(family: &str) -> EventType {
         "sort" => EventType::Sort,
         "status" => EventType::Status,
         "transition_complete" => EventType::TransitionComplete,
+        "open" => EventType::Open,
+        "close" => EventType::Close,
+        "option_hovered" => EventType::OptionHovered,
+        "key_binding" => EventType::KeyBinding,
+        "key_press" => EventType::KeyPress,
+        "key_release" => EventType::KeyRelease,
+        "pane_focus_cycle" => EventType::PaneFocusCycle,
+        "pane_resized" => EventType::PaneResized,
+        "pane_dragged" => EventType::PaneDragged,
+        "pane_clicked" => EventType::PaneClicked,
         _ => EventType::Other(0),
     }
 }

@@ -200,34 +200,7 @@ fn split_scoped_id(scoped: &str) -> (String, Vec<String>) {
 /// Convert event family string to EventType.
 #[cfg(feature = "wire")]
 fn family_to_event_type(family: &str) -> EventType {
-    match family {
-        "click" => EventType::Click,
-        "double_click" => EventType::DoubleClick,
-        "input" => EventType::Input,
-        "submit" => EventType::Submit,
-        "toggle" => EventType::Toggle,
-        "select" => EventType::Select,
-        "slide" => EventType::Slide,
-        "slide_release" => EventType::SlideRelease,
-        "paste" => EventType::Paste,
-        "press" => EventType::Press,
-        "release" => EventType::Release,
-        "move" => EventType::Move,
-        "scroll" => EventType::Scroll,
-        "scrolled" => EventType::Scrolled,
-        "enter" => EventType::Enter,
-        "exit" => EventType::Exit,
-        "resize" => EventType::Resize,
-        "focused" => EventType::Focused,
-        "blurred" => EventType::Blurred,
-        "drag" => EventType::Drag,
-        "drag_end" => EventType::DragEnd,
-        "sort" => EventType::Sort,
-        "status" => EventType::Status,
-        "transition_complete" => EventType::TransitionComplete,
-        "error" => EventType::Other(0),
-        _ => EventType::Other(0),
-    }
+    crate::event::family_to_event_type(family)
 }
 
 /// Execute a Command by sending messages through the bridge.

@@ -1,13 +1,18 @@
-//! A todo list app demonstrating dynamic lists, scoped events,
-//! text input with submit, and conditional rendering.
+//! To-do list with add, toggle, delete, and filter.
+//!
+//! Demonstrates text_input with on_submit, scoped IDs for dynamic
+//! list items, scope binding in update for item-level events,
+//! Command::focus for refocusing, and filter buttons with
+//! conditional list rendering.
 //!
 //! Run with: `cargo run -p plushie --example todo`
 
 use plushie::prelude::*;
 
 struct TodoApp {
-    items: Vec<TodoItem>,
+    todos: Vec<TodoItem>,
     input: String,
+    filter: Filter,
     next_id: usize,
 }
 
@@ -17,19 +22,23 @@ struct TodoItem {
     done: bool,
 }
 
+#[derive(PartialEq)]
+enum Filter {
+    All,
+    Active,
+    Done,
+}
+
 impl App for TodoApp {
     type Model = Self;
 
     fn init() -> (Self, Command) {
         (
             TodoApp {
-                items: vec![
-                    TodoItem { id: "1".into(), text: "Buy milk".into(), done: false },
-                    TodoItem { id: "2".into(), text: "Write tests".into(), done: true },
-                    TodoItem { id: "3".into(), text: "Ship it".into(), done: false },
-                ],
+                todos: vec![],
                 input: String::new(),
-                next_id: 4,
+                filter: Filter::All,
+                next_id: 1,
             },
             Command::none(),
         )
@@ -40,71 +49,75 @@ impl App for TodoApp {
             Some(Input("new_todo", text)) => {
                 model.input = text.to_string();
             }
-            Some(Submit("new_todo", text)) => {
-                if !text.is_empty() {
-                    let id = model.next_id.to_string();
+            Some(Submit("new_todo", _)) => {
+                if !model.input.trim().is_empty() {
+                    let id = format!("todo_{}", model.next_id);
                     model.next_id += 1;
-                    model.items.push(TodoItem {
+                    model.todos.insert(0, TodoItem {
                         id,
-                        text: text.to_string(),
+                        text: model.input.clone(),
                         done: false,
                     });
                     model.input.clear();
+                    return Command::focus("app/new_todo");
                 }
             }
-            Some(Toggle("done", _)) => {
-                // Scoped event: scope[0] is the item's row ID,
-                // scope[1] would be "list".
-                if let Some(item_id) = event.scope().and_then(|s| s.first()) {
-                    if let Some(item) = model.items.iter_mut().find(|i| i.id == *item_id) {
+            Some(Toggle("toggle", _)) => {
+                if let Some(todo_id) = event.scope().and_then(|s| s.first()) {
+                    if let Some(item) = model.todos.iter_mut().find(|i| i.id == *todo_id) {
                         item.done = !item.done;
                     }
                 }
             }
             Some(Click("delete")) => {
-                if let Some(item_id) = event.scope().and_then(|s| s.first()) {
-                    model.items.retain(|i| i.id != *item_id);
+                if let Some(todo_id) = event.scope().and_then(|s| s.first()) {
+                    model.todos.retain(|i| i.id != *todo_id);
                 }
             }
+            Some(Click("filter_all")) => model.filter = Filter::All,
+            Some(Click("filter_active")) => model.filter = Filter::Active,
+            Some(Click("filter_done")) => model.filter = Filter::Done,
             _ => {}
         }
         Command::none()
     }
 
     fn view(model: &Self) -> View {
-        let done_count = model.items.iter().filter(|i| i.done).count();
+        let filtered: Vec<&TodoItem> = model.todos.iter().filter(|t| match model.filter {
+            Filter::All => true,
+            Filter::Active => !t.done,
+            Filter::Done => t.done,
+        }).collect();
 
-        window("main").title("Todo List").child(
-            column().spacing(12.0).padding(16)
+        window("main").title("Todos").child(
+            column().id("app").padding(20).spacing(12.0).width(Fill)
+                .child(text("My Todos").id("title").size(24.0))
                 .child(
                     text_input("new_todo", &model.input)
                         .placeholder("What needs doing?")
-                        .on_submit(true),
+                        .on_submit(true)
                 )
+                .child(row().spacing(8.0).children([
+                    button("filter_all", "All"),
+                    button("filter_active", "Active"),
+                    button("filter_done", "Done"),
+                ]))
                 .child(
                     column().id("list").spacing(4.0).children(
-                        model.items.iter().map(|item| {
-                            row().id(&item.id).spacing(8.0)
-                                .child(checkbox("done", item.done).label(&item.text))
-                                .child(button("delete", "X").style(Style::danger()))
-                        }),
-                    ),
-                )
-                .child(if !model.items.is_empty() {
-                    View::from(
-                        text(&format!(
-                            "{done_count}/{} completed",
-                            model.items.len(),
-                        ))
-                        .id("status")
-                        .size(14.0),
+                        filtered.iter().map(|item| todo_row(item))
                     )
-                } else {
-                    View::from(text("No todos yet").id("status").size(14.0))
-                }),
-        )
-        .into()
+                )
+        ).into()
     }
+}
+
+fn todo_row(todo: &TodoItem) -> View {
+    container().id(&todo.id).child(
+        row().spacing(8.0)
+            .child(checkbox("toggle", todo.done))
+            .child(text(&todo.text))
+            .child(button("delete", "x"))
+    ).into()
 }
 
 fn main() -> plushie::Result {

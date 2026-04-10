@@ -1,7 +1,7 @@
-//! A simple counter app demonstrating the plushie SDK.
+//! Minimal counter example.
 //!
-//! Two buttons increment and decrement a counter. The count is
-//! displayed as text. This is the "Hello World" of plushie apps.
+//! Demonstrates button click handling, model updates from events,
+//! and basic column/row layout.
 //!
 //! Run with: `cargo run -p plushie --example counter`
 
@@ -29,11 +29,11 @@ impl App for Counter {
 
     fn view(model: &Self) -> View {
         window("main").title("Counter").child(
-            column().spacing(8.0).padding(16)
-                .child(text(&format!("Count: {}", model.count)).size(24.0))
+            column().padding(16).spacing(8.0)
+                .child(text(&format!("Count: {}", model.count)).id("count"))
                 .child(row().spacing(8.0).children([
-                    button("inc", "+").style(Style::primary()),
-                    button("dec", "-").style(Style::danger()),
+                    button("inc", "+"),
+                    button("dec", "-"),
                 ]))
         ).into()
     }

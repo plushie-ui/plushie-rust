@@ -1,10 +1,7 @@
-//! Async data fetching example.
+//! Async command example: a button that triggers background work.
 //!
-//! Demonstrates the Command::async_task pattern for running
-//! background work and handling results via AsyncEvent.
-//!
-//! This example simulates an HTTP fetch. In a real app, you'd
-//! use reqwest or similar inside the async block.
+//! Demonstrates Command::Async for off-thread work, pattern matching
+//! on AsyncEvent for success/error, and loading state management.
 //!
 //! Run with: `cargo run -p plushie --example async_fetch`
 
@@ -12,14 +9,16 @@ use plushie::prelude::*;
 
 struct FetchApp {
     status: Status,
-    data: Option<String>,
+    result: Option<String>,
     error: Option<String>,
 }
 
+#[derive(PartialEq)]
 enum Status {
     Idle,
     Loading,
     Done,
+    Error,
 }
 
 impl App for FetchApp {
@@ -28,41 +27,35 @@ impl App for FetchApp {
     fn init() -> (Self, Command) {
         (FetchApp {
             status: Status::Idle,
-            data: None,
+            result: None,
             error: None,
         }, Command::none())
     }
 
     fn update(model: &mut Self, event: Event) -> Command {
-        // Widget events (button clicks)
         match event.widget_match() {
             Some(Click("fetch")) => {
                 model.status = Status::Loading;
+                model.result = None;
                 model.error = None;
-                // In a real app, this would be an HTTP request.
-                // The async block returns a Result that arrives
+                // In a real app this would be Command::Async with
+                // a task that does network I/O. The result arrives
                 // as an AsyncEvent.
-                return Command::none(); // async_task needs tokio runtime
-            }
-            Some(Click("clear")) => {
-                model.status = Status::Idle;
-                model.data = None;
-                model.error = None;
+                return Command::none();
             }
             _ => {}
         }
 
-        // Async results
         if let Some(a) = event.as_async() {
-            if a.tag == "fetch" {
+            if a.tag == "fetch_result" {
                 match &a.result {
-                    Ok(data) => {
+                    Ok(value) => {
                         model.status = Status::Done;
-                        model.data = data.as_str().map(String::from);
+                        model.result = value.as_str().map(String::from);
                     }
-                    Err(err) => {
-                        model.status = Status::Done;
-                        model.error = err.as_str().map(String::from);
+                    Err(reason) => {
+                        model.status = Status::Error;
+                        model.error = reason.as_str().map(|s| format!("Error: {s}"));
                     }
                 }
             }
@@ -72,37 +65,43 @@ impl App for FetchApp {
     }
 
     fn view(model: &Self) -> View {
-        let status_text = match model.status {
-            Status::Idle => "Click Fetch to load data",
-            Status::Loading => "Loading...",
-            Status::Done => "Complete",
-        };
+        window("main").title("Async Fetch").child(
+            column().padding(24).spacing(16.0).width(Fill)
+                .child(text("Async Command Demo").id("header").size(20.0))
+                .child(button("fetch", "Fetch Data"))
+                .child(status_message(model))
+        ).into()
+    }
+}
 
-        let mut col = column().spacing(12.0).padding(20)
-            .child(text("Async Fetch Demo").size(24.0))
-            .child(text(status_text).id("status"))
-            .child(row().spacing(8.0).children([
-                button("fetch", "Fetch Data").style(Style::primary()),
-                button("clear", "Clear"),
-            ]));
-
-        if let Some(data) = &model.data {
-            col = col.child(
-                container().padding(12).style(Style::custom()
-                    .background(Color::hex("#f0f0f0"))
-                    .border(Border::new().radius(4.0)))
-                .child(text(data).id("data"))
-            );
+fn status_message(model: &FetchApp) -> View {
+    match model.status {
+        Status::Idle => {
+            text("Press the button to start")
+                .id("status")
+                .color(Color::hex("#888888"))
+                .into()
         }
-
-        if let Some(error) = &model.error {
-            col = col.child(
-                text(&format!("Error: {error}")).id("error")
-                    .color(Color::red())
-            );
+        Status::Loading => {
+            text("Loading...")
+                .id("status")
+                .color(Color::hex("#cc8800"))
+                .into()
         }
-
-        window("main").title("Async Fetch").child(col).into()
+        Status::Done => {
+            let result = model.result.as_deref().unwrap_or("");
+            column().spacing(4.0)
+                .child(text("Result:").id("label").size(14.0))
+                .child(text(result).id("result").color(Color::hex("#22aa44")))
+                .into()
+        }
+        Status::Error => {
+            let error = model.error.as_deref().unwrap_or("");
+            text(error)
+                .id("error")
+                .color(Color::hex("#cc2222"))
+                .into()
+        }
     }
 }
 

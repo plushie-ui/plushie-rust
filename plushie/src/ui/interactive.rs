@@ -169,6 +169,31 @@ impl PointerAreaBuilder {
         self
     }
 
+    /// Enable right mouse button release events.
+    pub fn on_right_release(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "on_right_release", v);
+        self
+    }
+
+    /// Enable middle mouse button release events.
+    pub fn on_middle_release(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "on_middle_release", v);
+        self
+    }
+
+    /// Enable double-click events.
+    pub fn on_double_click(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "on_double_click", v);
+        self
+    }
+
+    /// Mouse cursor to show on hover (e.g. `"pointer"`, `"grab"`,
+    /// `"crosshair"`, `"text"`).
+    pub fn cursor(mut self, cursor: &str) -> Self {
+        super::set_prop(&mut self.props, "cursor", cursor);
+        self
+    }
+
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
@@ -224,6 +249,24 @@ impl SensorBuilder {
 
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
+        self
+    }
+
+    /// Delay in milliseconds before emitting events.
+    pub fn delay(mut self, ms: u32) -> Self {
+        super::set_prop(&mut self.props, "delay", ms);
+        self
+    }
+
+    /// Distance in pixels to anticipate visibility.
+    pub fn anticipate(mut self, pixels: f32) -> Self {
+        super::set_prop(&mut self.props, "anticipate", pixels);
+        self
+    }
+
+    /// Enable resize events.
+    pub fn on_resize(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "on_resize", v);
         self
     }
 
@@ -286,8 +329,21 @@ impl TooltipBuilder {
         self
     }
 
-    pub fn snap(mut self, v: bool) -> Self {
-        super::set_prop(&mut self.props, "snap", v);
+    /// Tooltip padding in pixels.
+    pub fn padding(mut self, v: f32) -> Self {
+        super::set_prop(&mut self.props, "padding", v);
+        self
+    }
+
+    /// Keep tooltip within the viewport bounds.
+    pub fn snap_within_viewport(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "snap_within_viewport", v);
+        self
+    }
+
+    /// Delay in milliseconds before showing the tooltip.
+    pub fn delay(mut self, ms: u32) -> Self {
+        super::set_prop(&mut self.props, "delay", ms);
         self
     }
 
@@ -414,6 +470,18 @@ impl OverlayBuilder {
 
     pub fn gap(mut self, v: f32) -> Self {
         super::set_prop(&mut self.props, "gap", v);
+        self
+    }
+
+    /// Horizontal offset in pixels after positioning.
+    pub fn offset_x(mut self, v: f32) -> Self {
+        super::set_prop(&mut self.props, "offset_x", v);
+        self
+    }
+
+    /// Vertical offset in pixels after positioning.
+    pub fn offset_y(mut self, v: f32) -> Self {
+        super::set_prop(&mut self.props, "offset_y", v);
         self
     }
 

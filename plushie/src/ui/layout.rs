@@ -115,6 +115,43 @@ impl WindowBuilder {
         self
     }
 
+    /// Whether the window close button is shown.
+    pub fn closeable(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "closeable", v);
+        self
+    }
+
+    /// Whether the window can be minimized.
+    pub fn minimizable(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "minimizable", v);
+        self
+    }
+
+    /// Blur the window background (platform-dependent).
+    pub fn blur(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "blur", v);
+        self
+    }
+
+    /// Window stacking level: `"normal"`, `"always_on_top"`, or
+    /// `"always_on_bottom"`.
+    pub fn level(mut self, level: &str) -> Self {
+        super::set_prop(&mut self.props, "level", level);
+        self
+    }
+
+    /// Whether closing the window exits the application.
+    pub fn exit_on_close_request(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "exit_on_close_request", v);
+        self
+    }
+
+    /// Initial window size as `(width, height)` in pixels.
+    pub fn size(mut self, w: f32, h: f32) -> Self {
+        super::set_prop(&mut self.props, "size", json!([w, h]));
+        self
+    }
+
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
@@ -544,6 +581,11 @@ impl StackBuilder {
         self
     }
 
+    pub fn clip(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "clip", v);
+        self
+    }
+
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
@@ -603,8 +645,9 @@ impl GridBuilder {
         self
     }
 
-    pub fn column_count(mut self, n: u32) -> Self {
-        super::set_prop(&mut self.props, "column_count", n);
+    /// Number of columns in the grid.
+    pub fn columns(mut self, n: u32) -> Self {
+        super::set_prop(&mut self.props, "columns", n);
         self
     }
 
@@ -628,8 +671,22 @@ impl GridBuilder {
         self
     }
 
-    pub fn fluid(mut self, v: bool) -> Self {
-        super::set_prop(&mut self.props, "fluid", v);
+    /// Enable fluid grid mode. Columns auto-wrap; `max_cell_width`
+    /// sets the maximum width of each cell in pixels.
+    pub fn fluid(mut self, max_cell_width: f32) -> Self {
+        super::set_prop(&mut self.props, "fluid", max_cell_width);
+        self
+    }
+
+    /// Width of each column.
+    pub fn column_width(mut self, w: impl Into<Length>) -> Self {
+        super::set_prop(&mut self.props, "column_width", super::length_to_value(w.into()));
+        self
+    }
+
+    /// Height of each row.
+    pub fn row_height(mut self, h: impl Into<Length>) -> Self {
+        super::set_prop(&mut self.props, "row_height", super::length_to_value(h.into()));
         self
     }
 
@@ -792,6 +849,11 @@ impl KeyedColumnBuilder {
         self
     }
 
+    pub fn max_width(mut self, w: f32) -> Self {
+        super::set_prop(&mut self.props, "max_width", w);
+        self
+    }
+
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
         self
@@ -860,13 +922,15 @@ impl FloatingBuilder {
         self
     }
 
-    pub fn x(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "x", v);
+    /// Horizontal translation in pixels.
+    pub fn translate_x(mut self, v: f32) -> Self {
+        super::set_prop(&mut self.props, "translate_x", v);
         self
     }
 
-    pub fn y(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "y", v);
+    /// Vertical translation in pixels.
+    pub fn translate_y(mut self, v: f32) -> Self {
+        super::set_prop(&mut self.props, "translate_y", v);
         self
     }
 
@@ -1039,6 +1103,30 @@ impl ScrollableBuilder {
         self
     }
 
+    /// Emit scroll viewport events.
+    pub fn on_scroll(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "on_scroll", v);
+        self
+    }
+
+    /// Auto-scroll to show new content at the anchor end.
+    pub fn auto_scroll(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "auto_scroll", v);
+        self
+    }
+
+    /// Scrollbar track color.
+    pub fn scrollbar_color(mut self, c: impl Into<Color>) -> Self {
+        super::set_prop(&mut self.props, "scrollbar_color", super::color_to_value(&c.into()));
+        self
+    }
+
+    /// Scroller handle color.
+    pub fn scroller_color(mut self, c: impl Into<Color>) -> Self {
+        super::set_prop(&mut self.props, "scroller_color", super::color_to_value(&c.into()));
+        self
+    }
+
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
@@ -1104,6 +1192,36 @@ impl PaneGridBuilder {
 
     pub fn split_axis(mut self, axis: &str) -> Self {
         super::set_prop(&mut self.props, "split_axis", axis);
+        self
+    }
+
+    /// List of pane identifiers in this grid.
+    pub fn panes(mut self, pane_ids: &[&str]) -> Self {
+        super::set_prop(&mut self.props, "panes", json!(pane_ids));
+        self
+    }
+
+    /// Minimum pane size in pixels.
+    pub fn min_size(mut self, v: f32) -> Self {
+        super::set_prop(&mut self.props, "min_size", v);
+        self
+    }
+
+    /// Color for the split divider between panes.
+    pub fn divider_color(mut self, c: impl Into<Color>) -> Self {
+        super::set_prop(&mut self.props, "divider_color", super::color_to_value(&c.into()));
+        self
+    }
+
+    /// Divider thickness in pixels.
+    pub fn divider_width(mut self, v: f32) -> Self {
+        super::set_prop(&mut self.props, "divider_width", v);
+        self
+    }
+
+    /// Grabbable area around dividers in pixels.
+    pub fn leeway(mut self, v: f32) -> Self {
+        super::set_prop(&mut self.props, "leeway", v);
         self
     }
 

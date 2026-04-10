@@ -81,13 +81,25 @@ impl TextEditorBuilder {
     pub fn placeholder(mut self, p: &str) -> Self { super::set_prop(&mut self.props, "placeholder", p); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
+    /// Minimum editor height in pixels.
+    pub fn min_height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "min_height", h); self }
+    /// Maximum editor height in pixels.
+    pub fn max_height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "max_height", h); self }
     pub fn padding(mut self, p: impl Into<Padding>) -> Self { super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into())); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", serde_json::to_value(&f).unwrap()); self }
     pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
     pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
+    /// Input purpose hint: `"normal"`, `"secure"`, or `"terminal"`.
+    pub fn input_purpose(mut self, purpose: &str) -> Self { super::set_prop(&mut self.props, "input_purpose", purpose); self }
     pub fn highlight_syntax(mut self, lang: &str) -> Self { super::set_prop(&mut self.props, "highlight_syntax", lang); self }
     pub fn highlight_theme(mut self, theme: &str) -> Self { super::set_prop(&mut self.props, "highlight_theme", theme); self }
+    /// Declarative key binding rules for the editor.
+    pub fn key_bindings(mut self, bindings: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "key_bindings", bindings.clone()); self }
+    /// Placeholder text color.
+    pub fn placeholder_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "placeholder_color", super::color_to_value(&c.into())); self }
+    /// Text selection highlight color.
+    pub fn selection_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "selection_color", super::color_to_value(&c.into())); self }
     pub fn on_paste(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_paste", enabled); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }

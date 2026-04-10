@@ -204,6 +204,10 @@ impl ProgressBarBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
+    /// Render as a vertical bar instead of horizontal.
+    pub fn vertical(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "vertical", v); self }
+    /// Accessible label for the progress bar.
+    pub fn label(mut self, l: &str) -> Self { super::set_prop(&mut self.props, "label", l); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
@@ -252,7 +256,22 @@ impl ImageBuilder {
     pub fn filter_method(mut self, method: &str) -> Self { super::set_prop(&mut self.props, "filter_method", method); self }
     pub fn rotation(mut self, degrees: f32) -> Self { super::set_prop(&mut self.props, "rotation", degrees); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
+    /// Corner radius for rounded image borders.
+    pub fn border_radius(mut self, r: f32) -> Self { super::set_prop(&mut self.props, "border_radius", r); self }
+    /// Expand the image to fill available space.
+    pub fn expand(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "expand", v); self }
+    /// Scale factor applied to the image.
+    pub fn scale(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "scale", s); self }
+    /// Crop to a pixel rectangle within the source image.
+    pub fn crop(mut self, x: f32, y: f32, width: f32, height: f32) -> Self {
+        super::set_prop(&mut self.props, "crop", json!({"x": x, "y": y, "width": width, "height": height}));
+        self
+    }
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
+    /// Extended accessible description (longer than `alt`).
+    pub fn description(mut self, desc: &str) -> Self { super::set_prop(&mut self.props, "description", desc); self }
+    /// When true, hides the image from assistive technology.
+    pub fn decorative(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "decorative", v); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 
@@ -301,6 +320,10 @@ impl SvgBuilder {
     pub fn rotation(mut self, degrees: f32) -> Self { super::set_prop(&mut self.props, "rotation", degrees); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
+    /// Extended accessible description (longer than `alt`).
+    pub fn description(mut self, desc: &str) -> Self { super::set_prop(&mut self.props, "description", desc); self }
+    /// When true, hides the SVG from assistive technology.
+    pub fn decorative(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "decorative", v); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }
@@ -384,6 +407,10 @@ impl QrCodeBuilder {
     pub fn error_correction(mut self, level: &str) -> Self { super::set_prop(&mut self.props, "error_correction", level); self }
     pub fn cell_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "cell_color", super::color_to_value(&c.into())); self }
     pub fn background(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "background", super::color_to_value(&c.into())); self }
+    /// Accessible label for the QR code.
+    pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
+    /// Extended accessible description.
+    pub fn description(mut self, desc: &str) -> Self { super::set_prop(&mut self.props, "description", desc); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 }

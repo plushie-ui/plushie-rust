@@ -47,6 +47,66 @@ impl TableBuilder {
         self
     }
 
+    /// Show the header row.
+    pub fn header(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "header", v);
+        self
+    }
+
+    /// Show a separator line below the header.
+    pub fn separator(mut self, v: bool) -> Self {
+        super::set_prop(&mut self.props, "separator", v);
+        self
+    }
+
+    /// Column key to sort by.
+    pub fn sort_by(mut self, column: &str) -> Self {
+        super::set_prop(&mut self.props, "sort_by", column);
+        self
+    }
+
+    /// Sort direction: `"asc"` or `"desc"`.
+    pub fn sort_order(mut self, order: &str) -> Self {
+        super::set_prop(&mut self.props, "sort_order", order);
+        self
+    }
+
+    /// Header row text size in pixels.
+    pub fn header_text_size(mut self, s: f32) -> Self {
+        super::set_prop(&mut self.props, "header_text_size", s);
+        self
+    }
+
+    /// Body row text size in pixels.
+    pub fn row_text_size(mut self, s: f32) -> Self {
+        super::set_prop(&mut self.props, "row_text_size", s);
+        self
+    }
+
+    /// Horizontal spacing between cells in pixels.
+    pub fn cell_spacing(mut self, s: f32) -> Self {
+        super::set_prop(&mut self.props, "cell_spacing", s);
+        self
+    }
+
+    /// Vertical spacing between rows in pixels.
+    pub fn row_spacing(mut self, s: f32) -> Self {
+        super::set_prop(&mut self.props, "row_spacing", s);
+        self
+    }
+
+    /// Separator line thickness in pixels.
+    pub fn separator_thickness(mut self, t: f32) -> Self {
+        super::set_prop(&mut self.props, "separator_thickness", t);
+        self
+    }
+
+    /// Separator line color.
+    pub fn separator_color(mut self, c: impl Into<Color>) -> Self {
+        super::set_prop(&mut self.props, "separator_color", super::color_to_value(&c.into()));
+        self
+    }
+
     pub fn spacing(mut self, s: f32) -> Self {
         super::set_prop(&mut self.props, "spacing", s);
         self

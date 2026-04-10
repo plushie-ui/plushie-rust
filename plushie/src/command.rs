@@ -254,6 +254,43 @@ impl Command {
         }
     }
 
+    /// Open a file-open dialog with options.
+    pub fn file_open_with(tag: &str, opts: FileDialogOpts) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::FileOpen(opts) }
+    }
+
+    /// Open a multi-file selection dialog with options.
+    pub fn file_open_multiple_with(tag: &str, opts: FileDialogOpts) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::FileOpenMultiple(opts) }
+    }
+
+    /// Open a file-save dialog with options.
+    pub fn file_save_with(tag: &str, opts: FileDialogOpts) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::FileSave(opts) }
+    }
+
+    /// Open a single-directory selection dialog with options.
+    pub fn directory_select_with(tag: &str, opts: FileDialogOpts) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::DirectorySelect(opts) }
+    }
+
+    /// Open a multi-directory selection dialog with options.
+    pub fn directory_select_multiple_with(tag: &str, opts: FileDialogOpts) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::DirectorySelectMultiple(opts) }
+    }
+
+    /// Show a desktop notification with options.
+    pub fn notification_with(tag: &str, title: &str, body: &str, opts: NotificationOpts) -> Self {
+        Self::Effect {
+            tag: tag.to_string(),
+            request: EffectRequest::Notification {
+                title: title.to_string(),
+                body: body.to_string(),
+                opts,
+            },
+        }
+    }
+
     // -- Scroll shortcuts --
 
     /// Scroll a scrollable widget to an absolute position.
@@ -403,6 +440,8 @@ pub struct FileDialogOpts {
     pub directory: Option<String>,
     /// File type filters as `(label, [extensions])` pairs.
     pub filters: Vec<(String, Vec<String>)>,
+    /// Default file name for save dialogs.
+    pub default_name: Option<String>,
 }
 
 /// Options for desktop notifications.
@@ -414,8 +453,69 @@ pub struct NotificationOpts {
     pub timeout: Option<Duration>,
     /// Urgency level (e.g. "low", "normal", "critical").
     pub urgency: Option<String>,
-    /// Whether to play a notification sound.
-    pub sound: Option<bool>,
+    /// Sound name to play with the notification.
+    pub sound: Option<String>,
+}
+
+impl FileDialogOpts {
+    /// Create empty options.
+    pub fn new() -> Self { Self::default() }
+
+    /// Set the dialog window title.
+    pub fn title(mut self, title: &str) -> Self {
+        self.title = Some(title.to_string());
+        self
+    }
+
+    /// Set the initial directory to open in.
+    pub fn directory(mut self, dir: &str) -> Self {
+        self.directory = Some(dir.to_string());
+        self
+    }
+
+    /// Add a file type filter (e.g. `("Images", &["png", "jpg"])`).
+    pub fn filter(mut self, label: &str, extensions: &[&str]) -> Self {
+        self.filters.push((
+            label.to_string(),
+            extensions.iter().map(|e| e.to_string()).collect(),
+        ));
+        self
+    }
+
+    /// Set the default file name (for save dialogs).
+    pub fn default_name(mut self, name: &str) -> Self {
+        self.default_name = Some(name.to_string());
+        self
+    }
+}
+
+impl NotificationOpts {
+    /// Create empty options.
+    pub fn new() -> Self { Self::default() }
+
+    /// Set the notification icon path or name.
+    pub fn icon(mut self, icon: &str) -> Self {
+        self.icon = Some(icon.to_string());
+        self
+    }
+
+    /// Set how long the notification should be displayed.
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    /// Set the urgency level (`"low"`, `"normal"`, or `"critical"`).
+    pub fn urgency(mut self, urgency: &str) -> Self {
+        self.urgency = Some(urgency.to_string());
+        self
+    }
+
+    /// Set the sound name to play.
+    pub fn sound(mut self, sound: &str) -> Self {
+        self.sound = Some(sound.to_string());
+        self
+    }
 }
 
 /// An image management operation.

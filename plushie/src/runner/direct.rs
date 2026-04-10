@@ -24,6 +24,7 @@ use crate::App;
 use crate::command::Command;
 use crate::event::{Event, EventType, WidgetEvent};
 use crate::runtime::normalize;
+use crate::widget::{EventResult, WidgetStateStore};
 
 // ---------------------------------------------------------------------------
 // DirectApp: wraps the user's App for plushie_widget_sdk::iced::daemon
@@ -39,6 +40,7 @@ struct DirectApp<A: App> {
     theme: Theme,
     current_tree: Option<TreeNode>,
     window_iced_ids: HashMap<String, plushie_widget_sdk::iced::window::Id>,
+    widget_store: WidgetStateStore,
 }
 
 impl<A: App> DirectApp<A> {
@@ -57,6 +59,7 @@ impl<A: App> DirectApp<A> {
             theme: Theme::Dark,
             current_tree: None,
             window_iced_ids: HashMap::new(),
+            widget_store: WidgetStateStore::new(),
         };
 
         app.refresh_view();
@@ -68,9 +71,36 @@ impl<A: App> DirectApp<A> {
     fn update(&mut self, msg: Message) -> Task<Message> {
         // Convert iced Message to SDK Event.
         if let Some(event) = message_to_event(&msg) {
-            let cmd = A::update(&mut self.model, event);
-            self.refresh_view();
-            return self.execute_command(cmd);
+            // Let composite widgets intercept first.
+            let intercepted = self.widget_store.intercept_event(&event);
+            match intercepted {
+                Some(EventResult::Consumed) | Some(EventResult::UpdateState) => {
+                    self.refresh_view();
+                    return Task::none();
+                }
+                Some(EventResult::Emit { family, value }) => {
+                    // Widget transformed the event.
+                    let widget_id = event.as_widget()
+                        .and_then(|w| w.scope.first().cloned())
+                        .unwrap_or_default();
+                    let new_event = Event::Widget(WidgetEvent {
+                        event_type: crate::event::family_to_event_type(&family),
+                        id: widget_id,
+                        window_id: "main".to_string(),
+                        scope: vec![],
+                        value,
+                    });
+                    let cmd = A::update(&mut self.model, new_event);
+                    self.refresh_view();
+                    return self.execute_command(cmd);
+                }
+                Some(EventResult::Ignored) | None => {
+                    // Widget didn't intercept. Deliver to app as-is.
+                    let cmd = A::update(&mut self.model, event);
+                    self.refresh_view();
+                    return self.execute_command(cmd);
+                }
+            }
         }
 
         // Messages that don't produce SDK events (subscriptions,
@@ -134,7 +164,8 @@ impl<A: App> DirectApp<A> {
 
     fn refresh_view(&mut self) {
         let view = A::view(&self.model);
-        let (normalized, warnings) = normalize::normalize(&view.0);
+        let expanded = self.widget_store.expand_widgets(&view.0);
+        let (normalized, warnings) = normalize::normalize(&expanded);
         for warning in &warnings {
             log::warn!("view normalization: {warning}");
         }

@@ -10,7 +10,7 @@
 //! Run with: `cargo run -p plushie --example notes`
 
 use plushie::prelude::*;
-use plushie::util::{Route, Selection, SelectionMode, UndoStack};
+use plushie::util::{Query, Route, Selection, SelectionMode, UndoCommand, UndoStack};
 
 #[derive(Clone)]
 struct NoteContent {
@@ -18,6 +18,7 @@ struct NoteContent {
     body: String,
 }
 
+#[derive(Clone)]
 struct Note {
     id: usize,
     title: String,
@@ -108,19 +109,27 @@ impl App for Notes {
             }
 
             Some(Input("title", value)) => {
-                let new_content = NoteContent {
-                    title: value.to_string(),
-                    body: model.undo.current().body.clone(),
-                };
-                model.undo.push_labeled(new_content, "edit title");
+                let title = value.to_string();
+                model.undo.apply(
+                    UndoCommand::new(
+                        move |c: &NoteContent| NoteContent { title: title.clone(), body: c.body.clone() },
+                        |c: &NoteContent| c.clone(),
+                    )
+                    .label("edit title")
+                    .coalesce("typing", 500),
+                );
             }
 
             Some(Input("body", value)) => {
-                let new_content = NoteContent {
-                    title: model.undo.current().title.clone(),
-                    body: value.to_string(),
-                };
-                model.undo.push_labeled(new_content, "edit body");
+                let body = value.to_string();
+                model.undo.apply(
+                    UndoCommand::new(
+                        move |c: &NoteContent| NoteContent { title: c.title.clone(), body: body.clone() },
+                        |c: &NoteContent| c.clone(),
+                    )
+                    .label("edit body")
+                    .coalesce("typing", 500),
+                );
             }
 
             Some(Toggle(id, _)) if id.starts_with("note_select:") => {
@@ -143,17 +152,18 @@ impl App for Notes {
 }
 
 fn view_list(model: &Notes) -> View {
-    let filtered: Vec<&Note> = model.notes.iter().filter(|note| {
-        if model.search_query.is_empty() {
-            return true;
-        }
-        let q = model.search_query.to_lowercase();
-        note.title.to_lowercase().contains(&q)
-            || note.body.to_lowercase().contains(&q)
-    }).collect();
+    let q = model.search_query.to_lowercase();
+    let result = Query::new(&model.notes)
+        .filter(|note| {
+            q.is_empty()
+                || note.title.to_lowercase().contains(&q)
+                || note.body.to_lowercase().contains(&q)
+        })
+        .page_size(model.notes.len().max(1))
+        .run();
 
     let mut note_list = column().spacing(4.0).width(Fill);
-    for note in &filtered {
+    for note in &result.entries {
         let id_str = note.id.to_string();
         let label = if note.title.is_empty() { "(untitled)" } else { &note.title };
         note_list = note_list.child(

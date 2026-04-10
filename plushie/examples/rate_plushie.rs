@@ -1,17 +1,121 @@
-//! App rating page with form validation and reviews.
+//! App rating page with composite widgets, form validation, and reviews.
 //!
-//! Matches the Elixir RatePlushie example's layout and logic: star
-//! rating via buttons, theme toggle, form validation with per-field
-//! error messages, and a scrollable review list. The Elixir version
-//! uses StarRating and ThemeToggle composite widgets; here we use
-//! raw buttons and a toggler since the Rust SDK does not expand
-//! composite widgets in standalone examples.
+//! Demonstrates the Widget trait for reusable components:
+//!
+//! - `StarRating`: a row of star buttons that tracks hover state
+//!   internally and emits a "select" event with the chosen rating.
+//! - `ThemeToggle`: wraps a toggler, emitting "toggle" with the
+//!   new boolean state.
+//!
+//! The app never touches the widgets' internal children directly.
+//! It receives high-level semantic events via `as_widget()`.
 //!
 //! Run with: `cargo run -p plushie --example rate_plushie`
 
 use std::collections::HashMap;
 
+use serde_json::Value;
+
 use plushie::prelude::*;
+use plushie::widget::{Widget, WidgetView, EventResult};
+
+// ---------------------------------------------------------------------------
+// StarRating widget
+// ---------------------------------------------------------------------------
+
+struct StarRating;
+
+#[derive(Default)]
+struct StarState {
+    hover: Option<usize>,
+}
+
+impl Widget for StarRating {
+    type State = StarState;
+
+    fn view(id: &str, props: &Value, state: &Self::State) -> View {
+        let rating = props.get("rating")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize;
+        let display = state.hover.unwrap_or(rating);
+
+        row().id(id).spacing(4.0).children(
+            (0..5).map(|i| {
+                let filled = i < display;
+                let label = if filled { "\u{2605}" } else { "\u{2606}" };
+                button(&format!("star-{i}"), label)
+                    .style(if filled { Style::warning() } else { Style::text() })
+            }),
+        )
+        .into()
+    }
+
+    fn handle_event(event: &Event, state: &mut Self::State) -> EventResult {
+        match event.widget_match() {
+            Some(Click(id)) if id.starts_with("star-") => {
+                if let Ok(n) = id["star-".len()..].parse::<usize>() {
+                    state.hover = None;
+                    EventResult::emit("select", (n + 1) as u64)
+                } else {
+                    EventResult::Ignored
+                }
+            }
+            Some(Enter(id)) if id.starts_with("star-") => {
+                state.hover = id["star-".len()..].parse::<usize>().ok().map(|n| n + 1);
+                EventResult::UpdateState
+            }
+            Some(Exit(_)) => {
+                state.hover = None;
+                EventResult::UpdateState
+            }
+            _ => EventResult::Ignored,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ThemeToggle widget
+// ---------------------------------------------------------------------------
+
+struct ThemeToggle;
+
+/// ThemeToggle has no internal state; it's a pure view wrapper
+/// that transforms toggler events into "toggle" emissions.
+#[derive(Default)]
+struct ToggleState;
+
+impl Widget for ThemeToggle {
+    type State = ToggleState;
+
+    fn view(id: &str, props: &Value, _state: &Self::State) -> View {
+        let is_dark = props.get("dark")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        row().id(id).align_y(Align::Center)
+            .child(space().width(Fill))
+            .child(
+                text("Dark humor")
+                    .id("label")
+                    .color(Color::hex(
+                        if is_dark { "#9999bb" } else { "#666666" },
+                    )),
+            )
+            .child(toggler("switch", is_dark))
+            .into()
+    }
+
+    fn handle_event(event: &Event, _state: &mut Self::State) -> EventResult {
+        match event.widget_match() {
+            Some(Toggle("switch", on)) => EventResult::emit("toggle", on),
+            _ => EventResult::Ignored,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------------
 
 struct RatePlushie {
     rating: usize,
@@ -88,19 +192,28 @@ impl App for RatePlushie {
     }
 
     fn update(model: &mut Self, event: Event) -> Command {
-        match event.widget_match() {
-            // Star rating: buttons "star-0" through "star-4" map to 1..=5.
-            Some(Click(id)) if id.starts_with("star-") => {
-                if let Ok(n) = id["star-".len()..].parse::<usize>() {
-                    model.rating = n + 1;
-                    model.errors.remove("rating");
+        // Widget events arrive via as_widget() since the emitted
+        // families ("select", "toggle") aren't all covered by
+        // WidgetMatch's typed variants.
+        if let Some(w) = event.as_widget() {
+            match w.id.as_str() {
+                "stars" => {
+                    if let Some(n) = w.value.as_u64() {
+                        model.rating = n as usize;
+                        model.errors.remove("rating");
+                    }
                 }
+                "theme-toggle" => {
+                    if let Some(dark) = w.value.as_bool() {
+                        model.dark_mode = dark;
+                    }
+                }
+                _ => {}
             }
-            // Theme toggle
-            Some(Toggle("theme-toggle", dark)) => {
-                model.dark_mode = dark;
-            }
-            // Form inputs
+        }
+
+        // Standard widget_match for the form controls.
+        match event.widget_match() {
             Some(Input("review-name", name)) => {
                 model.review_name = name.to_string();
                 model.errors.remove("name");
@@ -109,12 +222,12 @@ impl App for RatePlushie {
                 model.review_comment = comment.to_string();
                 model.errors.remove("comment");
             }
-            // Submit (button click or text_input submit)
             Some(Click("submit-review")) | Some(Submit("review-name", _)) => {
                 submit_review(model);
             }
             _ => {}
         }
+
         Command::none()
     }
 
@@ -129,7 +242,6 @@ impl App for RatePlushie {
                     .spacing(24.0)
                     .padding(Padding::new(32.0, 24.0, 32.0, 24.0))
                     .width(Fill)
-                    // Heading
                     .child(
                         text("Rate Plushie")
                             .id("heading")
@@ -140,9 +252,7 @@ impl App for RatePlushie {
                                 "level": 1
                             })),
                     )
-                    // Rating card
-                    .child(rating_card(model, p, &t))
-                    // Reviews heading
+                    .child(rating_card(model, &t))
                     .child(
                         text("Reviews")
                             .id("reviews-heading")
@@ -153,7 +263,6 @@ impl App for RatePlushie {
                                 "level": 2
                             })),
                     )
-                    // Reviews list
                     .child(reviews_list(&model.reviews, &t)),
             ),
         )
@@ -163,10 +272,9 @@ impl App for RatePlushie {
 
 // -- Rating card --------------------------------------------------------------
 
-fn rating_card(model: &RatePlushie, _p: f64, t: &Theme) -> View {
+fn rating_card(model: &RatePlushie, t: &AppTheme) -> View {
     let mut card_col = column().spacing(20.0);
 
-    // Prompt
     card_col = card_col.child(
         text("How would you rate Plushie?")
             .id("prompt")
@@ -174,19 +282,12 @@ fn rating_card(model: &RatePlushie, _p: f64, t: &Theme) -> View {
             .color(Color::hex(&t.text_secondary)),
     );
 
-    // Stars group
+    // Star rating widget
     let mut stars_group = column().id("stars-group").spacing(4.0);
-
-    // Star buttons
-    let star_row = row().spacing(4.0).children((0..5).map(|i| {
-        let filled = i < model.rating;
-        let label = if filled { "\u{2605}" } else { "\u{2606}" };
-        button(&format!("star-{i}"), label)
-            .style(if filled { Style::warning() } else { Style::text() })
-    }));
-    stars_group = stars_group.child(star_row);
-
-    // Rating error
+    stars_group = stars_group.child(
+        WidgetView::<StarRating>::new("stars")
+            .prop("rating", model.rating as u64),
+    );
     if let Some(err) = model.errors.get("rating") {
         stars_group = stars_group.child(
             text(err)
@@ -201,24 +302,13 @@ fn rating_card(model: &RatePlushie, _p: f64, t: &Theme) -> View {
     }
     card_col = card_col.child(stars_group);
 
-    // Separator
     card_col = card_col.child(rule());
-
-    // Review form
     card_col = card_col.child(review_form(model, t));
 
-    // Theme toggle row
+    // Theme toggle widget
     card_col = card_col.child(
-        row()
-            .id("theme-row")
-            .align_y(Align::Center)
-            .child(space().width(Fill))
-            .child(
-                text("Dark humor")
-                    .id("toggle-label")
-                    .color(Color::hex(&t.text_secondary)),
-            )
-            .child(toggler("theme-toggle", model.dark_mode)),
+        WidgetView::<ThemeToggle>::new("theme-toggle")
+            .prop("dark", model.dark_mode),
     );
 
     container()
@@ -238,7 +328,7 @@ fn rating_card(model: &RatePlushie, _p: f64, t: &Theme) -> View {
 
 // -- Review form --------------------------------------------------------------
 
-fn review_form(model: &RatePlushie, t: &Theme) -> View {
+fn review_form(model: &RatePlushie, t: &AppTheme) -> View {
     let name_err = model.errors.get("name");
     let comment_err = model.errors.get("comment");
 
@@ -319,7 +409,6 @@ fn review_form(model: &RatePlushie, t: &Theme) -> View {
     }
     form = form.child(comment_col);
 
-    // Submit button
     form = form.child(button("submit-review", "Submit Review"));
 
     form.into()
@@ -327,7 +416,7 @@ fn review_form(model: &RatePlushie, t: &Theme) -> View {
 
 // -- Reviews list -------------------------------------------------------------
 
-fn reviews_list(reviews: &[Review], t: &Theme) -> View {
+fn reviews_list(reviews: &[Review], t: &AppTheme) -> View {
     let mut list = column().id("reviews").spacing(0.0).width(Fill);
 
     for (i, review) in reviews.iter().enumerate() {
@@ -340,7 +429,7 @@ fn reviews_list(reviews: &[Review], t: &Theme) -> View {
     list.into()
 }
 
-fn review_card(review: &Review, i: usize, t: &Theme) -> View {
+fn review_card(review: &Review, i: usize, t: &AppTheme) -> View {
     let stars: String = (0..5)
         .map(|j| if j < review.stars { '\u{2605}' } else { '\u{2606}' })
         .collect();
@@ -427,7 +516,7 @@ fn validate_review(model: &RatePlushie) -> HashMap<String, String> {
 
 // -- Theme --------------------------------------------------------------------
 
-struct Theme {
+struct AppTheme {
     card_bg: String,
     card_border: String,
     text: String,
@@ -438,8 +527,8 @@ struct Theme {
     error_bg: String,
 }
 
-fn theme(p: f64) -> Theme {
-    Theme {
+fn theme(p: f64) -> AppTheme {
+    AppTheme {
         card_bg: fade((255, 255, 255), (28, 28, 50), p),
         card_border: fade((224, 224, 224), (42, 42, 74), p),
         text: fade((26, 26, 26), (240, 240, 245), p),

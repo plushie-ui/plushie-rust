@@ -698,6 +698,18 @@ impl Style {
     pub fn danger() -> Self { Self::Preset("danger".into()) }
     pub fn warning() -> Self { Self::Preset("warning".into()) }
     pub fn text() -> Self { Self::Preset("text".into()) }
+    /// Default widget appearance.
+    pub fn default() -> Self { Self::Preset("default".into()) }
+    /// Dark variant.
+    pub fn dark() -> Self { Self::Preset("dark".into()) }
+    /// Subdued/weak appearance.
+    pub fn weak() -> Self { Self::Preset("weak".into()) }
+    /// Container with rounded border.
+    pub fn rounded_box() -> Self { Self::Preset("rounded_box".into()) }
+    /// Container with square border.
+    pub fn bordered_box() -> Self { Self::Preset("bordered_box".into()) }
+    /// Fully transparent background.
+    pub fn transparent() -> Self { Self::Preset("transparent".into()) }
 
     /// Start building a custom style.
     pub fn custom() -> StyleMap {

@@ -131,11 +131,17 @@ impl Spring {
     pub fn on_complete(mut self, tag: &str) -> Self { self.on_complete = Some(tag.into()); self }
 
     // Named presets matching the Elixir SDK.
+
+    /// Slow, smooth, no overshoot.
     pub fn gentle() -> Self { Self::new().stiffness(120.0).damping(14.0) }
-    pub fn bouncy() -> Self { Self::new().stiffness(200.0).damping(12.0) }
-    pub fn stiff() -> Self { Self::new().stiffness(300.0).damping(20.0) }
-    pub fn snappy() -> Self { Self::new().stiffness(400.0).damping(30.0) }
-    pub fn molasses() -> Self { Self::new().stiffness(50.0).damping(20.0) }
+    /// Quick with visible overshoot.
+    pub fn bouncy() -> Self { Self::new().stiffness(300.0).damping(10.0) }
+    /// Very quick, crisp stop.
+    pub fn stiff() -> Self { Self::new().stiffness(400.0).damping(30.0) }
+    /// Quick, minimal overshoot.
+    pub fn snappy() -> Self { Self::new().stiffness(200.0).damping(20.0) }
+    /// Slow, heavy, deliberate.
+    pub fn molasses() -> Self { Self::new().stiffness(60.0).damping(12.0) }
 }
 
 impl Default for Spring {
@@ -177,4 +183,32 @@ impl From<Transition> for AnimationStep {
 
 impl From<Spring> for AnimationStep {
     fn from(s: Spring) -> Self { AnimationStep::Spring(s) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spring_preset_values_match_elixir_sdk() {
+        let g = Spring::gentle();
+        assert_eq!(g.stiffness, 120.0);
+        assert_eq!(g.damping, 14.0);
+
+        let b = Spring::bouncy();
+        assert_eq!(b.stiffness, 300.0);
+        assert_eq!(b.damping, 10.0);
+
+        let st = Spring::stiff();
+        assert_eq!(st.stiffness, 400.0);
+        assert_eq!(st.damping, 30.0);
+
+        let sn = Spring::snappy();
+        assert_eq!(sn.stiffness, 200.0);
+        assert_eq!(sn.damping, 20.0);
+
+        let m = Spring::molasses();
+        assert_eq!(m.stiffness, 60.0);
+        assert_eq!(m.damping, 12.0);
+    }
 }

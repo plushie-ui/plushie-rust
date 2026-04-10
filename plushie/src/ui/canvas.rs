@@ -182,7 +182,7 @@ impl GroupBuilder {
     }
 
     pub fn clip(mut self, x: f32, y: f32, w: f32, h: f32) -> Self {
-        super::set_prop(&mut self.props, "clip", json!({"x": x, "y": y, "width": w, "height": h}));
+        super::set_prop(&mut self.props, "clip", json!({"x": x, "y": y, "w": w, "h": h}));
         self
     }
 
@@ -235,8 +235,8 @@ pub fn rect(x: f32, y: f32, w: f32, h: f32) -> RectBuilder {
     let mut props = Map::new();
     super::set_prop(&mut props, "x", x);
     super::set_prop(&mut props, "y", y);
-    super::set_prop(&mut props, "width", w);
-    super::set_prop(&mut props, "height", h);
+    super::set_prop(&mut props, "w", w);
+    super::set_prop(&mut props, "h", h);
     RectBuilder { id: super::auto_id("rect"), props }
 }
 
@@ -287,7 +287,7 @@ pub fn circle(x: f32, y: f32, r: f32) -> CircleBuilder {
     let mut props = Map::new();
     super::set_prop(&mut props, "x", x);
     super::set_prop(&mut props, "y", y);
-    super::set_prop(&mut props, "radius", r);
+    super::set_prop(&mut props, "r", r);
     CircleBuilder { id: super::auto_id("circle"), props }
 }
 
@@ -437,8 +437,14 @@ pub fn canvas_text(x: f32, y: f32, content: &str) -> CanvasTextBuilder {
 impl CanvasTextBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
-    pub fn color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "color", super::color_to_value(&c.into())); self }
+    /// Fill color for the text.
+    pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", serde_json::to_value(&f).unwrap()); self }
+    /// Horizontal text alignment: `"left"`, `"center"`, or `"right"`.
+    pub fn align_x(mut self, a: &str) -> Self { super::set_prop(&mut self.props, "align_x", a); self }
+    /// Vertical text alignment: `"top"`, `"center"`, or `"bottom"`.
+    pub fn align_y(mut self, a: &str) -> Self { super::set_prop(&mut self.props, "align_y", a); self }
+    pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
 }
 
 impl From<CanvasTextBuilder> for View {
@@ -471,6 +477,9 @@ impl CanvasImageBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "width", w); self }
     pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
+    /// Rotation angle in radians.
+    pub fn rotation(mut self, angle: f32) -> Self { super::set_prop(&mut self.props, "rotation", angle); self }
+    pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
 }
 
 impl From<CanvasImageBuilder> for View {

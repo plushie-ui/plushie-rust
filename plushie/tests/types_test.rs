@@ -193,6 +193,38 @@ fn shadow_fluent_builder() {
     assert_eq!(s.blur_radius, 8.0);
 }
 
+#[test]
+fn shadow_serializes_offset_as_array() {
+    let s = Shadow::new().offset(3.0, 5.0).blur_radius(10.0);
+    let json = serde_json::to_value(&s).unwrap();
+    assert_eq!(json["offset"], serde_json::json!([3.0, 5.0]));
+    assert!(json.get("offset_x").is_none());
+    assert!(json.get("offset_y").is_none());
+}
+
+#[test]
+fn shadow_deserializes_from_offset_array() {
+    let s: Shadow = serde_json::from_value(serde_json::json!({
+        "color": "#000000",
+        "offset": [2.0, 4.0],
+        "blur_radius": 8.0
+    })).unwrap();
+    assert_eq!(s.offset_x, 2.0);
+    assert_eq!(s.offset_y, 4.0);
+}
+
+#[test]
+fn shadow_deserializes_from_separate_offset_fields() {
+    let s: Shadow = serde_json::from_value(serde_json::json!({
+        "color": "#000000",
+        "offset_x": 1.0,
+        "offset_y": 3.0,
+        "blur_radius": 5.0
+    })).unwrap();
+    assert_eq!(s.offset_x, 1.0);
+    assert_eq!(s.offset_y, 3.0);
+}
+
 // ---------------------------------------------------------------------------
 // Style
 // ---------------------------------------------------------------------------

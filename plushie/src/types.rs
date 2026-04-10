@@ -487,12 +487,48 @@ impl Default for Border {
 // ---------------------------------------------------------------------------
 
 /// A drop shadow effect.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Serializes offset as `"offset": [x, y]` to match the wire format.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Shadow {
     pub color: Color,
     pub offset_x: f32,
     pub offset_y: f32,
     pub blur_radius: f32,
+}
+
+impl Serialize for Shadow {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(3))?;
+        map.serialize_entry("color", &self.color)?;
+        map.serialize_entry("offset", &[self.offset_x, self.offset_y])?;
+        map.serialize_entry("blur_radius", &self.blur_radius)?;
+        map.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Shadow {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct ShadowHelper {
+            color: Color,
+            #[serde(default)]
+            offset: Option<[f32; 2]>,
+            #[serde(default)]
+            offset_x: Option<f32>,
+            #[serde(default)]
+            offset_y: Option<f32>,
+            #[serde(default)]
+            blur_radius: f32,
+        }
+        let h = ShadowHelper::deserialize(deserializer)?;
+        let (ox, oy) = match h.offset {
+            Some([x, y]) => (x, y),
+            None => (h.offset_x.unwrap_or(0.0), h.offset_y.unwrap_or(0.0)),
+        };
+        Ok(Shadow { color: h.color, offset_x: ox, offset_y: oy, blur_radius: h.blur_radius })
+    }
 }
 
 impl Shadow {

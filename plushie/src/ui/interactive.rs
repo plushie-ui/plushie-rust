@@ -459,7 +459,7 @@ impl OverlayBuilder {
     }
 
     pub fn align(mut self, a: Align) -> Self {
-        super::set_prop(&mut self.props, "align", super::align_to_value(a));
+        super::set_prop(&mut self.props, "align", super::cross_align_to_value(a));
         self
     }
 

@@ -39,7 +39,7 @@ impl TextInputBuilder {
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
     pub fn on_submit(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_submit", enabled); self }
     pub fn secure(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "secure", enabled); self }
-    pub fn align_x(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_x", super::align_to_value(a)); self }
+    pub fn align_x(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_x", super::halign_to_value(a)); self }
     pub fn icon(mut self, icon: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "icon", icon.clone()); self }
     pub fn on_paste(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_paste", enabled); self }
     pub fn input_purpose(mut self, purpose: &str) -> Self { super::set_prop(&mut self.props, "input_purpose", purpose); self }

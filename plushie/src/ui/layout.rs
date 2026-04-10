@@ -237,7 +237,7 @@ impl ColumnBuilder {
     }
 
     pub fn align_x(mut self, a: Align) -> Self {
-        super::set_prop(&mut self.props, "align_x", super::align_to_value(a));
+        super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
 
@@ -343,12 +343,12 @@ impl RowBuilder {
     }
 
     pub fn align_x(mut self, a: Align) -> Self {
-        super::set_prop(&mut self.props, "align_x", super::align_to_value(a));
+        super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
 
     pub fn align_y(mut self, a: Align) -> Self {
-        super::set_prop(&mut self.props, "align_y", super::align_to_value(a));
+        super::set_prop(&mut self.props, "align_y", super::valign_to_value(a));
         self
     }
 
@@ -454,12 +454,12 @@ impl ContainerBuilder {
     }
 
     pub fn align_x(mut self, a: Align) -> Self {
-        super::set_prop(&mut self.props, "align_x", super::align_to_value(a));
+        super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
 
     pub fn align_y(mut self, a: Align) -> Self {
-        super::set_prop(&mut self.props, "align_y", super::align_to_value(a));
+        super::set_prop(&mut self.props, "align_y", super::valign_to_value(a));
         self
     }
 
@@ -845,7 +845,7 @@ impl KeyedColumnBuilder {
     }
 
     pub fn align_x(mut self, a: Align) -> Self {
-        super::set_prop(&mut self.props, "align_x", super::align_to_value(a));
+        super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
 

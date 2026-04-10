@@ -118,8 +118,27 @@ pub(crate) fn color_to_value(c: &Color) -> Value {
     json!(c.as_hex())
 }
 
-/// Convert an Align to a JSON string.
-pub(crate) fn align_to_value(a: Align) -> Value {
+/// Convert an Align to a horizontal alignment string for the renderer.
+pub(crate) fn halign_to_value(a: Align) -> Value {
+    match a {
+        Align::Start => json!("left"),
+        Align::Center => json!("center"),
+        Align::End => json!("right"),
+    }
+}
+
+/// Convert an Align to a vertical alignment string for the renderer.
+pub(crate) fn valign_to_value(a: Align) -> Value {
+    match a {
+        Align::Start => json!("top"),
+        Align::Center => json!("center"),
+        Align::End => json!("bottom"),
+    }
+}
+
+/// Convert an Align to a cross-axis alignment string (start/center/end).
+/// Used by overlay's `align` prop which has its own parser.
+pub(crate) fn cross_align_to_value(a: Align) -> Value {
     match a {
         Align::Start => json!("start"),
         Align::Center => json!("center"),

@@ -38,8 +38,8 @@ impl TextBuilder {
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", serde_json::to_value(&f).unwrap()); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
-    pub fn align_x(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_x", super::align_to_value(a)); self }
-    pub fn align_y(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_y", super::align_to_value(a)); self }
+    pub fn align_x(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_x", super::halign_to_value(a)); self }
+    pub fn align_y(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_y", super::valign_to_value(a)); self }
     pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
     pub fn shaping(mut self, s: &str) -> Self { super::set_prop(&mut self.props, "shaping", s); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }

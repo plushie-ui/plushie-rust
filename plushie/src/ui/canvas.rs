@@ -22,6 +22,28 @@ use serde_json::{json, Map, Value};
 use crate::View;
 use crate::types::*;
 
+/// Merge a key/value into the bundled `"stroke"` object within a props map.
+/// Creates the stroke object if it doesn't exist yet.
+fn stroke_set(props: &mut Map<String, Value>, key: &str, val: Value) {
+    let stroke = props.entry("stroke").or_insert(json!({}));
+    if let Some(obj) = stroke.as_object_mut() {
+        obj.insert(key.to_string(), val);
+    }
+}
+
+/// Build a gradient fill value in the wire format the renderer expects.
+fn gradient_fill(x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Value {
+    let stops_json: Vec<Value> = stops.iter()
+        .map(|(offset, color)| json!([offset, color]))
+        .collect();
+    json!({
+        "type": "linear",
+        "start": [x1, y1],
+        "end": [x2, y2],
+        "stops": stops_json
+    })
+}
+
 // ---------------------------------------------------------------------------
 // CanvasBuilder
 // ---------------------------------------------------------------------------
@@ -243,24 +265,18 @@ pub fn rect(x: f32, y: f32, w: f32, h: f32) -> RectBuilder {
 impl RectBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
-    pub fn stroke(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "stroke", super::color_to_value(&c.into())); self }
-    pub fn stroke_width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "stroke_width", w); self }
-    pub fn stroke_cap(mut self, cap: &str) -> Self { super::set_prop(&mut self.props, "stroke_cap", cap); self }
-    pub fn stroke_join(mut self, join: &str) -> Self { super::set_prop(&mut self.props, "stroke_join", join); self }
+    pub fn stroke(mut self, c: impl Into<Color>) -> Self { stroke_set(&mut self.props, "color", super::color_to_value(&c.into())); self }
+    pub fn stroke_width(mut self, w: f32) -> Self { stroke_set(&mut self.props, "width", json!(w)); self }
+    pub fn stroke_cap(mut self, cap: &str) -> Self { stroke_set(&mut self.props, "cap", json!(cap)); self }
+    pub fn stroke_join(mut self, join: &str) -> Self { stroke_set(&mut self.props, "join", json!(join)); self }
     pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
-        super::set_prop(&mut self.props, "stroke_dash", json!({"segments": segments, "offset": offset}));
+        stroke_set(&mut self.props, "dash", json!({"segments": segments, "offset": offset}));
         self
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn radius(mut self, r: f32) -> Self { super::set_prop(&mut self.props, "radius", r); self }
     pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
-        let stops_json: Vec<Value> = stops.iter().map(|(offset, color)| {
-            json!({"offset": offset, "color": color})
-        }).collect();
-        super::set_prop(&mut self.props, "fill", json!({
-            "type": "linear", "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-            "stops": stops_json
-        }));
+        super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
     }
 }
@@ -294,23 +310,17 @@ pub fn circle(x: f32, y: f32, r: f32) -> CircleBuilder {
 impl CircleBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
-    pub fn stroke(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "stroke", super::color_to_value(&c.into())); self }
-    pub fn stroke_width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "stroke_width", w); self }
-    pub fn stroke_cap(mut self, cap: &str) -> Self { super::set_prop(&mut self.props, "stroke_cap", cap); self }
-    pub fn stroke_join(mut self, join: &str) -> Self { super::set_prop(&mut self.props, "stroke_join", join); self }
+    pub fn stroke(mut self, c: impl Into<Color>) -> Self { stroke_set(&mut self.props, "color", super::color_to_value(&c.into())); self }
+    pub fn stroke_width(mut self, w: f32) -> Self { stroke_set(&mut self.props, "width", json!(w)); self }
+    pub fn stroke_cap(mut self, cap: &str) -> Self { stroke_set(&mut self.props, "cap", json!(cap)); self }
+    pub fn stroke_join(mut self, join: &str) -> Self { stroke_set(&mut self.props, "join", json!(join)); self }
     pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
-        super::set_prop(&mut self.props, "stroke_dash", json!({"segments": segments, "offset": offset}));
+        stroke_set(&mut self.props, "dash", json!({"segments": segments, "offset": offset}));
         self
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
-        let stops_json: Vec<Value> = stops.iter().map(|(offset, color)| {
-            json!({"offset": offset, "color": color})
-        }).collect();
-        super::set_prop(&mut self.props, "fill", json!({
-            "type": "linear", "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-            "stops": stops_json
-        }));
+        super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
     }
 }
@@ -344,12 +354,12 @@ pub fn line(x1: f32, y1: f32, x2: f32, y2: f32) -> LineBuilder {
 
 impl LineBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
-    pub fn stroke(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "stroke", super::color_to_value(&c.into())); self }
-    pub fn stroke_width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "stroke_width", w); self }
-    pub fn stroke_cap(mut self, cap: &str) -> Self { super::set_prop(&mut self.props, "stroke_cap", cap); self }
-    pub fn stroke_join(mut self, join: &str) -> Self { super::set_prop(&mut self.props, "stroke_join", join); self }
+    pub fn stroke(mut self, c: impl Into<Color>) -> Self { stroke_set(&mut self.props, "color", super::color_to_value(&c.into())); self }
+    pub fn stroke_width(mut self, w: f32) -> Self { stroke_set(&mut self.props, "width", json!(w)); self }
+    pub fn stroke_cap(mut self, cap: &str) -> Self { stroke_set(&mut self.props, "cap", json!(cap)); self }
+    pub fn stroke_join(mut self, join: &str) -> Self { stroke_set(&mut self.props, "join", json!(join)); self }
     pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
-        super::set_prop(&mut self.props, "stroke_dash", json!({"segments": segments, "offset": offset}));
+        stroke_set(&mut self.props, "dash", json!({"segments": segments, "offset": offset}));
         self
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
@@ -386,24 +396,18 @@ pub fn path(data: &str) -> PathBuilder {
 impl PathBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
-    pub fn stroke(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "stroke", super::color_to_value(&c.into())); self }
-    pub fn stroke_width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "stroke_width", w); self }
-    pub fn stroke_cap(mut self, cap: &str) -> Self { super::set_prop(&mut self.props, "stroke_cap", cap); self }
-    pub fn stroke_join(mut self, join: &str) -> Self { super::set_prop(&mut self.props, "stroke_join", join); self }
+    pub fn stroke(mut self, c: impl Into<Color>) -> Self { stroke_set(&mut self.props, "color", super::color_to_value(&c.into())); self }
+    pub fn stroke_width(mut self, w: f32) -> Self { stroke_set(&mut self.props, "width", json!(w)); self }
+    pub fn stroke_cap(mut self, cap: &str) -> Self { stroke_set(&mut self.props, "cap", json!(cap)); self }
+    pub fn stroke_join(mut self, join: &str) -> Self { stroke_set(&mut self.props, "join", json!(join)); self }
     pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
-        super::set_prop(&mut self.props, "stroke_dash", json!({"segments": segments, "offset": offset}));
+        stroke_set(&mut self.props, "dash", json!({"segments": segments, "offset": offset}));
         self
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn fill_rule(mut self, rule: &str) -> Self { super::set_prop(&mut self.props, "fill_rule", rule); self }
     pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
-        let stops_json: Vec<Value> = stops.iter().map(|(offset, color)| {
-            json!({"offset": offset, "color": color})
-        }).collect();
-        super::set_prop(&mut self.props, "fill", json!({
-            "type": "linear", "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-            "stops": stops_json
-        }));
+        super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
     }
 }

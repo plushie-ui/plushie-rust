@@ -274,7 +274,18 @@ impl RectBuilder {
         self
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
+    /// Uniform corner radius.
     pub fn radius(mut self, r: f32) -> Self { super::set_prop(&mut self.props, "radius", r); self }
+    /// Per-corner radius (top-left, top-right, bottom-right, bottom-left).
+    pub fn radius_corners(mut self, tl: f32, tr: f32, br: f32, bl: f32) -> Self {
+        super::set_prop(&mut self.props, "radius", json!({
+            "top_left": tl, "top_right": tr,
+            "bottom_right": br, "bottom_left": bl
+        }));
+        self
+    }
+    /// Fill rule: `"nonzero"` (default) or `"evenodd"`.
+    pub fn fill_rule(mut self, rule: &str) -> Self { super::set_prop(&mut self.props, "fill_rule", rule); self }
     pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
         super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
@@ -319,6 +330,8 @@ impl CircleBuilder {
         self
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
+    /// Fill rule: `"nonzero"` (default) or `"evenodd"`.
+    pub fn fill_rule(mut self, rule: &str) -> Self { super::set_prop(&mut self.props, "fill_rule", rule); self }
     pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
         super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self

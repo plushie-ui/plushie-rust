@@ -224,6 +224,13 @@ impl ColumnBuilder {
         self
     }
 
+    /// Attach a transition animation to a property.
+    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
+        let key = format!("__transition__{prop}");
+        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
+        self
+    }
+
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
@@ -325,6 +332,13 @@ impl RowBuilder {
 
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
+    /// Attach a transition animation to a property.
+    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
+        let key = format!("__transition__{prop}");
+        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
         self
     }
 
@@ -465,6 +479,13 @@ impl ContainerBuilder {
 
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.clone());
+        self
+    }
+
+    /// Attach a transition animation to a property.
+    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
+        let key = format!("__transition__{prop}");
+        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
         self
     }
 

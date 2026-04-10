@@ -80,6 +80,13 @@ impl ButtonBuilder {
         super::set_prop(&mut self.props, "a11y", a11y.clone());
         self
     }
+
+    /// Attach a transition animation to a property.
+    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
+        let key = format!("__transition__{prop}");
+        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
+        self
+    }
 }
 
 impl From<ButtonBuilder> for View {

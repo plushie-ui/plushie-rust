@@ -17,7 +17,7 @@
 //!     ]));
 //! ```
 
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 use crate::View;
 use crate::types::*;
@@ -153,6 +153,51 @@ impl GroupBuilder {
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 
+    pub fn translate(mut self, x: f32, y: f32) -> Self {
+        let transforms = self.props.entry("transforms").or_insert(json!([]));
+        if let Some(arr) = transforms.as_array_mut() {
+            arr.push(json!({"type": "translate", "x": x, "y": y}));
+        }
+        self
+    }
+
+    pub fn rotate(mut self, angle: f32) -> Self {
+        let transforms = self.props.entry("transforms").or_insert(json!([]));
+        if let Some(arr) = transforms.as_array_mut() {
+            arr.push(json!({"type": "rotate", "angle": angle}));
+        }
+        self
+    }
+
+    pub fn scale_xy(mut self, x: f32, y: f32) -> Self {
+        let transforms = self.props.entry("transforms").or_insert(json!([]));
+        if let Some(arr) = transforms.as_array_mut() {
+            arr.push(json!({"type": "scale", "x": x, "y": y}));
+        }
+        self
+    }
+
+    pub fn scale_uniform(self, factor: f32) -> Self {
+        self.scale_xy(factor, factor)
+    }
+
+    pub fn clip(mut self, x: f32, y: f32, w: f32, h: f32) -> Self {
+        super::set_prop(&mut self.props, "clip", json!({"x": x, "y": y, "width": w, "height": h}));
+        self
+    }
+
+    pub fn hit_rect(mut self, x: f32, y: f32, w: f32, h: f32) -> Self {
+        super::set_prop(&mut self.props, "hit_rect", json!({"x": x, "y": y, "w": w, "h": h}));
+        self
+    }
+
+    pub fn drag_bounds(mut self, min_x: f32, max_x: f32, min_y: f32, max_y: f32) -> Self {
+        super::set_prop(&mut self.props, "drag_bounds", json!({
+            "min_x": min_x, "max_x": max_x, "min_y": min_y, "max_y": max_y
+        }));
+        self
+    }
+
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
@@ -200,8 +245,24 @@ impl RectBuilder {
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "stroke", super::color_to_value(&c.into())); self }
     pub fn stroke_width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "stroke_width", w); self }
+    pub fn stroke_cap(mut self, cap: &str) -> Self { super::set_prop(&mut self.props, "stroke_cap", cap); self }
+    pub fn stroke_join(mut self, join: &str) -> Self { super::set_prop(&mut self.props, "stroke_join", join); self }
+    pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
+        super::set_prop(&mut self.props, "stroke_dash", json!({"segments": segments, "offset": offset}));
+        self
+    }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn radius(mut self, r: f32) -> Self { super::set_prop(&mut self.props, "radius", r); self }
+    pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
+        let stops_json: Vec<Value> = stops.iter().map(|(offset, color)| {
+            json!({"offset": offset, "color": color})
+        }).collect();
+        super::set_prop(&mut self.props, "fill", json!({
+            "type": "linear", "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+            "stops": stops_json
+        }));
+        self
+    }
 }
 
 impl From<RectBuilder> for View {
@@ -235,7 +296,23 @@ impl CircleBuilder {
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "stroke", super::color_to_value(&c.into())); self }
     pub fn stroke_width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "stroke_width", w); self }
+    pub fn stroke_cap(mut self, cap: &str) -> Self { super::set_prop(&mut self.props, "stroke_cap", cap); self }
+    pub fn stroke_join(mut self, join: &str) -> Self { super::set_prop(&mut self.props, "stroke_join", join); self }
+    pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
+        super::set_prop(&mut self.props, "stroke_dash", json!({"segments": segments, "offset": offset}));
+        self
+    }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
+    pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
+        let stops_json: Vec<Value> = stops.iter().map(|(offset, color)| {
+            json!({"offset": offset, "color": color})
+        }).collect();
+        super::set_prop(&mut self.props, "fill", json!({
+            "type": "linear", "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+            "stops": stops_json
+        }));
+        self
+    }
 }
 
 impl From<CircleBuilder> for View {
@@ -269,6 +346,12 @@ impl LineBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "stroke", super::color_to_value(&c.into())); self }
     pub fn stroke_width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "stroke_width", w); self }
+    pub fn stroke_cap(mut self, cap: &str) -> Self { super::set_prop(&mut self.props, "stroke_cap", cap); self }
+    pub fn stroke_join(mut self, join: &str) -> Self { super::set_prop(&mut self.props, "stroke_join", join); self }
+    pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
+        super::set_prop(&mut self.props, "stroke_dash", json!({"segments": segments, "offset": offset}));
+        self
+    }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
 }
 
@@ -305,8 +388,24 @@ impl PathBuilder {
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "stroke", super::color_to_value(&c.into())); self }
     pub fn stroke_width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "stroke_width", w); self }
+    pub fn stroke_cap(mut self, cap: &str) -> Self { super::set_prop(&mut self.props, "stroke_cap", cap); self }
+    pub fn stroke_join(mut self, join: &str) -> Self { super::set_prop(&mut self.props, "stroke_join", join); self }
+    pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
+        super::set_prop(&mut self.props, "stroke_dash", json!({"segments": segments, "offset": offset}));
+        self
+    }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn fill_rule(mut self, rule: &str) -> Self { super::set_prop(&mut self.props, "fill_rule", rule); self }
+    pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
+        let stops_json: Vec<Value> = stops.iter().map(|(offset, color)| {
+            json!({"offset": offset, "color": color})
+        }).collect();
+        super::set_prop(&mut self.props, "fill", json!({
+            "type": "linear", "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+            "stops": stops_json
+        }));
+        self
+    }
 }
 
 impl From<PathBuilder> for View {
@@ -378,4 +477,47 @@ impl From<CanvasImageBuilder> for View {
     fn from(b: CanvasImageBuilder) -> View {
         View::leaf(b.id, "image", b.props)
     }
+}
+
+// ---------------------------------------------------------------------------
+// CanvasSvgBuilder
+// ---------------------------------------------------------------------------
+
+/// Builder for an SVG element rendered inside a canvas.
+pub struct CanvasSvgBuilder {
+    id: String,
+    props: Map<String, Value>,
+}
+
+/// Create an SVG element inside a canvas at `(x, y)`.
+#[track_caller]
+pub fn canvas_svg(x: f32, y: f32, source: &str) -> CanvasSvgBuilder {
+    let mut props = Map::new();
+    super::set_prop(&mut props, "x", x);
+    super::set_prop(&mut props, "y", y);
+    super::set_prop(&mut props, "source", source);
+    CanvasSvgBuilder { id: super::auto_id("svg"), props }
+}
+
+impl CanvasSvgBuilder {
+    pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
+    pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "width", w); self }
+    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
+    pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
+}
+
+impl From<CanvasSvgBuilder> for View {
+    fn from(b: CanvasSvgBuilder) -> View {
+        View::leaf(b.id, "svg", b.props)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Interactive helper
+// ---------------------------------------------------------------------------
+
+/// Create an interactive canvas element. Alias for `group()` with
+/// interactive props pre-configured.
+pub fn interactive(id: &str) -> GroupBuilder {
+    group(id).on_click(true)
 }

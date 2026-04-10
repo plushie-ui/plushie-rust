@@ -81,7 +81,7 @@ impl Transition {
 }
 
 /// How many times to repeat an animation.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Repeat {
     Times(u32),
     Forever,

@@ -47,6 +47,22 @@ impl TextBuilder {
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+
+    /// Attach a transition animation to a property.
+    ///
+    /// When the property value changes between renders, the renderer
+    /// interpolates from the old value to the new one using the
+    /// transition's easing and duration.
+    ///
+    /// ```ignore
+    /// text("value").size(model.font_size)
+    ///     .transition("size", Transition::new(300).easing(Easing::EaseOut))
+    /// ```
+    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
+        let key = format!("__transition__{prop}");
+        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
+        self
+    }
 }
 
 impl From<TextBuilder> for View {
@@ -191,6 +207,13 @@ impl ProgressBarBuilder {
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+
+    /// Attach a transition animation to a property.
+    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
+        let key = format!("__transition__{prop}");
+        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
+        self
+    }
 }
 
 impl From<ProgressBarBuilder> for View {
@@ -232,6 +255,13 @@ impl ImageBuilder {
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+
+    /// Attach a transition animation to a property.
+    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
+        let key = format!("__transition__{prop}");
+        super::set_prop(&mut self.props, &key, serde_json::to_value(&t).unwrap_or_default());
+        self
+    }
 }
 
 impl From<ImageBuilder> for View {

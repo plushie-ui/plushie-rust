@@ -188,6 +188,72 @@ impl Command {
         }
     }
 
+    /// Open a multi-file selection dialog.
+    pub fn file_open_multiple(tag: &str) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::FileOpenMultiple(Default::default()) }
+    }
+
+    /// Open a file-save dialog.
+    pub fn file_save(tag: &str) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::FileSave(Default::default()) }
+    }
+
+    /// Open a single-directory selection dialog.
+    pub fn directory_select(tag: &str) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::DirectorySelect(Default::default()) }
+    }
+
+    /// Open a multi-directory selection dialog.
+    pub fn directory_select_multiple(tag: &str) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::DirectorySelectMultiple(Default::default()) }
+    }
+
+    /// Read HTML content from the system clipboard.
+    pub fn clipboard_read_html(tag: &str) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::ClipboardReadHtml }
+    }
+
+    /// Write HTML content to the system clipboard with an optional plain-text fallback.
+    pub fn clipboard_write_html(tag: &str, html: &str, alt_text: Option<&str>) -> Self {
+        Self::Effect {
+            tag: tag.to_string(),
+            request: EffectRequest::ClipboardWriteHtml {
+                html: html.to_string(),
+                alt_text: alt_text.map(|s| s.to_string()),
+            },
+        }
+    }
+
+    /// Clear the system clipboard.
+    pub fn clipboard_clear(tag: &str) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::ClipboardClear }
+    }
+
+    /// Read text from the primary selection (X11/Wayland).
+    pub fn clipboard_read_primary(tag: &str) -> Self {
+        Self::Effect { tag: tag.to_string(), request: EffectRequest::ClipboardReadPrimary }
+    }
+
+    /// Write text to the primary selection (X11/Wayland).
+    pub fn clipboard_write_primary(tag: &str, text: &str) -> Self {
+        Self::Effect {
+            tag: tag.to_string(),
+            request: EffectRequest::ClipboardWritePrimary(text.to_string()),
+        }
+    }
+
+    /// Show a desktop notification.
+    pub fn notification(tag: &str, title: &str, body: &str) -> Self {
+        Self::Effect {
+            tag: tag.to_string(),
+            request: EffectRequest::Notification {
+                title: title.to_string(),
+                body: body.to_string(),
+                opts: Default::default(),
+            },
+        }
+    }
+
     // -- Scroll shortcuts --
 
     /// Scroll a scrollable widget to an absolute position.

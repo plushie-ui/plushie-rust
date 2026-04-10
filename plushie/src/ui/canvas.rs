@@ -475,8 +475,8 @@ pub fn canvas_image(x: f32, y: f32, source: &str) -> CanvasImageBuilder {
 
 impl CanvasImageBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
-    pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "width", w); self }
-    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
+    pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "w", w); self }
+    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "h", h); self }
     /// Rotation angle in radians.
     pub fn rotation(mut self, angle: f32) -> Self { super::set_prop(&mut self.props, "rotation", angle); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
@@ -510,8 +510,8 @@ pub fn canvas_svg(x: f32, y: f32, source: &str) -> CanvasSvgBuilder {
 
 impl CanvasSvgBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
-    pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "width", w); self }
-    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
+    pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "w", w); self }
+    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "h", h); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
 }
 

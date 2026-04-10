@@ -54,6 +54,8 @@ pub struct ThemePalette {
     pub primary: Option<Color>,
     /// Success state color (confirmations, positive indicators).
     pub success: Option<Color>,
+    /// Warning state color (caution indicators).
+    pub warning: Option<Color>,
     /// Danger state color (errors, destructive actions).
     pub danger: Option<Color>,
 }
@@ -85,6 +87,21 @@ pub struct WindowConfig {
     pub decorations: Option<bool>,
     /// Whether the window background is transparent.
     pub transparent: Option<bool>,
+    /// Whether the window close button is shown.
+    pub closeable: Option<bool>,
+    /// Whether the window can be minimized.
+    pub minimizable: Option<bool>,
+    /// Blur the window background (platform-dependent).
+    pub blur: Option<bool>,
+    /// Window stacking level: `"normal"`, `"always_on_top"`, or
+    /// `"always_on_bottom"`.
+    pub level: Option<String>,
+    /// Whether closing the window exits the application.
+    pub exit_on_close_request: Option<bool>,
+    /// Max events per second for coalescable events.
+    pub event_rate: Option<u32>,
+    /// Accessibility annotations.
+    pub a11y: Option<Value>,
     /// Per-window theme override.
     pub theme: Option<Theme>,
     /// Per-window DPI scale factor override.

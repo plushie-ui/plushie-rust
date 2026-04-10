@@ -12,7 +12,7 @@ use serde_json::Value;
 
 pub struct ColorPickerWidget;
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PickerState {
     pub hue: f64,
     pub saturation: f64,

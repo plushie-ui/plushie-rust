@@ -318,6 +318,37 @@ pub enum WidgetMatch<'a> {
     Other(&'a str, EventType),
 }
 
+/// Convert an event family string to an [`EventType`].
+pub fn family_to_event_type(family: &str) -> EventType {
+    match family {
+        "click" => EventType::Click,
+        "double_click" => EventType::DoubleClick,
+        "input" => EventType::Input,
+        "submit" => EventType::Submit,
+        "toggle" => EventType::Toggle,
+        "select" => EventType::Select,
+        "slide" => EventType::Slide,
+        "slide_release" => EventType::SlideRelease,
+        "paste" => EventType::Paste,
+        "press" => EventType::Press,
+        "release" => EventType::Release,
+        "move" => EventType::Move,
+        "scroll" => EventType::Scroll,
+        "scrolled" => EventType::Scrolled,
+        "enter" => EventType::Enter,
+        "exit" => EventType::Exit,
+        "resize" => EventType::Resize,
+        "focused" => EventType::Focused,
+        "blurred" => EventType::Blurred,
+        "drag" => EventType::Drag,
+        "drag_end" => EventType::DragEnd,
+        "sort" => EventType::Sort,
+        "status" => EventType::Status,
+        "transition_complete" => EventType::TransitionComplete,
+        _ => EventType::Other(0),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // KeyEvent
 // ---------------------------------------------------------------------------

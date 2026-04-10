@@ -19,7 +19,7 @@ use serde_json::Value;
 
 pub struct ThemeToggle;
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToggleState {
     pub progress: f64,
     pub target: f64,

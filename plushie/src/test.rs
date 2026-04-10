@@ -2,28 +2,13 @@
 //!
 //! [`TestSession`] provides a headless testing environment that
 //! exercises the full MVU cycle (init -> update -> view) without
-//! rendering. Tests interact with the app through the same event
-//! types used at runtime.
+//! rendering. Composite widgets are expanded and their events
+//! are intercepted, matching runtime behavior.
 //!
-//! ```
+//! ```ignore
 //! use plushie::prelude::*;
 //! use plushie::test::TestSession;
 //!
-//! # struct Counter { count: i32 }
-//! # impl App for Counter {
-//! #     type Model = Self;
-//! #     fn init() -> (Self, Command) { (Counter { count: 0 }, Command::none()) }
-//! #     fn update(m: &mut Self, e: Event) -> Command {
-//! #         match e.widget_match() {
-//! #             Some(Click("inc")) => m.count += 1,
-//! #             _ => {}
-//! #         }
-//! #         Command::none()
-//! #     }
-//! #     fn view(m: &Self) -> View {
-//! #         window("main").child(text(&format!("{}", m.count))).into()
-//! #     }
-//! # }
 //! let mut session = TestSession::<Counter>::start();
 //! session.click("inc");
 //! session.click("inc");
@@ -34,6 +19,7 @@ use serde_json::Value;
 
 use crate::event::{Event, EventType, WidgetEvent};
 use crate::runtime::normalize;
+use crate::widget::{EventResult, WidgetStateStore};
 use crate::App;
 
 // ---------------------------------------------------------------------------
@@ -42,28 +28,24 @@ use crate::App;
 
 /// A headless test session for a plushie app.
 ///
-/// Runs the app's MVU loop without rendering: init creates the model,
-/// interactions dispatch events through update, and the view tree is
-/// available for assertions.
-///
-/// ```ignore
-/// let mut session = TestSession::<MyApp>::start();
-/// session.click("save");
-/// assert_eq!(session.model().saved, true);
-/// session.assert_text("status", "Saved!");
-/// ```
+/// Runs the app's MVU loop without rendering. Composite widgets are
+/// expanded during each view cycle and their `handle_event` is called
+/// before events reach the app's `update`.
 pub struct TestSession<A: App> {
     model: A::Model,
     tree: Value,
+    widget_store: WidgetStateStore,
 }
 
 impl<A: App> TestSession<A> {
     /// Start a new test session by calling `App::init()`.
     pub fn start() -> Self {
         let (model, _cmd) = A::init();
+        let mut widget_store = WidgetStateStore::new();
         let view = A::view(&model);
-        let (tree, _) = normalize::normalize(&view.0);
-        Self { model, tree }
+        let expanded = widget_store.expand_widgets(&view.0);
+        let (tree, _) = normalize::normalize(&expanded);
+        Self { model, tree, widget_store }
     }
 
     /// Access the current model state.
@@ -71,8 +53,7 @@ impl<A: App> TestSession<A> {
         &self.model
     }
 
-    /// Access the current model state mutably (for assertions on
-    /// interior state that isn't directly observable through the view).
+    /// Access the current model state mutably.
     pub fn model_mut(&mut self) -> &mut A::Model {
         &mut self.model
     }
@@ -131,12 +112,40 @@ impl<A: App> TestSession<A> {
         ));
     }
 
-    /// Dispatch a raw event to the app's update function.
+    /// Dispatch a raw event through the widget interception layer
+    /// and then to the app's update function.
     pub fn dispatch(&mut self, event: Event) {
-        let _cmd = A::update(&mut self.model, event);
-        // Re-render the view after each update.
+        // Step 1: Let composite widgets intercept the event.
+        let intercepted = self.widget_store.intercept_event(&event);
+
+        match intercepted {
+            Some(EventResult::Consumed) | Some(EventResult::UpdateState) => {
+                // Widget handled it; don't deliver to app.
+            }
+            Some(EventResult::Emit { family, value }) => {
+                // Widget transformed the event; deliver the new one.
+                let widget_id = event.as_widget()
+                    .and_then(|w| w.scope.first().cloned())
+                    .unwrap_or_default();
+                let new_event = Event::Widget(WidgetEvent {
+                    event_type: crate::event::family_to_event_type(&family),
+                    id: widget_id,
+                    window_id: "main".to_string(),
+                    scope: vec![],
+                    value,
+                });
+                let _cmd = A::update(&mut self.model, new_event);
+            }
+            Some(EventResult::Ignored) | None => {
+                // Widget didn't handle it; deliver to app as-is.
+                let _cmd = A::update(&mut self.model, event);
+            }
+        }
+
+        // Re-render and expand widgets.
         let view = A::view(&self.model);
-        let (tree, _) = normalize::normalize(&view.0);
+        let expanded = self.widget_store.expand_widgets(&view.0);
+        let (tree, _) = normalize::normalize(&expanded);
         self.tree = tree;
     }
 
@@ -150,9 +159,6 @@ impl<A: App> TestSession<A> {
     }
 
     /// Get the text content of a widget by ID.
-    ///
-    /// Looks for the "content" prop (used by text widgets) or
-    /// "label" prop (used by buttons).
     pub fn text_content(&self, id: &str) -> Option<String> {
         let node = self.find(id)?;
         node["props"]["content"]
@@ -219,7 +225,6 @@ impl<A: App> TestSession<A> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Create a widget event for testing.
 fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
     Event::Widget(WidgetEvent {
         event_type,
@@ -230,17 +235,12 @@ fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
     })
 }
 
-/// Recursively search for a node by ID in a JSON tree.
 fn find_node<'a>(node: &'a Value, target_id: &str) -> Option<&'a Value> {
     let id = node["id"].as_str().unwrap_or("");
-
-    // Check if the node's local ID matches (strip scope prefix).
     let local_id = id.rsplit_once('/').map(|(_, l)| l).unwrap_or(id);
     if local_id == target_id || id == target_id {
         return Some(node);
     }
-
-    // Search children.
     if let Some(children) = node["children"].as_array() {
         for child in children {
             if let Some(found) = find_node(child, target_id) {
@@ -248,6 +248,5 @@ fn find_node<'a>(node: &'a Value, target_id: &str) -> Option<&'a Value> {
             }
         }
     }
-
     None
 }

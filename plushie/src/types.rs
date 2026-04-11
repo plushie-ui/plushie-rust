@@ -25,7 +25,7 @@ pub use plushie_core::types::{
     // Alignment
     HorizontalAlignment, VerticalAlignment,
     // Layout
-    Direction, Anchor, Position, ContentFit, SortOrder,
+    Direction, Anchor, ArrowMode, Position, ContentFit, SortOrder,
     // Input
     InputPurpose, ErrorCorrection, FilterMethod, CursorStyle,
     // Style

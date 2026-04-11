@@ -86,7 +86,7 @@ struct CanvasProps {
     alt: Option<String>,
     description: Option<String>,
     role: Option<String>,
-    arrow_mode: Option<String>,
+    arrow_mode: Option<core_types::ArrowMode>,
 }
 
 impl CanvasProps {
@@ -99,7 +99,7 @@ impl CanvasProps {
             alt: String::extract(p, "alt"),
             description: String::extract(p, "description"),
             role: String::extract(p, "role"),
-            arrow_mode: String::extract(p, "arrow_mode"),
+            arrow_mode: core_types::ArrowMode::extract(p, "arrow_mode"),
         }
     }
 }
@@ -162,8 +162,7 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
         interactive_elements,
         arrow_mode: cp
             .arrow_mode
-            .as_deref()
-            .map(types::ArrowMode::from_str)
+            .map(types::ArrowMode::from)
             .unwrap_or_default(),
         pending_focus,
     })

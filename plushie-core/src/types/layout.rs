@@ -191,6 +191,56 @@ impl PlushieType for ContentFit {
     }
 }
 
+/// Arrow key navigation mode for canvas interactive elements.
+///
+/// ## Wire format
+/// Snake_case string: `"wrap"`, `"clamp"`, `"linear"`, `"none"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrowMode {
+    Wrap,
+    Clamp,
+    Linear,
+    None,
+}
+
+impl PlushieType for ArrowMode {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        match value.as_str()? {
+            "wrap" => Some(Self::Wrap),
+            "clamp" => Some(Self::Clamp),
+            "linear" => Some(Self::Linear),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::Str(
+            match self {
+                Self::Wrap => "wrap",
+                Self::Clamp => "clamp",
+                Self::Linear => "linear",
+                Self::None => "none",
+            }
+            .into(),
+        )
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        match props.get_str(key)? {
+            "wrap" => Some(Self::Wrap),
+            "clamp" => Some(Self::Clamp),
+            "linear" => Some(Self::Linear),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+
+    fn type_name() -> &'static str {
+        "arrow_mode"
+    }
+}
+
 /// Sort direction for table columns.
 ///
 /// ## Wire format

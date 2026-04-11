@@ -295,6 +295,17 @@ impl ArrowMode {
     }
 }
 
+impl From<plushie_core::types::ArrowMode> for ArrowMode {
+    fn from(mode: plushie_core::types::ArrowMode) -> Self {
+        match mode {
+            plushie_core::types::ArrowMode::Wrap => Self::Wrap,
+            plushie_core::types::ArrowMode::Clamp => Self::Clamp,
+            plushie_core::types::ArrowMode::Linear => Self::Linear,
+            plushie_core::types::ArrowMode::None => Self::None,
+        }
+    }
+}
+
 /// Axis constraint for draggable shapes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DragAxis {

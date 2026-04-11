@@ -39,7 +39,7 @@ pub use font::{Font, FontStretch, FontStyle, FontWeight};
 pub use gradient::{Gradient, GradientStop};
 pub use input::{ErrorCorrection, FilterMethod, InputPurpose};
 pub use interaction::CursorStyle;
-pub use layout::{Anchor, ContentFit, Direction, Position, SortOrder};
+pub use layout::{Anchor, ArrowMode, ContentFit, Direction, Position, SortOrder};
 pub use length::Length;
 pub use line_height::LineHeight;
 pub use padding::Padding;

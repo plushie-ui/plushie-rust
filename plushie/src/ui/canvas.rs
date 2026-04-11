@@ -89,15 +89,15 @@ pub fn canvas(id: &str) -> CanvasBuilder {
 }
 
 impl CanvasBuilder {
-    pub fn width(mut self, w: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "width", w.into().wire_encode()); self }
-    pub fn height(mut self, h: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "height", h.into().wire_encode()); self }
+    pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
+    pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn background(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "background", c.into().wire_encode()); self }
     pub fn on_press(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "on_press", v); self }
     pub fn on_release(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "on_release", v); self }
     pub fn on_move(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "on_move", v); self }
     pub fn on_scroll(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "on_scroll", v); self }
     pub fn interactive(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "interactive", v); self }
-    pub fn arrow_mode(mut self, mode: &str) -> Self { super::set_prop(&mut self.props, "arrow_mode", mode); self }
+    pub fn arrow_mode(mut self, mode: ArrowMode) -> Self { super::set_prop(&mut self.props, "arrow_mode", mode.wire_encode()); self }
     pub fn alt(mut self, text: &str) -> Self { super::set_prop(&mut self.props, "alt", text); self }
     pub fn description(mut self, text: &str) -> Self { super::set_prop(&mut self.props, "description", text); self }
     pub fn role(mut self, role: &str) -> Self { super::set_prop(&mut self.props, "role", role); self }

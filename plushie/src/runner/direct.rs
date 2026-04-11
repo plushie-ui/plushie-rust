@@ -355,46 +355,27 @@ impl<A: App> DirectApp<A> {
 fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
     let settings = A::settings();
 
-    // Build the wire-format settings JSON that Core understands.
-    let mut json = serde_json::json!({ "protocol_version": 1 });
-    if let Some(size) = settings.default_text_size {
-        json["default_text_size"] = serde_json::json!(size);
-    }
-    if let Some(rate) = settings.default_event_rate {
-        json["default_event_rate"] = serde_json::json!(rate);
-    }
-    if !settings.widget_config.is_empty() {
-        json["widget_config"] = serde_json::to_value(&settings.widget_config)
-            .unwrap_or(serde_json::Value::Null);
-    }
+    // Apply settings directly to renderer fields (no JSON round-trip).
+    renderer.core.default_text_size = settings.default_text_size;
+    renderer.core.default_event_rate = settings.default_event_rate;
+    renderer.emitter.set_default_rate(settings.default_event_rate);
 
-    // Apply to Core (handles text size, event rate, font, widget config).
-    let effects = renderer.core.apply(
-        plushie_widget_sdk::protocol::IncomingMessage::Settings { settings: json },
-    );
-    for effect in effects {
-        match effect {
-            plushie_widget_sdk::engine::CoreEffect::WidgetConfig(config) => {
-                let ctx = plushie_widget_sdk::registry::InitCtx {
-                    config: &config,
-                    theme: &renderer.theme,
-                    default_text_size: renderer.core.default_text_size,
-                    default_font: renderer.core.default_font,
-                };
-                renderer.registry.init_all(&ctx);
-            }
-            _ => {}
-        }
-    }
-
-    // Scale factor (not handled by Core).
     if let Some(sf) = settings.scale_factor {
         renderer.scale_factor = plushie_renderer_lib::app::validate_scale_factor(sf);
     }
 
-    // Event rate on the emitter (Core stores it but the emitter
-    // also needs it for rate limiting).
-    renderer.emitter.set_default_rate(settings.default_event_rate);
+    // Widget config: initialize native widgets if config is provided.
+    if !settings.widget_config.is_empty() {
+        let config = serde_json::to_value(&settings.widget_config)
+            .unwrap_or(serde_json::Value::Null);
+        let ctx = plushie_widget_sdk::registry::InitCtx {
+            config: &config,
+            theme: &renderer.theme,
+            default_text_size: renderer.core.default_text_size,
+            default_font: renderer.core.default_font,
+        };
+        renderer.registry.init_all(&ctx);
+    }
 
     // Theme (not handled by Core for initial settings).
     if let Some(theme) = settings.theme {

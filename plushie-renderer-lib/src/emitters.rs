@@ -223,8 +223,10 @@ impl EventSink for WriterSink {
 
 /// Write pre-encoded bytes through the global sink.
 ///
-/// Used by the headless writer thread and startup error paths
-/// that don't have App access.
+/// Used by code paths that don't have App access:
+/// - Headless stdout output (`WireWriter::write_bytes`)
+/// - Headless multiplexed writer thread
+/// - Startup error reporting (`startup_exit`)
 pub fn write_output(bytes: &[u8]) -> io::Result<()> {
     with_sink(|sink| sink.write_raw(bytes))
 }
@@ -232,6 +234,7 @@ pub fn write_output(bytes: &[u8]) -> io::Result<()> {
 /// Emit a `hello` handshake message through the global sink.
 ///
 /// Called during renderer startup before the App instance exists.
+/// Used by windowed, headless, and WASM entry points.
 pub fn emit_hello(
     mode: &str,
     backend: &str,

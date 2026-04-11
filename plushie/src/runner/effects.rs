@@ -1,8 +1,8 @@
 //! Direct mode effect handlers (file dialogs, clipboard, notifications).
 //!
-//! Provides [`handle_effect`] for synchronous effects and
-//! [`handle_effect_async`] for file dialog effects that must not block
-//! the iced event loop.
+//! Provides the [`DirectEffectHandler`] which implements the renderer-lib's
+//! [`EffectHandler`](plushie_renderer_lib::EffectHandler) trait for
+//! in-process effect execution.
 
 #[cfg(feature = "direct")]
 use serde_json::{Value, json};
@@ -13,52 +13,62 @@ use plushie_widget_sdk::message::Message;
 #[cfg(feature = "direct")]
 use plushie_widget_sdk::iced::Task;
 
-/// Handle a typed EffectRequest. Dispatches to sync or async handler.
+/// Effect handler for direct mode. Executes effects in-process using
+/// rfd (file dialogs), arboard (clipboard), and notify-rust (notifications).
 #[cfg(feature = "direct")]
-pub(crate) fn handle_effect_request(
-    tag: String,
-    request: plushie_core::ops::EffectRequest,
-) -> Task<Message> {
-    use plushie_core::ops::EffectRequest;
-    let is_async = matches!(&request,
-        EffectRequest::FileOpen(_)
-        | EffectRequest::FileOpenMultiple(_)
-        | EffectRequest::FileSave(_)
-        | EffectRequest::DirectorySelect(_)
-        | EffectRequest::DirectorySelectMultiple(_)
-    );
-    let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
-    if is_async {
-        handle_effect_async(tag, kind.to_string(), payload)
-    } else {
-        handle_effect(tag, kind, &payload)
+pub(crate) struct DirectEffectHandler;
+
+#[cfg(feature = "direct")]
+impl plushie_renderer_lib::EffectHandler for DirectEffectHandler {
+    fn handle_sync(
+        &self,
+        id: &str,
+        request: &plushie_core::ops::EffectRequest,
+    ) -> Option<plushie_widget_sdk::protocol::EffectResponse> {
+        use plushie_widget_sdk::protocol::EffectResponse;
+        let (kind, payload) = plushie_core::ops::effect_request_to_wire(request);
+        let (status, result) = dispatch_sync(kind, &payload);
+        Some(match status.as_str() {
+            "ok" => EffectResponse::ok(id.to_string(), result),
+            "cancelled" => EffectResponse::cancelled(id.to_string()),
+            _ => EffectResponse::error(id.to_string(), status),
+        })
     }
-}
 
-/// Handle an effect synchronously. Returns an iced Task that delivers
-/// the result as an `EffectResult` message.
-#[cfg(feature = "direct")]
-fn handle_effect(tag: String, kind: &str, payload: &Value) -> Task<Message> {
-    let (status, result) = dispatch_sync(kind, payload);
-    Task::done(Message::EffectResult { tag, status, result })
-}
+    fn handle_async(
+        &self,
+        id: String,
+        request: plushie_core::ops::EffectRequest,
+    ) -> Task<Message> {
+        use plushie_widget_sdk::protocol::EffectResponse;
+        let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
+        let kind = kind.to_string();
+        Task::perform(
+            async move { dispatch_async(&kind, &payload).await },
+            move |(status, result)| {
+                let response = match status.as_str() {
+                    "ok" => EffectResponse::ok(id.clone(), result),
+                    "cancelled" => EffectResponse::cancelled(id.clone()),
+                    _ => EffectResponse::error(id.clone(), status),
+                };
+                if let Err(e) = plushie_renderer_lib::emitters::emit_effect_response(response) {
+                    log::error!("effect response write error: {e}");
+                }
+                Message::NoOp
+            },
+        )
+    }
 
-/// Spawn an async effect (file dialogs). Returns an iced Task that
-/// completes when the user closes the dialog.
-#[cfg(feature = "direct")]
-fn handle_effect_async(
-    tag: String,
-    kind: String,
-    payload: Value,
-) -> Task<Message> {
-    Task::perform(
-        async move { dispatch_async(&kind, &payload).await },
-        move |(status, result)| Message::EffectResult {
-            tag,
-            status,
-            result,
-        },
-    )
+    fn is_async(&self, request: &plushie_core::ops::EffectRequest) -> bool {
+        use plushie_core::ops::EffectRequest;
+        matches!(request,
+            EffectRequest::FileOpen(_)
+            | EffectRequest::FileOpenMultiple(_)
+            | EffectRequest::FileSave(_)
+            | EffectRequest::DirectorySelect(_)
+            | EffectRequest::DirectorySelectMultiple(_)
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------

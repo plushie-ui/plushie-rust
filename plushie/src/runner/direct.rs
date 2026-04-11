@@ -2,31 +2,29 @@
 //!
 //! Embeds the plushie renderer directly in the application binary.
 //! The user's [`App::view()`] produces a [`View`] which is normalized,
-//! rendered through the [`WidgetRegistry`], and displayed by iced.
-//! Widget interactions produce iced [`Message`]s which are converted
-//! to SDK [`Event`]s and delivered to [`App::update()`].
+//! rendered through the renderer, and displayed by iced.
 //!
-//! No subprocess, no serialization, no wire protocol.
+//! Commands are executed through the renderer-lib's
+//! [`App::execute`](plushie_renderer_lib::App::execute) to ensure
+//! identical behavior between direct and wire modes.
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use plushie_widget_sdk::iced::{Element, Task, Theme};
 
-use plushie_widget_sdk::image_registry::ImageRegistry;
 use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::TreeNode;
-use plushie_widget_sdk::registry::WidgetRegistry;
 use plushie_widget_sdk::render_ctx::RenderCtx;
-use plushie_widget_sdk::shared_state::SharedState;
 use plushie_widget_sdk::widget::widget_set::iced_widget_set;
-
-use plushie_core::ops::RendererOp;
 
 use crate::App;
 use crate::command::Command;
 use crate::event::{Event, EventType, WidgetEvent};
 use crate::runtime::normalize;
 use crate::widget::{EventResult, WidgetStateStore};
+
+use super::queue_sink::{QueueSink, SinkEvent};
 
 // ---------------------------------------------------------------------------
 // DirectApp: wraps the user's App for plushie_widget_sdk::iced::daemon
@@ -36,10 +34,10 @@ use crate::widget::{EventResult, WidgetStateStore};
 #[allow(dead_code)] // window_iced_ids reserved for multi-window support
 struct DirectApp<A: App> {
     model: A::Model,
-    registry: WidgetRegistry,
-    shared_state: SharedState,
-    image_registry: ImageRegistry,
-    theme: Theme,
+    /// Renderer-lib App that handles commands, effects, and state.
+    renderer: plushie_renderer_lib::App,
+    /// Queue for events emitted by the renderer during command execution.
+    event_queue: Arc<Mutex<Vec<SinkEvent>>>,
     current_tree: Option<TreeNode>,
     window_iced_ids: HashMap<String, plushie_widget_sdk::iced::window::Id>,
     widget_store: WidgetStateStore,
@@ -53,12 +51,20 @@ impl<A: App> DirectApp<A> {
             .widget_set(&iced_widget_set());
         let registry = builder.build();
 
+        // Create the QueueSink for in-process event collection and
+        // initialize the global event sink so the renderer-lib emitter
+        // routes through it.
+        let (sink, event_queue) = QueueSink::new();
+        plushie_renderer_lib::emitters::init_sink(Box::new(sink));
+
+        // Create the renderer-lib App with the SDK's effect handler.
+        let effect_handler = Box::new(super::effects::DirectEffectHandler);
+        let renderer = plushie_renderer_lib::App::new(registry, effect_handler);
+
         let mut app = Self {
             model,
-            registry,
-            shared_state: SharedState::new(),
-            image_registry: ImageRegistry::new(),
-            theme: Theme::Dark,
+            renderer,
+            event_queue,
             current_tree: None,
             window_iced_ids: HashMap::new(),
             widget_store: WidgetStateStore::new(),
@@ -66,7 +72,6 @@ impl<A: App> DirectApp<A> {
 
         app.refresh_view();
 
-        // TODO: convert initial Command to iced Task
         (app, Task::none())
     }
 
@@ -105,23 +110,15 @@ impl<A: App> DirectApp<A> {
             }
         }
 
+        // Drain any events emitted by the renderer (effect responses,
+        // query responses) during command execution or async completion.
+        if let Some(task) = self.drain_event_queue() {
+            return task;
+        }
+
         // Messages that don't produce SDK events (subscriptions,
         // internal renderer events) are handled here.
         match msg {
-            Message::EffectResult { tag, status, result } => {
-                let effect_result = match status.as_str() {
-                    "ok" => crate::event::EffectResult::Ok(result),
-                    "cancelled" => crate::event::EffectResult::Cancelled,
-                    _ => crate::event::EffectResult::Error(result),
-                };
-                let event = Event::Effect(crate::event::EffectEvent {
-                    tag,
-                    result: effect_result,
-                });
-                let cmd = A::update(&mut self.model, event);
-                self.refresh_view();
-                return self.execute_command(cmd);
-            }
             Message::StatusChanged(..) => {}
             Message::MarkdownUrl(..) => {}
             Message::NoOp => {}
@@ -136,14 +133,14 @@ impl<A: App> DirectApp<A> {
     fn view_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> Element<'_, Message, Theme, plushie_widget_sdk::iced::Renderer> {
         if let Some(tree) = &self.current_tree {
             let ctx = RenderCtx {
-                caches: &self.shared_state,
-                images: &self.image_registry,
-                theme: &self.theme,
-                registry: &self.registry,
-                default_text_size: None,
+                caches: &self.renderer.core.caches,
+                images: &self.renderer.image_registry,
+                theme: &self.renderer.theme,
+                registry: &self.renderer.registry,
+                default_text_size: self.renderer.core.default_text_size,
                 default_font: None,
                 window_id: "main",
-                scale_factor: 1.0,
+                scale_factor: self.renderer.scale_factor,
             };
             plushie_widget_sdk::widget::render::render(tree, ctx)
         } else {
@@ -170,11 +167,61 @@ impl<A: App> DirectApp<A> {
     }
 
     fn theme_for_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> Theme {
-        self.theme.clone()
+        self.renderer.theme.clone()
     }
 
     fn scale_factor_for_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> f32 {
         1.0
+    }
+
+    /// Drain the event queue and deliver any pending events to the
+    /// user's App::update(). Returns Some(Task) if events were processed.
+    fn drain_event_queue(&mut self) -> Option<Task<Message>> {
+        let events: Vec<SinkEvent> = {
+            let mut queue = self.event_queue.lock().unwrap();
+            if queue.is_empty() {
+                return None;
+            }
+            std::mem::take(&mut *queue)
+        };
+
+        let mut tasks = Vec::new();
+        for sink_event in events {
+            let sdk_event = match sink_event {
+                SinkEvent::EffectResponse(resp) => {
+                    let result = match resp.status {
+                        "ok" => crate::event::EffectResult::Ok(
+                            resp.result.unwrap_or(serde_json::Value::Null),
+                        ),
+                        "cancelled" => crate::event::EffectResult::Cancelled,
+                        _ => crate::event::EffectResult::Error(
+                            resp.result.unwrap_or(serde_json::Value::Null),
+                        ),
+                    };
+                    Some(Event::Effect(crate::event::EffectEvent {
+                        tag: resp.id.clone(),
+                        result,
+                    }))
+                }
+                SinkEvent::Event(_) | SinkEvent::QueryResponse { .. } => {
+                    // Widget/subscription events and query responses are
+                    // handled through the iced Message path, not the queue.
+                    None
+                }
+            };
+
+            if let Some(event) = sdk_event {
+                let cmd = A::update(&mut self.model, event);
+                self.refresh_view();
+                tasks.push(self.execute_command(cmd));
+            }
+        }
+
+        if tasks.is_empty() {
+            None
+        } else {
+            Some(Task::batch(tasks))
+        }
     }
 
     fn refresh_view(&mut self) {
@@ -187,8 +234,8 @@ impl<A: App> DirectApp<A> {
 
         match serde_json::from_value::<TreeNode>(normalized) {
             Ok(tree) => {
-                self.registry
-                    .prepare_walk(&tree, &mut self.shared_state, &self.theme);
+                self.renderer.registry
+                    .prepare_walk(&tree, &mut self.renderer.core.caches, &self.renderer.theme);
                 self.current_tree = Some(tree);
             }
             Err(e) => {
@@ -208,7 +255,7 @@ impl<A: App> DirectApp<A> {
                     .collect();
                 Task::batch(tasks)
             }
-            Command::Renderer(op) => self.execute_renderer_op(op),
+            Command::Renderer(op) => self.renderer.execute(op),
             _ => {
                 log::debug!("unhandled command in direct runner: {cmd:?}");
                 Task::none()
@@ -216,50 +263,6 @@ impl<A: App> DirectApp<A> {
         }
     }
 
-    fn execute_renderer_op(&mut self, op: RendererOp) -> Task<Message> {
-        use plushie_widget_sdk::iced::widget::operation;
-        use plushie_widget_sdk::iced::widget::Id;
-
-        match op {
-            RendererOp::Focus(id) => operation::focus::<Message>(Id::from(id)),
-            RendererOp::FocusNext => operation::focus_next(),
-            RendererOp::FocusPrevious => operation::focus_previous(),
-            RendererOp::SelectAll(id) => operation::select_all(Id::from(id)),
-            RendererOp::MoveCursorToFront(id) => operation::move_cursor_to_front(Id::from(id)),
-            RendererOp::MoveCursorToEnd(id) => operation::move_cursor_to_end(Id::from(id)),
-            RendererOp::MoveCursorTo { target, position } => operation::move_cursor_to(Id::from(target), position),
-            RendererOp::SelectRange { target, start, end } => operation::select_range(Id::from(target), start, end),
-            RendererOp::ScrollTo { target, x, y } => operation::scroll_to(
-                Id::from(target), operation::AbsoluteOffset { x, y }),
-            RendererOp::ScrollBy { target, x, y } => operation::scroll_by(
-                Id::from(target), operation::AbsoluteOffset { x, y }),
-            RendererOp::SnapTo { target, x, y } => operation::snap_to(
-                Id::from(target), operation::RelativeOffset { x: Some(x), y: Some(y) }),
-            RendererOp::SnapToEnd(id) => operation::snap_to_end(Id::from(id)),
-            RendererOp::Announce(text) => plushie_widget_sdk::iced::announce(text),
-            RendererOp::Window(op) => self.execute_window_op(op),
-            RendererOp::Effect { tag, request } => {
-                super::effects::handle_effect_request(tag, request)
-            }
-            _ => {
-                log::debug!("unhandled renderer op in direct runner: {op:?}");
-                Task::none()
-            }
-        }
-    }
-
-    fn execute_window_op(&mut self, op: plushie_core::ops::WindowOp) -> Task<Message> {
-        use plushie_core::ops::WindowOp;
-        match op {
-            WindowOp::Close(_id) => {
-                plushie_widget_sdk::iced::window::oldest().and_then(plushie_widget_sdk::iced::window::close)
-            }
-            _ => {
-                log::debug!("unhandled window op in direct runner: {op:?}");
-                Task::none()
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

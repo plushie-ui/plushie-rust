@@ -13,6 +13,9 @@ pub mod direct;
 #[cfg(feature = "direct")]
 mod effects;
 
+#[cfg(feature = "direct")]
+mod queue_sink;
+
 #[cfg(feature = "wire")]
 pub mod bridge;
 

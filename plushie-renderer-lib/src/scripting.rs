@@ -1095,6 +1095,22 @@ mod tests {
     use plushie_widget_sdk::testing::{node as make_node, node_with_props};
     use serde_json::json;
 
+    /// No-op emitter for tests that verify logic, not wire output.
+    fn test_emitter() -> crate::emitter::EventEmitter {
+        use std::sync::{Arc, Mutex};
+        struct NullSink;
+        impl crate::emitters::EventSink for NullSink {
+            fn emit_event(&mut self, _: plushie_widget_sdk::protocol::OutgoingEvent) -> std::io::Result<()> { Ok(()) }
+            fn emit_effect_response(&mut self, _: plushie_widget_sdk::protocol::EffectResponse) -> std::io::Result<()> { Ok(()) }
+            fn emit_query_response(&mut self, _: &str, _: &str, _: &serde_json::Value) -> std::io::Result<()> { Ok(()) }
+            fn emit_screenshot_response(&mut self, _: &str, _: &str, _: &str, _: u32, _: u32, _: &[u8]) -> std::io::Result<()> { Ok(()) }
+            fn emit_hello(&mut self, _: &str, _: &str, _: &[&str], _: &[&str], _: &str) -> std::io::Result<()> { Ok(()) }
+            fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> { Ok(()) }
+        }
+        let sink: Arc<Mutex<Box<dyn crate::emitters::EventSink>>> = Arc::new(Mutex::new(Box::new(NullSink)));
+        crate::emitter::EventEmitter::new(sink)
+    }
+
     fn make_text_node(id: &str, content: &str) -> plushie_widget_sdk::protocol::TreeNode {
         node_with_props(id, "text", json!({"content": content}))
     }
@@ -1302,6 +1318,7 @@ mod tests {
     fn handle_interact_click_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i1".to_string(),
             "click".to_string(),
@@ -1314,6 +1331,7 @@ mod tests {
     fn handle_interact_type_text_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i2".to_string(),
             "type_text".to_string(),
@@ -1326,6 +1344,7 @@ mod tests {
     fn handle_interact_submit_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i3".to_string(),
             "submit".to_string(),
@@ -1338,6 +1357,7 @@ mod tests {
     fn handle_interact_toggle_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i4".to_string(),
             "toggle".to_string(),
@@ -1350,6 +1370,7 @@ mod tests {
     fn handle_interact_select_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i5".to_string(),
             "select".to_string(),
@@ -1362,6 +1383,7 @@ mod tests {
     fn handle_interact_slide_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i6".to_string(),
             "slide".to_string(),
@@ -1374,6 +1396,7 @@ mod tests {
     fn handle_interact_press_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i7".to_string(),
             "press".to_string(),
@@ -1386,6 +1409,7 @@ mod tests {
     fn handle_interact_release_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i8".to_string(),
             "release".to_string(),
@@ -1398,6 +1422,7 @@ mod tests {
     fn handle_interact_move_to_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i9".to_string(),
             "move_to".to_string(),
@@ -1410,6 +1435,7 @@ mod tests {
     fn handle_interact_type_key_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i10".to_string(),
             "type_key".to_string(),
@@ -1422,6 +1448,7 @@ mod tests {
     fn handle_interact_unknown_action_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i11".to_string(),
             "nonexistent_action".to_string(),
@@ -1434,6 +1461,7 @@ mod tests {
     fn handle_interact_selector_not_found_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i12".to_string(),
             "click".to_string(),
@@ -1446,6 +1474,7 @@ mod tests {
     fn handle_interact_by_text_selector() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i13".to_string(),
             "click".to_string(),
@@ -1668,6 +1697,7 @@ mod tests {
     fn handle_interact_by_role_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i14".to_string(),
             "click".to_string(),
@@ -1680,6 +1710,7 @@ mod tests {
     fn handle_interact_by_label_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i15".to_string(),
             "click".to_string(),
@@ -1692,6 +1723,7 @@ mod tests {
     fn handle_interact_paste_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i17".to_string(),
             "paste".to_string(),
@@ -1704,6 +1736,7 @@ mod tests {
     fn handle_interact_scroll_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i18".to_string(),
             "scroll".to_string(),
@@ -1716,6 +1749,7 @@ mod tests {
     fn handle_interact_sort_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i19".to_string(),
             "sort".to_string(),
@@ -1728,6 +1762,7 @@ mod tests {
     fn handle_interact_pane_focus_cycle_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i20".to_string(),
             "pane_focus_cycle".to_string(),
@@ -1740,6 +1775,7 @@ mod tests {
     fn handle_interact_canvas_press_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i21".to_string(),
             "canvas_press".to_string(),
@@ -1752,6 +1788,7 @@ mod tests {
     fn handle_interact_canvas_release_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i22".to_string(),
             "canvas_release".to_string(),
@@ -1764,6 +1801,7 @@ mod tests {
     fn handle_interact_canvas_move_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i23".to_string(),
             "canvas_move".to_string(),
@@ -1776,6 +1814,7 @@ mod tests {
     fn handle_interact_focused_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "i16".to_string(),
             "click".to_string(),
@@ -1969,6 +2008,7 @@ mod tests {
     fn handle_interact_slide_string_value_does_not_panic() {
         let core = core_with_tree();
         handle_interact(
+            &test_emitter(),
             &core,
             "bad1".to_string(),
             "slide".to_string(),

@@ -440,6 +440,23 @@ mod tests {
     use plushie_widget_sdk::protocol::{CoalesceHint, OutgoingEvent};
     use serde_json::json;
 
+    /// No-op sink for unit tests that only exercise rate limiting
+    /// and coalescing logic, not actual event delivery.
+    struct NullSink;
+    impl EventSink for NullSink {
+        fn emit_event(&mut self, _: OutgoingEvent) -> std::io::Result<()> { Ok(()) }
+        fn emit_effect_response(&mut self, _: plushie_widget_sdk::protocol::EffectResponse) -> std::io::Result<()> { Ok(()) }
+        fn emit_query_response(&mut self, _: &str, _: &str, _: &serde_json::Value) -> std::io::Result<()> { Ok(()) }
+        fn emit_screenshot_response(&mut self, _: &str, _: &str, _: &str, _: u32, _: u32, _: &[u8]) -> std::io::Result<()> { Ok(()) }
+        fn emit_hello(&mut self, _: &str, _: &str, _: &[&str], _: &[&str], _: &str) -> std::io::Result<()> { Ok(()) }
+        fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> { Ok(()) }
+    }
+
+    fn test_emitter() -> EventEmitter {
+        let sink: Arc<Mutex<Box<dyn EventSink>>> = Arc::new(Mutex::new(Box::new(NullSink)));
+        EventEmitter::new(sink)
+    }
+
     fn make_event(family: &str, id: &str) -> OutgoingEvent {
         OutgoingEvent {
             message_type: "event",
@@ -476,14 +493,14 @@ mod tests {
 
     #[test]
     fn effective_rate_no_config_returns_none() {
-        let emitter = EventEmitter::new();
+        let emitter = test_emitter();
         let key = CoalesceKey::Subscription("on_pointer_move".into());
         assert_eq!(emitter.effective_rate(&key), None);
     }
 
     #[test]
     fn effective_rate_uses_default() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         emitter.set_default_rate(Some(60));
         let key = CoalesceKey::Subscription("on_pointer_move".into());
         assert_eq!(emitter.effective_rate(&key), Some(60));
@@ -491,7 +508,7 @@ mod tests {
 
     #[test]
     fn effective_rate_subscription_overrides_default() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         emitter.set_default_rate(Some(60));
         emitter.set_subscription_rate("on_pointer_move", 30);
         let key = CoalesceKey::Subscription("on_pointer_move".into());
@@ -500,7 +517,7 @@ mod tests {
 
     #[test]
     fn effective_rate_widget_overrides_default() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         emitter.set_default_rate(Some(60));
         emitter.set_widget_rate("slider-1", 15);
         let key = CoalesceKey::Widget("slider-1".into(), "slide".into());
@@ -509,7 +526,7 @@ mod tests {
 
     #[test]
     fn effective_rate_widget_without_override_falls_to_default() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         emitter.set_default_rate(Some(60));
         let key = CoalesceKey::Widget("slider-1".into(), "slide".into());
         assert_eq!(emitter.effective_rate(&key), Some(60));
@@ -519,7 +536,7 @@ mod tests {
 
     #[test]
     fn clear_widget_rates_removes_all() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         emitter.set_widget_rate("a", 10);
         emitter.set_widget_rate("b", 20);
         emitter.clear_widget_rates();
@@ -530,7 +547,7 @@ mod tests {
 
     #[test]
     fn remove_subscription_rate_clears_rate() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         emitter.set_subscription_rate("on_pointer_move", 30);
         emitter.remove_subscription_rate("on_pointer_move");
         assert!(!emitter.subscription_rates.contains_key("on_pointer_move"));
@@ -540,7 +557,7 @@ mod tests {
 
     #[test]
     fn buffer_replace_keeps_latest() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         let key = CoalesceKey::Widget("w1".into(), "slide".into());
         let hint = CoalesceHint::Replace;
 
@@ -555,7 +572,7 @@ mod tests {
 
     #[test]
     fn buffer_accumulate_sums_deltas() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         let key = CoalesceKey::Widget("ma1".into(), "scroll".into());
         let hint = CoalesceHint::Accumulate(vec!["delta_x".into(), "delta_y".into()]);
 
@@ -726,7 +743,7 @@ mod tests {
 
     #[test]
     fn emit_immediate_flushes_pending_first() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         let key = CoalesceKey::Widget("w1".into(), "cursor_pos".into());
         let hint = CoalesceHint::Replace;
 
@@ -749,7 +766,7 @@ mod tests {
 
     #[test]
     fn buffer_event_flushes_on_strategy_mismatch() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         let key = CoalesceKey::Widget("w1".into(), "update".into());
 
         // Buffer a Replace event.
@@ -775,7 +792,7 @@ mod tests {
 
     #[test]
     fn accumulate_custom_fields() {
-        let mut emitter = EventEmitter::new();
+        let mut emitter = test_emitter();
         let key = CoalesceKey::Widget("w1".into(), "physics".into());
         let hint = CoalesceHint::Accumulate(vec!["impulse_x".into(), "impulse_y".into()]);
 

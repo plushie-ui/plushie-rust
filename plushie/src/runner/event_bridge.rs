@@ -3,7 +3,7 @@
 //! The event bridge sits between the renderer's EventSink output
 //! (OutgoingEvent, EffectResponse, QueryResponse) and the SDK's
 //! typed Event enum. This is the single conversion point used by
-//! both direct mode (QueueSink) and potentially wire mode.
+//! the direct runner's QueueSink drain cycle.
 
 use serde_json::Value;
 
@@ -175,8 +175,8 @@ fn effect_response_to_sdk(response: EffectResponse) -> Event {
         "ok" => EffectResult::Ok(response.result.unwrap_or(Value::Null)),
         "cancelled" => EffectResult::Cancelled,
         _ => EffectResult::Error(
-            response.result
-                .or_else(|| response.error.map(|e| Value::String(e)))
+            response.error.map(|e| Value::String(e))
+                .or(response.result)
                 .unwrap_or(Value::Null)
         ),
     };

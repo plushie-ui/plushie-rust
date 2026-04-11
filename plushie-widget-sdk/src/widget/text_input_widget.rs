@@ -1,13 +1,48 @@
 use iced::widget::text_input;
-use iced::{Element, Length, Theme};
+use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
 use crate::a11y::A11yOverrides;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{
+    Font, HorizontalAlignment, InputPurpose, Length, LineHeight, Padding, PlushieType,
+};
+
+struct TextInputProps {
+    value: Option<String>,
+    placeholder: Option<String>,
+    padding: Option<Padding>,
+    width: Option<Length>,
+    size: Option<f32>,
+    font: Option<Font>,
+    line_height: Option<LineHeight>,
+    align_x: Option<HorizontalAlignment>,
+    input_purpose: Option<InputPurpose>,
+}
+
+impl TextInputProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            value: String::extract(p, "value"),
+            placeholder: String::extract(p, "placeholder"),
+            padding: Padding::extract(p, "padding"),
+            width: Length::extract(p, "width"),
+            size: f32::extract(p, "size"),
+            font: Font::extract(p, "font"),
+            line_height: LineHeight::extract(p, "line_height"),
+            align_x: HorizontalAlignment::extract(p, "align_x"),
+            input_purpose: InputPurpose::extract(p, "input_purpose")
+                .or_else(|| InputPurpose::extract(p, "ime_purpose")),
+        }
+    }
+}
 
 pub(crate) struct TextInputWidget;
 
@@ -34,39 +69,21 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextInputWidget {
     }
 }
 
-/// Parse an input purpose string into the corresponding iced `Purpose`.
-///
-/// Accepts the canonical `input_purpose` values. The `ime_purpose`
-/// prop name is handled by callers as a fallback alias.
-fn parse_input_purpose(s: &str) -> Option<iced::advanced::input_method::Purpose> {
-    use iced::advanced::input_method::Purpose;
-    match s {
-        "normal" => Some(Purpose::Normal),
-        "secure" => Some(Purpose::Secure),
-        "terminal" => Some(Purpose::Terminal),
-        "number" => Some(Purpose::Number),
-        "decimal" => Some(Purpose::Decimal),
-        "phone" => Some(Purpose::Phone),
-        "email" => Some(Purpose::Email),
-        "url" => Some(Purpose::Url),
-        "search" => Some(Purpose::Search),
-        _ => {
-            log::warn!("unknown input_purpose {:?}, ignoring", s);
-            None
-        }
-    }
-}
-
 fn render_text_input<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
+    let tp = TextInputProps::from_node(node);
     let props = &node.props;
-    let value = prop_str(props, "value").unwrap_or_default();
-    let placeholder = prop_str(props, "placeholder").unwrap_or_default();
-    let width = prop_length(props, "width", Length::Fill);
-    let size = prop_f32(props, "size").or(ctx.default_text_size);
-    let padding = parse_padding_value(props);
+
+    let value = tp.value.unwrap_or_default();
+    let placeholder = tp.placeholder.unwrap_or_default();
+    let width = tp
+        .width
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Fill);
+    let size = tp.size.or(ctx.default_text_size);
     let secure = prop_bool_default(props, "secure", false);
     let id = node.id.clone();
     let has_on_submit = prop_bool_default(props, "on_submit", false);
@@ -77,37 +94,29 @@ fn render_text_input<'a, R: PlushieRenderer>(
         .width(width)
         .secure(secure);
 
-    if let Some(p) = padding {
-        ti = ti.padding(p);
+    if let Some(ref p) = tp.padding {
+        ti = ti.padding(iced_convert::padding(p));
     }
 
-    if let Some(purpose_str) =
-        prop_str(props, "input_purpose").or_else(|| prop_str(props, "ime_purpose"))
-    {
-        let purpose = parse_input_purpose(&purpose_str);
-        if let Some(p) = purpose {
-            ti = ti.input_purpose(p);
-        }
+    if let Some(purpose) = tp.input_purpose {
+        ti = ti.input_purpose(iced_convert::input_purpose(purpose));
     }
 
     if let Some(s) = size {
         ti = ti.size(s);
     }
-    let font = props
-        .get_value("font")
-        .as_ref().map(parse_font)
+    let font = tp
+        .font
+        .map(|f| iced_convert::font(&f))
         .or(ctx.default_font);
     if let Some(f) = font {
         ti = ti.font(f);
     }
-    if let Some(lh) = parse_line_height(props) {
-        ti = ti.line_height(lh);
+    if let Some(ref lh) = tp.line_height {
+        ti = ti.line_height(iced_convert::line_height(*lh));
     }
-    if let Some(ax) = props
-        .get_str("align_x")
-        .and_then(value_to_horizontal_alignment)
-    {
-        ti = ti.align_x(ax);
+    if let Some(ax) = tp.align_x {
+        ti = ti.align_x(iced_convert::horizontal_alignment(ax));
     }
 
     if has_on_submit {

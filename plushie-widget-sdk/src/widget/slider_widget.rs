@@ -1,12 +1,15 @@
 use iced::widget::{container, slider, vertical_slider};
-use iced::{Element, Length, Theme, widget};
+use iced::{Element, Theme, widget};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{Length, PlushieType};
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -147,15 +150,42 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
 // Render logic
 // ---------------------------------------------------------------------------
 
+struct SliderProps {
+    value: Option<f64>,
+    step: Option<f64>,
+    width: Option<Length>,
+    default: Option<f64>,
+    shift_step: Option<f64>,
+    label: Option<String>,
+}
+
+impl SliderProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            value: f64::extract(p, "value"),
+            step: f64::extract(p, "step"),
+            width: Length::extract(p, "width"),
+            default: f64::extract(p, "default"),
+            shift_step: f64::extract(p, "shift_step"),
+            label: String::extract(p, "label"),
+        }
+    }
+}
+
 fn render_slider<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
     let props = &node.props;
+    let sp = SliderProps::from_node(node);
     let range = prop_range_f64(props);
-    let value = prop_f64(props, "value").unwrap_or(*range.start());
-    let step = prop_f64(props, "step");
-    let width = prop_length(props, "width", Length::Fill);
+    let value = sp.value.unwrap_or(*range.start());
+    let width = sp
+        .width
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Fill);
     let id = node.id.clone();
     let release_id = node.id.clone();
     let window_id = ctx.window_id.to_string();
@@ -167,21 +197,21 @@ fn render_slider<'a, R: PlushieRenderer>(
     .on_release(Message::SlideRelease(release_window_id, release_id))
     .width(width);
 
-    if let Some(st) = step {
+    if let Some(st) = sp.step {
         // Clamp step to a small positive minimum to prevent division by
         // zero or infinite loops in iced's slider internals.
         s = s.step(st.max(f64::EPSILON));
     }
-    if let Some(d) = prop_f64(props, "default") {
+    if let Some(d) = sp.default {
         s = s.default(d);
     }
     if let Some(h) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "height") {
         s = s.height(h);
     }
-    if let Some(ss) = prop_f64(props, "shift_step") {
+    if let Some(ss) = sp.shift_step {
         s = s.shift_step(ss);
     }
-    if let Some(label) = prop_str(props, "label") {
+    if let Some(label) = sp.label {
         s = s.label(label);
     }
 
@@ -257,16 +287,43 @@ fn render_slider<'a, R: PlushieRenderer>(
     container(s).id(widget::Id::from(node.id.clone())).into()
 }
 
+struct VerticalSliderProps {
+    value: Option<f64>,
+    step: Option<f64>,
+    height: Option<Length>,
+    default: Option<f64>,
+    shift_step: Option<f64>,
+    label: Option<String>,
+}
+
+impl VerticalSliderProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            value: f64::extract(p, "value"),
+            step: f64::extract(p, "step"),
+            height: Length::extract(p, "height"),
+            default: f64::extract(p, "default"),
+            shift_step: f64::extract(p, "shift_step"),
+            label: String::extract(p, "label"),
+        }
+    }
+}
+
 fn render_vertical_slider<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
     let props = &node.props;
+    let vp = VerticalSliderProps::from_node(node);
     let range = prop_range_f64(props);
-    let value = prop_f64(props, "value").unwrap_or(*range.start());
-    let step = prop_f64(props, "step");
+    let value = vp.value.unwrap_or(*range.start());
     let width = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "width");
-    let height = prop_length(props, "height", Length::Fill);
+    let height = vp
+        .height
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Fill);
     let id = node.id.clone();
     let release_id = node.id.clone();
     let window_id = ctx.window_id.to_string();
@@ -282,16 +339,16 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
         s = s.width(w);
     }
 
-    if let Some(st) = step {
+    if let Some(st) = vp.step {
         s = s.step(st.max(f64::EPSILON));
     }
-    if let Some(d) = prop_f64(props, "default") {
+    if let Some(d) = vp.default {
         s = s.default(d);
     }
-    if let Some(ss) = prop_f64(props, "shift_step") {
+    if let Some(ss) = vp.shift_step {
         s = s.shift_step(ss);
     }
-    if let Some(label) = prop_str(props, "label") {
+    if let Some(label) = vp.label {
         s = s.label(label);
     }
 

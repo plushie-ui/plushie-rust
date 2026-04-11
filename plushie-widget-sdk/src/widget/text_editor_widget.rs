@@ -1,14 +1,17 @@
 use iced::widget::text_editor;
-use iced::{Element, Length, Theme, keyboard, widget};
+use iced::{Element, Theme, keyboard, widget};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::a11y::A11yOverrides;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{Font, InputPurpose, Length, LineHeight, PlushieType, Wrapping};
 
 // ---------------------------------------------------------------------------
 // Key binding helpers
@@ -163,29 +166,6 @@ struct KeyRule {
     is_default: bool,
 }
 
-/// Parse an input purpose string into the corresponding iced `Purpose`.
-///
-/// Accepts the canonical `input_purpose` values. The `ime_purpose`
-/// prop name is handled by callers as a fallback alias.
-fn parse_input_purpose(s: &str) -> Option<iced::advanced::input_method::Purpose> {
-    use iced::advanced::input_method::Purpose;
-    match s {
-        "normal" => Some(Purpose::Normal),
-        "secure" => Some(Purpose::Secure),
-        "terminal" => Some(Purpose::Terminal),
-        "number" => Some(Purpose::Number),
-        "decimal" => Some(Purpose::Decimal),
-        "phone" => Some(Purpose::Phone),
-        "email" => Some(Purpose::Email),
-        "url" => Some(Purpose::Url),
-        "search" => Some(Purpose::Search),
-        _ => {
-            log::warn!("unknown input_purpose {:?}, ignoring", s);
-            None
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // TextEditorWidget (stateful)
 // ---------------------------------------------------------------------------
@@ -305,15 +285,59 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
 // Render logic
 // ---------------------------------------------------------------------------
 
+struct TextEditorProps {
+    placeholder: Option<String>,
+    height: Option<Length>,
+    width: Option<f32>,
+    min_height: Option<f32>,
+    max_height: Option<f32>,
+    font: Option<Font>,
+    size: Option<f32>,
+    line_height: Option<LineHeight>,
+    padding: Option<f32>,
+    wrapping: Option<Wrapping>,
+    input_purpose: Option<InputPurpose>,
+    highlight_syntax: Option<String>,
+    highlight_theme: Option<String>,
+}
+
+impl TextEditorProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            placeholder: String::extract(p, "placeholder"),
+            height: Length::extract(p, "height"),
+            width: f32::extract(p, "width"),
+            min_height: f32::extract(p, "min_height"),
+            max_height: f32::extract(p, "max_height"),
+            font: Font::extract(p, "font"),
+            size: f32::extract(p, "size"),
+            line_height: LineHeight::extract(p, "line_height"),
+            padding: f32::extract(p, "padding"),
+            wrapping: Wrapping::extract(p, "wrapping"),
+            input_purpose: InputPurpose::extract(p, "input_purpose")
+                .or_else(|| InputPurpose::extract(p, "ime_purpose")),
+            highlight_syntax: String::extract(p, "highlight_syntax"),
+            highlight_theme: String::extract(p, "highlight_theme"),
+        }
+    }
+}
+
 /// Render a text_editor with the provided Content.
 fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
     content: &'a text_editor::Content<R>,
 ) -> Element<'a, Message, Theme, R> {
+    let tp = TextEditorProps::from_node(node);
     let props = &node.props;
-    let height = prop_length(props, "height", Length::Shrink);
-    let placeholder = prop_str(props, "placeholder").unwrap_or_default();
+
+    let height = tp
+        .height
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Shrink);
+    let placeholder = tp.placeholder.unwrap_or_default();
     let id = node.id.clone();
 
     let editor_id = id;
@@ -326,33 +350,33 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     if !placeholder.is_empty() {
         te = te.placeholder(placeholder);
     }
-    let font = props
-        .get_value("font")
-        .as_ref().map(parse_font)
+    let font = tp
+        .font
+        .map(|f| iced_convert::font(&f))
         .or(ctx.default_font);
     if let Some(f) = font {
         te = te.font(f);
     }
-    if let Some(sz) = prop_f32(props, "size").or(ctx.default_text_size) {
+    if let Some(sz) = tp.size.or(ctx.default_text_size) {
         te = te.size(sz);
     }
-    if let Some(lh) = parse_line_height(props) {
-        te = te.line_height(lh);
+    if let Some(ref lh) = tp.line_height {
+        te = te.line_height(iced_convert::line_height(*lh));
     }
-    if let Some(p) = prop_f32(props, "padding") {
+    if let Some(p) = tp.padding {
         te = te.padding(p);
     }
-    if let Some(minh) = prop_f32(props, "min_height") {
+    if let Some(minh) = tp.min_height {
         te = te.min_height(minh);
     }
-    if let Some(maxh) = prop_f32(props, "max_height") {
+    if let Some(maxh) = tp.max_height {
         te = te.max_height(maxh);
     }
-    if let Some(w) = parse_wrapping(props) {
-        te = te.wrapping(w);
+    if let Some(w) = tp.wrapping {
+        te = te.wrapping(iced_convert::wrapping(w));
     }
     // text_editor.width() takes impl Into<Pixels>, not Length
-    if let Some(w) = prop_f32(props, "width") {
+    if let Some(w) = tp.width {
         te = te.width(w);
     }
 
@@ -555,13 +579,8 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
             None
         };
 
-    if let Some(purpose_str) =
-        prop_str(props, "input_purpose").or_else(|| prop_str(props, "ime_purpose"))
-    {
-        let purpose = parse_input_purpose(&purpose_str);
-        if let Some(p) = purpose {
-            te = te.input_purpose(p);
-        }
+    if let Some(purpose) = tp.input_purpose {
+        te = te.input_purpose(iced_convert::input_purpose(purpose));
     }
 
     {
@@ -576,8 +595,8 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
 
     // Syntax highlighting changes the generic type parameter, so we must
     // branch here and produce Element from each path separately.
-    if let Some(syntax) = prop_str(props, "highlight_syntax") {
-        let theme = match prop_str(props, "highlight_theme").as_deref() {
+    if let Some(syntax) = tp.highlight_syntax {
+        let theme = match tp.highlight_theme.as_deref() {
             Some("base16_mocha") => iced::highlighter::Theme::Base16Mocha,
             Some("base16_ocean") => iced::highlighter::Theme::Base16Ocean,
             Some("base16_eighties") => iced::highlighter::Theme::Base16Eighties,

@@ -1,12 +1,47 @@
 use iced::widget::{Space, container};
-use iced::{Element, Fill, Length, Theme, widget};
+use iced::{Element, Fill, Theme, widget};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{
+    Background, Border, Color, HorizontalAlignment, Length, Padding, PlushieType, Shadow,
+    VerticalAlignment,
+};
+
+struct ContainerProps {
+    padding: Option<Padding>,
+    width: Option<Length>,
+    height: Option<Length>,
+    align_x: Option<HorizontalAlignment>,
+    align_y: Option<VerticalAlignment>,
+    background: Option<Background>,
+    color: Option<Color>,
+    border: Option<Border>,
+    shadow: Option<Shadow>,
+}
+
+impl ContainerProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            padding: Padding::extract(p, "padding"),
+            width: Length::extract(p, "width"),
+            height: Length::extract(p, "height"),
+            align_x: HorizontalAlignment::extract(p, "align_x"),
+            align_y: VerticalAlignment::extract(p, "align_y"),
+            background: Background::extract(p, "background"),
+            color: Color::extract(p, "color"),
+            border: Border::extract(p, "border"),
+            shadow: Shadow::extract(p, "shadow"),
+        }
+    }
+}
 
 pub(crate) struct ContainerWidget;
 
@@ -20,10 +55,19 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
+        let cp = ContainerProps::from_node(node);
         let props = &node.props;
-        let padding = parse_padding_value(props);
-        let width = prop_length(props, "width", Length::Shrink);
-        let height = prop_length(props, "height", Length::Shrink);
+
+        let width = cp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
+        let height = cp
+            .height
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
         let center = prop_bool_default(props, "center", false);
         let clip = prop_bool_default(props, "clip", false);
 
@@ -35,8 +79,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
 
         let mut c = container(child).width(width).height(height).clip(clip);
 
-        if let Some(p) = padding {
-            c = c.padding(p);
+        if let Some(ref p) = cp.padding {
+            c = c.padding(iced_convert::padding(p));
         }
 
         if let Some(mw) =
@@ -57,27 +101,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
             c = c.center(Fill);
         }
 
-        if let Some(ax) = props
-            .get_str("align_x")
-            .and_then(value_to_horizontal_alignment)
-        {
-            c = c.align_x(ax);
+        if let Some(ax) = cp.align_x {
+            c = c.align_x(iced_convert::horizontal_alignment(ax));
         }
-        if let Some(ay) = props
-            .get_str("align_y")
-            .and_then(value_to_vertical_alignment)
-        {
-            c = c.align_y(ay);
+        if let Some(ay) = cp.align_y {
+            c = c.align_y(iced_convert::vertical_alignment(ay));
         }
 
-        // Inline styling via custom style closure
-        let bg = props
-            .get_value("background")
-            .as_ref()
-            .and_then(parse_background);
-        let text_color = props.get_value("color").as_ref().and_then(parse_color);
-        let border_val = props.get_value("border").as_ref().map(parse_border);
-        let shadow_val = props.get_value("shadow").as_ref().map(parse_shadow);
+        // Inline styling via typed props
+        let bg = cp.background.as_ref().map(iced_convert::background);
+        let text_color = cp.color.as_ref().map(iced_convert::color);
+        let border_val = cp.border.as_ref().map(iced_convert::border);
+        let shadow_val = cp.shadow.as_ref().map(iced_convert::shadow);
         let has_inline_style =
             bg.is_some() || text_color.is_some() || border_val.is_some() || shadow_val.is_some();
 

@@ -24,9 +24,12 @@ pub struct TreeNode {
     #[serde(rename = "type")]
     pub type_name: String,
 
-    /// Widget-specific properties (JSON object).
-    #[serde(default = "empty_object")]
-    pub props: Value,
+    /// Widget-specific properties.
+    ///
+    /// [`Props::Typed`] in direct mode (SDK builders produce typed
+    /// values), [`Props::Wire`] in wire mode (props arrive as JSON).
+    #[serde(default)]
+    pub props: super::Props,
 
     /// Child nodes for container widgets.
     #[serde(default)]
@@ -34,24 +37,19 @@ pub struct TreeNode {
 }
 
 impl TreeNode {
-    /// Access props as a JSON map.
-    pub fn props(&self) -> Option<&serde_json::Map<String, Value>> {
-        self.props.as_object()
-    }
-
     /// Get a string prop by key.
-    pub fn prop_str(&self, key: &str) -> Option<String> {
-        self.props().and_then(|m| m.get(key)).and_then(|v| v.as_str()).map(|s| s.to_string())
+    pub fn prop_str(&self, key: &str) -> Option<&str> {
+        self.props.get_str(key)
     }
 
     /// Get an f32 prop by key.
     pub fn prop_f32(&self, key: &str) -> Option<f32> {
-        self.props().and_then(|m| m.get(key)).and_then(|v| v.as_f64()).map(|n| n as f32)
+        self.props.get_f32(key)
     }
 
     /// Get a bool prop by key.
     pub fn prop_bool(&self, key: &str) -> Option<bool> {
-        self.props().and_then(|m| m.get(key)).and_then(|v| v.as_bool())
+        self.props.get_bool(key)
     }
 }
 
@@ -78,10 +76,6 @@ pub struct PatchOp {
     pub rest: Value,
 }
 
-/// Default for `TreeNode.props`: an empty JSON object rather than null.
-fn empty_object() -> Value {
-    Value::Object(serde_json::Map::new())
-}
 
 #[cfg(test)]
 mod tests {

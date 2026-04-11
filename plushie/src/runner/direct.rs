@@ -85,11 +85,18 @@ impl<A: App> DirectApp<A> {
 
         app.refresh_view();
 
+        // Establish initial subscriptions from A::subscribe().
+        let mut init_tasks = Vec::new();
+        let initial_subs = A::subscribe(&app.model);
+        for op in app.sub_manager.sync(initial_subs) {
+            init_tasks.push(app.apply_sub_op(op));
+        }
+
         // Execute the initial command (e.g. focus a field, start
         // async data loading) so apps work from the first frame.
-        let init_task = app.execute_command(init_cmd);
+        init_tasks.push(app.execute_command(init_cmd));
 
-        (app, init_task)
+        (app, Task::batch(init_tasks))
     }
 
     fn update(&mut self, msg: Message) -> Task<Message> {
@@ -392,11 +399,26 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
 
 /// Run the app in direct mode.
 pub fn run<A: App>() -> crate::Result {
+    // Build iced daemon settings from the user's A::settings().
+    // These are startup-only values that can't change after launch.
+    let settings = A::settings();
+    let mut iced_settings = plushie_widget_sdk::iced::Settings::default();
+    if let Some(aa) = settings.antialiasing {
+        iced_settings.antialiasing = aa;
+    }
+    if let Some(vsync) = settings.vsync {
+        iced_settings.vsync = vsync;
+    }
+    if let Some(size) = settings.default_text_size {
+        iced_settings.default_text_size = plushie_widget_sdk::iced::Pixels(size);
+    }
+
     plushie_widget_sdk::iced::daemon(
         DirectApp::<A>::init,
         DirectApp::<A>::update,
         DirectApp::<A>::view_window,
     )
+    .settings(iced_settings)
     .title(DirectApp::<A>::title_for_window)
     .theme(DirectApp::<A>::theme_for_window)
     .scale_factor(DirectApp::<A>::scale_factor_for_window)

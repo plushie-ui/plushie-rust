@@ -5,7 +5,7 @@
 //! keep the renderer's subscription state in sync with
 //! `App::subscribe()`.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use crate::subscription::{Subscription, SubscriptionKind};
 
@@ -47,38 +47,65 @@ impl SubscriptionManager {
 
     /// Diff new subscriptions against active and return ops to apply.
     ///
+    /// Detects three kinds of changes:
+    /// - Added: key present in new but not active -> Subscribe/StartTimer
+    /// - Removed: key present in active but not new -> Unsubscribe/StopTimer
+    /// - Changed: same key but different max_rate or window_id ->
+    ///   Unsubscribe + Subscribe (re-register with new parameters)
+    ///
     /// Renderer-side subscriptions produce `Subscribe`/`Unsubscribe`
     /// ops. Timer subscriptions (`SubscriptionKind::Every`) produce
     /// `StartTimer`/`StopTimer` ops since they're handled SDK-side.
     pub fn sync(&mut self, new: Vec<Subscription>) -> Vec<SubOp> {
         let mut ops = Vec::new();
 
-        let old_keys: HashSet<(&str, &str)> = self.active.iter()
-            .map(|s| s.diff_key())
+        // Build lookup maps keyed by (wire_kind, tag).
+        let old_map: HashMap<(&str, &str), &Subscription> = self.active.iter()
+            .map(|s| (s.diff_key(), s))
             .collect();
-        let new_keys: HashSet<(&str, &str)> = new.iter()
-            .map(|s| s.diff_key())
+        let new_map: HashMap<(&str, &str), &Subscription> = new.iter()
+            .map(|s| (s.diff_key(), s))
             .collect();
 
-        // Stop/unsubscribe removed subscriptions.
+        // Removed or changed subscriptions.
         for sub in &self.active {
             let key = sub.diff_key();
-            if !new_keys.contains(&key) {
-                if matches!(sub.kind, SubscriptionKind::Every(_)) {
-                    ops.push(SubOp::StopTimer { tag: sub.tag.clone() });
-                } else {
-                    ops.push(SubOp::Unsubscribe {
-                        kind: sub.wire_kind().to_string(),
-                        tag: sub.tag.clone(),
-                    });
+            match new_map.get(&key) {
+                None => {
+                    // Removed entirely.
+                    if matches!(sub.kind, SubscriptionKind::Every(_)) {
+                        ops.push(SubOp::StopTimer { tag: sub.tag.clone() });
+                    } else {
+                        ops.push(SubOp::Unsubscribe {
+                            kind: sub.wire_kind().to_string(),
+                            tag: sub.tag.clone(),
+                        });
+                    }
+                }
+                Some(new_sub) => {
+                    // Present in both. Check if parameters changed.
+                    if sub.max_rate != new_sub.max_rate || sub.window_id != new_sub.window_id {
+                        if !matches!(sub.kind, SubscriptionKind::Every(_)) {
+                            ops.push(SubOp::Unsubscribe {
+                                kind: sub.wire_kind().to_string(),
+                                tag: sub.tag.clone(),
+                            });
+                            ops.push(SubOp::Subscribe {
+                                kind: new_sub.wire_kind().to_string(),
+                                tag: new_sub.tag.clone(),
+                                max_rate: new_sub.max_rate,
+                                window_id: new_sub.window_id.clone(),
+                            });
+                        }
+                    }
                 }
             }
         }
 
-        // Start/subscribe new subscriptions.
+        // Newly added subscriptions.
         for sub in &new {
             let key = sub.diff_key();
-            if !old_keys.contains(&key) {
+            if !old_map.contains_key(&key) {
                 if let SubscriptionKind::Every(interval) = sub.kind {
                     ops.push(SubOp::StartTimer {
                         tag: sub.tag.clone(),

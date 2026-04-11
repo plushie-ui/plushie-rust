@@ -20,7 +20,7 @@
 use crate::View;
 use crate::types::*;
 use super::PropMap;
-use serde_json::{Value, json};
+use serde_json::json;
 
 // ---------------------------------------------------------------------------
 // WindowBuilder
@@ -518,12 +518,12 @@ impl ContainerBuilder {
     }
 
     pub fn border(mut self, b: Border) -> Self {
-        super::set_prop(&mut self.props, "border", serde_json::to_value(&b).unwrap());
+        super::set_prop(&mut self.props, "border", b.wire_encode());
         self
     }
 
     pub fn shadow(mut self, s: Shadow) -> Self {
-        super::set_prop(&mut self.props, "shadow", serde_json::to_value(&s).unwrap());
+        super::set_prop(&mut self.props, "shadow", s.wire_encode());
         self
     }
 

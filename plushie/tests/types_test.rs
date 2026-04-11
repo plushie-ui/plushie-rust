@@ -1,6 +1,7 @@
 //! Tests for property types: Color, Length, Padding, Style, etc.
 
 use plushie::types::*;
+use plushie_core::protocol::PropValue;
 
 // ---------------------------------------------------------------------------
 // Color
@@ -132,38 +133,41 @@ fn border_per_corner_radius() {
 }
 
 #[test]
-fn radius_uniform_serializes_as_number() {
+fn radius_uniform_encodes_as_number() {
     let r = Radius::Uniform(8.0);
-    let json = serde_json::to_value(r).unwrap();
-    assert_eq!(json, serde_json::json!(8.0));
+    let pv = r.wire_encode();
+    assert_eq!(pv, PropValue::F64(8.0));
 }
 
 #[test]
-fn radius_per_corner_serializes_as_object() {
+fn radius_per_corner_encodes_as_object() {
     let r = Radius::PerCorner {
         top_left: 1.0,
         top_right: 2.0,
         bottom_right: 3.0,
         bottom_left: 4.0,
     };
-    let json = serde_json::to_value(r).unwrap();
-    assert_eq!(json, serde_json::json!({
-        "top_left": 1.0,
-        "top_right": 2.0,
-        "bottom_right": 3.0,
-        "bottom_left": 4.0,
-    }));
+    let pv = r.wire_encode();
+    match pv {
+        PropValue::Object(m) => {
+            assert_eq!(m.get("top_left"), Some(&PropValue::F64(1.0)));
+            assert_eq!(m.get("top_right"), Some(&PropValue::F64(2.0)));
+            assert_eq!(m.get("bottom_right"), Some(&PropValue::F64(3.0)));
+            assert_eq!(m.get("bottom_left"), Some(&PropValue::F64(4.0)));
+        }
+        other => panic!("expected Object, got {:?}", other),
+    }
 }
 
 #[test]
-fn radius_deserializes_from_number() {
-    let r: Radius = serde_json::from_value(serde_json::json!(8.0)).unwrap();
+fn radius_decodes_from_number() {
+    let r = Radius::wire_decode(&serde_json::json!(8.0)).unwrap();
     assert_eq!(r, Radius::Uniform(8.0));
 }
 
 #[test]
-fn radius_deserializes_from_object() {
-    let r: Radius = serde_json::from_value(serde_json::json!({
+fn radius_decodes_from_object() {
+    let r = Radius::wire_decode(&serde_json::json!({
         "top_left": 1.0,
         "top_right": 2.0,
         "bottom_right": 3.0,
@@ -194,17 +198,26 @@ fn shadow_fluent_builder() {
 }
 
 #[test]
-fn shadow_serializes_offset_as_array() {
+fn shadow_encodes_offset_as_array() {
     let s = Shadow::new().offset(3.0, 5.0).blur_radius(10.0);
-    let json = serde_json::to_value(&s).unwrap();
-    assert_eq!(json["offset"], serde_json::json!([3.0, 5.0]));
-    assert!(json.get("offset_x").is_none());
-    assert!(json.get("offset_y").is_none());
+    let pv = s.wire_encode();
+    match pv {
+        PropValue::Object(m) => {
+            let offset = m.get("offset").expect("missing offset");
+            assert_eq!(
+                *offset,
+                PropValue::Array(vec![PropValue::F64(3.0), PropValue::F64(5.0)])
+            );
+            assert!(m.get("offset_x").is_none());
+            assert!(m.get("offset_y").is_none());
+        }
+        other => panic!("expected Object, got {:?}", other),
+    }
 }
 
 #[test]
-fn shadow_deserializes_from_offset_array() {
-    let s: Shadow = serde_json::from_value(serde_json::json!({
+fn shadow_decodes_from_offset_array() {
+    let s = Shadow::wire_decode(&serde_json::json!({
         "color": "#000000",
         "offset": [2.0, 4.0],
         "blur_radius": 8.0
@@ -214,8 +227,8 @@ fn shadow_deserializes_from_offset_array() {
 }
 
 #[test]
-fn shadow_deserializes_from_separate_offset_fields() {
-    let s: Shadow = serde_json::from_value(serde_json::json!({
+fn shadow_decodes_from_separate_offset_fields() {
+    let s = Shadow::wire_decode(&serde_json::json!({
         "color": "#000000",
         "offset_x": 1.0,
         "offset_y": 3.0,
@@ -316,20 +329,17 @@ fn font_stretch_builder() {
 
 #[test]
 fn gradient_linear_with_stops() {
-    let g = Gradient::linear(45.0, vec![
+    let g = Gradient::linear((0.0, 0.0), (1.0, 1.0), vec![
         (0.0, Color::red()),
         (1.0, Color::blue()),
     ]);
 
-    assert_eq!(g.angle, 45.0);
+    assert_eq!(g.start, (0.0, 0.0));
+    assert_eq!(g.end, (1.0, 1.0));
     assert_eq!(g.stops.len(), 2);
     assert_eq!(g.stops[0].offset, 0.0);
     assert_eq!(g.stops[1].color, Color::blue());
 }
-
-// ---------------------------------------------------------------------------
-// KeyModifiers
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // CSS named colors (spot-checks)
@@ -360,14 +370,14 @@ fn background_from_color() {
 
 #[test]
 fn background_from_gradient() {
-    let g = Gradient::linear(90.0, vec![(0.0, Color::red()), (1.0, Color::blue())]);
+    let g = Gradient::linear((0.0, 0.0), (1.0, 0.0), vec![(0.0, Color::red()), (1.0, Color::blue())]);
     let bg: Background = g.clone().into();
     assert_eq!(bg, Background::Gradient(g));
 }
 
 #[test]
 fn style_map_gradient_background() {
-    let g = Gradient::linear(90.0, vec![(0.0, Color::red()), (1.0, Color::blue())]);
+    let g = Gradient::linear((0.0, 0.0), (1.0, 0.0), vec![(0.0, Color::red()), (1.0, Color::blue())]);
     let m = StyleMap::new().background(g.clone());
     assert_eq!(m.background, Some(Background::Gradient(g)));
 }

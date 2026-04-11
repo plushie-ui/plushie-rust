@@ -18,7 +18,6 @@
 use crate::View;
 use crate::types::*;
 use super::PropMap;
-use serde_json::Value;
 
 // ---------------------------------------------------------------------------
 // ButtonBuilder

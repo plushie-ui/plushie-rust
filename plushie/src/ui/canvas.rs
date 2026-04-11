@@ -18,7 +18,7 @@
 //! ```
 
 use super::PropMap;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::View;
 use crate::types::*;
@@ -503,7 +503,7 @@ impl CanvasTextBuilder {
     pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
     /// Fill color for the text.
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
-    pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", serde_json::to_value(&f).unwrap()); self }
+    pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
     /// Horizontal text alignment: `"left"`, `"center"`, or `"right"`.
     pub fn align_x(mut self, a: &str) -> Self { super::set_prop(&mut self.props, "align_x", a); self }
     /// Vertical text alignment: `"top"`, `"center"`, or `"bottom"`.

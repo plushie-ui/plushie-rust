@@ -29,8 +29,8 @@ pub use crate::ui::*;
 // Property types
 pub use crate::types::{
     Align, Background, Border, Color, Font, FontStretch, Gradient,
-    KeyModifiers, Length, Length::*, Padding, Radius, Shadow, Style,
-    StyleMap,
+    KeyModifiers, Length, Length::*, Padding, PlushieType, Radius,
+    Shadow, Style, StyleMap,
 };
 
 // Animation

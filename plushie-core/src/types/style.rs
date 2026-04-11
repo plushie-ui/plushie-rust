@@ -116,6 +116,41 @@ impl StyleMap {
     }
 }
 
+impl Style {
+    pub fn primary() -> Self { Self::Preset("primary".into()) }
+    pub fn secondary() -> Self { Self::Preset("secondary".into()) }
+    pub fn success() -> Self { Self::Preset("success".into()) }
+    pub fn danger() -> Self { Self::Preset("danger".into()) }
+    pub fn warning() -> Self { Self::Preset("warning".into()) }
+    pub fn text() -> Self { Self::Preset("text".into()) }
+    /// Default widget appearance (renderer preset name `"default"`).
+    pub fn default_style() -> Self { Self::Preset("default".into()) }
+    /// Dark variant.
+    pub fn dark() -> Self { Self::Preset("dark".into()) }
+    /// Subdued/weak appearance.
+    pub fn weak() -> Self { Self::Preset("weak".into()) }
+    /// Container with rounded border.
+    pub fn rounded_box() -> Self { Self::Preset("rounded_box".into()) }
+    /// Container with square border.
+    pub fn bordered_box() -> Self { Self::Preset("bordered_box".into()) }
+    /// Fully transparent background.
+    pub fn transparent() -> Self { Self::Preset("transparent".into()) }
+    /// Start building a custom style.
+    pub fn custom() -> StyleMap { StyleMap::new() }
+}
+
+impl From<&str> for Style {
+    fn from(s: &str) -> Self {
+        Self::Preset(s.to_string())
+    }
+}
+
+impl From<StyleMap> for Style {
+    fn from(m: StyleMap) -> Self {
+        Self::Custom(m)
+    }
+}
+
 impl PlushieType for StyleMap {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;

@@ -83,52 +83,24 @@ pub(crate) fn set_opt<T: Into<PropValue>>(props: &mut PropMap, key: &str, value:
     }
 }
 
-/// Convert a Length to a PropValue.
+/// Convert a Length to a PropValue via PlushieType.
 pub(crate) fn length_to_value(l: Length) -> PropValue {
-    match l {
-        Length::Fill => PropValue::Str("fill".into()),
-        Length::Shrink => PropValue::Str("shrink".into()),
-        Length::FillPortion(n) => {
-            let mut m = PropMap::new();
-            m.insert("fill_portion", PropValue::U64(n as u64));
-            PropValue::Object(m)
-        }
-        Length::Fixed(f) => PropValue::F64(f as f64),
-    }
+    l.wire_encode()
 }
 
-/// Convert a Padding to a PropValue.
+/// Convert a Padding to a PropValue via PlushieType.
 pub(crate) fn padding_to_value(p: Padding) -> PropValue {
-    if p.top == p.bottom && p.left == p.right && p.top == p.left {
-        PropValue::F64(p.top as f64)
-    } else if p.top == p.bottom && p.left == p.right {
-        PropValue::Array(vec![
-            PropValue::F64(p.top as f64),
-            PropValue::F64(p.left as f64),
-        ])
-    } else {
-        let mut m = PropMap::new();
-        m.insert("top", PropValue::F64(p.top as f64));
-        m.insert("right", PropValue::F64(p.right as f64));
-        m.insert("bottom", PropValue::F64(p.bottom as f64));
-        m.insert("left", PropValue::F64(p.left as f64));
-        PropValue::Object(m)
-    }
+    p.wire_encode()
 }
 
-/// Convert a Style to a PropValue.
+/// Convert a Style to a PropValue via PlushieType.
 pub(crate) fn style_to_value(s: &Style) -> PropValue {
-    match s {
-        Style::Preset(name) => PropValue::Str(name.clone()),
-        Style::Custom(map) => {
-            PropValue::from(serde_json::to_value(map).unwrap_or(Value::Null))
-        }
-    }
+    s.wire_encode()
 }
 
-/// Convert a Color to a PropValue.
+/// Convert a Color to a PropValue via PlushieType.
 pub(crate) fn color_to_value(c: &Color) -> PropValue {
-    PropValue::Str(c.as_hex().to_string())
+    c.wire_encode()
 }
 
 /// Convert an Align to a horizontal alignment string for the renderer.

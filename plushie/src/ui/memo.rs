@@ -4,7 +4,6 @@
 //! can skip re-rendering when the cache key has not changed.
 
 use super::PropMap;
-use serde_json::json;
 
 use crate::View;
 

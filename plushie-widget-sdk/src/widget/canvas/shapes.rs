@@ -7,6 +7,7 @@ use serde_json::Value;
 use plushie_core::types::canvas::{
     self as canvas_types, CanvasShape, ClipRect, Transform,
 };
+use plushie_core::types::{Color as CoreColor, PlushieType};
 
 use super::types::MAX_SHAPES_PER_LAYER;
 use crate::PlushieRenderer;
@@ -45,7 +46,7 @@ pub(super) fn parse_canvas_fill_themed(
         Value::String(_) => {
             let color = theme
                 .and_then(|t| resolve_color(value, t))
-                .or_else(|| parse_color(value))
+                .or_else(|| CoreColor::wire_decode(value).map(|c| iced_convert::color(&c)))
                 .unwrap_or(Color::WHITE);
             canvas::Fill {
                 style: canvas::Style::Solid(color),
@@ -96,7 +97,7 @@ pub(super) fn parse_canvas_fill_themed(
                                 .and_then(|v| {
                                     theme
                                         .and_then(|t| resolve_color(v, t))
-                                        .or_else(|| parse_color(v))
+                                        .or_else(|| CoreColor::wire_decode(v).map(|c| iced_convert::color(&c)))
                                 })
                                 .unwrap_or(Color::TRANSPARENT);
                             linear = linear.add_stop(offset, color);
@@ -113,14 +114,18 @@ pub(super) fn parse_canvas_fill_themed(
                     "unrecognized canvas gradient type '{}' (supported: \"linear\")",
                     other
                 );
-                let color = parse_color(value).unwrap_or(Color::WHITE);
+                let color = CoreColor::wire_decode(value)
+                    .map(|c| iced_convert::color(&c))
+                    .unwrap_or(Color::WHITE);
                 canvas::Fill {
                     style: canvas::Style::Solid(color),
                     rule,
                 }
             }
             _ => {
-                let color = parse_color(value).unwrap_or(Color::WHITE);
+                let color = CoreColor::wire_decode(value)
+                    .map(|c| iced_convert::color(&c))
+                    .unwrap_or(Color::WHITE);
                 canvas::Fill {
                     style: canvas::Style::Solid(color),
                     rule,
@@ -151,7 +156,7 @@ pub(super) fn parse_canvas_stroke_themed(
     };
     let color = theme
         .and_then(|t| obj.get("color").and_then(|v| resolve_color(v, t)))
-        .or_else(|| obj.get("color").and_then(parse_color))
+        .or_else(|| obj.get("color").and_then(CoreColor::wire_decode).map(|c| iced_convert::color(&c)))
         .unwrap_or(Color::WHITE);
     let width = obj
         .get("width")
@@ -397,12 +402,11 @@ fn parse_text_align_y(value: Option<&str>) -> alignment::Vertical {
     }
 }
 
-/// Parse a font from a string name.
-fn parse_font_str(s: &str) -> iced::Font {
-    match s {
-        "monospace" => iced::Font::MONOSPACE,
-        _ => iced::Font::new(Box::leak(s.to_string().into_boxed_str())),
-    }
+/// Decode a font from a string name via the typed system.
+fn decode_font_str(s: &str) -> iced::Font {
+    plushie_core::types::Font::wire_decode(&Value::String(s.to_string()))
+        .map(|f| iced_convert::font(&f))
+        .unwrap_or(iced::Font::DEFAULT)
 }
 
 /// Pick the most important `Action` when multiple events fire in one
@@ -504,7 +508,7 @@ pub(super) fn resolve_color(value: &Value, theme: &iced::Theme) -> Option<Color>
 
     // Try hex first (most common case).
     if s.starts_with('#') {
-        return parse_color(value);
+        return CoreColor::wire_decode(value).map(|c| iced_convert::color(&c));
     }
 
     // Theme palette name resolution.
@@ -518,7 +522,7 @@ pub(super) fn resolve_color(value: &Value, theme: &iced::Theme) -> Option<Color>
         "warning" => Some(palette.warning.base.color),
         _ => {
             // Fall back to hex parsing (handles non-# prefixed hex, etc.)
-            parse_color(value)
+            CoreColor::wire_decode(value).map(|c| iced_convert::color(&c))
         }
     }
 }
@@ -701,7 +705,7 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
                 canvas_text.size = Pixels(s);
             }
             if let Some(ref font_name) = t.font {
-                canvas_text.font = parse_font_str(font_name);
+                canvas_text.font = decode_font_str(font_name);
             }
             frame.fill_text(canvas_text);
         }

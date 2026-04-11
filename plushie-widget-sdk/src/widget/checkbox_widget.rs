@@ -124,7 +124,8 @@ fn render_checkbox<'a, R: PlushieRenderer>(
     {
         let icon_font = icon_val
             .get("font")
-            .map(parse_font)
+            .and_then(plushie_core::types::Font::wire_decode)
+            .map(|f| iced_convert::font(&f))
             .unwrap_or(Font::DEFAULT);
         let icon_size = icon_val
             .get("size")

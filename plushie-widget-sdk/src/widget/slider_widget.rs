@@ -9,7 +9,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, PlushieType};
+use plushie_core::types::{Color, Length, PlushieType};
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -157,6 +157,7 @@ struct SliderProps {
     default: Option<f64>,
     shift_step: Option<f64>,
     label: Option<String>,
+    rail_color: Option<Color>,
 }
 
 impl SliderProps {
@@ -169,6 +170,7 @@ impl SliderProps {
             default: f64::extract(p, "default"),
             shift_step: f64::extract(p, "shift_step"),
             label: String::extract(p, "label"),
+            rail_color: Color::extract(p, "rail_color"),
         }
     }
 }
@@ -216,7 +218,7 @@ fn render_slider<'a, R: PlushieRenderer>(
     }
 
     // Rail styling props (applied on top of any style preset)
-    let rail_color = prop_color(props, "rail_color");
+    let rail_color = sp.rail_color.as_ref().map(iced_convert::color);
     let rail_width = prop_f32(props, "rail_width");
     let has_rail_overrides = rail_color.is_some() || rail_width.is_some();
 
@@ -294,6 +296,7 @@ struct VerticalSliderProps {
     default: Option<f64>,
     shift_step: Option<f64>,
     label: Option<String>,
+    rail_color: Option<Color>,
 }
 
 impl VerticalSliderProps {
@@ -306,6 +309,7 @@ impl VerticalSliderProps {
             default: f64::extract(p, "default"),
             shift_step: f64::extract(p, "shift_step"),
             label: String::extract(p, "label"),
+            rail_color: Color::extract(p, "rail_color"),
         }
     }
 }
@@ -353,7 +357,7 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     }
 
     // Rail styling props (applied on top of any style preset)
-    let rail_color = prop_color(props, "rail_color");
+    let rail_color = vp.rail_color.as_ref().map(iced_convert::color);
     let rail_width = prop_f32(props, "rail_width");
     let has_rail_overrides = rail_color.is_some() || rail_width.is_some();
 

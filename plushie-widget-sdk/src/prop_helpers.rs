@@ -11,8 +11,9 @@
 //! let size = prop_f32(props, "size").unwrap_or(14.0);
 //! ```
 
-use iced::{Color, Length, alignment};
+use iced::{Color, Length};
 use plushie_core::protocol::Props;
+use plushie_core::types::PlushieType;
 use serde_json::Value;
 
 use crate::theming::parse_hex_color;
@@ -308,20 +309,6 @@ pub fn prop_range_f64(props: &Props) -> std::ops::RangeInclusive<f64> {
         .unwrap_or(0.0..=100.0)
 }
 
-/// Parse a color prop to `iced::Color`.
-///
-/// Accepts hex strings: `"#RRGGBB"` or `"#RRGGBBAA"`.
-pub fn prop_color(props: &Props, key: &str) -> Option<Color> {
-    let s = prop_str(props, key)?;
-    match parse_hex_color(&s) {
-        Some(c) => Some(c),
-        None => {
-            log::trace!("prop '{key}': invalid hex color: {s:?}");
-            None
-        }
-    }
-}
-
 /// Get an array of f32 values from a prop.
 /// Non-numeric elements are silently dropped with a warning.
 pub fn prop_f32_array(props: &Props, key: &str) -> Option<Vec<f32>> {
@@ -380,18 +367,6 @@ pub fn value_to_length(val: &Value) -> Option<Length> {
             }
         }
         _ => None,
-    }
-}
-
-pub fn value_to_horizontal_alignment(s: &str) -> Option<alignment::Horizontal> {
-    match s {
-        "left" => Some(alignment::Horizontal::Left),
-        "center" => Some(alignment::Horizontal::Center),
-        "right" => Some(alignment::Horizontal::Right),
-        other => {
-            log::warn!("unknown horizontal alignment: {other:?}");
-            None
-        }
     }
 }
 
@@ -492,7 +467,8 @@ pub fn prop_animated_color(
             return None;
         }
     }
-    prop_color(props, key)
+    plushie_core::types::Color::extract(props, key)
+        .map(|c| crate::iced_convert::color(&c))
 }
 
 // ---------------------------------------------------------------------------
@@ -764,40 +740,6 @@ mod tests {
     }
 
     #[test]
-    fn test_prop_color_valid() {
-        let p = make_props(json!({"bg": "#ff0000"}));
-        let c = prop_color(&p, "bg").unwrap();
-        assert!((c.r - 1.0).abs() < 0.01);
-        assert!(c.g.abs() < 0.01);
-        assert!(c.b.abs() < 0.01);
-    }
-
-    #[test]
-    fn test_prop_color_with_alpha() {
-        let p = make_props(json!({"bg": "#ff000080"}));
-        let c = prop_color(&p, "bg").unwrap();
-        assert!((c.a - 0.502).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_prop_color_invalid() {
-        let p = make_props(json!({"bg": "not-a-color"}));
-        assert!(prop_color(&p, "bg").is_none());
-    }
-
-    #[test]
-    fn test_prop_color_rejects_object() {
-        let p = make_props(json!({"color": {"r": 1.0, "g": 0.0, "b": 0.0}}));
-        assert_eq!(prop_color(&p, "color"), None);
-    }
-
-    #[test]
-    fn test_prop_color_missing() {
-        let p = make_props(json!({}));
-        assert!(prop_color(&p, "bg").is_none());
-    }
-
-    #[test]
     fn test_prop_f32_array() {
         let p = make_props(json!({"data": [1.0, 2.5, 3.0]}));
         let arr = prop_f32_array(&p, "data").unwrap();
@@ -993,15 +935,6 @@ mod tests {
     fn typed_prop_u32() {
         let p = make_typed_props();
         assert_eq!(prop_u32(&p, "count"), Some(42));
-    }
-
-    #[test]
-    fn typed_prop_color() {
-        let p = make_typed_props();
-        let c = prop_color(&p, "color").unwrap();
-        assert!((c.r - 1.0).abs() < 0.01);
-        assert!(c.g.abs() < 0.01);
-        assert!(c.b.abs() < 0.01);
     }
 
     #[test]

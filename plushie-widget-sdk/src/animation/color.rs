@@ -7,7 +7,9 @@
 use iced::Color;
 use iced::color::Oklch;
 
-use crate::theming::parse_hex_color;
+use plushie_core::types::{Color as CoreColor, PlushieType};
+
+use crate::iced_convert;
 
 /// Interpolates between two colors in Oklch color space at progress `t`.
 ///
@@ -69,7 +71,7 @@ fn hue_lerp(from: Oklch, to: Oklch, t: f32) -> f32 {
 
 /// Attempts to parse a JSON value as a color.
 pub fn parse_color(value: &serde_json::Value) -> Option<Color> {
-    value.as_str().and_then(parse_hex_color)
+    CoreColor::wire_decode(value).map(|c| iced_convert::color(&c))
 }
 
 /// Converts a Color back to a hex string for the interpolated props cache.

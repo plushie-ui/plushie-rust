@@ -8,6 +8,7 @@
 //! that method calls, field access, and trait implementations are correct.
 
 use plushie_core::protocol::Props;
+use plushie_core::types::PlushieType;
 use plushie_widget_sdk::prelude::*;
 use plushie_widget_sdk::testing::*;
 use serde_json::json;
@@ -83,7 +84,8 @@ fn doc_prop_parsing() {
     // Free function style
     let _value: Option<f32> = prop_f32(&props, "value");
     let _label: Option<String> = prop_str(&props, "label");
-    let _color: Option<Color> = prop_color(&props, "color");
+    let _color: Option<Color> = plushie_core::types::Color::extract(&props, "color")
+        .map(|c| iced_convert::color(&c));
     let _show_label: bool = prop_bool_default(&props, "show_label", true);
     let _width: Length = prop_length(&props, "width", Length::Fill);
 
@@ -91,7 +93,8 @@ fn doc_prop_parsing() {
     let node = node_with_props("n1", "test", props.to_value());
     let _value: Option<f32> = node.prop_f32("value");
     let _label: Option<&str> = node.prop_str("label");
-    let _color: Option<Color> = prop_color(&node.props, "color");
+    let _color: Option<Color> = plushie_core::types::Color::extract(&node.props, "color")
+        .map(|c| iced_convert::color(&c));
 }
 
 // ============================================================================
@@ -195,7 +198,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocRating {
         let value = node.prop_f32("value").unwrap_or(0.0) as usize;
         let max = prop_u32(&node.props, "max").unwrap_or(5) as usize;
         let size = node.prop_f32("size").unwrap_or(24.0);
-        let color = prop_color(&node.props, "color")
+        let color = plushie_core::types::Color::extract(&node.props, "color")
+            .map(|c| iced_convert::color(&c))
             .unwrap_or(ctx.theme.palette().primary.base.color);
         let disabled_color = Color {
             a: color.a * 0.3,

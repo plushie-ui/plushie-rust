@@ -11,7 +11,7 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Font, HorizontalAlignment, InputPurpose, Length, LineHeight, Padding, PlushieType,
+    Color, Font, HorizontalAlignment, InputPurpose, Length, LineHeight, Padding, PlushieType,
 };
 
 struct TextInputProps {
@@ -24,6 +24,8 @@ struct TextInputProps {
     line_height: Option<LineHeight>,
     align_x: Option<HorizontalAlignment>,
     input_purpose: Option<InputPurpose>,
+    placeholder_color: Option<Color>,
+    selection_color: Option<Color>,
 }
 
 impl TextInputProps {
@@ -40,6 +42,8 @@ impl TextInputProps {
             align_x: HorizontalAlignment::extract(p, "align_x"),
             input_purpose: InputPurpose::extract(p, "input_purpose")
                 .or_else(|| InputPurpose::extract(p, "ime_purpose")),
+            placeholder_color: Color::extract(p, "placeholder_color"),
+            selection_color: Color::extract(p, "selection_color"),
         }
     }
 }
@@ -155,8 +159,8 @@ fn render_text_input<'a, R: PlushieRenderer>(
 
     // Direct color props for placeholder and selection, applied on top of
     // any style preset or StyleMap.
-    let placeholder_color = prop_color(props, "placeholder_color");
-    let selection_color = prop_color(props, "selection_color");
+    let placeholder_color = tp.placeholder_color.as_ref().map(iced_convert::color);
+    let selection_color = tp.selection_color.as_ref().map(iced_convert::color);
 
     // Style: string name or style map object
     let has_color_overrides = placeholder_color.is_some() || selection_color.is_some();

@@ -11,9 +11,8 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Color, Ellipsis, Length, Wrapping,
+    Border as CoreBorder, Color, Ellipsis, Font as CoreFont, Length, PlushieType, Wrapping,
 };
-use plushie_core::types::{PlushieType};
 
 struct RichTextProps {
     width: Option<Length>,
@@ -83,11 +82,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
                         if let Some(sz) = sv.get("size").and_then(|v| v.as_f64()) {
                             s = s.size(Pixels(sz as f32));
                         }
-                        if let Some(c) = sv.get("color").and_then(parse_color) {
-                            s = s.color(c);
+                        if let Some(c) = sv.get("color").and_then(Color::wire_decode) {
+                            s = s.color(iced_convert::color(&c));
                         }
-                        if let Some(f) = sv.get("font") {
-                            s = s.font(parse_font(f));
+                        if let Some(f) = sv.get("font").and_then(CoreFont::wire_decode) {
+                            s = s.font(iced_convert::font(&f));
                         }
                         if let Some(link) = sv.get("link").and_then(|v| v.as_str()) {
                             s = s.link(link.to_owned());
@@ -123,11 +122,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
                             }
                         }
                         if let Some(hl) = sv.get("highlight").and_then(|v| v.as_object()) {
-                            if let Some(bg) = hl.get("background").and_then(parse_color) {
-                                s = s.background(bg);
+                            if let Some(bg) = hl.get("background").and_then(Color::wire_decode) {
+                                s = s.background(iced_convert::color(&bg));
                             }
-                            if let Some(b) = hl.get("border") {
-                                s = s.border(parse_border(b));
+                            if let Some(b) = hl.get("border").and_then(CoreBorder::wire_decode) {
+                                s = s.border(iced_convert::border(&b));
                             }
                         }
                         s

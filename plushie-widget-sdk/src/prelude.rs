@@ -34,6 +34,9 @@ pub use crate::protocol::{CoalesceHint, OutgoingEvent, TreeNode};
 // -- Prop extraction helpers --
 pub use crate::prop_helpers::*;
 
+// -- Type conversions (plushie-core -> iced) --
+pub use crate::iced_convert;
+
 // -- Widget helpers (parsing, style application) --
 pub use crate::widget::helpers::{
     StyleMapFields, StyleOverrides, container_style_from_base, get_style_overrides,

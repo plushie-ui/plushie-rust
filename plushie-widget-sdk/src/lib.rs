@@ -44,7 +44,7 @@ pub mod testing;
 
 pub mod animation;
 
-pub(crate) mod iced_convert;
+pub mod iced_convert;
 
 pub(crate) mod a11y;
 pub mod shared_state;

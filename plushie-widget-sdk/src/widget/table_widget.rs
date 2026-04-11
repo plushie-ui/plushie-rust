@@ -10,9 +10,8 @@ use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
-use crate::widget::helpers::*;
-
 use plushie_core::types::{self as core_types, PlushieType};
+use plushie_core::types::{Color as CoreColor, HorizontalAlignment};
 
 /// Wrap an element with an accessibility role override.
 fn with_role<'a, R: PlushieRenderer>(
@@ -54,12 +53,14 @@ fn parse_table_columns(props: &plushie_core::protocol::Props) -> Vec<TableColumn
                         .to_owned();
                     let align = col
                         .get("align")
-                        .and_then(|v| v.as_str())
-                        .and_then(value_to_horizontal_alignment)
+                        .and_then(|v| HorizontalAlignment::wire_decode(v))
+                        .map(iced_convert::horizontal_alignment)
                         .unwrap_or(alignment::Horizontal::Left);
                     let width = col
                         .get("width")
-                        .and_then(value_to_length)
+                        .and_then(|v| core_types::Length::wire_decode(v))
+                        .as_ref()
+                        .map(iced_convert::length)
                         .unwrap_or(Length::FillPortion(1));
                     let sortable = col
                         .get("sortable")
@@ -90,6 +91,7 @@ struct TableProps {
     cell_spacing: Option<f32>,
     row_spacing: Option<f32>,
     separator_thickness: Option<f32>,
+    separator_color: Option<CoreColor>,
 }
 
 impl TableProps {
@@ -107,6 +109,7 @@ impl TableProps {
             cell_spacing: f32::extract(p, "cell_spacing"),
             row_spacing: f32::extract(p, "row_spacing"),
             separator_thickness: f32::extract(p, "separator_thickness"),
+            separator_color: CoreColor::extract(p, "separator_color"),
         }
     }
 }
@@ -138,8 +141,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
         let cell_spacing = tp.cell_spacing;
         let row_spacing = tp.row_spacing;
         let separator_thickness = tp.separator_thickness.unwrap_or(1.0);
-        // separator_color: keep as raw prop access (returns iced::Color directly)
-        let separator_color = prop_color(&node.props, "separator_color");
+        let separator_color = tp.separator_color.as_ref().map(iced_convert::color);
 
         let sort_by = tp.sort_by;
         let sort_order = tp.sort_order;

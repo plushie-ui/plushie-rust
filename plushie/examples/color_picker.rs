@@ -118,14 +118,14 @@ impl App for ColorPickerApp {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, widgets: &mut WidgetRegistrar) -> View {
         let hex = hsv_to_hex(model.hue, model.saturation, model.value);
         let is_initial =
             model.hue == 0.0 && model.saturation == 1.0 && model.value == 1.0;
 
         window("color_picker").title("Color Picker").child(
             column().spacing(16.0).padding(20).align_x(Align::Center)
-                .child(WidgetView::<ColorPickerWidget>::new("picker"))
+                .child(WidgetView::<ColorPickerWidget>::new("picker").register(widgets))
                 .child(
                     row().spacing(16.0).align_y(Align::Center)
                         .child(

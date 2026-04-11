@@ -72,7 +72,7 @@ impl App for FetchApp {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         window("main").title("Async Fetch").child(
             column().padding(24).spacing(16.0).width(Fill)
                 .child(text("Async Command Demo").id("header").size(20.0))

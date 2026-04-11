@@ -27,7 +27,7 @@
 //!         Command::none()
 //!     }
 //!
-//!     fn view(model: &Self) -> View {
+//!     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
 //!         window("main").title("Counter").child(
 //!             column().spacing(8).padding(16).children([
 //!                 text(&format!("Count: {}", model.count)),
@@ -120,7 +120,16 @@ pub trait App: Send + 'static {
     /// Build the view tree from the current model. Called after
     /// every update. Return a tree built from UI builder functions
     /// (`window`, `column`, `button`, `text`, etc.).
-    fn view(model: &Self::Model) -> View;
+    ///
+    /// Use `widgets` to register composite widgets:
+    /// ```ignore
+    /// fn view(model: &Self, widgets: &mut WidgetRegistrar) -> View {
+    ///     window("main").child(
+    ///         WidgetView::<MyWidget>::new("w1").register(widgets)
+    ///     ).into()
+    /// }
+    /// ```
+    fn view(model: &Self::Model, widgets: &mut widget::WidgetRegistrar) -> View;
 
     /// Active subscriptions. Called after every update. The runtime
     /// diffs the returned list and starts/stops subscriptions as

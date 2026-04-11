@@ -44,7 +44,7 @@ impl App for Shortcuts {
         vec![Subscription::on_key_press()]
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         let mut log_col = column().spacing(2.0).width(Fill);
         for (i, entry) in model.log.iter().enumerate() {
             log_col = log_col.child(

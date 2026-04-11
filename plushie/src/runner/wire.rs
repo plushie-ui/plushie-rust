@@ -44,7 +44,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     let mut sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
 
     // First render: full snapshot.
-    let view = A::view(&model);
+    let view = A::view(&model, &mut crate::widget::WidgetRegistrar::new());
     let (normalized, _) = normalize::normalize(&view);
     let mut current_tree = normalized;
     bridge.send_snapshot(&serde_json::to_value(&current_tree).unwrap())?;
@@ -78,7 +78,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
             }
 
             // Re-render and diff.
-            let view = A::view(&model);
+            let view = A::view(&model, &mut crate::widget::WidgetRegistrar::new());
             let (new_tree, warnings) = normalize::normalize(&view);
             for warning in &warnings {
                 log::warn!("view normalization: {warning}");

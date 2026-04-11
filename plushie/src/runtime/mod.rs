@@ -28,7 +28,8 @@ pub fn prepare_tree<A: App>(
     model: &A::Model,
     widget_store: &mut WidgetStateStore,
 ) -> (TreeNode, Vec<String>) {
-    let view = A::view(model);
-    let expanded = widget_store.expand_tree(&view);
+    let mut registrar = crate::widget::WidgetRegistrar::new();
+    let view = A::view(model, &mut registrar);
+    let expanded = widget_store.expand_tree(&view, registrar);
     normalize::normalize(&expanded)
 }

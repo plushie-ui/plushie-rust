@@ -231,7 +231,7 @@ impl App for RatePlushie {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, widgets: &mut WidgetRegistrar) -> View {
         let p: f64 = if model.dark_mode { 1.0 } else { 0.0 };
         let t = theme(p);
 
@@ -252,7 +252,7 @@ impl App for RatePlushie {
                                 "level": 1
                             })),
                     )
-                    .child(rating_card(model, &t))
+                    .child(rating_card(model, &t, widgets))
                     .child(
                         text("Reviews")
                             .id("reviews-heading")
@@ -272,7 +272,7 @@ impl App for RatePlushie {
 
 // -- Rating card --------------------------------------------------------------
 
-fn rating_card(model: &RatePlushie, t: &AppTheme) -> View {
+fn rating_card(model: &RatePlushie, t: &AppTheme, widgets: &mut WidgetRegistrar) -> View {
     let mut card_col = column().spacing(20.0);
 
     card_col = card_col.child(
@@ -286,7 +286,8 @@ fn rating_card(model: &RatePlushie, t: &AppTheme) -> View {
     let mut stars_group = column().id("stars-group").spacing(4.0);
     stars_group = stars_group.child(
         WidgetView::<StarRating>::new("stars")
-            .prop("rating", model.rating as u64),
+            .prop("rating", model.rating as u64)
+            .register(widgets),
     );
     if let Some(err) = model.errors.get("rating") {
         stars_group = stars_group.child(
@@ -308,7 +309,8 @@ fn rating_card(model: &RatePlushie, t: &AppTheme) -> View {
     // Theme toggle widget
     card_col = card_col.child(
         WidgetView::<ThemeToggle>::new("theme-toggle")
-            .prop("dark", model.dark_mode),
+            .prop("dark", model.dark_mode)
+            .register(widgets),
     );
 
     container()

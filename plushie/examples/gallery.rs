@@ -53,7 +53,7 @@ impl App for Gallery {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         let section = |label: &str| {
             text(label).size(14.0).color(Color::hex("#888888"))
         };

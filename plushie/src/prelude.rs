@@ -7,6 +7,9 @@
 // Core trait
 pub use crate::App;
 
+// Widget registrar (for App::view)
+pub use crate::widget::WidgetRegistrar;
+
 // View
 pub use crate::View;
 

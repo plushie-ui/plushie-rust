@@ -161,17 +161,31 @@ impl<W: Widget> WidgetView<W> {
     }
 }
 
-impl<W: Widget> From<WidgetView<W>> for View {
-    fn from(wv: WidgetView<W>) -> View {
+impl<W: Widget> WidgetView<W> {
+    /// Register the widget expander and produce a View placeholder.
+    ///
+    /// Call this inside `App::view` to place a composite widget in
+    /// the view tree:
+    ///
+    /// ```ignore
+    /// fn view(model: &Self::Model, widgets: &mut WidgetRegistrar) -> View {
+    ///     window("main").child(
+    ///         WidgetView::<StarRating>::new("rating")
+    ///             .prop("rating", model.rating)
+    ///             .register(widgets)
+    ///     ).into()
+    /// }
+    /// ```
+    pub fn register(self, registrar: &mut WidgetRegistrar) -> View {
         let expander: Box<dyn DynWidgetExpander> =
             Box::new(WidgetExpander::<W>(std::marker::PhantomData));
-        register_widget_expander(&wv.id, expander);
+        registrar.register(self.id.clone(), expander);
 
-        let mut props = wv.props;
+        let mut props = self.props;
         props.insert("__widget__".to_string(), Value::Bool(true));
 
         View {
-            id: wv.id,
+            id: self.id,
             type_name: "__widget__".to_string(),
             props: Value::Object(props),
             children: vec![],
@@ -210,22 +224,32 @@ impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
     }
 }
 
-// Thread-local registry for widget expanders.
-thread_local! {
-    static WIDGET_EXPANDERS: std::cell::RefCell<HashMap<String, Box<dyn DynWidgetExpander>>>
-        = std::cell::RefCell::new(HashMap::new());
+// ---------------------------------------------------------------------------
+// WidgetRegistrar
+// ---------------------------------------------------------------------------
+
+/// Collects widget expanders during `App::view()`.
+///
+/// Passed to `App::view()` so composite widgets can register their
+/// type-erased expanders explicitly rather than through a thread-local.
+pub struct WidgetRegistrar {
+    expanders: HashMap<String, Box<dyn DynWidgetExpander>>,
 }
 
-fn register_widget_expander(id: &str, expander: Box<dyn DynWidgetExpander>) {
-    WIDGET_EXPANDERS.with(|map| {
-        map.borrow_mut().insert(id.to_string(), expander);
-    });
-}
+impl WidgetRegistrar {
+    pub fn new() -> Self {
+        Self { expanders: HashMap::new() }
+    }
 
-pub(crate) fn take_widget_expander(id: &str) -> Option<Box<dyn DynWidgetExpander>> {
-    WIDGET_EXPANDERS.with(|map| {
-        map.borrow_mut().remove(id)
-    })
+    /// Register a widget expander for the given ID.
+    pub(crate) fn register(&mut self, id: String, expander: Box<dyn DynWidgetExpander>) {
+        self.expanders.insert(id, expander);
+    }
+
+    /// Take all registered expanders (consumed by WidgetStateStore).
+    pub(crate) fn take_all(self) -> HashMap<String, Box<dyn DynWidgetExpander>> {
+        self.expanders
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -247,24 +271,20 @@ impl WidgetStateStore {
     }
 
     /// Expand all __widget__ nodes in a TreeNode tree.
-    pub fn expand_tree(&mut self, tree: &View) -> View {
-        self.collect_expanders(tree);
-        self.expand_node(tree)
-    }
-
-    fn collect_expanders(&mut self, node: &View) {
-        if node.type_name == "__widget__" {
-            if let Some(expander) = take_widget_expander(&node.id) {
-                if !self.states.contains_key(&node.id) {
-                    self.states.insert(node.id.clone(), expander.default_state());
-                }
-                self.expanders.insert(node.id.clone(), expander);
+    ///
+    /// Merges expanders from the registrar (collected during
+    /// `App::view()`) and then recursively expands widget
+    /// placeholder nodes by calling their `view()` methods.
+    pub fn expand_tree(&mut self, tree: &View, registrar: WidgetRegistrar) -> View {
+        // Merge newly registered expanders and initialize state
+        // for any widgets we haven't seen before.
+        for (id, expander) in registrar.take_all() {
+            if !self.states.contains_key(&id) {
+                self.states.insert(id.clone(), expander.default_state());
             }
+            self.expanders.insert(id, expander);
         }
-
-        for child in &node.children {
-            self.collect_expanders(child);
-        }
+        self.expand_node(tree)
     }
 
     fn expand_node(&self, node: &View) -> View {

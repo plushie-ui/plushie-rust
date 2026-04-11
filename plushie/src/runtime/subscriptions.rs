@@ -31,6 +31,7 @@ pub enum SubOp {
     /// Start an SDK-side timer (SubscriptionKind::Every).
     StartTimer {
         tag: String,
+        #[allow(dead_code)] // Used when timer implementation lands.
         interval: std::time::Duration,
     },
     /// Stop an SDK-side timer.

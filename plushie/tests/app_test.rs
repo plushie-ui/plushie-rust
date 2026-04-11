@@ -30,7 +30,7 @@ impl App for Counter {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         window("main").title("Counter")
             .child(column().spacing(8.0).padding(16)
                 .child(text(&format!("{}", model.count)).id("display"))
@@ -134,7 +134,7 @@ impl App for Form {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         window("main").child(column().spacing(8.0)
             .child(text_input("name", &model.name).placeholder("Your name"))
             .child(checkbox("agree", model.agreed).label("I agree"))
@@ -238,7 +238,7 @@ impl App for TodoApp {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         window("main").title("Todos").child(
             column().spacing(8.0).padding(16)
                 .child(text_input("new_todo", &model.input).placeholder("Add todo..."))
@@ -303,7 +303,7 @@ impl App for CommandApp {
         }
     }
 
-    fn view(_model: &Self) -> View {
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         window("main").child(column()
             .child(button("focus_email", "Focus Email"))
             .child(button("quit", "Quit"))
@@ -360,7 +360,7 @@ impl App for MixedEventApp {
         Command::none()
     }
 
-    fn view(_model: &Self) -> View {
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         window("main").child(column()
             .child(button("btn", "Click"))
             .child(text_input("inp", ""))

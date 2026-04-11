@@ -49,7 +49,7 @@ impl App for Clock {
         vec![Subscription::every(Duration::from_secs(1), "tick")]
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         window("main").title("Clock").child(
             column().spacing(16.0).padding(24).width(Fill).align_x(Align::Center)
                 .child(text(&model.time).id("clock_display").size(48.0))

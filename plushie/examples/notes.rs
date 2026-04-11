@@ -142,7 +142,7 @@ impl App for Notes {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         match model.route.current() {
             "/list" => view_list(model),
             "/edit" => view_edit(model),

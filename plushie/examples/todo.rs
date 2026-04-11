@@ -82,7 +82,7 @@ impl App for TodoApp {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         let filtered: Vec<&TodoItem> = model.todos.iter().filter(|t| match model.filter {
             Filter::All => true,
             Filter::Active => !t.done,

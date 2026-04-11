@@ -169,7 +169,23 @@ impl GroupBuilder {
     pub fn x(mut self, v: f32) -> Self { super::set_prop(&mut self.props, "x", v); self }
     pub fn y(mut self, v: f32) -> Self { super::set_prop(&mut self.props, "y", v); self }
     pub fn on_click(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_click", enabled); self }
+    /// Emit enter/leave events when the cursor hovers over this group.
+    pub fn on_hover(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_hover", enabled); self }
     pub fn draggable(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "draggable", enabled); self }
+    /// Constrain drag direction: `"x"`, `"y"`, or `"both"` (default).
+    pub fn drag_axis(mut self, axis: &str) -> Self { super::set_prop(&mut self.props, "drag_axis", axis); self }
+    /// Make this group keyboard-focusable.
+    pub fn focusable(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "focusable", enabled); self }
+    /// Show the default focus ring when focused (default: true).
+    pub fn show_focus_ring(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "show_focus_ring", enabled); self }
+    /// Corner radius for the focus ring.
+    pub fn focus_ring_radius(mut self, r: f32) -> Self { super::set_prop(&mut self.props, "focus_ring_radius", r); self }
+    /// Style overrides applied when the cursor hovers over this group.
+    pub fn hover_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "hover_style", style.clone()); self }
+    /// Style overrides applied when the mouse is pressed on this group.
+    pub fn pressed_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "pressed_style", style.clone()); self }
+    /// Style overrides applied when this group has keyboard focus.
+    pub fn focus_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "focus_style", style.clone()); self }
     pub fn cursor(mut self, c: &str) -> Self { super::set_prop(&mut self.props, "cursor", c); self }
     pub fn tooltip(mut self, text: &str) -> Self { super::set_prop(&mut self.props, "tooltip", text); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
@@ -290,6 +306,12 @@ impl RectBuilder {
         super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
     }
+    /// Style overrides when parent group is hovered.
+    pub fn hover_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "hover_style", style.clone()); self }
+    /// Style overrides when parent group is pressed.
+    pub fn pressed_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "pressed_style", style.clone()); self }
+    /// Style overrides when parent group has keyboard focus.
+    pub fn focus_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "focus_style", style.clone()); self }
 }
 
 impl From<RectBuilder> for View {
@@ -336,6 +358,9 @@ impl CircleBuilder {
         super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
     }
+    pub fn hover_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "hover_style", style.clone()); self }
+    pub fn pressed_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "pressed_style", style.clone()); self }
+    pub fn focus_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "focus_style", style.clone()); self }
 }
 
 impl From<CircleBuilder> for View {
@@ -376,6 +401,9 @@ impl LineBuilder {
         self
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
+    pub fn hover_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "hover_style", style.clone()); self }
+    pub fn pressed_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "pressed_style", style.clone()); self }
+    pub fn focus_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "focus_style", style.clone()); self }
 }
 
 impl From<LineBuilder> for View {
@@ -423,6 +451,9 @@ impl PathBuilder {
         super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
     }
+    pub fn hover_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "hover_style", style.clone()); self }
+    pub fn pressed_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "pressed_style", style.clone()); self }
+    pub fn focus_style(mut self, style: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "focus_style", style.clone()); self }
 }
 
 impl From<PathBuilder> for View {

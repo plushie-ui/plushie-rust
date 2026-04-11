@@ -377,35 +377,6 @@ pub fn fill_rule(r: types::canvas::FillRule) -> canvas::fill::Rule {
     }
 }
 
-// -------------------------------------------------------------------------
-// Canvas: CanvasFill
-// -------------------------------------------------------------------------
-
-/// Convert a plushie-core CanvasFill to an iced canvas Fill.
-///
-/// Uses `NonZero` fill rule by default. Call `canvas_fill_with_rule`
-/// to specify a different rule.
-pub fn canvas_fill(f: &types::canvas::CanvasFill) -> canvas::Fill {
-    canvas_fill_with_rule(f, canvas::fill::Rule::NonZero)
-}
-
-/// Convert a CanvasFill with an explicit fill rule.
-pub fn canvas_fill_with_rule(
-    f: &types::canvas::CanvasFill,
-    rule: canvas::fill::Rule,
-) -> canvas::Fill {
-    match f {
-        types::canvas::CanvasFill::Color(c) => canvas::Fill {
-            style: canvas::Style::Solid(color(c)),
-            rule,
-        },
-        types::canvas::CanvasFill::Gradient(g) => canvas::Fill {
-            style: canvas::Style::Gradient(canvas_gradient(g)),
-            rule,
-        },
-    }
-}
-
 /// Convert a plushie-core Gradient to an iced canvas gradient.
 ///
 /// Canvas gradients use start/end points (not an angle), so
@@ -445,36 +416,6 @@ pub fn line_join(j: types::canvas::LineJoin) -> canvas::LineJoin {
 }
 
 // -------------------------------------------------------------------------
-// Canvas: Stroke
-// -------------------------------------------------------------------------
-
-pub fn stroke(s: &types::canvas::Stroke) -> canvas::Stroke<'static> {
-    let mut out = canvas::Stroke::default()
-        .with_color(color(&s.color))
-        .with_width(s.width)
-        .with_line_cap(
-            s.cap
-                .map(line_cap)
-                .unwrap_or(canvas::LineCap::Butt),
-        )
-        .with_line_join(
-            s.join
-                .map(line_join)
-                .unwrap_or(canvas::LineJoin::Miter),
-        );
-
-    if let Some(ref dash) = s.dash {
-        let segments = intern_dash_segments(dash.segments.clone());
-        out.line_dash = canvas::LineDash {
-            segments,
-            offset: dash.offset as usize,
-        };
-    }
-
-    out
-}
-
-// -------------------------------------------------------------------------
 // FilterMethod
 // -------------------------------------------------------------------------
 
@@ -483,46 +424,6 @@ pub fn filter_method(f: types::FilterMethod) -> iced::widget::image::FilterMetho
         types::FilterMethod::Nearest => iced::widget::image::FilterMethod::Nearest,
         types::FilterMethod::Linear => iced::widget::image::FilterMethod::Linear,
     }
-}
-
-// -------------------------------------------------------------------------
-// Dash segment interning
-// -------------------------------------------------------------------------
-
-/// Intern dash segments for `'static` lifetime. Identical patterns
-/// share one leaked allocation. Bounded cache with overflow warning.
-fn intern_dash_segments(segments: Vec<f32>) -> &'static [f32] {
-    use std::collections::HashMap;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{LazyLock, Mutex};
-
-    const MAX_DASH_CACHE: usize = 1024;
-
-    static CACHE: LazyLock<Mutex<HashMap<Vec<u32>, &'static [f32]>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
-    static WARNED: AtomicBool = AtomicBool::new(false);
-
-    let key: Vec<u32> = segments.iter().map(|s| s.to_bits()).collect();
-    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-
-    if let Some(existing) = cache.get(&key) {
-        return existing;
-    }
-
-    let leaked: &'static [f32] = Box::leak(segments.into_boxed_slice());
-
-    if cache.len() >= MAX_DASH_CACHE {
-        if !WARNED.swap(true, Ordering::Relaxed) {
-            log::warn!(
-                "iced_convert dash cache full ({MAX_DASH_CACHE} entries); \
-                 new patterns will leak without caching"
-            );
-        }
-        return leaked;
-    }
-
-    cache.insert(key, leaked);
-    leaked
 }
 
 #[cfg(test)]
@@ -721,38 +622,6 @@ mod tests {
             line_join(types::canvas::LineJoin::Bevel),
             canvas::LineJoin::Bevel
         ));
-    }
-
-    #[test]
-    fn canvas_stroke_basic() {
-        let s = types::canvas::Stroke {
-            color: types::Color::hex("#ff0000"),
-            width: 3.0,
-            cap: Some(types::canvas::LineCap::Round),
-            join: Some(types::canvas::LineJoin::Bevel),
-            dash: None,
-        };
-        let is = stroke(&s);
-        assert_eq!(is.width, 3.0);
-        assert!(matches!(is.line_cap, canvas::LineCap::Round));
-        assert!(matches!(is.line_join, canvas::LineJoin::Bevel));
-    }
-
-    #[test]
-    fn canvas_stroke_with_dash() {
-        let s = types::canvas::Stroke {
-            color: types::Color::hex("#000000"),
-            width: 1.0,
-            cap: None,
-            join: None,
-            dash: Some(types::canvas::Dash {
-                segments: vec![5.0, 3.0],
-                offset: 2.0,
-            }),
-        };
-        let is = stroke(&s);
-        assert_eq!(is.line_dash.segments, &[5.0, 3.0]);
-        assert_eq!(is.line_dash.offset, 2);
     }
 
     #[test]

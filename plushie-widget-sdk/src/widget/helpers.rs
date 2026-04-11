@@ -5,28 +5,18 @@
 //! borders, style maps) and applying style overrides to iced widget styles.
 //! Widget authors can access these via `plushie_widget_sdk::widget::helpers::*`.
 
-use iced::widget::text::{LineHeight, Wrapping};
+use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, container, pick_list, progress_bar, rule, slider, text_editor, text_input,
     toggler,
 };
-use iced::{Border, Color, Font, Length, Padding, Pixels, Radians, Shadow, Vector, font, mouse};
+use iced::{Border, Color, Font, Padding, Pixels, Radians, Shadow, Vector, font};
 use plushie_core::protocol::Props;
 use serde_json::Value;
 
 // Re-export all public prop helpers so widget submodules using `use super::*`
 // continue to find them without changes.
 pub use crate::prop_helpers::*;
-
-// ---------------------------------------------------------------------------
-// Widget-internal helpers not in prop_helpers
-// ---------------------------------------------------------------------------
-
-/// Try to parse a length from an optional Value. Returns None if the value
-/// is absent or unparseable (unlike prop_length which returns a fallback).
-pub fn value_to_length_opt(val: Option<&Value>) -> Option<Length> {
-    val.and_then(value_to_length)
-}
 
 // ---------------------------------------------------------------------------
 // Padding parsing -- handles both number and object formats
@@ -110,40 +100,6 @@ pub fn parse_padding_value(props: &Props) -> Option<Padding> {
             }
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Mouse interaction (cursor) parsing
-// ---------------------------------------------------------------------------
-
-pub fn parse_interaction(s: &str) -> Option<mouse::Interaction> {
-    Some(match s {
-        "pointer" => mouse::Interaction::Pointer,
-        "grab" => mouse::Interaction::Grab,
-        "grabbing" => mouse::Interaction::Grabbing,
-        "crosshair" => mouse::Interaction::Crosshair,
-        "text" => mouse::Interaction::Text,
-        "move" => mouse::Interaction::Move,
-        "not_allowed" => mouse::Interaction::NotAllowed,
-        "progress" => mouse::Interaction::Progress,
-        "wait" => mouse::Interaction::Wait,
-        "help" => mouse::Interaction::Help,
-        "cell" => mouse::Interaction::Cell,
-        "copy" => mouse::Interaction::Copy,
-        "alias" => mouse::Interaction::Alias,
-        "no_drop" => mouse::Interaction::NoDrop,
-        "all_scroll" => mouse::Interaction::AllScroll,
-        "zoom_in" => mouse::Interaction::ZoomIn,
-        "zoom_out" => mouse::Interaction::ZoomOut,
-        "context_menu" => mouse::Interaction::ContextMenu,
-        "resizing_horizontally" => mouse::Interaction::ResizingHorizontally,
-        "resizing_vertically" => mouse::Interaction::ResizingVertically,
-        "resizing_diagonally_up" => mouse::Interaction::ResizingDiagonallyUp,
-        "resizing_diagonally_down" => mouse::Interaction::ResizingDiagonallyDown,
-        "resizing_column" => mouse::Interaction::ResizingColumn,
-        "resizing_row" => mouse::Interaction::ResizingRow,
-        _ => return None,
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -813,7 +769,7 @@ pub fn alpha_gradient(gradient: iced::Gradient, alpha: f32) -> iced::Gradient {
 }
 
 // ---------------------------------------------------------------------------
-// Line height and wrapping parsing
+// Line height and shaping parsing
 // ---------------------------------------------------------------------------
 
 /// Parse line_height prop. Accepts:
@@ -848,33 +804,6 @@ pub fn parse_shaping(props: &Props) -> Option<iced::widget::text::Shaping> {
         "advanced" => Some(Shaping::Advanced),
         "auto" => Some(Shaping::Auto),
         _ => None,
-    }
-}
-
-/// Parse wrapping prop from a string.
-pub fn parse_wrapping(props: &Props) -> Option<Wrapping> {
-    let s = prop_str(props, "wrapping")?;
-    match s.as_str() {
-        "none" => Some(Wrapping::None),
-        "word" => Some(Wrapping::Word),
-        "glyph" => Some(Wrapping::Glyph),
-        "word_or_glyph" => Some(Wrapping::WordOrGlyph),
-        _ => None,
-    }
-}
-
-pub fn parse_ellipsis(props: &Props) -> Option<iced::widget::text::Ellipsis> {
-    use iced::widget::text::Ellipsis;
-    let s = prop_str(props, "ellipsis")?;
-    match s.as_str() {
-        "none" => Some(Ellipsis::None),
-        "start" => Some(Ellipsis::Start),
-        "middle" => Some(Ellipsis::Middle),
-        "end" => Some(Ellipsis::End),
-        _ => {
-            log::warn!("unknown ellipsis value {:?}, ignoring", s);
-            None
-        }
     }
 }
 
@@ -1021,7 +950,7 @@ pub fn parse_pick_list_handle(props: &Props) -> Option<pick_list::Handle<Font>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iced::Fill;
+    use iced::{Fill, Length};
     use serde_json::json;
 
     /// Helper: build a Props from a json! value. The value must be an object.

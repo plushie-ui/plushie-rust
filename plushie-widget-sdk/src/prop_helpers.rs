@@ -11,7 +11,7 @@
 //! let size = prop_f32(props, "size").unwrap_or(14.0);
 //! ```
 
-use iced::{Color, ContentFit, Length, alignment};
+use iced::{Color, Length, alignment};
 use plushie_core::protocol::Props;
 use serde_json::Value;
 
@@ -351,38 +351,6 @@ pub fn prop_f32_array(props: &Props, key: &str) -> Option<Vec<f32>> {
     }
 }
 
-/// Parse a horizontal alignment prop.
-pub fn prop_horizontal_alignment(props: &Props, key: &str) -> alignment::Horizontal {
-    props
-        .get_str(key)
-        .and_then(value_to_horizontal_alignment)
-        .unwrap_or(alignment::Horizontal::Left)
-}
-
-/// Parse a vertical alignment prop.
-pub fn prop_vertical_alignment(props: &Props, key: &str) -> alignment::Vertical {
-    props
-        .get_str(key)
-        .and_then(value_to_vertical_alignment)
-        .unwrap_or(alignment::Vertical::Top)
-}
-
-/// Parse a content-fit prop.
-pub fn prop_content_fit(props: &Props) -> Option<ContentFit> {
-    let s = prop_str(props, "content_fit")?;
-    match s.as_str() {
-        "contain" => Some(ContentFit::Contain),
-        "cover" => Some(ContentFit::Cover),
-        "fill" => Some(ContentFit::Fill),
-        "none" => Some(ContentFit::None),
-        "scale_down" => Some(ContentFit::ScaleDown),
-        _ => {
-            log::trace!("prop 'content_fit': unrecognized value: {:?}", s);
-            None
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Value conversion helpers (also public for advanced use)
 // ---------------------------------------------------------------------------
@@ -422,18 +390,6 @@ pub fn value_to_horizontal_alignment(s: &str) -> Option<alignment::Horizontal> {
         "right" => Some(alignment::Horizontal::Right),
         other => {
             log::warn!("unknown horizontal alignment: {other:?}");
-            None
-        }
-    }
-}
-
-pub fn value_to_vertical_alignment(s: &str) -> Option<alignment::Vertical> {
-    match s {
-        "top" => Some(alignment::Vertical::Top),
-        "center" => Some(alignment::Vertical::Center),
-        "bottom" => Some(alignment::Vertical::Bottom),
-        other => {
-            log::warn!("unknown vertical alignment: {other:?}");
             None
         }
     }
@@ -482,42 +438,6 @@ pub fn prop_str_array(props: &Props, key: &str) -> Option<Vec<String>> {
             None
         }
     }
-}
-
-/// Get a reference to a JSON object prop (Wire variant only).
-///
-/// Returns `None` for `Props::Typed`. For code that needs to work
-/// with both variants, use `props.get_value(key)` instead.
-pub fn prop_object<'a>(props: &'a Props, key: &str) -> Option<&'a serde_json::Map<String, Value>> {
-    let val = props.as_object()?.get(key)?;
-    match val.as_object() {
-        Some(obj) => Some(obj),
-        None => {
-            log::trace!("prop '{}': expected object, got {:?}", key, val);
-            None
-        }
-    }
-}
-
-/// Get a reference to a raw JSON value prop (Wire variant only).
-///
-/// Returns `None` for `Props::Typed`. For code that needs to work
-/// with both variants, use `props.get_value(key)` instead.
-pub fn prop_value<'a>(props: &'a Props, key: &str) -> Option<&'a Value> {
-    props.as_object()?.get(key)
-}
-
-/// Parse padding from a `"padding"` prop.
-///
-/// Supports three formats:
-/// - `"padding": 10` -- uniform padding (all four sides)
-/// - `"padding": {"top": 10, "right": 5, "bottom": 10, "left": 5}` -- per-side
-/// - Individual `"padding_top"`, `"padding_right"`, etc. keys (legacy)
-///
-/// Returns `None` if no padding props are present, preserving iced defaults.
-/// Negative values are clamped to `0.0` in the object and uniform formats.
-pub fn prop_padding(props: &Props) -> Option<iced::Padding> {
-    crate::widget::parse_padding_value(props)
 }
 
 // ---------------------------------------------------------------------------
@@ -907,45 +827,6 @@ mod tests {
     }
 
     #[test]
-    fn test_prop_horizontal_alignment() {
-        let p = make_props(json!({"align": "center"}));
-        assert!(matches!(
-            prop_horizontal_alignment(&p, "align"),
-            alignment::Horizontal::Center
-        ));
-    }
-
-    #[test]
-    fn test_prop_horizontal_alignment_default() {
-        let p = make_props(json!({}));
-        assert!(matches!(
-            prop_horizontal_alignment(&p, "align"),
-            alignment::Horizontal::Left
-        ));
-    }
-
-    #[test]
-    fn test_prop_vertical_alignment() {
-        let p = make_props(json!({"valign": "bottom"}));
-        assert!(matches!(
-            prop_vertical_alignment(&p, "valign"),
-            alignment::Vertical::Bottom
-        ));
-    }
-
-    #[test]
-    fn test_prop_content_fit() {
-        let p = make_props(json!({"content_fit": "cover"}));
-        assert_eq!(prop_content_fit(&p), Some(ContentFit::Cover));
-    }
-
-    #[test]
-    fn test_prop_content_fit_missing() {
-        let p = make_props(json!({}));
-        assert_eq!(prop_content_fit(&p), None);
-    }
-
-    #[test]
     fn test_value_to_length_fill_portion() {
         let val = json!({"fill_portion": 3});
         let len = value_to_length(&val).unwrap();
@@ -1036,47 +917,6 @@ mod tests {
     }
 
     // -- prop_object --
-
-    #[test]
-    fn test_prop_object() {
-        let p = make_props(json!({"style": {"color": "red"}}));
-        let obj = prop_object(&p, "style").unwrap();
-        assert_eq!(obj.get("color").and_then(|v| v.as_str()), Some("red"));
-    }
-
-    #[test]
-    fn test_prop_object_missing() {
-        let p = make_props(json!({}));
-        assert!(prop_object(&p, "style").is_none());
-    }
-
-    #[test]
-    fn test_prop_object_wrong_type() {
-        let p = make_props(json!({"style": "not an object"}));
-        assert!(prop_object(&p, "style").is_none());
-    }
-
-    // -- prop_value --
-
-    #[test]
-    fn test_prop_value_string() {
-        let p = make_props(json!({"x": "hello"}));
-        let v = prop_value(&p, "x").unwrap();
-        assert_eq!(v.as_str(), Some("hello"));
-    }
-
-    #[test]
-    fn test_prop_value_number() {
-        let p = make_props(json!({"x": 42}));
-        let v = prop_value(&p, "x").unwrap();
-        assert_eq!(v.as_i64(), Some(42));
-    }
-
-    #[test]
-    fn test_prop_value_missing() {
-        let p = make_props(json!({}));
-        assert!(prop_value(&p, "x").is_none());
-    }
 
     // -- Property-based tests -------------------------------------------------
 

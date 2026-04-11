@@ -6,6 +6,7 @@
 
 mod incoming;
 mod outgoing;
+mod props;
 mod types;
 
 /// Protocol version number. Sent in the `hello` handshake message on startup
@@ -17,6 +18,7 @@ pub use outgoing::{
     CoalesceHint, EffectResponse, EffectStubAck, InteractResponse, KeyModifiers, OutgoingEvent,
     QueryResponse, ResetResponse, TreeHashResponse,
 };
+pub use props::{PropMap, PropValue, Props};
 pub use types::{PatchOp, TreeNode};
 
 /// An incoming message paired with its session ID.

@@ -605,31 +605,54 @@ fn child_bounds(child: &CanvasShape) -> Option<(f32, f32, f32, f32)> {
 /// Compute bounding box of a path from its commands.
 /// Examines move_to, line_to, and arc endpoints. Bezier control points
 /// are included conservatively (they bound the curve).
-fn path_bounds(commands: &[serde_json::Value]) -> Option<(f32, f32, f32, f32)> {
+fn path_bounds(commands: &[plushie_core::types::canvas::PathCommand]) -> Option<(f32, f32, f32, f32)> {
+    use plushie_core::types::canvas::PathCommand;
+
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
     let mut max_x = f32::MIN;
     let mut max_y = f32::MIN;
     let mut has_point = false;
 
-    for cmd in commands {
-        let points: Vec<f32> = if let Some(arr) = cmd.as_array() {
-            arr.iter()
-                .skip(1)
-                .filter_map(|v| v.as_f64().map(|f| f as f32))
-                .collect()
-        } else {
-            continue;
-        };
+    let mut update = |x: f32, y: f32| {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+        has_point = true;
+    };
 
-        for pair in points.chunks(2) {
-            if pair.len() == 2 {
-                min_x = min_x.min(pair[0]);
-                min_y = min_y.min(pair[1]);
-                max_x = max_x.max(pair[0]);
-                max_y = max_y.max(pair[1]);
-                has_point = true;
+    for cmd in commands {
+        match cmd {
+            PathCommand::MoveTo { x, y } | PathCommand::LineTo { x, y } => {
+                update(*x, *y);
             }
+            PathCommand::BezierTo { cp1x, cp1y, cp2x, cp2y, x, y } => {
+                update(*cp1x, *cp1y);
+                update(*cp2x, *cp2y);
+                update(*x, *y);
+            }
+            PathCommand::QuadraticTo { cpx, cpy, x, y } => {
+                update(*cpx, *cpy);
+                update(*x, *y);
+            }
+            PathCommand::Arc { cx, cy, radius, .. } => {
+                update(cx - radius, cy - radius);
+                update(cx + radius, cy + radius);
+            }
+            PathCommand::ArcTo { x1, y1, x2, y2, .. } => {
+                update(*x1, *y1);
+                update(*x2, *y2);
+            }
+            PathCommand::Ellipse { cx, cy, rx, ry, .. } => {
+                update(cx - rx, cy - ry);
+                update(cx + rx, cy + ry);
+            }
+            PathCommand::RoundedRect { x, y, w, h, .. } => {
+                update(*x, *y);
+                update(x + w, y + h);
+            }
+            PathCommand::Close => {}
         }
     }
 

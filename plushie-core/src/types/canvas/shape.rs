@@ -11,6 +11,7 @@ use super::clip::ClipRect;
 use super::drag::{DragAxis, DragBounds};
 use super::fill::{CanvasFill, FillRule};
 use super::hit::HitRect;
+use super::path::{decode_commands, PathCommand};
 use super::shape_style::ShapeStyle;
 use super::stroke::Stroke;
 use super::transform::{decode_transforms, Transform};
@@ -150,13 +151,10 @@ impl LineShape {
 // ---------------------------------------------------------------------------
 
 /// Canvas arbitrary path built from drawing commands.
-///
-/// Path commands are kept as raw JSON values since their internal
-/// structure varies (move_to, line_to, arc_to, bezier, etc.).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PathShape {
     pub id: Option<String>,
-    pub commands: Vec<Value>,
+    pub commands: Vec<PathCommand>,
     pub fill: Option<CanvasFill>,
     pub stroke: Option<Stroke>,
     pub opacity: Option<f32>,
@@ -166,8 +164,9 @@ pub struct PathShape {
 impl PathShape {
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
-        let commands = p.get_value("commands")
-            .and_then(|v| v.as_array().cloned())
+        let commands = p
+            .get_value("commands")
+            .map(|v| decode_commands(&v))
             .unwrap_or_default();
         Self {
             id: id_from_node(node),
@@ -456,12 +455,14 @@ mod tests {
     #[test]
     fn path_shape() {
         let node = tree_node("path", json!({
-            "commands": [{"type": "move_to", "x": 0, "y": 0}, {"type": "line_to", "x": 10, "y": 10}],
+            "commands": [["move_to", 0, 0], ["line_to", 10, 10]],
             "fill": "#000000"
         }));
         let shape = CanvasShape::from_node(&node).unwrap();
         if let CanvasShape::Path(p) = shape {
             assert_eq!(p.commands.len(), 2);
+            assert_eq!(p.commands[0], PathCommand::MoveTo { x: 0.0, y: 0.0 });
+            assert_eq!(p.commands[1], PathCommand::LineTo { x: 10.0, y: 10.0 });
         } else {
             panic!("expected Path");
         }

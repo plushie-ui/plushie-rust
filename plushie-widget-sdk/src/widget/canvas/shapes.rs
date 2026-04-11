@@ -242,66 +242,66 @@ fn intern_dash_segments(segments: Vec<f32>) -> &'static [f32] {
     leaked
 }
 
-/// Build a Path from an array of path commands.
-pub(super) fn build_path_from_commands(commands: &[Value]) -> canvas::Path {
+/// Build an iced `Path` from typed path commands.
+pub(super) fn build_path_from_commands(commands: &[canvas_types::PathCommand]) -> canvas::Path {
+    use canvas_types::PathCommand;
+
     canvas::Path::new(|builder| {
         for cmd in commands {
-            if let Some(s) = cmd.as_str() {
-                if s == "close" {
-                    builder.close();
+            match cmd {
+                PathCommand::MoveTo { x, y } => {
+                    builder.move_to(Point::new(*x, *y));
                 }
-                continue;
-            }
-            let arr = match cmd.as_array() {
-                Some(a) if !a.is_empty() => a,
-                _ => continue,
-            };
-            let cmd_name = arr[0].as_str().unwrap_or("");
-            let f = |i: usize| -> f32 {
-                arr.get(i)
-                    .and_then(|v| v.as_f64())
-                    .map(|v| v as f32)
-                    .unwrap_or(0.0)
-            };
-            match cmd_name {
-                "move_to" => builder.move_to(Point::new(f(1), f(2))),
-                "line_to" => builder.line_to(Point::new(f(1), f(2))),
-                "bezier_to" => builder.bezier_curve_to(
-                    Point::new(f(1), f(2)),
-                    Point::new(f(3), f(4)),
-                    Point::new(f(5), f(6)),
-                ),
-                "quadratic_to" => {
-                    builder.quadratic_curve_to(Point::new(f(1), f(2)), Point::new(f(3), f(4)))
+                PathCommand::LineTo { x, y } => {
+                    builder.line_to(Point::new(*x, *y));
                 }
-                "arc" => {
-                    builder.arc(canvas::path::Arc {
-                        center: Point::new(f(1), f(2)),
-                        radius: f(3),
-                        start_angle: Radians(f(4)),
-                        end_angle: Radians(f(5)),
-                    });
-                }
-                "arc_to" => {
-                    builder.arc_to(Point::new(f(1), f(2)), Point::new(f(3), f(4)), f(5));
-                }
-                "ellipse" => {
-                    builder.ellipse(canvas::path::arc::Elliptical {
-                        center: Point::new(f(1), f(2)),
-                        radii: Vector::new(f(3), f(4)),
-                        rotation: Radians(f(5)),
-                        start_angle: Radians(f(6)),
-                        end_angle: Radians(f(7)),
-                    });
-                }
-                "rounded_rect" => {
-                    builder.rounded_rectangle(
-                        Point::new(f(1), f(2)),
-                        Size::new(f(3), f(4)),
-                        iced::border::Radius::new(f(5)),
+                PathCommand::BezierTo { cp1x, cp1y, cp2x, cp2y, x, y } => {
+                    builder.bezier_curve_to(
+                        Point::new(*cp1x, *cp1y),
+                        Point::new(*cp2x, *cp2y),
+                        Point::new(*x, *y),
                     );
                 }
-                _ => {}
+                PathCommand::QuadraticTo { cpx, cpy, x, y } => {
+                    builder.quadratic_curve_to(
+                        Point::new(*cpx, *cpy),
+                        Point::new(*x, *y),
+                    );
+                }
+                PathCommand::Arc { cx, cy, radius, start_angle, end_angle } => {
+                    builder.arc(canvas::path::Arc {
+                        center: Point::new(*cx, *cy),
+                        radius: *radius,
+                        start_angle: Radians(*start_angle),
+                        end_angle: Radians(*end_angle),
+                    });
+                }
+                PathCommand::ArcTo { x1, y1, x2, y2, radius } => {
+                    builder.arc_to(
+                        Point::new(*x1, *y1),
+                        Point::new(*x2, *y2),
+                        *radius,
+                    );
+                }
+                PathCommand::Ellipse { cx, cy, rx, ry, rotation, start_angle, end_angle } => {
+                    builder.ellipse(canvas::path::arc::Elliptical {
+                        center: Point::new(*cx, *cy),
+                        radii: Vector::new(*rx, *ry),
+                        rotation: Radians(*rotation),
+                        start_angle: Radians(*start_angle),
+                        end_angle: Radians(*end_angle),
+                    });
+                }
+                PathCommand::RoundedRect { x, y, w, h, radius } => {
+                    builder.rounded_rectangle(
+                        Point::new(*x, *y),
+                        Size::new(*w, *h),
+                        iced::border::Radius::new(*radius),
+                    );
+                }
+                PathCommand::Close => {
+                    builder.close();
+                }
             }
         }
     })

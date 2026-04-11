@@ -4,6 +4,7 @@ mod clip;
 mod drag;
 mod fill;
 mod hit;
+mod path;
 mod shape;
 mod shape_style;
 mod stroke;
@@ -11,6 +12,7 @@ mod transform;
 
 pub use clip::ClipRect;
 pub use drag::{DragAxis, DragBounds};
+pub use path::{decode_commands, PathCommand};
 pub use fill::{CanvasFill, FillRule};
 pub use hit::HitRect;
 pub use shape::{

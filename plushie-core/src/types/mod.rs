@@ -19,7 +19,9 @@ mod line_height;
 mod padding;
 mod range;
 mod shadow;
+mod style;
 mod text;
+mod theme;
 
 use serde_json::Value;
 
@@ -39,7 +41,9 @@ pub use line_height::LineHeight;
 pub use padding::Padding;
 pub use range::Range;
 pub use shadow::Shadow;
+pub use style::{Style, StyleMap};
 pub use text::{Ellipsis, Shaping, Wrapping};
+pub use theme::Theme;
 
 /// Behaviour trait for Plushie property types.
 ///

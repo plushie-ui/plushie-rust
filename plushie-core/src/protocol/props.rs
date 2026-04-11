@@ -239,12 +239,15 @@ impl PropMap {
 /// Dual-mode prop storage for TreeNode.
 ///
 /// - [`Props::Typed`]: used in direct mode where the SDK builders
-///   produce typed values. No JSON allocation overhead.
+///   produce typed values. No JSON allocation overhead during
+///   tree construction.
 /// - [`Props::Wire`]: used in wire mode where props arrive as JSON
 ///   from the host process via the wire protocol.
 ///
 /// The typed accessor methods dispatch transparently so consumers
-/// don't need to know which mode is active.
+/// don't need to know which mode is active. For code that needs
+/// raw `&Value` access, [`as_value_cow`] provides a zero-cost
+/// reference for Wire and a cached conversion for Typed.
 #[derive(Debug, Clone)]
 pub enum Props {
     /// Typed prop storage (direct mode).
@@ -252,6 +255,8 @@ pub enum Props {
     /// JSON value storage (wire mode).
     Wire(Value),
 }
+
+// Note: PartialEq is implemented manually below to handle cross-variant comparison.
 
 impl Props {
     /// Get a string prop.

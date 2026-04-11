@@ -1,18 +1,29 @@
 //! Widget helpers: parsing, style application, and utilities.
 //!
 //! This module re-exports the public [`prop_helpers`](crate::prop_helpers)
-//! and provides functions for parsing complex prop types (padding, fonts,
-//! borders, style maps) and applying style overrides to iced widget styles.
+//! and provides functions for parsing complex prop types (padding, style
+//! maps) and applying style overrides to iced widget styles.
 //! Widget authors can access these via `plushie_widget_sdk::widget::helpers::*`.
 
-use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, container, pick_list, progress_bar, rule, slider, text_editor, text_input,
     toggler,
 };
-use iced::{Border, Color, Font, Padding, Pixels, Radians, Shadow, Vector, font};
+use iced::{Border, Color, Font, Padding, Pixels, Shadow};
 use plushie_core::protocol::Props;
+use plushie_core::types::PlushieType;
 use serde_json::Value;
+
+use crate::iced_convert;
+
+// Aliases for plushie-core types to avoid conflicts with iced types.
+use plushie_core::types::Background as CoreBackground;
+use plushie_core::types::Border as CoreBorder;
+use plushie_core::types::Color as CoreColor;
+use plushie_core::types::Font as CoreFont;
+use plushie_core::types::LineHeight as CoreLineHeight;
+use plushie_core::types::Shadow as CoreShadow;
+use plushie_core::types::Shaping as CoreShaping;
 
 // Re-export all public prop helpers so widget submodules using `use super::*`
 // continue to find them without changes.
@@ -103,99 +114,7 @@ pub fn parse_padding_value(props: &Props) -> Option<Padding> {
 }
 
 // ---------------------------------------------------------------------------
-// Color parsing -- {r,g,b,a} object or hex string via theming::parse_hex_color
-// ---------------------------------------------------------------------------
-
-pub use crate::theming::parse_hex_color;
-
-/// Parse a color from a JSON value. Accepts:
-/// Parse a color from a JSON value. Accepts hex strings: `"#rrggbb"` or
-/// `"#rrggbbaa"`. Returns `None` for non-string values.
-pub fn parse_color(value: &Value) -> Option<Color> {
-    value.as_str().and_then(parse_hex_color)
-}
-
-// ---------------------------------------------------------------------------
-// Background parsing (color or gradient)
-// ---------------------------------------------------------------------------
-
-/// Parse a background from a JSON value. Accepts:
-/// - A color string ("#rrggbb" or "#rrggbbaa") -> Background::Color
-/// - A gradient object: {"type": "linear", "start": [x, y], "end": [x, y], "stops": [[offset, "#color"], ...]}
-pub fn parse_background(value: &Value) -> Option<iced::Background> {
-    match value {
-        Value::String(_) => parse_color(value).map(iced::Background::Color),
-        Value::Object(obj) => {
-            match obj.get("type").and_then(|v| v.as_str()) {
-                Some("linear") => {
-                    // Warn on unrecognized gradient keys
-                    let valid_keys: &[&str] = &["type", "start", "end", "stops"];
-                    for key in obj.keys() {
-                        if !valid_keys.contains(&key.as_str()) {
-                            log::warn!(
-                                "unrecognized background gradient key '{}' (valid: {:?})",
-                                key,
-                                valid_keys
-                            );
-                        }
-                    }
-
-                    // Parse start/end coordinate pairs to derive angle
-                    let start = obj
-                        .get("start")
-                        .and_then(|v| v.as_array())
-                        .and_then(|a| {
-                            Some((a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32))
-                        })
-                        .unwrap_or((0.0, 0.0));
-                    let end = obj
-                        .get("end")
-                        .and_then(|v| v.as_array())
-                        .and_then(|a| {
-                            Some((a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32))
-                        })
-                        .unwrap_or((0.0, 1.0));
-
-                    let dx = end.0 - start.0;
-                    let dy = end.1 - start.1;
-                    let angle = Radians(dy.atan2(dx));
-                    let mut linear = iced::gradient::Linear::new(angle);
-
-                    if let Some(stops) = obj.get("stops").and_then(|v| v.as_array()) {
-                        for stop in stops {
-                            if let Some(arr) = stop.as_array() {
-                                let offset =
-                                    arr.first().and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                                let color = arr
-                                    .get(1)
-                                    .and_then(parse_color)
-                                    .unwrap_or(Color::TRANSPARENT);
-                                linear = linear.add_stop(offset, color);
-                            }
-                        }
-                    }
-
-                    Some(iced::Background::Gradient(iced::Gradient::Linear(linear)))
-                }
-                Some(other) => {
-                    log::warn!(
-                        "unrecognized gradient type '{}' (supported: \"linear\")",
-                        other
-                    );
-                    parse_color(value).map(iced::Background::Color)
-                }
-                _ => {
-                    // Fall back to color object parsing ({r, g, b, a})
-                    parse_color(value).map(iced::Background::Color)
-                }
-            }
-        }
-        _ => None,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Font parsing
+// Font family interning
 // ---------------------------------------------------------------------------
 
 /// Maximum length for a custom font family name. Names longer than this
@@ -255,192 +174,6 @@ pub(crate) fn intern_font_family(name: &str) -> &'static str {
     leaked
 }
 
-/// Parse a font from a JSON value. Accepts:
-/// - "default" -> Font::DEFAULT
-/// - "monospace" -> Font::MONOSPACE
-/// - An object with optional family, weight, style fields
-pub fn parse_font(value: &Value) -> Font {
-    match value {
-        Value::String(s) => match s.as_str() {
-            "monospace" => Font::MONOSPACE,
-            _ => Font::DEFAULT,
-        },
-        Value::Object(obj) => {
-            let mut f = Font::DEFAULT;
-
-            if let Some(family) = obj.get("family").and_then(|v| v.as_str()) {
-                match family {
-                    "monospace" => {
-                        f.family = font::Family::Monospace;
-                    }
-                    "serif" => {
-                        f.family = font::Family::Serif;
-                    }
-                    "cursive" => {
-                        f.family = font::Family::Cursive;
-                    }
-                    "fantasy" => {
-                        f.family = font::Family::Fantasy;
-                    }
-                    "default" | "sans_serif" | "" => {}
-                    other => {
-                        f.family = font::Family::Name(intern_font_family(other));
-                    }
-                }
-            }
-
-            if let Some(weight) = obj.get("weight").and_then(|v| v.as_str()) {
-                f.weight = match weight {
-                    "thin" => font::Weight::Thin,
-                    "extra_light" => font::Weight::ExtraLight,
-                    "light" => font::Weight::Light,
-                    "normal" => font::Weight::Normal,
-                    "medium" => font::Weight::Medium,
-                    "semi_bold" => font::Weight::Semibold,
-                    "bold" => font::Weight::Bold,
-                    "extra_bold" => font::Weight::ExtraBold,
-                    "black" => font::Weight::Black,
-                    _ => font::Weight::Normal,
-                };
-            }
-
-            if let Some(style) = obj.get("style").and_then(|v| v.as_str()) {
-                f.style = match style {
-                    "normal" => font::Style::Normal,
-                    "italic" => font::Style::Italic,
-                    "oblique" => font::Style::Oblique,
-                    _ => font::Style::Normal,
-                };
-            }
-
-            if let Some(stretch_val) = obj.get("stretch").and_then(|v| v.as_str()) {
-                f.stretch = match stretch_val {
-                    "ultra_condensed" => font::Stretch::UltraCondensed,
-                    "extra_condensed" => font::Stretch::ExtraCondensed,
-                    "condensed" => font::Stretch::Condensed,
-                    "semi_condensed" => font::Stretch::SemiCondensed,
-                    "normal" => font::Stretch::Normal,
-                    "semi_expanded" => font::Stretch::SemiExpanded,
-                    "expanded" => font::Stretch::Expanded,
-                    "extra_expanded" => font::Stretch::ExtraExpanded,
-                    "ultra_expanded" => font::Stretch::UltraExpanded,
-                    _ => font::Stretch::Normal,
-                };
-            }
-
-            f
-        }
-        _ => Font::DEFAULT,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Border and Shadow parsing
-// ---------------------------------------------------------------------------
-
-/// Parse a border from a JSON value.
-/// Accepts: {"color": "#rrggbb", "width": 1.0, "radius": 4.0}
-/// radius can be a number or [tl, tr, br, bl]
-pub fn parse_border(value: &Value) -> Border {
-    let obj = match value.as_object() {
-        Some(o) => o,
-        None => return Border::default(),
-    };
-
-    let color = obj
-        .get("color")
-        .and_then(parse_color)
-        .unwrap_or(Color::TRANSPARENT);
-    let width = obj
-        .get("width")
-        .and_then(|v| v.as_f64())
-        .map(|v| v as f32)
-        .unwrap_or(0.0);
-    let radius = match obj.get("radius") {
-        Some(Value::Number(n)) => {
-            let r = n.as_f64().unwrap_or(0.0) as f32;
-            r.into()
-        }
-        Some(Value::Array(arr)) if !arr.is_empty() => {
-            // Per-corner: [top_left, top_right, bottom_right, bottom_left]
-            let tl = arr.first().and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let tr = arr.get(1).and_then(|v| v.as_f64()).unwrap_or(tl as f64) as f32;
-            let br = arr.get(2).and_then(|v| v.as_f64()).unwrap_or(tl as f64) as f32;
-            let bl = arr.get(3).and_then(|v| v.as_f64()).unwrap_or(tl as f64) as f32;
-            iced::border::Radius {
-                top_left: tl,
-                top_right: tr,
-                bottom_right: br,
-                bottom_left: bl,
-            }
-        }
-        Some(Value::Object(radius_obj)) => {
-            // Per-corner object: {"top_left": N, "top_right": N, "bottom_right": N, "bottom_left": N}
-            let tl = radius_obj
-                .get("top_left")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0) as f32;
-            let tr = radius_obj
-                .get("top_right")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0) as f32;
-            let br = radius_obj
-                .get("bottom_right")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0) as f32;
-            let bl = radius_obj
-                .get("bottom_left")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0) as f32;
-            iced::border::Radius {
-                top_left: tl,
-                top_right: tr,
-                bottom_right: br,
-                bottom_left: bl,
-            }
-        }
-        _ => (0.0_f32).into(),
-    };
-
-    Border {
-        color,
-        width,
-        radius,
-    }
-}
-
-/// Parse a shadow from a JSON value.
-/// Accepts: {"color": "#rrggbb", "offset": [x, y], "blur_radius": 5.0}
-pub fn parse_shadow(value: &Value) -> Shadow {
-    let obj = match value.as_object() {
-        Some(o) => o,
-        None => return Shadow::default(),
-    };
-
-    let color = obj
-        .get("color")
-        .and_then(parse_color)
-        .unwrap_or(Color::BLACK);
-    let offset = match obj.get("offset").and_then(|v| v.as_array()) {
-        Some(arr) if arr.len() >= 2 => Vector::new(
-            arr[0].as_f64().unwrap_or(0.0) as f32,
-            arr[1].as_f64().unwrap_or(0.0) as f32,
-        ),
-        _ => Vector::new(0.0, 0.0),
-    };
-    let blur_radius = obj
-        .get("blur_radius")
-        .and_then(|v| v.as_f64())
-        .map(|v| v as f32)
-        .unwrap_or(0.0);
-
-    Shadow {
-        color,
-        offset,
-        blur_radius,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Style map parsing
 // ---------------------------------------------------------------------------
@@ -457,10 +190,22 @@ pub struct StyleMapFields {
 
 pub fn parse_style_map_fields(obj: &serde_json::Map<String, Value>) -> StyleMapFields {
     StyleMapFields {
-        background: obj.get("background").and_then(parse_background),
-        text_color: obj.get("text_color").and_then(parse_color),
-        border: obj.get("border").map(parse_border),
-        shadow: obj.get("shadow").map(parse_shadow),
+        background: obj
+            .get("background")
+            .and_then(CoreBackground::wire_decode)
+            .map(|b| iced_convert::background(&b)),
+        text_color: obj
+            .get("text_color")
+            .and_then(CoreColor::wire_decode)
+            .map(|c| iced_convert::color(&c)),
+        border: obj
+            .get("border")
+            .and_then(CoreBorder::wire_decode)
+            .map(|b| iced_convert::border(&b)),
+        shadow: obj
+            .get("shadow")
+            .and_then(CoreShadow::wire_decode)
+            .map(|s| iced_convert::shadow(&s)),
     }
 }
 
@@ -768,45 +513,6 @@ pub fn alpha_gradient(gradient: iced::Gradient, alpha: f32) -> iced::Gradient {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Line height and shaping parsing
-// ---------------------------------------------------------------------------
-
-/// Parse line_height prop. Accepts:
-/// - A number (interpreted as relative multiplier)
-/// - An object {"relative": 1.5} or {"absolute": 20}
-pub fn parse_line_height(props: &Props) -> Option<LineHeight> {
-    let val = wire_map(props)?.get("line_height")?;
-    match val {
-        Value::Number(n) => {
-            let v = n.as_f64()? as f32;
-            Some(LineHeight::Relative(v))
-        }
-        Value::Object(obj) => {
-            if let Some(r) = obj.get("relative").and_then(|v| v.as_f64()) {
-                Some(LineHeight::Relative(r as f32))
-            } else {
-                obj.get("absolute")
-                    .and_then(|v| v.as_f64())
-                    .map(|a| LineHeight::Absolute(Pixels(a as f32)))
-            }
-        }
-        _ => None,
-    }
-}
-
-/// Parse text_shaping prop from a string.
-pub fn parse_shaping(props: &Props) -> Option<iced::widget::text::Shaping> {
-    use iced::widget::text::Shaping;
-    let s = prop_str(props, "shaping")?;
-    match s.as_str() {
-        "basic" => Some(Shaping::Basic),
-        "advanced" => Some(Shaping::Advanced),
-        "auto" => Some(Shaping::Auto),
-        _ => None,
-    }
-}
-
 /// Parsed menu style overrides for pick_list/combo_box dropdown menus.
 #[derive(Clone)]
 pub struct MenuStyleOverrides {
@@ -823,12 +529,30 @@ pub fn parse_menu_style(props: &Props) -> Option<MenuStyleOverrides> {
     let obj = wire_map(props)?.get("menu_style")?.as_object()?;
 
     Some(MenuStyleOverrides {
-        background: obj.get("background").and_then(parse_background),
-        text_color: obj.get("text_color").and_then(parse_color),
-        selected_text_color: obj.get("selected_text_color").and_then(parse_color),
-        selected_background: obj.get("selected_background").and_then(parse_background),
-        border: obj.get("border").map(parse_border),
-        shadow: obj.get("shadow").map(parse_shadow),
+        background: obj
+            .get("background")
+            .and_then(CoreBackground::wire_decode)
+            .map(|b| iced_convert::background(&b)),
+        text_color: obj
+            .get("text_color")
+            .and_then(CoreColor::wire_decode)
+            .map(|c| iced_convert::color(&c)),
+        selected_text_color: obj
+            .get("selected_text_color")
+            .and_then(CoreColor::wire_decode)
+            .map(|c| iced_convert::color(&c)),
+        selected_background: obj
+            .get("selected_background")
+            .and_then(CoreBackground::wire_decode)
+            .map(|b| iced_convert::background(&b)),
+        border: obj
+            .get("border")
+            .and_then(CoreBorder::wire_decode)
+            .map(|b| iced_convert::border(&b)),
+        shadow: obj
+            .get("shadow")
+            .and_then(CoreShadow::wire_decode)
+            .map(|s| iced_convert::shadow(&s)),
     })
 }
 
@@ -863,7 +587,11 @@ pub fn parse_text_input_icon(value: &Value) -> Option<text_input::Icon<Font>> {
         .and_then(|v| v.as_str())
         .and_then(|s| s.chars().next())?;
 
-    let font = obj.get("font").map(parse_font).unwrap_or(Font::DEFAULT);
+    let font = obj
+        .get("font")
+        .and_then(CoreFont::wire_decode)
+        .map(|f| iced_convert::font(&f))
+        .unwrap_or(Font::DEFAULT);
 
     let size = obj
         .get("size")
@@ -899,17 +627,28 @@ pub fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font>> {
         .and_then(|v| v.as_str())
         .and_then(|s| s.chars().next())?;
 
-    let font = obj.get("font").map(parse_font).unwrap_or(Font::DEFAULT);
+    let font = obj
+        .get("font")
+        .and_then(CoreFont::wire_decode)
+        .map(|f| iced_convert::font(&f))
+        .unwrap_or(Font::DEFAULT);
 
     let size = obj
         .get("size")
         .and_then(|v| v.as_f64())
         .map(|v| Pixels(v as f32));
 
-    let icon_props = Props::Wire(value.clone());
-    let line_height = parse_line_height(&icon_props).unwrap_or(LineHeight::Relative(1.2));
+    let line_height = obj
+        .get("line_height")
+        .and_then(CoreLineHeight::wire_decode)
+        .map(|lh| iced_convert::line_height(lh))
+        .unwrap_or(iced::widget::text::LineHeight::Relative(1.2));
 
-    let shaping = parse_shaping(&icon_props).unwrap_or(iced::widget::text::Shaping::Basic);
+    let shaping = obj
+        .get("shaping")
+        .and_then(CoreShaping::wire_decode)
+        .map(|s| iced_convert::shaping(s))
+        .unwrap_or(iced::widget::text::Shaping::Basic);
 
     Some(pick_list::Icon {
         font,
@@ -1066,81 +805,6 @@ mod tests {
         );
     }
 
-    // -- parse_color --
-
-    #[test]
-    fn parse_color_hex_rrggbb() {
-        let v = json!("#ff0000");
-        let c = parse_color(&v).unwrap();
-        assert_eq!(c, Color::from_rgb8(255, 0, 0));
-    }
-
-    #[test]
-    fn parse_color_hex_rrggbbaa() {
-        let v = json!("#00ff0080");
-        let c = parse_color(&v).unwrap();
-        assert_eq!(c, Color::from_rgba8(0, 255, 0, 128.0 / 255.0));
-    }
-
-    #[test]
-    fn parse_color_rejects_objects() {
-        // Object-format colors are not accepted. Hex strings only.
-        let v = json!({"r": 0.5, "g": 0.25, "b": 0.75, "a": 0.8});
-        assert!(parse_color(&v).is_none());
-    }
-
-    #[test]
-    fn parse_color_returns_none_for_bad_hex() {
-        let v = json!("#xyz");
-        assert!(parse_color(&v).is_none());
-    }
-
-    #[test]
-    fn parse_color_returns_none_for_number() {
-        let v = json!(42);
-        assert!(parse_color(&v).is_none());
-    }
-
-    // -- parse_font --
-
-    #[test]
-    fn parse_font_monospace_string() {
-        let v = json!("monospace");
-        let f = parse_font(&v);
-        assert_eq!(f, Font::MONOSPACE);
-    }
-
-    #[test]
-    fn parse_font_default_string() {
-        let v = json!("default");
-        let f = parse_font(&v);
-        assert_eq!(f, Font::DEFAULT);
-    }
-
-    #[test]
-    fn parse_font_object_with_weight_and_style() {
-        let v = json!({"weight": "bold", "style": "italic"});
-        let f = parse_font(&v);
-        assert_eq!(f.weight, font::Weight::Bold);
-        assert_eq!(f.style, font::Style::Italic);
-    }
-
-    #[test]
-    fn parse_font_object_serif_family() {
-        let v = json!({"family": "serif"});
-        let f = parse_font(&v);
-        assert_eq!(f.family, font::Family::Serif);
-    }
-
-    #[test]
-    fn parse_font_monospace_preserves_weight_and_style() {
-        let v = json!({"family": "monospace", "weight": "bold", "style": "italic"});
-        let f = parse_font(&v);
-        assert_eq!(f.family, font::Family::Monospace);
-        assert_eq!(f.weight, font::Weight::Bold);
-        assert_eq!(f.style, font::Style::Italic);
-    }
-
     // -- parse_padding_value --
 
     #[test]
@@ -1167,41 +831,6 @@ mod tests {
     fn parse_padding_returns_none_when_absent() {
         let p = make_props(json!({}));
         assert!(parse_padding_value(&p).is_none());
-    }
-
-    // -- parse_border --
-
-    #[test]
-    fn parse_border_with_all_fields() {
-        let v = json!({"color": "#ff0000", "width": 2.0, "radius": 8.0});
-        let b = parse_border(&v);
-        assert_eq!(b.color, Color::from_rgb8(255, 0, 0));
-        assert_eq!(b.width, 2.0);
-    }
-
-    #[test]
-    fn parse_border_defaults_for_non_object() {
-        let v = json!("not an object");
-        let b = parse_border(&v);
-        assert_eq!(b, Border::default());
-    }
-
-    // -- parse_shadow --
-
-    #[test]
-    fn parse_shadow_with_all_fields() {
-        let v = json!({"color": "#000000", "offset": [3.0, 4.0], "blur_radius": 5.0});
-        let s = parse_shadow(&v);
-        assert_eq!(s.color, Color::from_rgb8(0, 0, 0));
-        assert_eq!(s.offset, Vector::new(3.0, 4.0));
-        assert_eq!(s.blur_radius, 5.0);
-    }
-
-    #[test]
-    fn parse_shadow_defaults_for_non_object() {
-        let v = json!(42);
-        let s = parse_shadow(&v);
-        assert_eq!(s, Shadow::default());
     }
 
     // -- Style map tests --
@@ -1325,30 +954,6 @@ mod tests {
             }
             other => panic!("expected Background::Color, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn parse_shaping_basic() {
-        let p = make_props(json!({"shaping": "basic"}));
-        assert_eq!(
-            parse_shaping(&p),
-            Some(iced::widget::text::Shaping::Basic)
-        );
-    }
-
-    #[test]
-    fn parse_shaping_advanced() {
-        let p = make_props(json!({"shaping": "advanced"}));
-        assert_eq!(
-            parse_shaping(&p),
-            Some(iced::widget::text::Shaping::Advanced)
-        );
-    }
-
-    #[test]
-    fn parse_shaping_missing() {
-        let p = make_props(json!({}));
-        assert_eq!(parse_shaping(&p), None);
     }
 
     #[test]

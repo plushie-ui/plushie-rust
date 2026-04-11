@@ -12,7 +12,7 @@ use plushie_core::types::{Color as CoreColor, PlushieType};
 use super::types::MAX_SHAPES_PER_LAYER;
 use crate::PlushieRenderer;
 use crate::iced_convert;
-use crate::widget::helpers::*;
+use crate::theming::parse_hex_color;
 
 /// Parse a `fill_rule` string into a `canvas::fill::Rule`. Defaults to `NonZero`.
 pub(super) fn parse_fill_rule(value: Option<&Value>) -> canvas::fill::Rule {

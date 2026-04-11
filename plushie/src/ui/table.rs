@@ -77,43 +77,43 @@ impl TableBuilder {
     }
 
     /// Header row text size in pixels.
-    pub fn header_text_size(mut self, s: f32) -> Self {
-        super::set_prop(&mut self.props, "header_text_size", s);
+    pub fn header_text_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "header_text_size", s.into().wire_encode());
         self
     }
 
     /// Body row text size in pixels.
-    pub fn row_text_size(mut self, s: f32) -> Self {
-        super::set_prop(&mut self.props, "row_text_size", s);
+    pub fn row_text_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "row_text_size", s.into().wire_encode());
         self
     }
 
     /// Horizontal spacing between cells in pixels.
-    pub fn cell_spacing(mut self, s: f32) -> Self {
-        super::set_prop(&mut self.props, "cell_spacing", s);
+    pub fn cell_spacing(mut self, s: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "cell_spacing", s.into().wire_encode());
         self
     }
 
     /// Vertical spacing between rows in pixels.
-    pub fn row_spacing(mut self, s: f32) -> Self {
-        super::set_prop(&mut self.props, "row_spacing", s);
+    pub fn row_spacing(mut self, s: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "row_spacing", s.into().wire_encode());
         self
     }
 
     /// Separator line thickness in pixels.
-    pub fn separator_thickness(mut self, t: f32) -> Self {
-        super::set_prop(&mut self.props, "separator_thickness", t);
+    pub fn separator_thickness(mut self, t: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "separator_thickness", t.into().wire_encode());
         self
     }
 
     /// Separator line color.
-    pub fn separator_color(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "separator_color", super::color_to_value(&c.into()));
+    pub fn separator_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
+        super::set_prop(&mut self.props, "separator_color", c.into().wire_encode());
         self
     }
 
-    pub fn spacing(mut self, s: f32) -> Self {
-        super::set_prop(&mut self.props, "spacing", s);
+    pub fn spacing(mut self, s: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "spacing", s.into().wire_encode());
         self
     }
 

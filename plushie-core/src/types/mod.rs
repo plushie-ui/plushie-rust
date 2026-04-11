@@ -6,6 +6,7 @@
 
 pub mod a11y;
 mod alignment;
+mod animatable;
 mod background;
 mod border;
 pub mod canvas;
@@ -30,6 +31,7 @@ use crate::protocol::{PropValue, Props};
 
 pub use a11y::{A11y, HasPopup, Live, Orientation, Role};
 pub use alignment::{HorizontalAlignment, VerticalAlignment};
+pub use animatable::Animatable;
 pub use background::Background;
 pub use border::{Border, Radius};
 pub use color::Color;
@@ -215,5 +217,19 @@ impl PlushieType for String {
 
     fn type_name() -> &'static str {
         "string"
+    }
+}
+
+impl PlushieType for PropValue {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        Some(PropValue::from(value.clone()))
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        self.clone()
+    }
+
+    fn type_name() -> &'static str {
+        "prop_value"
     }
 }

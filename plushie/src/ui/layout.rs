@@ -211,8 +211,8 @@ impl ColumnBuilder {
         self
     }
 
-    pub fn spacing(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "spacing", v);
+    pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
@@ -258,27 +258,6 @@ impl ColumnBuilder {
 
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
-        self
-    }
-
-    /// Animate a property with a timed transition.
-    ///
-    /// The transition descriptor replaces the prop value. The renderer
-    /// interpolates from the current value to the transition's `to`.
-    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, t.wire_encode());
-        self
-    }
-
-    /// Animate a property with spring physics.
-    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, s.wire_encode());
-        self
-    }
-
-    /// Animate a property with a sequence of steps.
-    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, seq.wire_encode());
         self
     }
 
@@ -331,8 +310,8 @@ impl RowBuilder {
         self
     }
 
-    pub fn spacing(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "spacing", v);
+    pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
@@ -383,27 +362,6 @@ impl RowBuilder {
 
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
-        self
-    }
-
-    /// Animate a property with a timed transition.
-    ///
-    /// The transition descriptor replaces the prop value. The renderer
-    /// interpolates from the current value to the transition's `to`.
-    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, t.wire_encode());
-        self
-    }
-
-    /// Animate a property with spring physics.
-    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, s.wire_encode());
-        self
-    }
-
-    /// Animate a property with a sequence of steps.
-    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, seq.wire_encode());
         self
     }
 
@@ -471,13 +429,13 @@ impl ContainerBuilder {
         self
     }
 
-    pub fn max_width(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "max_width", v);
+    pub fn max_width(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "max_width", v.into().wire_encode());
         self
     }
 
-    pub fn max_height(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "max_height", v);
+    pub fn max_height(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "max_height", v.into().wire_encode());
         self
     }
 
@@ -506,13 +464,13 @@ impl ContainerBuilder {
         self
     }
 
-    pub fn background(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "background", super::color_to_value(&c.into()));
+    pub fn background(mut self, c: impl Into<Animatable<Color>>) -> Self {
+        super::set_prop(&mut self.props, "background", c.into().wire_encode());
         self
     }
 
-    pub fn color(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "color", super::color_to_value(&c.into()));
+    pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self {
+        super::set_prop(&mut self.props, "color", c.into().wire_encode());
         self
     }
 
@@ -544,27 +502,6 @@ impl ContainerBuilder {
 
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
-        self
-    }
-
-    /// Animate a property with a timed transition.
-    ///
-    /// The transition descriptor replaces the prop value. The renderer
-    /// interpolates from the current value to the transition's `to`.
-    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, t.wire_encode());
-        self
-    }
-
-    /// Animate a property with spring physics.
-    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, s.wire_encode());
-        self
-    }
-
-    /// Animate a property with a sequence of steps.
-    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, seq.wire_encode());
         self
     }
 
@@ -693,8 +630,8 @@ impl GridBuilder {
         self
     }
 
-    pub fn spacing(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "spacing", v);
+    pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
@@ -791,13 +728,13 @@ impl PinBuilder {
         self
     }
 
-    pub fn x(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "x", v);
+    pub fn x(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "x", v.into().wire_encode());
         self
     }
 
-    pub fn y(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "y", v);
+    pub fn y(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "y", v.into().wire_encode());
         self
     }
 
@@ -866,8 +803,8 @@ impl KeyedColumnBuilder {
         self
     }
 
-    pub fn spacing(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "spacing", v);
+    pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
@@ -891,8 +828,8 @@ impl KeyedColumnBuilder {
         self
     }
 
-    pub fn max_width(mut self, w: f32) -> Self {
-        super::set_prop(&mut self.props, "max_width", w);
+    pub fn max_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "max_width", w.into().wire_encode());
         self
     }
 
@@ -965,19 +902,19 @@ impl FloatingBuilder {
     }
 
     /// Horizontal translation in pixels.
-    pub fn translate_x(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "translate_x", v);
+    pub fn translate_x(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "translate_x", v.into().wire_encode());
         self
     }
 
     /// Vertical translation in pixels.
-    pub fn translate_y(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "translate_y", v);
+    pub fn translate_y(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "translate_y", v.into().wire_encode());
         self
     }
 
-    pub fn scale(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "scale", v);
+    pub fn scale(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "scale", v.into().wire_encode());
         self
     }
 
@@ -1115,8 +1052,8 @@ impl ScrollableBuilder {
         self
     }
 
-    pub fn spacing(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "spacing", v);
+    pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
@@ -1125,18 +1062,18 @@ impl ScrollableBuilder {
         self
     }
 
-    pub fn scrollbar_width(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "scrollbar_width", v);
+    pub fn scrollbar_width(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "scrollbar_width", v.into().wire_encode());
         self
     }
 
-    pub fn scrollbar_margin(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "scrollbar_margin", v);
+    pub fn scrollbar_margin(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "scrollbar_margin", v.into().wire_encode());
         self
     }
 
-    pub fn scroller_width(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "scroller_width", v);
+    pub fn scroller_width(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "scroller_width", v.into().wire_encode());
         self
     }
 
@@ -1158,14 +1095,14 @@ impl ScrollableBuilder {
     }
 
     /// Scrollbar track color.
-    pub fn scrollbar_color(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "scrollbar_color", super::color_to_value(&c.into()));
+    pub fn scrollbar_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
+        super::set_prop(&mut self.props, "scrollbar_color", c.into().wire_encode());
         self
     }
 
     /// Scroller handle color.
-    pub fn scroller_color(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "scroller_color", super::color_to_value(&c.into()));
+    pub fn scroller_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
+        super::set_prop(&mut self.props, "scroller_color", c.into().wire_encode());
         self
     }
 
@@ -1217,8 +1154,8 @@ pub fn pane_grid(id: &str) -> PaneGridBuilder {
 }
 
 impl PaneGridBuilder {
-    pub fn spacing(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "spacing", v);
+    pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
@@ -1245,26 +1182,26 @@ impl PaneGridBuilder {
     }
 
     /// Minimum pane size in pixels.
-    pub fn min_size(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "min_size", v);
+    pub fn min_size(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "min_size", v.into().wire_encode());
         self
     }
 
     /// Color for the split divider between panes.
-    pub fn divider_color(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "divider_color", super::color_to_value(&c.into()));
+    pub fn divider_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
+        super::set_prop(&mut self.props, "divider_color", c.into().wire_encode());
         self
     }
 
     /// Divider thickness in pixels.
-    pub fn divider_width(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "divider_width", v);
+    pub fn divider_width(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "divider_width", v.into().wire_encode());
         self
     }
 
     /// Grabbable area around dividers in pixels.
-    pub fn leeway(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "leeway", v);
+    pub fn leeway(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "leeway", v.into().wire_encode());
         self
     }
 

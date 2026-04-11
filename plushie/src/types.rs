@@ -12,6 +12,8 @@
 pub use plushie_core::types::{
     // Core trait
     PlushieType,
+    // Animation
+    Animatable,
     // Visual
     Color, Background, Gradient, GradientStop,
     // Geometry

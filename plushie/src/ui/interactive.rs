@@ -80,24 +80,6 @@ impl ButtonBuilder {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
-
-    /// Animate a property with a timed transition.
-    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, t.wire_encode());
-        self
-    }
-
-    /// Animate a property with spring physics.
-    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, s.wire_encode());
-        self
-    }
-
-    /// Animate a property with a sequence of steps.
-    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, seq.wire_encode());
-        self
-    }
 }
 
 impl From<ButtonBuilder> for View {
@@ -334,14 +316,14 @@ impl TooltipBuilder {
         self
     }
 
-    pub fn gap(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "gap", v);
+    pub fn gap(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "gap", v.into().wire_encode());
         self
     }
 
     /// Tooltip padding in pixels.
-    pub fn padding(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "padding", v);
+    pub fn padding(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "padding", v.into().wire_encode());
         self
     }
 
@@ -478,20 +460,20 @@ impl OverlayBuilder {
         self
     }
 
-    pub fn gap(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "gap", v);
+    pub fn gap(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "gap", v.into().wire_encode());
         self
     }
 
     /// Horizontal offset in pixels after positioning.
-    pub fn offset_x(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "offset_x", v);
+    pub fn offset_x(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "offset_x", v.into().wire_encode());
         self
     }
 
     /// Vertical offset in pixels after positioning.
-    pub fn offset_y(mut self, v: f32) -> Self {
-        super::set_prop(&mut self.props, "offset_y", v);
+    pub fn offset_y(mut self, v: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "offset_y", v.into().wire_encode());
         self
     }
 

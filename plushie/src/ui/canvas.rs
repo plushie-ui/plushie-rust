@@ -89,9 +89,9 @@ pub fn canvas(id: &str) -> CanvasBuilder {
 }
 
 impl CanvasBuilder {
-    pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "width", w); self }
-    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
-    pub fn background(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "background", super::color_to_value(&c.into())); self }
+    pub fn width(mut self, w: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "width", w.into().wire_encode()); self }
+    pub fn height(mut self, h: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "height", h.into().wire_encode()); self }
+    pub fn background(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "background", c.into().wire_encode()); self }
     pub fn on_press(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "on_press", v); self }
     pub fn on_release(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "on_release", v); self }
     pub fn on_move(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "on_move", v); self }

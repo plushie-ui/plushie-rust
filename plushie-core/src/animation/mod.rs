@@ -28,28 +28,33 @@ use serde_json::Value;
 /// it by the `"type": "transition"` field and interpolates from the
 /// current (or `from`) value to `to` over `duration` milliseconds.
 ///
+/// The type parameter `T` determines what kind of value is animated.
+/// It defaults to `PropValue` for untyped use (e.g. renderer-side
+/// decoding), but SDK builders use concrete types like `f32` or
+/// `Color` for type safety.
+///
 /// ```
 /// use plushie_core::animation::{Transition, Easing};
 ///
-/// let t = Transition::new(500, 24.0)
+/// let t = Transition::new(500, 24.0_f32)
 ///     .easing(Easing::EaseOutCubic)
 ///     .delay(100);
 /// ```
 #[derive(Debug, Clone)]
-pub struct Transition {
-    pub to: PropValue,
+pub struct Transition<T: PlushieType = PropValue> {
+    pub to: T,
     pub duration: u64,
     pub easing: Easing,
     pub delay: u64,
-    pub from: Option<PropValue>,
+    pub from: Option<T>,
     pub repeat: Option<Repeat>,
     pub auto_reverse: bool,
     pub on_complete: Option<String>,
 }
 
-impl Transition {
+impl<T: PlushieType> Transition<T> {
     /// Create a transition with the given duration and target value.
-    pub fn new(duration_ms: u64, to: impl Into<PropValue>) -> Self {
+    pub fn new(duration_ms: u64, to: impl Into<T>) -> Self {
         Self {
             to: to.into(),
             duration: duration_ms,
@@ -63,10 +68,10 @@ impl Transition {
     }
 
     /// Set the target value.
-    pub fn to(mut self, v: impl Into<PropValue>) -> Self { self.to = v.into(); self }
+    pub fn to(mut self, v: impl Into<T>) -> Self { self.to = v.into(); self }
     pub fn easing(mut self, e: Easing) -> Self { self.easing = e; self }
     pub fn delay(mut self, ms: u64) -> Self { self.delay = ms; self }
-    pub fn from(mut self, v: impl Into<PropValue>) -> Self {
+    pub fn from(mut self, v: impl Into<T>) -> Self {
         self.from = Some(v.into()); self
     }
     pub fn repeat(mut self, n: u32) -> Self { self.repeat = Some(Repeat::Times(n)); self }
@@ -75,27 +80,28 @@ impl Transition {
     pub fn on_complete(mut self, tag: &str) -> Self { self.on_complete = Some(tag.into()); self }
 
     /// Create a looping transition (repeat forever, auto-reverse).
-    pub fn looping(duration_ms: u64, to: impl Into<PropValue>) -> Self {
+    pub fn looping(duration_ms: u64, to: impl Into<T>) -> Self {
         Self::new(duration_ms, to)
             .repeat_forever()
             .auto_reverse(true)
     }
 }
 
-impl PlushieType for Transition {
+impl<T: PlushieType> PlushieType for Transition<T> {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
         if obj.get("type")?.as_str()? != "transition" {
             return None;
         }
-        let to = PropValue::from(obj.get("to")?.clone());
+        let to_val = obj.get("to")?;
+        let to = T::wire_decode(to_val)?;
         let duration = obj.get("duration")?.as_u64()?;
         let easing = obj
             .get("easing")
             .and_then(Easing::wire_decode)
             .unwrap_or(Easing::EaseInOut);
         let delay = obj.get("delay").and_then(|v| v.as_u64()).unwrap_or(0);
-        let from = obj.get("from").map(|v| PropValue::from(v.clone()));
+        let from = obj.get("from").and_then(T::wire_decode);
         let repeat = obj.get("repeat").and_then(|v| {
             let n = v.as_i64()?;
             if n < 0 {
@@ -127,14 +133,14 @@ impl PlushieType for Transition {
     fn wire_encode(&self) -> PropValue {
         let mut map = PropMap::with_capacity(8);
         map.insert("type", PropValue::Str("transition".to_string()));
-        map.insert("to", self.to.clone());
+        map.insert("to", self.to.wire_encode());
         map.insert("duration", PropValue::U64(self.duration));
         map.insert("easing", self.easing.wire_encode());
         if self.delay > 0 {
             map.insert("delay", PropValue::U64(self.delay));
         }
         if let Some(ref from) = self.from {
-            map.insert("from", from.clone());
+            map.insert("from", from.wire_encode());
         }
         if let Some(ref repeat) = self.repeat {
             let wire_val: i64 = match repeat {
@@ -177,23 +183,23 @@ pub enum Repeat {
 /// ```
 /// use plushie_core::animation::Spring;
 ///
-/// let s = Spring::new(1.05).stiffness(200.0).damping(20.0);
-/// let bouncy = Spring::bouncy(1.05);
+/// let s = Spring::new(1.05_f32).stiffness(200.0).damping(20.0);
+/// let bouncy = Spring::bouncy(1.05_f32);
 /// ```
 #[derive(Debug, Clone)]
-pub struct Spring {
-    pub to: PropValue,
+pub struct Spring<T: PlushieType = PropValue> {
+    pub to: T,
     pub stiffness: f64,
     pub damping: f64,
     pub mass: f64,
     pub velocity: f64,
-    pub from: Option<PropValue>,
+    pub from: Option<T>,
     pub on_complete: Option<String>,
 }
 
-impl Spring {
+impl<T: PlushieType> Spring<T> {
     /// Create a spring targeting the given value.
-    pub fn new(to: impl Into<PropValue>) -> Self {
+    pub fn new(to: impl Into<T>) -> Self {
         Self {
             to: to.into(),
             stiffness: 100.0,
@@ -206,12 +212,12 @@ impl Spring {
     }
 
     /// Set the target value.
-    pub fn to(mut self, v: impl Into<PropValue>) -> Self { self.to = v.into(); self }
+    pub fn to(mut self, v: impl Into<T>) -> Self { self.to = v.into(); self }
     pub fn stiffness(mut self, s: f64) -> Self { self.stiffness = s; self }
     pub fn damping(mut self, d: f64) -> Self { self.damping = d; self }
     pub fn mass(mut self, m: f64) -> Self { self.mass = m; self }
     pub fn velocity(mut self, v: f64) -> Self { self.velocity = v; self }
-    pub fn from(mut self, v: impl Into<PropValue>) -> Self {
+    pub fn from(mut self, v: impl Into<T>) -> Self {
         self.from = Some(v.into()); self
     }
     pub fn on_complete(mut self, tag: &str) -> Self { self.on_complete = Some(tag.into()); self }
@@ -219,24 +225,25 @@ impl Spring {
     // Named presets matching the Elixir SDK.
 
     /// Slow, smooth, no overshoot.
-    pub fn gentle(to: impl Into<PropValue>) -> Self { Self::new(to).stiffness(120.0).damping(14.0) }
+    pub fn gentle(to: impl Into<T>) -> Self { Self::new(to).stiffness(120.0).damping(14.0) }
     /// Quick with visible overshoot.
-    pub fn bouncy(to: impl Into<PropValue>) -> Self { Self::new(to).stiffness(300.0).damping(10.0) }
+    pub fn bouncy(to: impl Into<T>) -> Self { Self::new(to).stiffness(300.0).damping(10.0) }
     /// Very quick, crisp stop.
-    pub fn stiff(to: impl Into<PropValue>) -> Self { Self::new(to).stiffness(400.0).damping(30.0) }
+    pub fn stiff(to: impl Into<T>) -> Self { Self::new(to).stiffness(400.0).damping(30.0) }
     /// Quick, minimal overshoot.
-    pub fn snappy(to: impl Into<PropValue>) -> Self { Self::new(to).stiffness(200.0).damping(20.0) }
+    pub fn snappy(to: impl Into<T>) -> Self { Self::new(to).stiffness(200.0).damping(20.0) }
     /// Slow, heavy, deliberate.
-    pub fn molasses(to: impl Into<PropValue>) -> Self { Self::new(to).stiffness(60.0).damping(12.0) }
+    pub fn molasses(to: impl Into<T>) -> Self { Self::new(to).stiffness(60.0).damping(12.0) }
 }
 
-impl PlushieType for Spring {
+impl<T: PlushieType> PlushieType for Spring<T> {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
         if obj.get("type")?.as_str()? != "spring" {
             return None;
         }
-        let to = PropValue::from(obj.get("to")?.clone());
+        let to_val = obj.get("to")?;
+        let to = T::wire_decode(to_val)?;
         let stiffness = obj.get("stiffness")?.as_f64()?;
         let damping = obj.get("damping")?.as_f64()?;
         let mass = obj
@@ -247,7 +254,7 @@ impl PlushieType for Spring {
             .get("velocity")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
-        let from = obj.get("from").map(|v| PropValue::from(v.clone()));
+        let from = obj.get("from").and_then(T::wire_decode);
         let on_complete = obj
             .get("on_complete")
             .and_then(|v| v.as_str())
@@ -266,7 +273,7 @@ impl PlushieType for Spring {
     fn wire_encode(&self) -> PropValue {
         let mut map = PropMap::with_capacity(7);
         map.insert("type", PropValue::Str("spring".to_string()));
-        map.insert("to", self.to.clone());
+        map.insert("to", self.to.wire_encode());
         map.insert("stiffness", PropValue::F64(self.stiffness));
         map.insert("damping", PropValue::F64(self.damping));
         if (self.mass - 1.0).abs() > f64::EPSILON {
@@ -276,7 +283,7 @@ impl PlushieType for Spring {
             map.insert("velocity", PropValue::F64(self.velocity));
         }
         if let Some(ref from) = self.from {
-            map.insert("from", from.clone());
+            map.insert("from", from.wire_encode());
         }
         if let Some(ref tag) = self.on_complete {
             map.insert("on_complete", PropValue::Str(tag.clone()));
@@ -298,19 +305,19 @@ impl PlushieType for Spring {
 /// The descriptor is set as a widget prop value. The renderer detects
 /// it by the `"type": "sequence"` field and runs each step in turn.
 #[derive(Debug, Clone)]
-pub struct Sequence {
-    pub steps: Vec<AnimationStep>,
+pub struct Sequence<T: PlushieType = PropValue> {
+    pub steps: Vec<AnimationStep<T>>,
     pub on_complete: Option<String>,
 }
 
 /// A single step in a sequence.
 #[derive(Debug, Clone)]
-pub enum AnimationStep {
-    Transition(Transition),
-    Spring(Spring),
+pub enum AnimationStep<T: PlushieType = PropValue> {
+    Transition(Transition<T>),
+    Spring(Spring<T>),
 }
 
-impl PlushieType for AnimationStep {
+impl<T: PlushieType> PlushieType for AnimationStep<T> {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
         let step_type = obj.get("type")?.as_str()?;
@@ -333,8 +340,8 @@ impl PlushieType for AnimationStep {
     }
 }
 
-impl Sequence {
-    pub fn new(steps: Vec<AnimationStep>) -> Self {
+impl<T: PlushieType> Sequence<T> {
+    pub fn new(steps: Vec<AnimationStep<T>>) -> Self {
         Self { steps, on_complete: None }
     }
 
@@ -344,14 +351,14 @@ impl Sequence {
     }
 }
 
-impl PlushieType for Sequence {
+impl<T: PlushieType> PlushieType for Sequence<T> {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
         if obj.get("type")?.as_str()? != "sequence" {
             return None;
         }
         let steps_arr = obj.get("steps")?.as_array()?;
-        let steps: Vec<AnimationStep> = steps_arr
+        let steps: Vec<AnimationStep<T>> = steps_arr
             .iter()
             .filter_map(AnimationStep::wire_decode)
             .collect();
@@ -378,12 +385,12 @@ impl PlushieType for Sequence {
     }
 }
 
-impl From<Transition> for AnimationStep {
-    fn from(t: Transition) -> Self { AnimationStep::Transition(t) }
+impl<T: PlushieType> From<Transition<T>> for AnimationStep<T> {
+    fn from(t: Transition<T>) -> Self { AnimationStep::Transition(t) }
 }
 
-impl From<Spring> for AnimationStep {
-    fn from(s: Spring) -> Self { AnimationStep::Spring(s) }
+impl<T: PlushieType> From<Spring<T>> for AnimationStep<T> {
+    fn from(s: Spring<T>) -> Self { AnimationStep::Spring(s) }
 }
 
 #[cfg(test)]
@@ -392,30 +399,30 @@ mod tests {
 
     #[test]
     fn spring_preset_values_match_elixir_sdk() {
-        let g = Spring::gentle(1.0);
+        let g: Spring<f64> = Spring::gentle(1.0);
         assert_eq!(g.stiffness, 120.0);
         assert_eq!(g.damping, 14.0);
 
-        let b = Spring::bouncy(1.0);
+        let b: Spring<f64> = Spring::bouncy(1.0);
         assert_eq!(b.stiffness, 300.0);
         assert_eq!(b.damping, 10.0);
 
-        let st = Spring::stiff(1.0);
+        let st: Spring<f64> = Spring::stiff(1.0);
         assert_eq!(st.stiffness, 400.0);
         assert_eq!(st.damping, 30.0);
 
-        let sn = Spring::snappy(1.0);
+        let sn: Spring<f64> = Spring::snappy(1.0);
         assert_eq!(sn.stiffness, 200.0);
         assert_eq!(sn.damping, 20.0);
 
-        let m = Spring::molasses(1.0);
+        let m: Spring<f64> = Spring::molasses(1.0);
         assert_eq!(m.stiffness, 60.0);
         assert_eq!(m.damping, 12.0);
     }
 
     #[test]
     fn transition_encodes_as_descriptor() {
-        let t = Transition::new(300, 24.0_f64).easing(Easing::EaseOut);
+        let t: Transition<f64> = Transition::new(300, 24.0).easing(Easing::EaseOut);
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["type"], "transition");
@@ -426,12 +433,12 @@ mod tests {
 
     #[test]
     fn transition_repeat_encodes_as_integer() {
-        let t = Transition::new(300, 1.0_f64).repeat(3);
+        let t: Transition<f64> = Transition::new(300, 1.0).repeat(3);
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["repeat"], 3);
 
-        let t = Transition::looping(300, 1.0_f64);
+        let t: Transition<f64> = Transition::looping(300, 1.0);
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["repeat"], -1);
@@ -440,7 +447,7 @@ mod tests {
 
     #[test]
     fn spring_encodes_as_descriptor() {
-        let s = Spring::bouncy(1.05_f64);
+        let s: Spring<f64> = Spring::bouncy(1.05);
         let encoded = s.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["type"], "spring");
@@ -450,9 +457,9 @@ mod tests {
 
     #[test]
     fn sequence_encodes_as_descriptor() {
-        let seq = Sequence::new(vec![
-            Transition::new(200, 1.0_f64).into(),
-            Spring::new(0.0_f64).stiffness(200.0).into(),
+        let seq: Sequence<f64> = Sequence::new(vec![
+            Transition::new(200, 1.0).into(),
+            Spring::new(0.0).stiffness(200.0).into(),
         ]);
         let encoded = seq.wire_encode();
         let json = serde_json::Value::from(encoded);
@@ -465,15 +472,15 @@ mod tests {
 
     #[test]
     fn transition_round_trips() {
-        let orig = Transition::new(500, 24.0_f64)
+        let orig: Transition<f64> = Transition::new(500, 24.0)
             .easing(Easing::EaseOutCubic)
             .delay(100)
-            .from(0.0_f64)
+            .from(0.0)
             .repeat(3)
             .auto_reverse(true)
             .on_complete("done");
         let json = serde_json::Value::from(orig.wire_encode());
-        let decoded = Transition::wire_decode(&json).unwrap();
+        let decoded = Transition::<f64>::wire_decode(&json).unwrap();
         assert_eq!(decoded.duration, 500);
         assert_eq!(decoded.easing, Easing::EaseOutCubic);
         assert_eq!(decoded.delay, 100);
@@ -485,15 +492,15 @@ mod tests {
 
     #[test]
     fn spring_round_trips() {
-        let orig = Spring::new(1.05_f64)
+        let orig: Spring<f64> = Spring::new(1.05)
             .stiffness(200.0)
             .damping(20.0)
             .mass(2.0)
             .velocity(0.5)
-            .from(0.0_f64)
+            .from(0.0)
             .on_complete("bounce_done");
         let json = serde_json::Value::from(orig.wire_encode());
-        let decoded = Spring::wire_decode(&json).unwrap();
+        let decoded = Spring::<f64>::wire_decode(&json).unwrap();
         assert_eq!(decoded.stiffness, 200.0);
         assert_eq!(decoded.damping, 20.0);
         assert_eq!(decoded.mass, 2.0);
@@ -504,16 +511,34 @@ mod tests {
 
     #[test]
     fn sequence_round_trips() {
-        let orig = Sequence::new(vec![
-            Transition::new(200, 1.0_f64).into(),
-            Spring::new(0.0_f64).stiffness(200.0).into(),
+        let orig: Sequence<f64> = Sequence::new(vec![
+            Transition::new(200, 1.0).into(),
+            Spring::new(0.0).stiffness(200.0).into(),
         ])
         .on_complete("seq_done");
         let json = serde_json::Value::from(orig.wire_encode());
-        let decoded = Sequence::wire_decode(&json).unwrap();
+        let decoded = Sequence::<f64>::wire_decode(&json).unwrap();
         assert_eq!(decoded.steps.len(), 2);
         assert!(matches!(decoded.steps[0], AnimationStep::Transition(_)));
         assert!(matches!(decoded.steps[1], AnimationStep::Spring(_)));
         assert_eq!(decoded.on_complete.as_deref(), Some("seq_done"));
+    }
+
+    #[test]
+    fn typed_transition_f32() {
+        let t: Transition<f32> = Transition::new(300, 24.0_f32);
+        let encoded = t.wire_encode();
+        let json = serde_json::Value::from(encoded);
+        assert_eq!(json["type"], "transition");
+        // f32 encodes as F64 via PlushieType, so wire value is f64
+        assert_eq!(json["to"], 24.0);
+    }
+
+    #[test]
+    fn default_propvalue_transition_still_works() {
+        let t: Transition<PropValue> = Transition::new(300, PropValue::F64(42.0));
+        let encoded = t.wire_encode();
+        let json = serde_json::Value::from(encoded);
+        assert_eq!(json["to"], 42.0);
     }
 }

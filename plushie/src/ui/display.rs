@@ -33,8 +33,8 @@ pub fn text(content: &str) -> TextBuilder {
 
 impl TextBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
-    pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
-    pub fn color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "color", super::color_to_value(&c.into())); self }
+    pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "size", s.into().wire_encode()); self }
+    pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "color", c.into().wire_encode()); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
@@ -42,37 +42,11 @@ impl TextBuilder {
     pub fn align_y(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_y", super::valign_to_value(a)); self }
     pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
     pub fn shaping(mut self, s: Shaping) -> Self { super::set_prop(&mut self.props, "shaping", s.wire_encode()); self }
-    pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
+    pub fn line_height(mut self, lh: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "line_height", lh.into().wire_encode()); self }
     pub fn ellipsis(mut self, e: Ellipsis) -> Self { super::set_prop(&mut self.props, "ellipsis", e.wire_encode()); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
-
-    /// Animate a property with a timed transition.
-    ///
-    /// The transition descriptor replaces the prop value. The renderer
-    /// interpolates from the current value to the transition's `to`.
-    ///
-    /// ```ignore
-    /// text("value")
-    ///     .transition("size", Transition::new(300, 24.0).easing(Easing::EaseOut))
-    /// ```
-    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, t.wire_encode());
-        self
-    }
-
-    /// Animate a property with spring physics.
-    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, s.wire_encode());
-        self
-    }
-
-    /// Animate a property with a sequence of steps.
-    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, seq.wire_encode());
-        self
-    }
 }
 
 impl From<TextBuilder> for View {
@@ -109,12 +83,12 @@ impl RichTextBuilder {
     pub fn spans(mut self, spans: Vec<PropValue>) -> Self {
         super::set_prop(&mut self.props, "spans", PropValue::Array(spans)); self
     }
-    pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
+    pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "size", s.into().wire_encode()); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
-    pub fn color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "color", super::color_to_value(&c.into())); self }
+    pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "color", c.into().wire_encode()); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
-    pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
+    pub fn line_height(mut self, lh: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "line_height", lh.into().wire_encode()); self }
     pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
     pub fn ellipsis(mut self, e: Ellipsis) -> Self { super::set_prop(&mut self.props, "ellipsis", e.wire_encode()); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
@@ -175,8 +149,8 @@ pub fn rule() -> RuleBuilder {
 
 impl RuleBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
-    pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "width", w); self }
-    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
+    pub fn width(mut self, w: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "width", w.into().wire_encode()); self }
+    pub fn height(mut self, h: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "height", h.into().wire_encode()); self }
     pub fn direction(mut self, d: Direction) -> Self { super::set_prop(&mut self.props, "direction", d.wire_encode()); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
@@ -223,24 +197,6 @@ impl ProgressBarBuilder {
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
-
-    /// Animate a property with a timed transition.
-    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, t.wire_encode());
-        self
-    }
-
-    /// Animate a property with spring physics.
-    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, s.wire_encode());
-        self
-    }
-
-    /// Animate a property with a sequence of steps.
-    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, seq.wire_encode());
-        self
-    }
 }
 
 impl From<ProgressBarBuilder> for View {
@@ -277,14 +233,14 @@ impl ImageBuilder {
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn content_fit(mut self, fit: ContentFit) -> Self { super::set_prop(&mut self.props, "content_fit", fit.wire_encode()); self }
     pub fn filter_method(mut self, method: FilterMethod) -> Self { super::set_prop(&mut self.props, "filter_method", method.wire_encode()); self }
-    pub fn rotation(mut self, degrees: f32) -> Self { super::set_prop(&mut self.props, "rotation", degrees); self }
-    pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
+    pub fn rotation(mut self, degrees: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "rotation", degrees.into().wire_encode()); self }
+    pub fn opacity(mut self, o: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "opacity", o.into().wire_encode()); self }
     /// Corner radius for rounded image borders.
-    pub fn border_radius(mut self, r: f32) -> Self { super::set_prop(&mut self.props, "border_radius", r); self }
+    pub fn border_radius(mut self, r: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "border_radius", r.into().wire_encode()); self }
     /// Expand the image to fill available space.
     pub fn expand(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "expand", v); self }
     /// Scale factor applied to the image.
-    pub fn scale(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "scale", s); self }
+    pub fn scale(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "scale", s.into().wire_encode()); self }
     /// Crop to a pixel rectangle within the source image.
     pub fn crop(mut self, x: f32, y: f32, width: f32, height: f32) -> Self {
         let mut crop = PropMap::new();
@@ -302,24 +258,6 @@ impl ImageBuilder {
     pub fn decorative(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "decorative", v); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
-
-    /// Animate a property with a timed transition.
-    pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, t.wire_encode());
-        self
-    }
-
-    /// Animate a property with spring physics.
-    pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, s.wire_encode());
-        self
-    }
-
-    /// Animate a property with a sequence of steps.
-    pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, seq.wire_encode());
-        self
-    }
 }
 
 impl From<ImageBuilder> for View {
@@ -354,10 +292,10 @@ impl SvgBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
-    pub fn color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "color", super::color_to_value(&c.into())); self }
+    pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "color", c.into().wire_encode()); self }
     pub fn content_fit(mut self, fit: ContentFit) -> Self { super::set_prop(&mut self.props, "content_fit", fit.wire_encode()); self }
-    pub fn rotation(mut self, degrees: f32) -> Self { super::set_prop(&mut self.props, "rotation", degrees); self }
-    pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
+    pub fn rotation(mut self, degrees: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "rotation", degrees.into().wire_encode()); self }
+    pub fn opacity(mut self, o: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "opacity", o.into().wire_encode()); self }
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
     /// Extended accessible description (longer than `alt`).
     pub fn description(mut self, desc: &str) -> Self { super::set_prop(&mut self.props, "description", desc); self }
@@ -398,13 +336,13 @@ pub fn markdown(content: &str) -> MarkdownBuilder {
 impl MarkdownBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
-    pub fn text_size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "text_size", s); self }
-    pub fn h1_size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "h1_size", s); self }
-    pub fn h2_size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "h2_size", s); self }
-    pub fn h3_size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "h3_size", s); self }
-    pub fn code_size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "code_size", s); self }
-    pub fn spacing(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "spacing", s); self }
-    pub fn link_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "link_color", super::color_to_value(&c.into())); self }
+    pub fn text_size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "text_size", s.into().wire_encode()); self }
+    pub fn h1_size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "h1_size", s.into().wire_encode()); self }
+    pub fn h2_size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "h2_size", s.into().wire_encode()); self }
+    pub fn h3_size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "h3_size", s.into().wire_encode()); self }
+    pub fn code_size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "code_size", s.into().wire_encode()); self }
+    pub fn spacing(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "spacing", s.into().wire_encode()); self }
+    pub fn link_color(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "link_color", c.into().wire_encode()); self }
     pub fn code_theme(mut self, theme: &str) -> Self { super::set_prop(&mut self.props, "code_theme", theme); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
@@ -440,12 +378,12 @@ pub fn qr_code(data: &str) -> QrCodeBuilder {
 
 impl QrCodeBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
-    pub fn cell_size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "cell_size", s); self }
+    pub fn cell_size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "cell_size", s.into().wire_encode()); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn error_correction(mut self, level: &str) -> Self { super::set_prop(&mut self.props, "error_correction", level); self }
-    pub fn cell_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "cell_color", super::color_to_value(&c.into())); self }
-    pub fn background(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "background", super::color_to_value(&c.into())); self }
+    pub fn cell_color(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "cell_color", c.into().wire_encode()); self }
+    pub fn background(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "background", c.into().wire_encode()); self }
     /// Accessible label for the QR code.
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
     /// Extended accessible description.

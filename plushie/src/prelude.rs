@@ -28,7 +28,7 @@ pub use crate::ui::*;
 
 // Property types
 pub use crate::types::{
-    A11y, Align, Anchor, Background, Border, Color, ContentFit,
+    A11y, Align, Animatable, Anchor, Background, Border, Color, ContentFit,
     CursorStyle, Direction, DragAxis, Ellipsis, FillRule, FilterMethod,
     Font, FontStretch, Gradient, HorizontalAlignment, InputPurpose,
     KeyModifiers, Length, Length::*, LineCap, LineJoin, Padding,
@@ -40,4 +40,6 @@ pub use crate::types::{
 pub use plushie_core::types::a11y::{Live, Role};
 
 // Animation
-pub use crate::animation::{Easing, Sequence, Spring, Transition};
+pub use crate::animation::{
+    AnimationStep, Easing, Repeat, Sequence, Spring, Transition,
+};

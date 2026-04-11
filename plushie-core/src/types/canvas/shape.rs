@@ -2,8 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::Value;
-
 use crate::protocol::TreeNode;
 
 use super::super::{PlushieType, Radius};
@@ -305,8 +303,8 @@ pub struct GroupShape {
     pub show_focus_ring: Option<bool>,
     pub focus_ring_radius: Option<f32>,
     pub focusable: Option<bool>,
-    /// Accessibility annotations, kept as raw JSON for now.
-    pub a11y: Option<Value>,
+    /// Accessibility annotations for interactive canvas shapes.
+    pub a11y: Option<super::super::A11y>,
 }
 
 impl GroupShape {
@@ -341,7 +339,7 @@ impl GroupShape {
             show_focus_ring: bool::extract(p, "show_focus_ring"),
             focus_ring_radius: f32::extract(p, "focus_ring_radius"),
             focusable: bool::extract(p, "focusable"),
-            a11y: p.get_value("a11y"),
+            a11y: super::super::A11y::extract(p, "a11y"),
         }
     }
 }
@@ -391,7 +389,7 @@ fn id_from_node(node: &TreeNode) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     fn tree_node(type_name: &str, props: Value) -> TreeNode {
         serde_json::from_value(json!({

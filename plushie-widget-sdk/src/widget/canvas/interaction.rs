@@ -2,6 +2,7 @@
 
 use iced::{Point, Rectangle, mouse};
 
+use plushie_core::types::PlushieType;
 use plushie_core::types::canvas::{
     CanvasShape, GroupShape, Transform,
 };
@@ -161,8 +162,10 @@ pub(super) fn parse_interactive_element(
         focusable: group.focusable.unwrap_or(false),
         parent_group: None,
         tooltip: group.tooltip.clone(),
-        a11y: group.a11y.as_ref()
-            .and_then(crate::a11y::A11yOverrides::from_a11y_value),
+        a11y: group.a11y.as_ref().and_then(|a| {
+            let wire_val = serde_json::Value::from(a.wire_encode());
+            crate::a11y::A11yOverrides::from_a11y_value(&wire_val)
+        }),
     })
 }
 

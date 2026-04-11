@@ -4,6 +4,7 @@
 //! implements [`PlushieType`] with wire encode/decode, making them
 //! usable by both SDK builders (encode) and widget renderers (decode).
 
+pub mod a11y;
 mod alignment;
 mod background;
 mod border;
@@ -27,6 +28,7 @@ use serde_json::Value;
 
 use crate::protocol::{PropValue, Props};
 
+pub use a11y::{A11y, HasPopup, Live, Orientation, Role};
 pub use alignment::{HorizontalAlignment, VerticalAlignment};
 pub use background::Background;
 pub use border::{Border, Radius};

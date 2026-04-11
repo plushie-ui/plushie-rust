@@ -7,6 +7,9 @@
 // Core trait
 pub use crate::App;
 
+// Derive macro for widget authoring
+pub use crate::PlushieWidget;
+
 // Widget registrar (for App::view)
 pub use crate::widget::WidgetRegistrar;
 

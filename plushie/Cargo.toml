@@ -17,6 +17,7 @@ wire = ["dep:tokio", "dep:rmp-serde"]
 
 [dependencies]
 plushie-core = { version = "0.6.1", path = "../plushie-core" }
+plushie-macros = { version = "0.6.1", path = "../plushie-macros" }
 plushie-widget-sdk = { version = "0.6.1", path = "../plushie-widget-sdk" }
 plushie-renderer-lib = { version = "0.6.1", path = "../plushie-renderer-lib", optional = true }
 serde = { version = "1", features = ["derive"] }

@@ -1,0 +1,22 @@
+[package]
+name = "plushie-macros"
+description = "Proc macros for Plushie widget authoring"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["gui", "desktop", "macros", "widget"]
+categories = ["gui"]
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"
+proc-macro2 = "1"

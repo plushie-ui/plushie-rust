@@ -144,7 +144,6 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
     // Startup handshake: detect codec, send Hello, then read Settings.
     let mut reader = reader;
     let codec = crate::startup::detect_codec(forced_codec, &mut reader);
-    Codec::set_global(codec);
 
     // Initialize the global sink for windowed mode now that we know
     // the codec. Use a channel writer to avoid blocking the event loop.

@@ -28,8 +28,8 @@ use serde_json::Value;
 /// Peeks at the first byte via `fill_buf()` without consuming it,
 /// so the caller can still read the full first message normally.
 ///
-/// Does **not** set the global codec -- the caller must call
-/// `Codec::set_global` with the returned value.
+/// Returns the detected codec. The caller is responsible for
+/// threading it to all consumers (WriterSink, App, stdin reader).
 ///
 /// Exits the process on I/O error (no codec means no way to
 /// communicate the error over the wire).

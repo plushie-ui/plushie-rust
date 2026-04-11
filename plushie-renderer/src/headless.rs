@@ -1005,7 +1005,6 @@ pub(crate) fn run(
     // Detect codec BEFORE initializing the sink so the WriterSink
     // encodes with the correct codec from the first message.
     let codec = crate::startup::detect_codec(forced_codec, &mut reader);
-    Codec::set_global(codec);
 
     let sink = plushie_renderer_lib::WriterSink::new(writer, codec);
     plushie_renderer_lib::emitters::init_sink(Box::new(sink));

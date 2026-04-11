@@ -2,11 +2,12 @@
 //!
 //! All renderer output (events, effect responses, query responses,
 //! screenshots) flows through the [`EventSink`] trait. The global
-//! sink is initialized at startup via [`init_sink`].
+//! sink is initialized at startup via [`init_sink`] and shared with
+//! the App's EventEmitter via [`sink_arc`].
 //!
-//! Wire mode uses a `StdoutSink` that encodes via [`Codec`] and
-//! writes framed bytes. Direct mode uses a `QueueSink` that collects
-//! events in-process for the SDK to drain.
+//! The global provides three functions for code that runs without
+//! an App instance (startup handshake, headless writer thread):
+//! [`emit_hello`], [`write_output`].
 
 use std::io;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -68,18 +69,11 @@ static EVENT_SINK: OnceLock<Arc<Mutex<Box<dyn EventSink>>>> = OnceLock::new();
 
 /// Initialize the global event sink.
 ///
-/// Must be called exactly once before any `emit_*` functions.
-/// Wire mode: pass a `WriterSink`. Direct mode: use `init_sink_arc`.
+/// Must be called exactly once before any output functions.
+/// Panics on double initialization.
 pub fn init_sink(sink: Box<dyn EventSink>) {
-    init_sink_arc(Arc::new(Mutex::new(sink)));
-}
-
-/// Initialize the global event sink from a shared Arc.
-///
-/// Used by the direct runner to share the same sink between the
-/// global (for async callbacks) and the App-owned EventEmitter.
-pub fn init_sink_arc(sink: Arc<Mutex<Box<dyn EventSink>>>) {
-    if EVENT_SINK.set(sink).is_err() {
+    let arc = Arc::new(Mutex::new(sink));
+    if EVENT_SINK.set(arc).is_err() {
         panic!("event sink already initialized");
     }
 }
@@ -87,6 +81,9 @@ pub fn init_sink_arc(sink: Arc<Mutex<Box<dyn EventSink>>>) {
 /// Get a clone of the global sink Arc.
 ///
 /// Returns the shared sink for passing to the App constructor.
+/// The App's EventEmitter and the global free functions share
+/// the same underlying sink via this Arc.
+///
 /// Panics if the sink has not been initialized.
 pub fn sink_arc() -> Arc<Mutex<Box<dyn EventSink>>> {
     EVENT_SINK.get().expect("event sink not initialized").clone()
@@ -99,6 +96,10 @@ fn with_sink<R>(f: impl FnOnce(&mut dyn EventSink) -> io::Result<R>) -> io::Resu
     let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
     f(&mut **guard)
 }
+
+// ---------------------------------------------------------------------------
+// WriterSink
+// ---------------------------------------------------------------------------
 
 /// A sink that wraps a raw writer and encodes via a codec.
 ///
@@ -216,16 +217,21 @@ impl EventSink for WriterSink {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Global free functions (for startup/headless code without App access)
+// ---------------------------------------------------------------------------
+
 /// Write pre-encoded bytes through the global sink.
+///
+/// Used by the headless writer thread and startup error paths
+/// that don't have App access.
 pub fn write_output(bytes: &[u8]) -> io::Result<()> {
     with_sink(|sink| sink.write_raw(bytes))
 }
 
-// ---------------------------------------------------------------------------
-// hello message emitter
-// ---------------------------------------------------------------------------
-
 /// Emit a `hello` handshake message through the global sink.
+///
+/// Called during renderer startup before the App instance exists.
 pub fn emit_hello(
     mode: &str,
     backend: &str,
@@ -235,25 +241,3 @@ pub fn emit_hello(
 ) -> io::Result<()> {
     with_sink(|sink| sink.emit_hello(mode, backend, native_widgets, widget_set_names, transport))
 }
-
-/// Emit a query_response message through the global sink.
-pub fn emit_query_response(kind: &str, tag: &str, data: serde_json::Value) -> io::Result<()> {
-    with_sink(|sink| sink.emit_query_response(kind, tag, &data))
-}
-
-// ---------------------------------------------------------------------------
-// screenshot response emitter
-// ---------------------------------------------------------------------------
-
-/// Emit a screenshot_response through the global sink.
-pub fn emit_screenshot_response(
-    id: &str,
-    name: &str,
-    hash: &str,
-    width: u32,
-    height: u32,
-    rgba_bytes: &[u8],
-) -> io::Result<()> {
-    with_sink(|sink| sink.emit_screenshot_response(id, name, hash, width, height, rgba_bytes))
-}
-

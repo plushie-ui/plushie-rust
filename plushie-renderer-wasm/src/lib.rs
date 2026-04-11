@@ -121,7 +121,6 @@ impl PlushieApp {
         let codec = Codec::Json;
         let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), codec);
         plushie_renderer_lib::emitters::init_sink(Box::new(sink));
-        Codec::set_global(codec);
 
         let settings: serde_json::Value = serde_json::from_str(settings_json)
             .map_err(|e| JsValue::from_str(&format!("invalid settings JSON: {e}")))?;

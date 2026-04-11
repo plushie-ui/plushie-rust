@@ -11,15 +11,12 @@
 //!   parse, supports native binary fields (e.g. pixel data).
 //!
 //! The codec is auto-detected from the first byte of stdin (`{` = JSON,
-//! anything else = MsgPack) and stored in a process-global [`OnceLock`]
-//! so that all emit paths (events, queries, screenshots) use the same
-//! format without threading the codec through every call site.
+//! anything else = MsgPack) and threaded through call sites explicitly.
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fmt;
 use std::io::{self, BufRead, Read};
-use std::sync::OnceLock;
 
 /// Maximum size for a single wire message (64 MiB). Applied to both JSON
 /// line reads and msgpack length-prefixed frames.
@@ -28,9 +25,6 @@ pub const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
 /// Maximum nesting depth for `rmpv_to_json` conversion. Prevents stack
 /// overflow from deeply nested (or maliciously crafted) msgpack payloads.
 const MAX_RMPV_DEPTH: usize = 128;
-
-/// Process-global wire codec, set once at startup via [`Codec::set_global`].
-static WIRE_CODEC: OnceLock<Codec> = OnceLock::new();
 
 /// Wire codec for the stdin/stdout protocol.
 ///
@@ -269,22 +263,6 @@ impl Codec {
         }
     }
 
-    /// Store the negotiated codec in the global slot.
-    ///
-    /// # Panics
-    ///
-    /// Panics if called more than once per process lifetime. The codec is
-    /// determined at startup from the first byte of stdin and must not change.
-    pub fn set_global(codec: Codec) {
-        WIRE_CODEC
-            .set(codec)
-            .expect("WIRE_CODEC already initialized");
-    }
-
-    /// Get the global wire codec. Returns MsgPack if not yet initialized.
-    pub fn get_global() -> &'static Codec {
-        WIRE_CODEC.get().unwrap_or(&Codec::MsgPack)
-    }
 }
 
 // ---------------------------------------------------------------------------

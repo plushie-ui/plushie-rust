@@ -15,6 +15,8 @@ mod effects;
 
 pub(crate) mod event_bridge;
 
+pub(crate) mod effect_tracker;
+
 #[cfg(feature = "direct")]
 mod queue_sink;
 

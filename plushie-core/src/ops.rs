@@ -122,7 +122,13 @@ pub enum RendererOp {
 
     // -- Platform effects --
     /// Request a platform effect (file dialog, clipboard, notification).
-    Effect { tag: String, request: EffectRequest },
+    Effect {
+        tag: String,
+        request: EffectRequest,
+        /// Optional per-effect timeout override. When `None`, the runner
+        /// uses `effect_tracker::default_timeout` based on the effect kind.
+        timeout: Option<Duration>,
+    },
 
     // -- Images --
     /// Perform an image operation (create, update, delete).
@@ -270,6 +276,27 @@ pub enum EffectRequest {
     ClipboardReadPrimary,
     ClipboardWritePrimary(String),
     Notification { title: String, body: String, opts: NotificationOpts },
+}
+
+impl EffectRequest {
+    /// The wire-format kind string for this effect request.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::FileOpen(_) => "file_open",
+            Self::FileOpenMultiple(_) => "file_open_multiple",
+            Self::FileSave(_) => "file_save",
+            Self::DirectorySelect(_) => "directory_select",
+            Self::DirectorySelectMultiple(_) => "directory_select_multiple",
+            Self::ClipboardRead => "clipboard_read",
+            Self::ClipboardWrite(_) => "clipboard_write",
+            Self::ClipboardReadHtml => "clipboard_read_html",
+            Self::ClipboardWriteHtml { .. } => "clipboard_write_html",
+            Self::ClipboardClear => "clipboard_clear",
+            Self::ClipboardReadPrimary => "clipboard_read_primary",
+            Self::ClipboardWritePrimary(_) => "clipboard_write_primary",
+            Self::Notification { .. } => "notification",
+        }
+    }
 }
 
 /// Options for file and directory dialogs.

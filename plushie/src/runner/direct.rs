@@ -22,11 +22,12 @@ use plushie_widget_sdk::widget::widget_set::iced_widget_set;
 
 use crate::App;
 use crate::command::Command;
-use crate::event::{Event, WidgetEvent};
+use crate::event::{Event, EffectEvent, EffectResult, WidgetEvent};
 use crate::runtime;
 use crate::runtime::subscriptions::{SubscriptionManager, SubOp};
-use crate::widget::{EventResult, Interception, WidgetStateStore};
+use crate::widget::{EventResult as WidgetEventResult, Interception, WidgetStateStore};
 
+use super::effect_tracker::{self, EffectTracker};
 use super::queue_sink::{QueueSink, SinkEvent};
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,8 @@ struct DirectApp<A: App> {
     /// Active timer subscriptions (tag -> interval). Used by the
     /// iced daemon subscription callback to produce repeating ticks.
     active_timers: HashMap<String, std::time::Duration>,
+    /// Tracks in-flight effects for wire ID resolution and timeouts.
+    effect_tracker: EffectTracker,
 }
 
 impl<A: App> DirectApp<A> {
@@ -82,6 +85,7 @@ impl<A: App> DirectApp<A> {
             running_tasks: HashMap::new(),
             sub_manager: SubscriptionManager::new(),
             active_timers: HashMap::new(),
+            effect_tracker: EffectTracker::new(),
         };
 
         // Apply user settings to the renderer before the first view.
@@ -174,12 +178,34 @@ impl<A: App> DirectApp<A> {
         let mut tasks = Vec::new();
         let mut delivered = false;
         for sink_event in events {
-            if let Some(sdk_event) = super::event_bridge::sink_event_to_sdk(sink_event) {
-                if let Some(task) = self.deliver_event(sdk_event) {
+            let sdk_event = match sink_event {
+                // Effect responses are resolved via the tracker to
+                // recover the user's tag and the effect kind for
+                // typed result parsing.
+                SinkEvent::EffectResponse(response) => {
+                    self.resolve_effect_response(response)
+                }
+                other => super::event_bridge::sink_event_to_sdk(other),
+            };
+            if let Some(event) = sdk_event {
+                if let Some(task) = self.deliver_event(event) {
                     tasks.push(task);
                 }
                 delivered = true;
             }
+        }
+
+        // Check for timed-out effects and deliver timeout events.
+        let timed_out = self.effect_tracker.check_timeouts();
+        for (tag, _kind) in timed_out {
+            let event = Event::Effect(EffectEvent {
+                tag,
+                result: EffectResult::Timeout,
+            });
+            if let Some(task) = self.deliver_event(event) {
+                tasks.push(task);
+            }
+            delivered = true;
         }
 
         // Rebuild the view once after all events are processed,
@@ -207,12 +233,12 @@ impl<A: App> DirectApp<A> {
     /// produced. Does NOT refresh the view (the caller batches that).
     fn deliver_event(&mut self, event: Event) -> Option<Task<Message>> {
         match self.widget_store.intercept_event(&event) {
-            Some(Interception { result: EventResult::Consumed, .. })
-            | Some(Interception { result: EventResult::UpdateState, .. }) => {
+            Some(Interception { result: WidgetEventResult::Consumed, .. })
+            | Some(Interception { result: WidgetEventResult::UpdateState, .. }) => {
                 None
             }
             Some(Interception {
-                result: EventResult::Emit { family, value },
+                result: WidgetEventResult::Emit { family, value },
                 widget_id,
                 outer_scope,
                 window_id,
@@ -227,9 +253,36 @@ impl<A: App> DirectApp<A> {
                 let cmd = A::update(&mut self.model, new_event);
                 Some(self.execute_command(cmd))
             }
-            Some(Interception { result: EventResult::Ignored, .. }) | None => {
+            Some(Interception { result: WidgetEventResult::Ignored, .. }) | None => {
                 let cmd = A::update(&mut self.model, event);
                 Some(self.execute_command(cmd))
+            }
+        }
+    }
+
+    /// Resolve an effect response via the tracker. Converts the raw
+    /// wire response into a typed SDK event with the user's original
+    /// tag and a parsed result.
+    fn resolve_effect_response(
+        &mut self,
+        response: plushie_widget_sdk::protocol::EffectResponse,
+    ) -> Option<Event> {
+        let wire_id = &response.id;
+        match self.effect_tracker.resolve(wire_id) {
+            Some((tag, kind)) => {
+                let error_as_value = response.error.as_ref().map(|e| {
+                    serde_json::Value::String(e.clone())
+                });
+                let value = response.result.as_ref().or(error_as_value.as_ref());
+                let result = EffectResult::parse(&kind, response.status, value);
+                Some(Event::Effect(EffectEvent { tag, result }))
+            }
+            None => {
+                log::warn!(
+                    "effect response for unknown wire_id {wire_id}, \
+                     falling back to bridge conversion"
+                );
+                Some(super::event_bridge::effect_response_to_sdk(response))
             }
         }
     }
@@ -255,6 +308,24 @@ impl<A: App> DirectApp<A> {
                     .map(|c| self.execute_command(c))
                     .collect();
                 Task::batch(tasks)
+            }
+            Command::Renderer(plushie_core::ops::RendererOp::Effect {
+                tag,
+                request,
+                timeout,
+            }) => {
+                let kind = request.kind();
+                let effective_timeout =
+                    timeout.unwrap_or_else(|| effect_tracker::default_timeout(kind));
+                let wire_id = self.effect_tracker.track(&tag, kind, effective_timeout);
+                // Pass the wire_id as the tag to the renderer. The
+                // renderer echoes it back in the EffectResponse.id
+                // field, which we resolve via the tracker.
+                self.renderer.execute(plushie_core::ops::RendererOp::Effect {
+                    tag: wire_id,
+                    request,
+                    timeout: None,
+                })
             }
             Command::Renderer(op) => self.renderer.execute(op),
             Command::Async { tag, task } => {

@@ -74,7 +74,7 @@ impl App {
             RendererOp::SystemQuery(query) => self.execute_system_query(query),
 
             // -- Effects --
-            RendererOp::Effect { tag, request } => {
+            RendererOp::Effect { tag, request, .. } => {
                 if self.effect_handler.is_async(&request) {
                     let future = self.effect_handler.handle_async(tag, request);
                     let sink = self.emitter.sink();

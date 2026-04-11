@@ -183,6 +183,7 @@ impl Command {
     pub fn file_open(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::FileOpen(Default::default()),
         })
     }
@@ -191,6 +192,7 @@ impl Command {
     pub fn file_open_with(tag: &str, opts: FileDialogOpts) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::FileOpen(opts),
         })
     }
@@ -199,6 +201,7 @@ impl Command {
     pub fn file_open_multiple(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::FileOpenMultiple(Default::default()),
         })
     }
@@ -207,6 +210,7 @@ impl Command {
     pub fn file_open_multiple_with(tag: &str, opts: FileDialogOpts) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::FileOpenMultiple(opts),
         })
     }
@@ -215,6 +219,7 @@ impl Command {
     pub fn file_save(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::FileSave(Default::default()),
         })
     }
@@ -223,6 +228,7 @@ impl Command {
     pub fn file_save_with(tag: &str, opts: FileDialogOpts) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::FileSave(opts),
         })
     }
@@ -231,6 +237,7 @@ impl Command {
     pub fn directory_select(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::DirectorySelect(Default::default()),
         })
     }
@@ -239,6 +246,7 @@ impl Command {
     pub fn directory_select_with(tag: &str, opts: FileDialogOpts) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::DirectorySelect(opts),
         })
     }
@@ -247,6 +255,7 @@ impl Command {
     pub fn directory_select_multiple(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::DirectorySelectMultiple(Default::default()),
         })
     }
@@ -255,6 +264,7 @@ impl Command {
     pub fn directory_select_multiple_with(tag: &str, opts: FileDialogOpts) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::DirectorySelectMultiple(opts),
         })
     }
@@ -263,6 +273,7 @@ impl Command {
     pub fn clipboard_read(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::ClipboardRead,
         })
     }
@@ -271,6 +282,7 @@ impl Command {
     pub fn clipboard_write(tag: &str, text: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::ClipboardWrite(text.to_string()),
         })
     }
@@ -279,6 +291,7 @@ impl Command {
     pub fn clipboard_read_html(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::ClipboardReadHtml,
         })
     }
@@ -287,6 +300,7 @@ impl Command {
     pub fn clipboard_write_html(tag: &str, html: &str, alt_text: Option<&str>) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::ClipboardWriteHtml {
                 html: html.to_string(),
                 alt_text: alt_text.map(|s| s.to_string()),
@@ -298,6 +312,7 @@ impl Command {
     pub fn clipboard_clear(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::ClipboardClear,
         })
     }
@@ -306,6 +321,7 @@ impl Command {
     pub fn clipboard_read_primary(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::ClipboardReadPrimary,
         })
     }
@@ -314,6 +330,7 @@ impl Command {
     pub fn clipboard_write_primary(tag: &str, text: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::ClipboardWritePrimary(text.to_string()),
         })
     }
@@ -322,6 +339,7 @@ impl Command {
     pub fn notification(tag: &str, title: &str, body: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::Notification {
                 title: title.to_string(),
                 body: body.to_string(),
@@ -334,6 +352,7 @@ impl Command {
     pub fn notification_with(tag: &str, title: &str, body: &str, opts: NotificationOpts) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
+            timeout: None,
             request: EffectRequest::Notification {
                 title: title.to_string(),
                 body: body.to_string(),

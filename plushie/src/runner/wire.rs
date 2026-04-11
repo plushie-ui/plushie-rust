@@ -212,7 +212,7 @@ fn execute_wire_renderer_op(bridge: &mut Bridge, op: &plushie_core::ops::Rendere
         RendererOp::Window(op) => execute_wire_window_op(bridge, op),
         RendererOp::WidgetCommand { node_id, op, payload } => bridge.send_widget_command(node_id, op, payload),
         RendererOp::Announce(text) => bridge.send_widget_op("announce", &serde_json::json!({"text": text})),
-        RendererOp::Effect { tag, request } => {
+        RendererOp::Effect { tag, request, .. } => {
             let (kind, payload) = plushie_core::ops::effect_request_to_wire(request);
             bridge.send_effect(tag, kind, &payload)
         }

@@ -506,11 +506,142 @@ pub struct EffectEvent {
 }
 
 /// The outcome of a platform effect.
+///
+/// Typed variants provide structured access to effect results without
+/// requiring callers to parse raw JSON. The `parse()` constructor
+/// converts the wire-format (kind, status, value) triple into the
+/// appropriate variant.
 #[derive(Debug, Clone)]
 pub enum EffectResult {
-    Ok(Value),
+    /// A file was selected by the user.
+    FileOpened { path: String },
+    /// Multiple files were selected.
+    FilesOpened { paths: Vec<String> },
+    /// A file save path was chosen.
+    FileSaved { path: String },
+    /// A directory was selected.
+    DirectorySelected { path: String },
+    /// Multiple directories were selected.
+    DirectoriesSelected { paths: Vec<String> },
+    /// Clipboard text was read.
+    ClipboardText { text: String },
+    /// Clipboard HTML was read.
+    ClipboardHtml { html: String },
+    /// Clipboard write succeeded.
+    ClipboardWritten,
+    /// Clipboard was cleared.
+    ClipboardCleared,
+    /// Notification was shown.
+    NotificationShown,
+    /// The user cancelled the operation (e.g. dismissed a dialog).
     Cancelled,
-    Error(Value),
+    /// The effect timed out.
+    Timeout,
+    /// A platform error occurred.
+    Error(String),
+    /// The renderer restarted while the effect was pending.
+    RendererRestarted,
+    /// The effect kind is not supported by this backend.
+    Unsupported,
+    /// Unknown or untyped result (fallback for forward compatibility).
+    Other(Value),
+}
+
+impl EffectResult {
+    /// Parse a typed result from effect kind, status, and raw value.
+    pub fn parse(kind: &str, status: &str, value: Option<&Value>) -> Self {
+        match status {
+            "cancelled" => Self::Cancelled,
+            "unsupported" => Self::Unsupported,
+            "error" => {
+                let msg = value
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown error")
+                    .to_string();
+                Self::Error(msg)
+            }
+            "ok" => Self::parse_ok(kind, value),
+            other => {
+                log::warn!("unknown effect status: {other}");
+                Self::Other(value.cloned().unwrap_or(Value::Null))
+            }
+        }
+    }
+
+    fn parse_ok(kind: &str, value: Option<&Value>) -> Self {
+        match kind {
+            "file_open" => {
+                let path = value
+                    .and_then(|v| v.get("path"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Self::FileOpened { path }
+            }
+            "file_open_multiple" => {
+                let paths = value
+                    .and_then(|v| v.get("paths"))
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Self::FilesOpened { paths }
+            }
+            "file_save" => {
+                let path = value
+                    .and_then(|v| v.get("path"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Self::FileSaved { path }
+            }
+            "directory_select" => {
+                let path = value
+                    .and_then(|v| v.get("path"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Self::DirectorySelected { path }
+            }
+            "directory_select_multiple" => {
+                let paths = value
+                    .and_then(|v| v.get("paths"))
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Self::DirectoriesSelected { paths }
+            }
+            "clipboard_read" | "clipboard_read_primary" => {
+                let text = value
+                    .and_then(|v| v.get("text"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Self::ClipboardText { text }
+            }
+            "clipboard_read_html" => {
+                let html = value
+                    .and_then(|v| v.get("html"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Self::ClipboardHtml { html }
+            }
+            "clipboard_write" | "clipboard_write_html" | "clipboard_write_primary" => {
+                Self::ClipboardWritten
+            }
+            "clipboard_clear" => Self::ClipboardCleared,
+            "notification" => Self::NotificationShown,
+            _ => Self::Other(value.cloned().unwrap_or(Value::Null)),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -606,4 +737,173 @@ pub enum ImeEventType {
     Preedit,
     Commit,
     Closed,
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_file_opened() {
+        let value = json!({"path": "/tmp/readme.txt"});
+        let result = EffectResult::parse("file_open", "ok", Some(&value));
+        match result {
+            EffectResult::FileOpened { path } => assert_eq!(path, "/tmp/readme.txt"),
+            other => panic!("expected FileOpened, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_files_opened() {
+        let value = json!({"paths": ["/a.txt", "/b.txt"]});
+        let result = EffectResult::parse("file_open_multiple", "ok", Some(&value));
+        match result {
+            EffectResult::FilesOpened { paths } => {
+                assert_eq!(paths, vec!["/a.txt", "/b.txt"]);
+            }
+            other => panic!("expected FilesOpened, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_file_saved() {
+        let value = json!({"path": "/tmp/out.csv"});
+        let result = EffectResult::parse("file_save", "ok", Some(&value));
+        match result {
+            EffectResult::FileSaved { path } => assert_eq!(path, "/tmp/out.csv"),
+            other => panic!("expected FileSaved, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_directory_selected() {
+        let value = json!({"path": "/home/user/docs"});
+        let result = EffectResult::parse("directory_select", "ok", Some(&value));
+        match result {
+            EffectResult::DirectorySelected { path } => assert_eq!(path, "/home/user/docs"),
+            other => panic!("expected DirectorySelected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_directories_selected() {
+        let value = json!({"paths": ["/a", "/b", "/c"]});
+        let result = EffectResult::parse("directory_select_multiple", "ok", Some(&value));
+        match result {
+            EffectResult::DirectoriesSelected { paths } => {
+                assert_eq!(paths, vec!["/a", "/b", "/c"]);
+            }
+            other => panic!("expected DirectoriesSelected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_clipboard_text() {
+        let value = json!({"text": "hello world"});
+        let result = EffectResult::parse("clipboard_read", "ok", Some(&value));
+        match result {
+            EffectResult::ClipboardText { text } => assert_eq!(text, "hello world"),
+            other => panic!("expected ClipboardText, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_clipboard_primary_text() {
+        let value = json!({"text": "primary selection"});
+        let result = EffectResult::parse("clipboard_read_primary", "ok", Some(&value));
+        match result {
+            EffectResult::ClipboardText { text } => assert_eq!(text, "primary selection"),
+            other => panic!("expected ClipboardText, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_clipboard_html() {
+        let value = json!({"html": "<b>bold</b>"});
+        let result = EffectResult::parse("clipboard_read_html", "ok", Some(&value));
+        match result {
+            EffectResult::ClipboardHtml { html } => assert_eq!(html, "<b>bold</b>"),
+            other => panic!("expected ClipboardHtml, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_clipboard_written() {
+        let result = EffectResult::parse("clipboard_write", "ok", None);
+        assert!(matches!(result, EffectResult::ClipboardWritten));
+    }
+
+    #[test]
+    fn parse_clipboard_html_written() {
+        let result = EffectResult::parse("clipboard_write_html", "ok", None);
+        assert!(matches!(result, EffectResult::ClipboardWritten));
+    }
+
+    #[test]
+    fn parse_clipboard_cleared() {
+        let result = EffectResult::parse("clipboard_clear", "ok", None);
+        assert!(matches!(result, EffectResult::ClipboardCleared));
+    }
+
+    #[test]
+    fn parse_notification_shown() {
+        let result = EffectResult::parse("notification", "ok", None);
+        assert!(matches!(result, EffectResult::NotificationShown));
+    }
+
+    #[test]
+    fn parse_cancelled() {
+        let result = EffectResult::parse("file_open", "cancelled", None);
+        assert!(matches!(result, EffectResult::Cancelled));
+    }
+
+    #[test]
+    fn parse_unsupported() {
+        let result = EffectResult::parse("file_open", "unsupported", None);
+        assert!(matches!(result, EffectResult::Unsupported));
+    }
+
+    #[test]
+    fn parse_error_with_message() {
+        let value = json!("permission denied");
+        let result = EffectResult::parse("clipboard_read", "error", Some(&value));
+        match result {
+            EffectResult::Error(msg) => assert_eq!(msg, "permission denied"),
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_error_without_value() {
+        let result = EffectResult::parse("clipboard_read", "error", None);
+        match result {
+            EffectResult::Error(msg) => assert_eq!(msg, "unknown error"),
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_unknown_status_falls_back_to_other() {
+        let value = json!(42);
+        let result = EffectResult::parse("file_open", "pending", Some(&value));
+        match result {
+            EffectResult::Other(v) => assert_eq!(v, json!(42)),
+            other => panic!("expected Other, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_unknown_kind_ok_falls_back_to_other() {
+        let value = json!({"custom": true});
+        let result = EffectResult::parse("future_effect", "ok", Some(&value));
+        match result {
+            EffectResult::Other(v) => assert_eq!(v, json!({"custom": true})),
+            other => panic!("expected Other, got {other:?}"),
+        }
+    }
 }

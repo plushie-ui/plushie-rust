@@ -65,7 +65,7 @@ fn command_scroll_to_carries_coordinates() {
 #[test]
 fn command_clipboard_read() {
     match Command::clipboard_read("paste") {
-        Command::Renderer(RendererOp::Effect { tag, request: EffectRequest::ClipboardRead }) => {
+        Command::Renderer(RendererOp::Effect { tag, request: EffectRequest::ClipboardRead, .. }) => {
             assert_eq!(tag, "paste");
         }
         _ => panic!("expected Renderer(Effect(ClipboardRead))"),

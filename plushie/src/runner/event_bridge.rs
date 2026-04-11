@@ -202,15 +202,22 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
 }
 
 /// Convert an EffectResponse to an SDK EffectEvent.
-fn effect_response_to_sdk(response: EffectResponse) -> Event {
+///
+/// Used directly by the wire runner (no tracker) and as a fallback
+/// in the direct runner when a response has no matching tracker entry.
+pub(crate) fn effect_response_to_sdk(response: EffectResponse) -> Event {
+    // Without tracker context (no kind available), we fall back to
+    // untyped variants. The wire runner uses this path.
     let result = match response.status {
-        "ok" => EffectResult::Ok(response.result.unwrap_or(Value::Null)),
+        "ok" => EffectResult::Other(response.result.unwrap_or(Value::Null)),
         "cancelled" => EffectResult::Cancelled,
-        _ => EffectResult::Error(
-            response.error.map(|e| Value::String(e))
-                .or(response.result)
-                .unwrap_or(Value::Null)
-        ),
+        "unsupported" => EffectResult::Unsupported,
+        _ => {
+            let msg = response.error
+                .or_else(|| response.result.as_ref().and_then(|v| v.as_str()).map(String::from))
+                .unwrap_or_else(|| "unknown error".to_string());
+            EffectResult::Error(msg)
+        }
     };
     Event::Effect(EffectEvent {
         tag: response.id,
@@ -470,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn effect_response_ok() {
+    fn effect_response_ok_without_kind() {
         let response = EffectResponse {
             message_type: "effect_response",
             session: String::new(),
@@ -483,9 +490,10 @@ mod tests {
         match sdk {
             Event::Effect(e) => {
                 assert_eq!(e.tag, "save_file");
+                // Without tracker context, ok results use Other.
                 match e.result {
-                    EffectResult::Ok(v) => assert_eq!(v["path"], "/tmp/file.txt"),
-                    _ => panic!("expected Ok result"),
+                    EffectResult::Other(v) => assert_eq!(v["path"], "/tmp/file.txt"),
+                    _ => panic!("expected Other result, got {:?}", e.result),
                 }
             }
             _ => panic!("expected Effect event"),
@@ -513,6 +521,26 @@ mod tests {
     }
 
     #[test]
+    fn effect_response_unsupported() {
+        let response = EffectResponse {
+            message_type: "effect_response",
+            session: String::new(),
+            id: "dialog".to_string(),
+            status: "unsupported",
+            result: None,
+            error: None,
+        };
+        let sdk = effect_response_to_sdk(response);
+        match sdk {
+            Event::Effect(e) => {
+                assert_eq!(e.tag, "dialog");
+                assert!(matches!(e.result, EffectResult::Unsupported));
+            }
+            _ => panic!("expected Effect event"),
+        }
+    }
+
+    #[test]
     fn effect_response_error() {
         let response = EffectResponse {
             message_type: "effect_response",
@@ -526,8 +554,8 @@ mod tests {
         match sdk {
             Event::Effect(e) => {
                 assert_eq!(e.tag, "clipboard");
-                match e.result {
-                    EffectResult::Error(v) => assert_eq!(v, "permission denied"),
+                match &e.result {
+                    EffectResult::Error(msg) => assert_eq!(msg, "permission denied"),
                     _ => panic!("expected Error result"),
                 }
             }

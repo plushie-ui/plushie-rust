@@ -202,7 +202,8 @@ impl PlushieApp {
                         .widget_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
                     let registry = builder.build();
                     let effect_handler = Box::new(WebEffectHandler);
-                    let mut app = App::new(registry, effect_handler);
+                    let sink = plushie_renderer_lib::emitters::sink_arc();
+                    let mut app = App::new(registry, effect_handler, sink);
 
                     app.scale_factor = plushie_renderer_lib::validate_scale_factor(
                         settings

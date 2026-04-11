@@ -9,7 +9,6 @@ use plushie_widget_sdk::protocol::{IncomingMessage, OutgoingEvent};
 use crate::App;
 use crate::constants::*;
 use crate::emitter::CoalesceKey;
-use crate::emitters::{self, emit_event, emit_screenshot_response};
 
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -163,7 +162,7 @@ impl App {
                     let tasks: Vec<_> = entries
                         .into_iter()
                         .map(|entry| {
-                            emitters::emit_or_exit(OutgoingEvent::window_close_requested(
+                            self.emitter.emit_direct(OutgoingEvent::window_close_requested(
                                 entry.tag.clone(),
                                 window_id.clone(),
                             ))
@@ -177,14 +176,17 @@ impl App {
             Message::WindowClosed(iced_id) => {
                 if let Some(window_id) = self.windows.remove_by_iced(&iced_id) {
                     let wid = Some(window_id.as_str());
-                    for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
-                        if let Err(e) = emit_event(OutgoingEvent::window_closed(
-                            entry.tag.clone(),
-                            window_id.clone(),
-                        )) {
-                            log::error!("write error: {e}");
-                            return iced::exit();
-                        }
+                    let tasks: Vec<_> = self.core.matching_entries(SUB_WINDOW_EVENT, wid)
+                        .into_iter()
+                        .map(|entry| {
+                            self.emitter.emit_direct(OutgoingEvent::window_closed(
+                                entry.tag.clone(),
+                                window_id.clone(),
+                            ))
+                        })
+                        .collect();
+                    if !tasks.is_empty() {
+                        return Task::batch(tasks);
                     }
                     log::info!("window closed: {window_id}");
                 }
@@ -194,7 +196,7 @@ impl App {
                 // to receive new tree snapshots (e.g. after a Reset or window re-creation).
                 if self.windows.is_empty() && self.core.tree.root().is_some() {
                     log::info!("all windows closed -- notifying host");
-                    return emitters::emit_or_exit(OutgoingEvent::generic(
+                    return self.emitter.emit_direct(OutgoingEvent::generic(
                         "all_windows_closed".to_string(),
                         String::new(),
                         None,
@@ -287,7 +289,7 @@ impl App {
                         selector,
                     } => {
                         if let Err(e) =
-                            crate::scripting::handle_query(&self.core, id, target, selector)
+                            crate::scripting::handle_query(&self.emitter, &self.core, id, target, selector)
                         {
                             log::error!("write error: {e}");
                             return iced::exit();
@@ -301,7 +303,7 @@ impl App {
                         payload,
                     } => {
                         if let Err(e) = crate::scripting::handle_interact(
-                            &self.core, id, action, selector, payload,
+                            &self.emitter, &self.core, id, action, selector, payload,
                         ) {
                             log::error!("write error: {e}");
                             return iced::exit();
@@ -313,7 +315,7 @@ impl App {
                         let _ = self.emitter.flush();
 
                         // Reset core and emit the response.
-                        if let Err(e) = crate::scripting::handle_reset(&mut self.core, id) {
+                        if let Err(e) = crate::scripting::handle_reset(&self.emitter, &mut self.core, id) {
                             log::error!("write error: {e}");
                             return iced::exit();
                         }
@@ -334,12 +336,12 @@ impl App {
                         self.scale_factor = 1.0;
                         self.pending_tasks.clear();
                         self.animation_epoch = None;
-                        self.emitter = crate::emitter::EventEmitter::new();
+                        self.emitter = crate::emitter::EventEmitter::new(self.emitter.sink());
 
                         Task::batch(close_tasks)
                     }
                     IncomingMessage::TreeHash { id, name, .. } => {
-                        if let Err(e) = crate::scripting::handle_tree_hash(&self.core, id, name) {
+                        if let Err(e) = crate::scripting::handle_tree_hash(&self.emitter, &self.core, id, name) {
                             log::error!("write error: {e}");
                             return iced::exit();
                         }
@@ -348,6 +350,7 @@ impl App {
                     IncomingMessage::Screenshot { id, name, .. } => {
                         // Capture real GPU-rendered pixels via iced
                         if let Some((_, &iced_id)) = self.windows.iter().next() {
+                            let sink = self.emitter.sink();
                             window::screenshot(iced_id).map(move |shot| {
                                 use sha2::{Digest, Sha256};
                                 let rgba: &[u8] = &shot.rgba;
@@ -356,18 +359,16 @@ impl App {
                                 let hash = format!("{:x}", hasher.finalize());
                                 let w = shot.size.width;
                                 let h = shot.size.height;
-                                // Inside a Task callback -- log and continue;
-                                // the next synchronous write will exit cleanly.
+                                let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
                                 if let Err(e) =
-                                    emit_screenshot_response(&id, &name, &hash, w, h, rgba)
+                                    guard.emit_screenshot_response(&id, &name, &hash, w, h, rgba)
                                 {
                                     log::error!("write error in screenshot: {e}");
                                 }
                                 Message::NoOp
                             })
                         } else {
-                            // No windows open -- return empty screenshot
-                            if let Err(e) = emit_screenshot_response(&id, &name, "", 0, 0, &[]) {
+                            if let Err(e) = self.emitter.emit_screenshot_response(&id, &name, "", 0, 0, &[]) {
                                 log::error!("write error: {e}");
                                 return iced::exit();
                             }

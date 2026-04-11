@@ -14,7 +14,6 @@ use plushie_widget_sdk::protocol::OutgoingEvent;
 
 use crate::App;
 use crate::constants::*;
-use crate::emitters::emit_event;
 
 /// Convert a file path to a UTF-8 string, using lossy conversion if
 /// the path contains non-UTF-8 bytes (rare on modern systems, but
@@ -316,12 +315,12 @@ impl App {
         let wid = Some(window_id.as_str());
         // Emit for catch-all SUB_WINDOW_EVENT entries
         for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
-            emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
+            self.emitter.emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
         }
         // Emit for specific key entries (e.g. SUB_WINDOW_MOVE)
         if let Some(key) = specific_key {
             for entry in self.core.matching_entries(key, wid) {
-                emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
+                self.emitter.emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
             }
         }
         Ok(())
@@ -343,7 +342,7 @@ impl App {
                     let wid = Some(window_id.as_str());
                     let pos = position.map(|p| (p.x, p.y));
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
-                        emit_event(OutgoingEvent::window_opened(
+                        self.emitter.emit_event(OutgoingEvent::window_opened(
                             entry.tag.clone(),
                             window_id.clone(),
                             pos,
@@ -353,7 +352,7 @@ impl App {
                         ))?;
                     }
                     for entry in self.core.matching_entries(SUB_WINDOW_OPEN, wid) {
-                        emit_event(OutgoingEvent::window_opened(
+                        self.emitter.emit_event(OutgoingEvent::window_opened(
                             entry.tag.clone(),
                             window_id.clone(),
                             pos,
@@ -366,7 +365,7 @@ impl App {
                 window::Event::Closed => {
                     let wid = Some(window_id.as_str());
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
-                        emit_event(OutgoingEvent::window_closed(
+                        self.emitter.emit_event(OutgoingEvent::window_closed(
                             entry.tag.clone(),
                             window_id.clone(),
                         ))?;
@@ -389,7 +388,7 @@ impl App {
                 window::Event::Rescaled(factor) => {
                     let wid = Some(window_id.as_str());
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
-                        emit_event(OutgoingEvent::window_rescaled(
+                        self.emitter.emit_event(OutgoingEvent::window_rescaled(
                             entry.tag.clone(),
                             window_id.clone(),
                             factor,
@@ -414,7 +413,7 @@ impl App {
                     let wid = Some(window_id.as_str());
                     let path_str = path_to_string(path);
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
-                        emit_event(OutgoingEvent::file_hovered(
+                        self.emitter.emit_event(OutgoingEvent::file_hovered(
                             entry.tag.clone(),
                             window_id.clone(),
                             path_str.clone(),
@@ -425,7 +424,7 @@ impl App {
                     let wid = Some(window_id.as_str());
                     let path_str = path_to_string(path);
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
-                        emit_event(OutgoingEvent::file_dropped(
+                        self.emitter.emit_event(OutgoingEvent::file_dropped(
                             entry.tag.clone(),
                             window_id.clone(),
                             path_str.clone(),
@@ -435,7 +434,7 @@ impl App {
                 window::Event::FilesHoveredLeft => {
                     let wid = Some(window_id.as_str());
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
-                        emit_event(OutgoingEvent::files_hovered_left(
+                        self.emitter.emit_event(OutgoingEvent::files_hovered_left(
                             entry.tag.clone(),
                             window_id.clone(),
                         ))?;

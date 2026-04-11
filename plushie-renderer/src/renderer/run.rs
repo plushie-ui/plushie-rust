@@ -186,7 +186,8 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
             let registry = builder.build();
 
             let effect_handler = Box::new(crate::effects::NativeEffectHandler);
-            let mut app = App::new(registry, effect_handler);
+            let sink = plushie_renderer_lib::emitters::sink_arc();
+            let mut app = App::new(registry, effect_handler, sink);
 
             // Extract scale_factor before applying settings to Core
             app.scale_factor = plushie_renderer_lib::app::validate_scale_factor(

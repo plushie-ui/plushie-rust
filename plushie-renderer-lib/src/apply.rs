@@ -7,7 +7,6 @@ use plushie_widget_sdk::engine::CoreEffect;
 use plushie_widget_sdk::protocol::IncomingMessage;
 
 use crate::App;
-use crate::emitters::{emit_effect_response, emit_event};
 
 impl App {
     pub fn apply(&mut self, message: IncomingMessage) -> io::Result<()> {
@@ -21,7 +20,7 @@ impl App {
             } => {
                 if let Some(events) = self.registry.handle_widget_op(node_id, op, payload) {
                     for ev in events {
-                        emit_event(ev)?;
+                        self.emitter.emit_event(ev)?;
                     }
                 }
                 return Ok(());
@@ -33,7 +32,7 @@ impl App {
                             .handle_widget_op(&cmd.node_id, &cmd.op, &cmd.payload)
                     {
                         for ev in events {
-                            emit_event(ev)?;
+                            self.emitter.emit_event(ev)?;
                         }
                     }
                 }
@@ -90,14 +89,14 @@ impl App {
                     let task = self.sync_windows();
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::EmitEvent(event) => emit_event(event)?,
+                CoreEffect::EmitEvent(event) => self.emitter.emit_event(event)?,
                 CoreEffect::EmitEffectResponse(response) => {
-                    emit_effect_response(response)?;
+                    self.emitter.emit_effect_response(response)?;
                 }
                 CoreEffect::EmitStubAck(ack) => {
                     let codec = plushie_widget_sdk::codec::Codec::get_global();
                     let bytes = codec.encode(&ack).map_err(io::Error::other)?;
-                    crate::emitters::write_output(&bytes)?;
+                    self.emitter.write_raw(&bytes)?;
                 }
                 CoreEffect::HandleEffect {
                     request_id,
@@ -111,7 +110,7 @@ impl App {
                         } else if let Some(response) =
                             self.effect_handler.handle_sync(&request_id, &request)
                         {
-                            emit_effect_response(response)?;
+                            self.emitter.emit_effect_response(response)?;
                         }
                     } else {
                         log::warn!("unknown effect kind: {kind}");

@@ -8,7 +8,6 @@ use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::OutgoingEvent;
 
 use crate::App;
-use crate::emitters::emit_event;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -171,12 +170,14 @@ impl App {
                     .and_then(|v| v.as_str())
                     .unwrap_or("find_focused")
                     .to_string();
+                let sink = self.emitter.sink();
                 iced::widget::operation::find_focused().map(move |maybe_id| {
                     let focused = maybe_id.map(|id| id.to_string());
-                    if let Err(e) = crate::emitters::emit_query_response(
+                    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Err(e) = guard.emit_query_response(
                         "find_focused",
                         &tag,
-                        serde_json::json!({"focused": focused}),
+                        &serde_json::json!({"focused": focused}),
                     ) {
                         log::error!("write error: {e}");
                     }
@@ -227,10 +228,10 @@ impl App {
                     .unwrap_or("tree_hash")
                     .to_string();
                 let hash = self.core.tree_hash();
-                if let Err(e) = crate::emitters::emit_query_response(
+                if let Err(e) = self.emitter.emit_query_response(
                     "tree_hash",
                     &tag,
-                    serde_json::json!({"hash": hash}),
+                    &serde_json::json!({"hash": hash}),
                 ) {
                     log::error!("write error: {e}");
                     return iced::exit();
@@ -244,10 +245,10 @@ impl App {
                     .unwrap_or("list_images")
                     .to_string();
                 let handles: Vec<String> = self.image_registry.handle_names();
-                if let Err(e) = crate::emitters::emit_query_response(
+                if let Err(e) = self.emitter.emit_query_response(
                     "list_images",
                     &tag,
-                    serde_json::json!({"handles": handles}),
+                    &serde_json::json!({"handles": handles}),
                 ) {
                     log::error!("write error: {e}");
                     return iced::exit();
@@ -286,7 +287,7 @@ impl App {
         {
             // Best-effort error notification. If stdout is broken the
             // next synchronous write in update() will exit cleanly.
-            if let Err(e) = emit_event(OutgoingEvent::generic(
+            if let Err(e) = self.emitter.emit_event(OutgoingEvent::generic(
                 "image_error".to_string(),
                 handle.to_string(),
                 Some(serde_json::json!({ "error": error })),

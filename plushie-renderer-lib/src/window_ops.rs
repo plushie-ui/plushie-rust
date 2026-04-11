@@ -19,7 +19,6 @@ use iced::{Point, Size, Task, window};
 use plushie_widget_sdk::message::Message;
 
 use crate::App;
-use crate::emitters::{emit_effect_response, emit_query_response};
 
 /// Returns true if the current display server is Wayland.
 ///
@@ -57,6 +56,9 @@ impl App {
         window_id: &str,
         settings: &serde_json::Value,
     ) -> Task<Message> {
+        // Clone the sink Arc for async closures that need to emit
+        // responses from Task callbacks (outside self's lifetime).
+        let sink = self.emitter.sink();
         match op {
             "open" => {
                 if self.windows.contains_window(window_id) {
@@ -366,7 +368,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -391,7 +393,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -419,7 +421,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -442,7 +444,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -465,7 +467,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -488,7 +490,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -520,7 +522,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -626,7 +628,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -655,7 +657,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = emit_effect_response(resp) {
+                        if let Err(e) = sink.lock().unwrap_or_else(|e| e.into_inner()).emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -698,14 +700,16 @@ impl App {
                     .and_then(|v| v.as_str())
                     .unwrap_or("system_theme")
                     .to_string();
+                let sink = self.emitter.sink();
                 iced::system::theme().map(move |mode| {
                     let mode_str = match mode {
                         iced::theme::Mode::Light => "light",
                         iced::theme::Mode::Dark => "dark",
                         iced::theme::Mode::None => "none",
                     };
+                    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
                     if let Err(e) =
-                        emit_query_response("system_theme", &tag, serde_json::json!(mode_str))
+                        guard.emit_query_response("system_theme", &tag, &serde_json::json!(mode_str))
                     {
                         log::error!("write error: {e}");
                     }
@@ -719,6 +723,7 @@ impl App {
                     .and_then(|v| v.as_str())
                     .unwrap_or("system_info")
                     .to_string();
+                let sink = self.emitter.sink();
                 iced::system::information().map(move |info| {
                     let data = serde_json::json!({
                         "system_name": info.system_name,
@@ -732,7 +737,8 @@ impl App {
                         "graphics_backend": info.graphics_backend,
                         "graphics_adapter": info.graphics_adapter,
                     });
-                    if let Err(e) = emit_query_response("system_info", &tag, data) {
+                    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Err(e) = guard.emit_query_response("system_info", &tag, &data) {
                         log::error!("write error: {e}");
                     }
                     Message::NoOp

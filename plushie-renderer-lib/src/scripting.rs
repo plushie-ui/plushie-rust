@@ -408,10 +408,13 @@ pub fn interaction_to_iced_events(
 // ---------------------------------------------------------------------------
 
 /// Write a serialized response using the negotiated wire codec.
-pub fn emit_wire<T: serde::Serialize>(value: &T) -> io::Result<()> {
+pub fn emit_wire<T: serde::Serialize>(
+    emitter: &crate::emitter::EventEmitter,
+    value: &T,
+) -> io::Result<()> {
     let codec = Codec::get_global();
     let bytes = codec.encode(value).map_err(io::Error::other)?;
-    crate::emitters::write_output(&bytes)
+    emitter.write_raw(&bytes)
 }
 
 // ---------------------------------------------------------------------------
@@ -599,8 +602,14 @@ pub fn build_query_response(
 }
 
 /// Build and emit a QueryResponse to stdout.
-pub fn handle_query(core: &Core, id: String, target: String, selector: Value) -> io::Result<()> {
-    emit_wire(&build_query_response(core, id, target, selector))
+pub fn handle_query(
+    emitter: &crate::emitter::EventEmitter,
+    core: &Core,
+    id: String,
+    target: String,
+    selector: Value,
+) -> io::Result<()> {
+    emit_wire(emitter, &build_query_response(core, id, target, selector))
 }
 
 /// Resolve a selector to a widget ID without emitting anything.
@@ -1022,13 +1031,14 @@ fn find_window_id_for_node(
 
 /// Build and emit an InteractResponse to stdout.
 pub fn handle_interact(
+    emitter: &crate::emitter::EventEmitter,
     core: &Core,
     id: String,
     action: String,
     selector: Value,
     payload: Value,
 ) -> io::Result<()> {
-    emit_wire(&build_interact_response(
+    emit_wire(emitter, &build_interact_response(
         core, id, action, selector, payload,
     ))
 }
@@ -1040,8 +1050,12 @@ pub fn build_reset_response(core: &mut Core, id: String) -> ResetResponse {
 }
 
 /// Reset core and emit the response to stdout.
-pub fn handle_reset(core: &mut Core, id: String) -> io::Result<()> {
-    emit_wire(&build_reset_response(core, id))
+pub fn handle_reset(
+    emitter: &crate::emitter::EventEmitter,
+    core: &mut Core,
+    id: String,
+) -> io::Result<()> {
+    emit_wire(emitter, &build_reset_response(core, id))
 }
 
 /// Build a TreeHashResponse without writing it anywhere.
@@ -1061,8 +1075,13 @@ pub fn build_tree_hash_response(core: &Core, id: String, name: String) -> TreeHa
 }
 
 /// Build and emit a TreeHashResponse to stdout.
-pub fn handle_tree_hash(core: &Core, id: String, name: String) -> io::Result<()> {
-    emit_wire(&build_tree_hash_response(core, id, name))
+pub fn handle_tree_hash(
+    emitter: &crate::emitter::EventEmitter,
+    core: &Core,
+    id: String,
+    name: String,
+) -> io::Result<()> {
+    emit_wire(emitter, &build_tree_hash_response(core, id, name))
 }
 
 // ---------------------------------------------------------------------------

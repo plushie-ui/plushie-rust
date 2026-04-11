@@ -53,15 +53,16 @@ impl<A: App> DirectApp<A> {
             .widget_set(&iced_widget_set());
         let registry = builder.build();
 
-        // Create the QueueSink for in-process event collection and
-        // initialize the global event sink so the renderer-lib emitter
-        // routes through it.
+        // Create the QueueSink for in-process event collection.
+        // Initialized as the global sink (for async effect callbacks)
+        // and shared with the App-owned EventEmitter via Arc.
         let (sink, event_queue) = QueueSink::new();
         plushie_renderer_lib::emitters::init_sink(Box::new(sink));
+        let sink_arc = plushie_renderer_lib::emitters::sink_arc();
 
         // Create the renderer-lib App with the SDK's effect handler.
         let effect_handler = Box::new(super::effects::DirectEffectHandler);
-        let renderer = plushie_renderer_lib::App::new(registry, effect_handler);
+        let renderer = plushie_renderer_lib::App::new(registry, effect_handler, sink_arc);
 
         let mut app = Self {
             model,

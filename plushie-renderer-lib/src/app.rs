@@ -4,6 +4,8 @@
 //! that the rest of the renderer uses to query window titles, themes,
 //! scale factors, and emit subscription events.
 
+use std::sync::{Arc, Mutex};
+
 use iced::{Task, Theme, keyboard, window};
 
 use plushie_widget_sdk::message::Message;
@@ -13,7 +15,7 @@ use plushie_widget_sdk::registry::WidgetRegistry;
 use crate::constants::*;
 use crate::effects::EffectHandler;
 use crate::emitter::{CoalesceKey, EventEmitter};
-use crate::emitters;
+use crate::emitters::EventSink;
 use crate::window_map;
 
 /// Validate and clamp a scale factor. Returns 1.0 for invalid values
@@ -72,7 +74,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(registry: WidgetRegistry, effect_handler: Box<dyn EffectHandler>) -> Self {
+    pub fn new(
+        registry: WidgetRegistry,
+        effect_handler: Box<dyn EffectHandler>,
+        sink: Arc<Mutex<Box<dyn EventSink>>>,
+    ) -> Self {
         Self {
             core: plushie_widget_sdk::engine::Core::new(),
             theme: DEFAULT_THEME,
@@ -84,7 +90,7 @@ impl App {
             scale_factor: 1.0,
             registry,
             animation_epoch: None,
-            emitter: EventEmitter::new(),
+            emitter: EventEmitter::new(sink),
             effect_handler,
             transition_manager: plushie_widget_sdk::animation::TransitionManager::new(),
             current_modifiers: keyboard::Modifiers::default(),
@@ -165,7 +171,7 @@ impl App {
         let tasks: Vec<_> = entries
             .into_iter()
             .map(|entry| {
-                emitters::emit_or_exit(event_fn(entry.tag.clone()).with_captured(captured))
+                self.emitter.emit_direct(event_fn(entry.tag.clone()).with_captured(captured))
             })
             .collect();
         Task::batch(tasks)

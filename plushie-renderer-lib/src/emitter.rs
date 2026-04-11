@@ -10,6 +10,7 @@
 //! 3. Global `default_event_rate` in Settings
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use iced::time::{Duration, Instant};
 
@@ -18,7 +19,7 @@ use iced::Task;
 use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::{CoalesceHint, OutgoingEvent};
 
-use crate::emitters;
+use crate::emitters::EventSink;
 
 // ---------------------------------------------------------------------------
 // Platform-aware sleep
@@ -136,6 +137,8 @@ impl PendingEvent {
 /// classified as coalescable are buffered and emitted at a controlled
 /// rate; non-coalescable events flush the buffer and emit immediately.
 pub struct EventEmitter {
+    /// The output sink for emitted events.
+    sink: Arc<Mutex<Box<dyn EventSink>>>,
     /// Pending coalescable events, keyed by coalesce key.
     pending: HashMap<CoalesceKey, PendingEvent>,
     /// Timestamp of last emission per coalesce key.
@@ -150,15 +153,11 @@ pub struct EventEmitter {
     widget_rates: HashMap<String, u32>,
 }
 
-impl Default for EventEmitter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl EventEmitter {
-    pub fn new() -> Self {
+    /// Create a new EventEmitter that writes to the given sink.
+    pub fn new(sink: Arc<Mutex<Box<dyn EventSink>>>) -> Self {
         Self {
+            sink,
             pending: HashMap::new(),
             last_emits: HashMap::new(),
             flush_scheduled: false,
@@ -166,6 +165,11 @@ impl EventEmitter {
             subscription_rates: HashMap::new(),
             widget_rates: HashMap::new(),
         }
+    }
+
+    /// Get a clone of the sink Arc for passing to async callbacks.
+    pub fn sink(&self) -> Arc<Mutex<Box<dyn EventSink>>> {
+        self.sink.clone()
     }
 
     /// Set the global default rate from Settings.
@@ -347,10 +351,77 @@ impl EventEmitter {
             .insert(key.clone(), PendingEvent::from_hint(event, hint));
     }
 
-    /// Encode and write an event to the wire. Returns Task::none() on
-    /// success, iced::exit() on broken pipe.
+    /// Emit an event through the sink, returning a Result.
+    ///
+    /// Used by methods that return `io::Result` (e.g. event handlers
+    /// in events.rs, apply.rs).
+    pub fn emit_event(&self, event: OutgoingEvent) -> std::io::Result<()> {
+        self.with_sink(|sink| sink.emit_event(event))
+    }
+
+    /// Write an event directly to the sink, bypassing rate limiting.
+    ///
+    /// Used for subscription events and system events that don't
+    /// participate in widget-level coalescing. Returns Task::none()
+    /// on success, iced::exit() on broken pipe.
+    pub fn emit_direct(&self, event: OutgoingEvent) -> Task<Message> {
+        self.do_emit(event)
+    }
+
+    /// Emit an effect response through the sink.
+    pub fn emit_effect_response(
+        &self,
+        response: plushie_widget_sdk::protocol::EffectResponse,
+    ) -> std::io::Result<()> {
+        self.with_sink(|sink| sink.emit_effect_response(response))
+    }
+
+    /// Emit a query response through the sink.
+    pub fn emit_query_response(
+        &self,
+        kind: &str,
+        tag: &str,
+        data: &serde_json::Value,
+    ) -> std::io::Result<()> {
+        self.with_sink(|sink| sink.emit_query_response(kind, tag, data))
+    }
+
+    /// Emit a screenshot response through the sink.
+    pub fn emit_screenshot_response(
+        &self,
+        id: &str,
+        name: &str,
+        hash: &str,
+        width: u32,
+        height: u32,
+        rgba_bytes: &[u8],
+    ) -> std::io::Result<()> {
+        self.with_sink(|sink| {
+            sink.emit_screenshot_response(id, name, hash, width, height, rgba_bytes)
+        })
+    }
+
+    /// Write pre-encoded bytes through the sink.
+    pub fn write_raw(&self, bytes: &[u8]) -> std::io::Result<()> {
+        self.with_sink(|sink| sink.write_raw(bytes))
+    }
+
     fn do_emit(&self, event: OutgoingEvent) -> Task<Message> {
-        emitters::emit_or_exit(event)
+        match self.with_sink(|sink| sink.emit_event(event)) {
+            Ok(()) => Task::none(),
+            Err(e) => {
+                log::error!("write error: {e}");
+                iced::exit()
+            }
+        }
+    }
+
+    fn with_sink<R>(
+        &self,
+        f: impl FnOnce(&mut dyn EventSink) -> std::io::Result<R>,
+    ) -> std::io::Result<R> {
+        let mut guard = self.sink.lock().unwrap_or_else(|e| e.into_inner());
+        f(&mut **guard)
     }
 }
 

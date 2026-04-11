@@ -9,7 +9,7 @@
 //! events in-process for the SDK to drain.
 
 use std::io;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::Task;
 
@@ -67,16 +67,32 @@ pub trait EventSink: Send {
 // Global sink
 // ---------------------------------------------------------------------------
 
-static EVENT_SINK: OnceLock<Mutex<Box<dyn EventSink>>> = OnceLock::new();
+static EVENT_SINK: OnceLock<Arc<Mutex<Box<dyn EventSink>>>> = OnceLock::new();
 
 /// Initialize the global event sink.
 ///
 /// Must be called exactly once before any `emit_*` functions.
-/// Wire mode: pass a `StdoutSink`. Direct mode: pass a `QueueSink`.
+/// Wire mode: pass a `WriterSink`. Direct mode: use `init_sink_arc`.
 pub fn init_sink(sink: Box<dyn EventSink>) {
-    if EVENT_SINK.set(Mutex::new(sink)).is_err() {
+    init_sink_arc(Arc::new(Mutex::new(sink)));
+}
+
+/// Initialize the global event sink from a shared Arc.
+///
+/// Used by the direct runner to share the same sink between the
+/// global (for async callbacks) and the App-owned EventEmitter.
+pub fn init_sink_arc(sink: Arc<Mutex<Box<dyn EventSink>>>) {
+    if EVENT_SINK.set(sink).is_err() {
         panic!("event sink already initialized");
     }
+}
+
+/// Get a clone of the global sink Arc.
+///
+/// Returns the shared sink for passing to the App constructor.
+/// Panics if the sink has not been initialized.
+pub fn sink_arc() -> Arc<Mutex<Box<dyn EventSink>>> {
+    EVENT_SINK.get().expect("event sink not initialized").clone()
 }
 
 fn with_sink<R>(f: impl FnOnce(&mut dyn EventSink) -> io::Result<R>) -> io::Result<R> {

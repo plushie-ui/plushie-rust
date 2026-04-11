@@ -78,7 +78,7 @@ impl App {
                 if self.effect_handler.is_async(&request) {
                     self.effect_handler.handle_async(tag, request)
                 } else if let Some(response) = self.effect_handler.handle_sync(&tag, &request) {
-                    if let Err(e) = crate::emitters::emit_effect_response(response) {
+                    if let Err(e) = self.emitter.emit_effect_response(response) {
                         log::error!("effect response write error: {e}");
                         return iced::exit();
                     }

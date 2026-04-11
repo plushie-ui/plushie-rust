@@ -15,63 +15,43 @@ use serde_json::Value;
 /// of widget-specific properties, and optional `children` for container
 /// widgets.
 ///
-/// Widget authors receive `&TreeNode` in their
-/// [`render`](crate::registry::PlushieWidget::render) method.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TreeNode {
     /// Unique identifier for this node within the tree.
     pub id: String,
 
     /// Widget type name (e.g. `"button"`, `"text"`, `"slider"`).
-    /// Determines which renderer handles this node.
     #[serde(rename = "type")]
     pub type_name: String,
 
-    /// Widget-specific properties. Always a JSON object (defaults to
-    /// `{}` when omitted). Individual widgets read their props via
-    /// helpers like [`prop_str`](crate::prop_helpers::prop_str).
+    /// Widget-specific properties (JSON object).
     #[serde(default = "empty_object")]
     pub props: Value,
 
-    /// Child nodes for container widgets. Empty for leaf widgets.
+    /// Child nodes for container widgets.
     #[serde(default)]
     pub children: Vec<TreeNode>,
 }
 
 impl TreeNode {
-    /// Access props as a JSON map, or `None` if props is not an object.
-    ///
-    /// This is the same type expected by all `prop_*` helper functions.
-    /// Using this method avoids the `node.props.as_object()` boilerplate
-    /// in every `render()` and `prepare()` implementation.
-    pub fn props(&self) -> crate::prop_helpers::Props<'_> {
+    /// Access props as a JSON map.
+    pub fn props(&self) -> Option<&serde_json::Map<String, Value>> {
         self.props.as_object()
     }
 
-    /// Get a string prop by key. Shorthand for `prop_str(node.props(), key)`.
+    /// Get a string prop by key.
     pub fn prop_str(&self, key: &str) -> Option<String> {
-        crate::prop_helpers::prop_str(self.props(), key)
+        self.props().and_then(|m| m.get(key)).and_then(|v| v.as_str()).map(|s| s.to_string())
     }
 
-    /// Get an f32 prop by key. Shorthand for `prop_f32(node.props(), key)`.
+    /// Get an f32 prop by key.
     pub fn prop_f32(&self, key: &str) -> Option<f32> {
-        crate::prop_helpers::prop_f32(self.props(), key)
+        self.props().and_then(|m| m.get(key)).and_then(|v| v.as_f64()).map(|n| n as f32)
     }
 
-    /// Get a bool prop by key. Shorthand for `prop_bool(node.props(), key)`.
+    /// Get a bool prop by key.
     pub fn prop_bool(&self, key: &str) -> Option<bool> {
-        crate::prop_helpers::prop_bool(self.props(), key)
-    }
-
-    /// Get a color prop by key. Shorthand for `prop_color(node.props(), key)`.
-    pub fn prop_color(&self, key: &str) -> Option<iced::Color> {
-        crate::prop_helpers::prop_color(self.props(), key)
-    }
-
-    /// Get the padding from the standard `"padding"` prop.
-    /// Shorthand for `prop_padding(node.props())`.
-    pub fn prop_padding(&self) -> Option<iced::Padding> {
-        crate::prop_helpers::prop_padding(self.props())
+        self.props().and_then(|m| m.get(key)).and_then(|v| v.as_bool())
     }
 }
 

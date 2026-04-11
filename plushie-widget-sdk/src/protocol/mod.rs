@@ -9,168 +9,18 @@
 //! deserialized [`IncomingMessage`]. All outgoing types include a
 //! `session` field that echoes the originating session ID back.
 
-mod incoming;
-mod outgoing;
-mod types;
+//! Wire protocol types for host-renderer communication.
+//!
+//! All protocol types are defined in [`plushie_core::protocol`] and
+//! re-exported here. This module adds iced-dependent extension methods
+//! (keyboard event constructors).
 
-/// Protocol version number. Sent in the `hello` handshake message on startup
-/// and checked against the value the host embeds in Settings.
-pub const PROTOCOL_VERSION: u32 = 1;
+// Iced-dependent extension methods on core protocol types.
+mod outgoing_ext;
 
-pub use incoming::{IncomingMessage, WidgetCommandItem};
-pub use outgoing::{
-    CoalesceHint, EffectResponse, EffectStubAck, InteractResponse, KeyModifiers, OutgoingEvent,
-    QueryResponse, ResetResponse, TreeHashResponse,
-};
-pub use types::{PatchOp, TreeNode};
+// Re-export all protocol types from plushie-core.
+pub use plushie_core::protocol::*;
 
-/// An incoming message paired with its session ID.
-///
-/// The `session` field is extracted from the raw wire object before
-/// deserializing the rest as [`IncomingMessage`]. This keeps
-/// `IncomingMessage` free of session concerns -- the session is
-/// routing metadata, not message content.
-#[derive(Debug)]
-pub struct SessionMessage {
-    pub session: String,
-    pub message: IncomingMessage,
-}
-
-impl SessionMessage {
-    /// Extract `session` from a JSON value and deserialize the rest as
-    /// [`IncomingMessage`].
-    ///
-    /// If the `session` key is absent, defaults to an empty string
-    /// (single-session mode). If present but not a string, returns an
-    /// error: session is routing metadata and a non-string value
-    /// indicates a protocol bug.
-    pub fn from_value(mut value: serde_json::Value) -> Result<Self, serde_json::Error> {
-        let session = match value.as_object_mut() {
-            Some(obj) => match obj.remove("session") {
-                None => String::new(),
-                Some(serde_json::Value::String(s)) => s,
-                Some(other) => {
-                    return Err(serde::de::Error::custom(format!(
-                        "session must be a string, got {}",
-                        other
-                    )));
-                }
-            },
-            None => {
-                return Err(serde::de::Error::custom("expected JSON object"));
-            }
-        };
-
-        let message = serde_json::from_value(value)?;
-        Ok(Self { session, message })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn session_message_extracts_session() {
-        let val = json!({
-            "session": "test_1",
-            "type": "snapshot",
-            "tree": {"id": "r", "type": "column", "props": {}, "children": []}
-        });
-        let sm = SessionMessage::from_value(val).unwrap();
-        assert_eq!(sm.session, "test_1");
-        assert!(matches!(sm.message, IncomingMessage::Snapshot { .. }));
-    }
-
-    #[test]
-    fn session_message_defaults_to_empty() {
-        let val = json!({
-            "type": "reset",
-            "id": "r1"
-        });
-        let sm = SessionMessage::from_value(val).unwrap();
-        assert_eq!(sm.session, "");
-        assert!(matches!(sm.message, IncomingMessage::Reset { .. }));
-    }
-
-    #[test]
-    fn session_message_preserves_all_fields() {
-        let val = json!({
-            "session": "s42",
-            "type": "query",
-            "id": "q1",
-            "target": "find",
-            "selector": {"id": "btn"}
-        });
-        let sm = SessionMessage::from_value(val).unwrap();
-        assert_eq!(sm.session, "s42");
-        match sm.message {
-            IncomingMessage::Query { id, target, .. } => {
-                assert_eq!(id, "q1");
-                assert_eq!(target, "find");
-            }
-            _ => panic!("expected Query"),
-        }
-    }
-
-    #[test]
-    fn outgoing_event_includes_session() {
-        let evt = OutgoingEvent::click("btn".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["session"], "");
-    }
-
-    #[test]
-    fn outgoing_event_with_session() {
-        let evt = OutgoingEvent::click("btn".to_string()).with_session("s1".to_string());
-        let json = serde_json::to_value(&evt).unwrap();
-        assert_eq!(json["session"], "s1");
-    }
-
-    #[test]
-    fn effect_response_includes_session() {
-        let resp =
-            EffectResponse::ok("e1".to_string(), json!("data")).with_session("s2".to_string());
-        let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["session"], "s2");
-    }
-
-    #[test]
-    fn reset_response_includes_session() {
-        let resp = ResetResponse::ok("r1".to_string()).with_session("s3");
-        let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["session"], "s3");
-    }
-
-    #[test]
-    fn interact_response_propagates_session_to_events() {
-        let events = vec![
-            OutgoingEvent::click("btn".to_string()),
-            OutgoingEvent::input("inp".to_string(), "text".to_string()),
-        ];
-        let resp = InteractResponse::new("i1".to_string(), events).with_session("s4");
-        let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["session"], "s4");
-        assert_eq!(json["events"][0]["session"], "s4");
-        assert_eq!(json["events"][1]["session"], "s4");
-    }
-
-    #[test]
-    fn session_message_rejects_non_object() {
-        let val = json!([1, 2, 3]);
-        let result = SessionMessage::from_value(val);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn session_message_rejects_non_string_session() {
-        let val = json!({
-            "session": 42,
-            "type": "reset",
-            "id": "r1"
-        });
-        let err = SessionMessage::from_value(val).unwrap_err();
-        assert!(err.to_string().contains("session must be a string"));
-    }
-}
+// Re-export the extension trait so callers get the keyboard event
+// constructors via `use plushie_widget_sdk::protocol::*`.
+pub use outgoing_ext::OutgoingEventKeyExt;

@@ -6,6 +6,7 @@ use std::io;
 
 use iced::{Point, Task, window};
 
+use plushie_widget_sdk::protocol::OutgoingEventKeyExt;
 use plushie_widget_sdk::message::{
     KeyEventData, Message, serialize_modifiers, serialize_mouse_button, serialize_scroll_delta,
 };

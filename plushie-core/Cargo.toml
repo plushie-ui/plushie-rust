@@ -1,0 +1,24 @@
+[package]
+name = "plushie-core"
+description = "Core types and protocol for Plushie (no iced dependency)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["gui", "desktop", "protocol", "types"]
+categories = ["gui"]
+
+[lib]
+name = "plushie_core"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+base64 = "0.22"

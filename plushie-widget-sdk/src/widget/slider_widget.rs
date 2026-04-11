@@ -9,7 +9,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Color, Length, PlushieType};
+use plushie_core::types::{Color, Length, PlushieType, Style as CoreStyle};
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -158,6 +158,7 @@ struct SliderProps {
     shift_step: Option<f64>,
     label: Option<String>,
     rail_color: Option<Color>,
+    style: Option<CoreStyle>,
 }
 
 impl SliderProps {
@@ -171,6 +172,7 @@ impl SliderProps {
             shift_step: f64::extract(p, "shift_step"),
             label: String::extract(p, "label"),
             rail_color: Color::extract(p, "rail_color"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -231,46 +233,52 @@ fn render_slider<'a, R: PlushieRenderer>(
             apply_rail_overrides(&mut style, rail_color, rail_width);
             style
         });
-    } else if let Some(style_val) = props.get_value("style") {
-        if let Some(style_name) = style_val.as_str() {
-            s = match style_name {
-                "default" => {
-                    if has_rail_overrides {
-                        s.style(move |theme: &iced::Theme, status| {
-                            let mut style = slider::default(theme, status);
-                            apply_rail_overrides(&mut style, rail_color, rail_width);
-                            style
-                        })
-                    } else {
-                        s.style(slider::default)
+    } else {
+        match &sp.style {
+            Some(CoreStyle::Preset(name)) => {
+                s = match name.as_str() {
+                    "default" => {
+                        if has_rail_overrides {
+                            s.style(move |theme: &iced::Theme, status| {
+                                let mut style = slider::default(theme, status);
+                                apply_rail_overrides(&mut style, rail_color, rail_width);
+                                style
+                            })
+                        } else {
+                            s.style(slider::default)
+                        }
                     }
-                }
-                _ => {
-                    log::warn!(
-                        "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
-                        "slider"
-                    );
-                    s
-                }
-            };
-        } else if let Some(obj) = style_val.as_object() {
-            let ov = get_style_overrides(&node.id, obj, ctx.caches);
-            s = s.style(move |theme: &iced::Theme, status| {
-                let mut style = slider::default(theme, status);
-                apply_slider_handle_fields(&mut style.handle, &ov.base);
-                apply_rail_overrides(&mut style, rail_color, rail_width);
-                if matches!(status, slider::Status::Hovered) {
-                    if let Some(ref f) = ov.hovered {
-                        apply_slider_handle_fields(&mut style.handle, f);
-                    } else {
-                        style.handle.background = deviate_background(style.handle.background, 0.1);
+                    _ => {
+                        log::warn!(
+                            "unknown style {:?} for widget type {:?}, using default",
+                            name,
+                            "slider"
+                        );
+                        s
                     }
-                }
-                style
-            });
+                };
+            }
+            Some(CoreStyle::Custom(style_map)) => {
+                let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
+                s = s.style(move |theme: &iced::Theme, status| {
+                    let mut style = slider::default(theme, status);
+                    apply_slider_handle_fields(&mut style.handle, &ov.base);
+                    apply_rail_overrides(&mut style, rail_color, rail_width);
+                    if matches!(status, slider::Status::Hovered) {
+                        if let Some(ref f) = ov.hovered {
+                            apply_slider_handle_fields(&mut style.handle, f);
+                        } else {
+                            style.handle.background =
+                                deviate_background(style.handle.background, 0.1);
+                        }
+                    }
+                    style
+                });
+            }
+            None => {}
         }
-    } else if has_rail_overrides {
+    }
+    if !circular && sp.style.is_none() && has_rail_overrides {
         s = s.style(move |theme: &iced::Theme, status| {
             let mut style = slider::default(theme, status);
             apply_rail_overrides(&mut style, rail_color, rail_width);
@@ -297,6 +305,7 @@ struct VerticalSliderProps {
     shift_step: Option<f64>,
     label: Option<String>,
     rail_color: Option<Color>,
+    style: Option<CoreStyle>,
 }
 
 impl VerticalSliderProps {
@@ -310,6 +319,7 @@ impl VerticalSliderProps {
             shift_step: f64::extract(p, "shift_step"),
             label: String::extract(p, "label"),
             rail_color: Color::extract(p, "rail_color"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -361,10 +371,10 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     let rail_width = prop_f32(props, "rail_width");
     let has_rail_overrides = rail_color.is_some() || rail_width.is_some();
 
-    // Style: string name or style map object
-    if let Some(style_val) = props.get_value("style") {
-        if let Some(style_name) = style_val.as_str() {
-            s = match style_name {
+    // Style: preset name or custom style map
+    match &vp.style {
+        Some(CoreStyle::Preset(name)) => {
+            s = match name.as_str() {
                 "default" => {
                     if has_rail_overrides {
                         s.style(move |theme: &iced::Theme, status| {
@@ -379,14 +389,15 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
+                        name,
                         "vertical_slider"
                     );
                     s
                 }
             };
-        } else if let Some(obj) = style_val.as_object() {
-            let ov = get_style_overrides(&node.id, obj, ctx.caches);
+        }
+        Some(CoreStyle::Custom(style_map)) => {
+            let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
             s = s.style(move |theme: &iced::Theme, status| {
                 let mut style = vertical_slider::default(theme, status);
                 apply_slider_handle_fields(&mut style.handle, &ov.base);
@@ -401,7 +412,9 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
                 style
             });
         }
-    } else if has_rail_overrides {
+        None => {}
+    }
+    if vp.style.is_none() && has_rail_overrides {
         s = s.style(move |theme: &iced::Theme, status| {
             let mut style = vertical_slider::default(theme, status);
             apply_rail_overrides(&mut style, rail_color, rail_width);

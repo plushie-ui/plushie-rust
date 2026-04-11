@@ -12,7 +12,7 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Ellipsis, Font, Length, LineHeight, Padding, PlushieType, Shaping,
+    Ellipsis, Font, Length, LineHeight, Padding, PlushieType, Shaping, Style as CoreStyle,
 };
 
 struct ComboBoxProps {
@@ -26,6 +26,7 @@ struct ComboBoxProps {
     menu_height: Option<f32>,
     shaping: Option<Shaping>,
     ellipsis: Option<Ellipsis>,
+    style: Option<CoreStyle>,
 }
 
 impl ComboBoxProps {
@@ -42,6 +43,7 @@ impl ComboBoxProps {
             menu_height: f32::extract(p, "menu_height"),
             shaping: Shaping::extract(p, "shaping"),
             ellipsis: Ellipsis::extract(p, "ellipsis"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -229,22 +231,23 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         });
     }
 
-    // Style: keep as raw prop access (string name or style map object)
-    if let Some(style_val) = node.props.get_value("style") {
-        if let Some(style_name) = style_val.as_str() {
-            cb = match style_name {
+    // Style: preset name or custom style map
+    match &cp.style {
+        Some(CoreStyle::Preset(name)) => {
+            cb = match name.as_str() {
                 "default" => cb.input_style(text_input::default),
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
+                        name,
                         "combo_box"
                     );
                     cb
                 }
             };
-        } else if let Some(obj) = style_val.as_object() {
-            let ov = get_style_overrides(&node.id, obj, ctx.caches);
+        }
+        Some(CoreStyle::Custom(style_map)) => {
+            let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
             cb = cb.input_style(move |theme: &iced::Theme, status| {
                 let base_fn: fn(&iced::Theme, text_input::Status) -> text_input::Style =
                     match ov.preset_base.as_deref() {
@@ -287,6 +290,7 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
                 style
             });
         }
+        None => {}
     }
 
     container(cb).id(widget::Id::from(node.id.clone())).into()

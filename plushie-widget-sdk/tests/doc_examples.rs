@@ -87,7 +87,8 @@ fn doc_prop_parsing() {
     let _color: Option<Color> = plushie_core::types::Color::extract(&props, "color")
         .map(|c| iced_convert::color(&c));
     let _show_label: bool = prop_bool_default(&props, "show_label", true);
-    let _width: Length = prop_length(&props, "width", Length::Fill);
+    let _width: Option<plushie_core::types::Length> =
+        plushie_core::types::Length::extract(&props, "width");
 
     // TreeNode shorthand style
     let node = node_with_props("n1", "test", props.to_value());

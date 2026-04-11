@@ -11,7 +11,9 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Color, Font, InputPurpose, Length, LineHeight, PlushieType, Wrapping};
+use plushie_core::types::{
+    Color, Font, InputPurpose, Length, LineHeight, PlushieType, Style as CoreStyle, Wrapping,
+};
 
 // ---------------------------------------------------------------------------
 // Key binding helpers
@@ -301,6 +303,7 @@ struct TextEditorProps {
     highlight_theme: Option<String>,
     placeholder_color: Option<Color>,
     selection_color: Option<Color>,
+    style: Option<CoreStyle>,
 }
 
 impl TextEditorProps {
@@ -323,6 +326,7 @@ impl TextEditorProps {
             highlight_theme: String::extract(p, "highlight_theme"),
             placeholder_color: Color::extract(p, "placeholder_color"),
             selection_color: Color::extract(p, "selection_color"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -487,36 +491,35 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     // Style closure, shared between plain and highlighted paths
     #[allow(clippy::type_complexity)]
     let style_fn: Option<Box<dyn Fn(&iced::Theme, text_editor::Status) -> text_editor::Style>> =
-        if let Some(style_val) = props.get_value("style") {
-            if let Some(style_name) = style_val.as_str() {
-                match style_name {
-                    "default" => {
-                        if placeholder_color.is_some() || selection_color.is_some() {
-                            Some(Box::new(move |theme: &iced::Theme, status| {
-                                let mut style = text_editor::default(theme, status);
-                                if let Some(pc) = placeholder_color {
-                                    style.placeholder = pc;
-                                }
-                                if let Some(sc) = selection_color {
-                                    style.selection = sc;
-                                }
-                                style
-                            }))
-                        } else {
-                            Some(Box::new(text_editor::default))
-                        }
-                    }
-                    _ => {
-                        log::warn!(
-                            "unknown style {:?} for widget type {:?}, using default",
-                            style_name,
-                            "text_editor"
-                        );
-                        None
+        match &tp.style {
+            Some(CoreStyle::Preset(name)) => match name.as_str() {
+                "default" => {
+                    if placeholder_color.is_some() || selection_color.is_some() {
+                        Some(Box::new(move |theme: &iced::Theme, status| {
+                            let mut style = text_editor::default(theme, status);
+                            if let Some(pc) = placeholder_color {
+                                style.placeholder = pc;
+                            }
+                            if let Some(sc) = selection_color {
+                                style.selection = sc;
+                            }
+                            style
+                        }))
+                    } else {
+                        Some(Box::new(text_editor::default))
                     }
                 }
-            } else if let Some(obj) = style_val.as_object() {
-                let ov = get_style_overrides(&node.id, obj, ctx.caches);
+                _ => {
+                    log::warn!(
+                        "unknown style {:?} for widget type {:?}, using default",
+                        name,
+                        "text_editor"
+                    );
+                    None
+                }
+            },
+            Some(CoreStyle::Custom(style_map)) => {
+                let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
                 Some(Box::new(move |theme: &iced::Theme, status| {
                     let base_fn: fn(&iced::Theme, text_editor::Status) -> text_editor::Style =
                         match ov.preset_base.as_deref() {
@@ -564,23 +567,24 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                     }
                     style
                 }))
-            } else {
-                None
             }
-        } else if placeholder_color.is_some() || selection_color.is_some() {
-            // No style prop but direct color overrides present
-            Some(Box::new(move |theme: &iced::Theme, status| {
-                let mut style = text_editor::default(theme, status);
-                if let Some(pc) = placeholder_color {
-                    style.placeholder = pc;
+            None => {
+                if placeholder_color.is_some() || selection_color.is_some() {
+                    // No style prop but direct color overrides present
+                    Some(Box::new(move |theme: &iced::Theme, status| {
+                        let mut style = text_editor::default(theme, status);
+                        if let Some(pc) = placeholder_color {
+                            style.placeholder = pc;
+                        }
+                        if let Some(sc) = selection_color {
+                            style.selection = sc;
+                        }
+                        style
+                    }))
+                } else {
+                    None
                 }
-                if let Some(sc) = selection_color {
-                    style.selection = sc;
-                }
-                style
-            }))
-        } else {
-            None
+            }
         };
 
     if let Some(purpose) = tp.input_purpose {

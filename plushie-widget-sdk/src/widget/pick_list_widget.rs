@@ -11,7 +11,7 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Ellipsis, Font, Length, LineHeight, Padding, PlushieType, Shaping,
+    Ellipsis, Font, Length, LineHeight, Padding, PlushieType, Shaping, Style as CoreStyle,
 };
 
 struct PickListProps {
@@ -26,6 +26,7 @@ struct PickListProps {
     menu_height: Option<f32>,
     shaping: Option<Shaping>,
     ellipsis: Option<Ellipsis>,
+    style: Option<CoreStyle>,
 }
 
 impl PickListProps {
@@ -53,6 +54,7 @@ impl PickListProps {
             menu_height: f32::extract(p, "menu_height"),
             shaping: Shaping::extract(p, "shaping"),
             ellipsis: Ellipsis::extract(p, "ellipsis"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -138,22 +140,23 @@ fn render_pick_list<'a, R: PlushieRenderer>(
         });
     }
 
-    // Style: keep as raw prop access (string name or style map object)
-    if let Some(style_val) = node.props.get_value("style") {
-        if let Some(style_name) = style_val.as_str() {
-            pl = match style_name {
+    // Style: preset name or custom style map
+    match &pp.style {
+        Some(CoreStyle::Preset(name)) => {
+            pl = match name.as_str() {
                 "default" => pl.style(pick_list::default),
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
+                        name,
                         "pick_list"
                     );
                     pl
                 }
             };
-        } else if let Some(obj) = style_val.as_object() {
-            let ov = get_style_overrides(&node.id, obj, ctx.caches);
+        }
+        Some(CoreStyle::Custom(style_map)) => {
+            let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
             pl = pl.style(move |theme: &iced::Theme, status| {
                 let mut style = match ov.preset_base.as_deref() {
                     Some("default") => pick_list::default(theme, status),
@@ -170,6 +173,7 @@ fn render_pick_list<'a, R: PlushieRenderer>(
                 style
             });
         }
+        None => {}
     }
 
     if prop_bool_default(&node.props, "on_open", false) {

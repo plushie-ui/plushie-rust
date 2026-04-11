@@ -9,7 +9,9 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Font, Length, LineHeight, PlushieType, Shaping, Wrapping};
+use plushie_core::types::{
+    Font, Length, LineHeight, PlushieType, Shaping, Style as CoreStyle, Wrapping,
+};
 
 struct RadioProps {
     label: Option<String>,
@@ -24,6 +26,7 @@ struct RadioProps {
     line_height: Option<LineHeight>,
     shaping: Option<Shaping>,
     wrapping: Option<Wrapping>,
+    style: Option<CoreStyle>,
 }
 
 impl RadioProps {
@@ -42,6 +45,7 @@ impl RadioProps {
             line_height: LineHeight::extract(p, "line_height"),
             shaping: Shaping::extract(p, "shaping"),
             wrapping: Wrapping::extract(p, "wrapping"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -122,22 +126,23 @@ fn render_radio<'a, R: PlushieRenderer>(
         r = r.wrapping(iced_convert::wrapping(w));
     }
 
-    // Style: string name or style map object
-    if let Some(style_val) = node.props.get_value("style") {
-        if let Some(style_name) = style_val.as_str() {
-            r = match style_name {
+    // Style: preset name or custom style map
+    match &rp.style {
+        Some(CoreStyle::Preset(name)) => {
+            r = match name.as_str() {
                 "default" => r.style(iced::widget::radio::default),
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
+                        name,
                         "radio"
                     );
                     r
                 }
             };
-        } else if let Some(obj) = style_val.as_object() {
-            let ov = get_style_overrides(&node.id, obj, ctx.caches);
+        }
+        Some(CoreStyle::Custom(style_map)) => {
+            let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
             r = r.style(move |theme: &iced::Theme, status| {
                 let mut style = match ov.preset_base.as_deref() {
                     Some("default") => iced::widget::radio::default(theme, status),
@@ -154,6 +159,7 @@ fn render_radio<'a, R: PlushieRenderer>(
                 style
             });
         }
+        None => {}
     }
 
     {

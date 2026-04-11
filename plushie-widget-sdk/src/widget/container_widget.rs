@@ -11,7 +11,7 @@ use crate::widget::helpers::*;
 
 use plushie_core::types::{
     Background, Border, Color, HorizontalAlignment, Length, Padding, PlushieType, Shadow,
-    VerticalAlignment,
+    Style as CoreStyle, VerticalAlignment,
 };
 
 struct ContainerProps {
@@ -24,6 +24,7 @@ struct ContainerProps {
     color: Option<Color>,
     border: Option<Border>,
     shadow: Option<Shadow>,
+    style: Option<CoreStyle>,
 }
 
 impl ContainerProps {
@@ -39,6 +40,7 @@ impl ContainerProps {
             color: Color::extract(p, "color"),
             border: Border::extract(p, "border"),
             shadow: Shadow::extract(p, "shadow"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -134,9 +136,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
         }
 
         // Named style or style map (overrides inline if both present)
-        if let Some(style_val) = props.get_value("style") {
-            if let Some(style_name) = style_val.as_str() {
-                c = match style_name {
+        match &cp.style {
+            Some(CoreStyle::Preset(name)) => {
+                c = match name.as_str() {
                     "transparent" => c.style(container::transparent),
                     "rounded_box" => c.style(container::rounded_box),
                     "bordered_box" => c.style(container::bordered_box),
@@ -149,14 +151,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
                     _ => {
                         log::warn!(
                             "unknown style {:?} for widget type {:?}, using default",
-                            style_name,
+                            name,
                             "container"
                         );
                         c
                     }
                 };
-            } else if let Some(obj) = style_val.as_object() {
-                let ov = get_style_overrides(&node.id, obj, ctx.caches);
+            }
+            Some(CoreStyle::Custom(style_map)) => {
+                let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
                 c = c.style(move |theme| {
                     let mut style = match ov.preset_base.as_deref() {
                         Some("transparent") => container::transparent(theme),
@@ -185,6 +188,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
                     style
                 });
             }
+            None => {}
         }
 
         // Widget ID for operations targeting

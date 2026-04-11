@@ -9,7 +9,7 @@ use iced::widget::{
     button, checkbox, container, pick_list, progress_bar, rule, slider, text_editor, text_input,
     toggler,
 };
-use iced::{Border, Color, Font, Padding, Pixels, Shadow};
+use iced::{Border, Color, Font, Pixels, Shadow};
 use plushie_core::protocol::Props;
 use plushie_core::types::PlushieType;
 use serde_json::Value;
@@ -28,90 +28,6 @@ use plushie_core::types::Shaping as CoreShaping;
 // Re-export all public prop helpers so widget submodules using `use super::*`
 // continue to find them without changes.
 pub use crate::prop_helpers::*;
-
-// ---------------------------------------------------------------------------
-// Padding parsing -- handles both number and object formats
-// ---------------------------------------------------------------------------
-
-/// Parse a padding value from props. Returns `None` when no padding is
-/// specified, allowing the caller to skip the `.padding()` call and let
-/// iced use its widget-specific default.
-///
-/// Handles:
-/// - `"padding": 10` -- uniform padding
-/// - `"padding": {"top": 10, "right": 5, "bottom": 10, "left": 5}` -- per-side
-/// - Individual `"padding_top"` etc. keys (legacy)
-pub fn parse_padding_value(props: &Props) -> Option<Padding> {
-    let padding_val = wire_map(props).and_then(|p| p.get("padding"));
-
-    match padding_val {
-        Some(Value::Object(obj)) => {
-            let top = obj
-                .get("top")
-                .and_then(|v| v.as_f64())
-                .map(|v| v as f32)
-                .unwrap_or(0.0)
-                .max(0.0);
-            let right = obj
-                .get("right")
-                .and_then(|v| v.as_f64())
-                .map(|v| v as f32)
-                .unwrap_or(0.0)
-                .max(0.0);
-            let bottom = obj
-                .get("bottom")
-                .and_then(|v| v.as_f64())
-                .map(|v| v as f32)
-                .unwrap_or(0.0)
-                .max(0.0);
-            let left = obj
-                .get("left")
-                .and_then(|v| v.as_f64())
-                .map(|v| v as f32)
-                .unwrap_or(0.0)
-                .max(0.0);
-            Some(Padding {
-                top,
-                right,
-                bottom,
-                left,
-            })
-        }
-        Some(Value::Number(n)) => {
-            let base = n.as_f64().map(|v| v as f32).unwrap_or(0.0).max(0.0);
-            // Check for per-side overrides (legacy format)
-            let top = prop_f32(props, "padding_top").unwrap_or(base).max(0.0);
-            let right = prop_f32(props, "padding_right").unwrap_or(base).max(0.0);
-            let bottom = prop_f32(props, "padding_bottom").unwrap_or(base).max(0.0);
-            let left = prop_f32(props, "padding_left").unwrap_or(base).max(0.0);
-            Some(Padding {
-                top,
-                right,
-                bottom,
-                left,
-            })
-        }
-        _ => {
-            // No padding prop -- check legacy individual keys.
-            // If none are present, return None to preserve iced defaults.
-            let top = prop_f32(props, "padding_top");
-            let right = prop_f32(props, "padding_right");
-            let bottom = prop_f32(props, "padding_bottom");
-            let left = prop_f32(props, "padding_left");
-
-            if top.is_some() || right.is_some() || bottom.is_some() || left.is_some() {
-                Some(Padding {
-                    top: top.unwrap_or(0.0).max(0.0),
-                    right: right.unwrap_or(0.0).max(0.0),
-                    bottom: bottom.unwrap_or(0.0).max(0.0),
-                    left: left.unwrap_or(0.0).max(0.0),
-                })
-            } else {
-                None
-            }
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Font family interning
@@ -255,6 +171,24 @@ pub fn parse_style_overrides(obj: &serde_json::Map<String, Value>) -> StyleOverr
             .get("focused")
             .and_then(|v| v.as_object())
             .map(parse_style_map_fields),
+    }
+}
+
+/// Convert a [`plushie_core::types::Style`] `Custom` variant into
+/// `StyleOverrides` by round-tripping through the wire format.
+///
+/// `Preset` variants should be handled with direct string matching
+/// before reaching this function.
+pub fn style_overrides_from_style_map(
+    node_id: &str,
+    style_map: &plushie_core::types::StyleMap,
+    caches: &super::SharedState,
+) -> StyleOverrides {
+    let prop_value = style_map.wire_encode();
+    let json_value: Value = prop_value.into();
+    match json_value.as_object() {
+        Some(obj) => get_style_overrides(node_id, obj, caches),
+        None => parse_style_overrides(&serde_json::Map::new()),
     }
 }
 
@@ -756,81 +690,6 @@ mod tests {
     fn prop_str_returns_string() {
         let p = make_props(json!({"label": "hello"}));
         assert_eq!(prop_str(&p, "label"), Some("hello".to_string()));
-    }
-
-    // -- prop_length --
-
-    #[test]
-    fn prop_length_fill_string() {
-        let p = make_props(json!({"width": "fill"}));
-        assert_eq!(prop_length(&p, "width", Length::Shrink), Fill);
-    }
-
-    #[test]
-    fn prop_length_shrink_string() {
-        let p = make_props(json!({"width": "shrink"}));
-        assert_eq!(prop_length(&p, "width", Fill), Length::Shrink);
-    }
-
-    #[test]
-    fn prop_length_fixed_number() {
-        let p = make_props(json!({"width": 200.0}));
-        assert_eq!(
-            prop_length(&p, "width", Length::Shrink),
-            Length::Fixed(200.0)
-        );
-    }
-
-    #[test]
-    fn prop_length_fill_portion_object() {
-        let p = make_props(json!({"width": {"fill_portion": 3}}));
-        assert_eq!(
-            prop_length(&p, "width", Length::Shrink),
-            Length::FillPortion(3)
-        );
-    }
-
-    #[test]
-    fn prop_length_returns_fallback_for_missing() {
-        let p = make_props(json!({}));
-        assert_eq!(prop_length(&p, "width", Fill), Fill);
-    }
-
-    #[test]
-    fn prop_length_numeric_string() {
-        let p = make_props(json!({"width": "150"}));
-        assert_eq!(
-            prop_length(&p, "width", Length::Shrink),
-            Length::Fixed(150.0)
-        );
-    }
-
-    // -- parse_padding_value --
-
-    #[test]
-    fn parse_padding_uniform_number() {
-        let p = make_props(json!({"padding": 10}));
-        let pad = parse_padding_value(&p).unwrap();
-        assert_eq!(pad.top, 10.0);
-        assert_eq!(pad.right, 10.0);
-        assert_eq!(pad.bottom, 10.0);
-        assert_eq!(pad.left, 10.0);
-    }
-
-    #[test]
-    fn parse_padding_per_side_object() {
-        let p = make_props(json!({"padding": {"top": 1, "right": 2, "bottom": 3, "left": 4}}));
-        let pad = parse_padding_value(&p).unwrap();
-        assert_eq!(pad.top, 1.0);
-        assert_eq!(pad.right, 2.0);
-        assert_eq!(pad.bottom, 3.0);
-        assert_eq!(pad.left, 4.0);
-    }
-
-    #[test]
-    fn parse_padding_returns_none_when_absent() {
-        let p = make_props(json!({}));
-        assert!(parse_padding_value(&p).is_none());
     }
 
     // -- Style map tests --

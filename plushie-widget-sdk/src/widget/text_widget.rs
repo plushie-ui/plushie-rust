@@ -11,7 +11,7 @@ use crate::widget::helpers::*;
 
 use plushie_core::types::{
     Color, Ellipsis, Font, HorizontalAlignment, Length, LineHeight, PlushieType, Shaping,
-    VerticalAlignment, Wrapping,
+    Style as CoreStyle, VerticalAlignment, Wrapping,
 };
 
 struct TextProps {
@@ -27,6 +27,7 @@ struct TextProps {
     wrapping: Option<Wrapping>,
     shaping: Option<Shaping>,
     ellipsis: Option<Ellipsis>,
+    style: Option<CoreStyle>,
 }
 
 impl TextProps {
@@ -45,6 +46,7 @@ impl TextProps {
             wrapping: Wrapping::extract(p, "wrapping"),
             shaping: Shaping::extract(p, "shaping"),
             ellipsis: Ellipsis::extract(p, "ellipsis"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -107,9 +109,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
             t = t.ellipsis(iced_convert::ellipsis(e));
         }
 
-        // Named style (kept as raw prop access; StyleMap is complex)
-        if let Some(style_name) = prop_str(&node.props, "style") {
-            t = match style_name.as_str() {
+        // Named style preset (text widget only supports presets)
+        if let Some(CoreStyle::Preset(name)) = &tp.style {
+            t = match name.as_str() {
                 "primary" => t.style(text::primary),
                 "secondary" => t.style(text::secondary),
                 "success" => t.style(text::success),
@@ -118,7 +120,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
+                        name,
                         "text"
                     );
                     t.style(text::default)

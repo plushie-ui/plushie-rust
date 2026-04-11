@@ -10,7 +10,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::PlushieType;
+use plushie_core::types::{PlushieType, Style as CoreStyle};
 
 struct TooltipProps {
     tip: Option<String>,
@@ -18,6 +18,7 @@ struct TooltipProps {
     padding: Option<f32>,
     snap_within_viewport: Option<bool>,
     delay: Option<f64>,
+    style: Option<CoreStyle>,
 }
 
 impl TooltipProps {
@@ -29,6 +30,7 @@ impl TooltipProps {
             padding: f32::extract(p, "padding"),
             snap_within_viewport: bool::extract(p, "snap_within_viewport"),
             delay: f64::extract(p, "delay"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -94,10 +96,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
             tt = tt.delay(Duration::from_millis(d as u64));
         }
 
-        // Style: keep as raw prop access (string name or style map)
-        if let Some(style_val) = node.props.get_value("style") {
-            if let Some(style_name) = style_val.as_str() {
-                tt = match style_name {
+        // Style: preset name or custom style map
+        match &tp.style {
+            Some(CoreStyle::Preset(name)) => {
+                tt = match name.as_str() {
                     "transparent" => tt.style(container::transparent),
                     "rounded_box" => tt.style(container::rounded_box),
                     "bordered_box" => tt.style(container::bordered_box),
@@ -110,16 +112,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
                     _ => {
                         log::warn!(
                             "unknown style {:?} for widget type {:?}, using default",
-                            style_name,
+                            name,
                             "tooltip"
                         );
                         tt
                     }
                 };
-            } else if let Some(obj) = style_val.as_object() {
-                let ov = get_style_overrides(&node.id, obj, ctx.caches);
+            }
+            Some(CoreStyle::Custom(style_map)) => {
+                let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
                 tt = tt.style(move |_theme| container_style_from_base(&ov.base));
             }
+            None => {}
         }
 
         tt.into()

@@ -9,7 +9,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, Padding, PlushieType};
+use plushie_core::types::{Length, Padding, PlushieType, Style as CoreStyle};
 
 struct ButtonProps {
     label: Option<String>,
@@ -17,6 +17,7 @@ struct ButtonProps {
     padding: Option<Padding>,
     width: Option<Length>,
     height: Option<Length>,
+    style: Option<CoreStyle>,
 }
 
 impl ButtonProps {
@@ -28,6 +29,7 @@ impl ButtonProps {
             padding: Padding::extract(p, "padding"),
             width: Length::extract(p, "width"),
             height: Length::extract(p, "height"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -83,10 +85,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
             b = b.on_press(Message::Click(window_id, id));
         }
 
-        // Style: string name or style map object (kept as raw prop access)
-        if let Some(style_val) = node.props.get_value("style") {
-            if let Some(style_name) = style_val.as_str() {
-                b = match style_name {
+        // Style: preset name or custom style map
+        match &bp.style {
+            Some(CoreStyle::Preset(name)) => {
+                b = match name.as_str() {
                     "primary" => b.style(button::primary),
                     "secondary" => b.style(button::secondary),
                     "success" => b.style(button::success),
@@ -98,14 +100,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
                     _ => {
                         log::warn!(
                             "unknown style {:?} for widget type {:?}, using default",
-                            style_name,
+                            name,
                             "button"
                         );
                         b.style(button::primary)
                     }
                 };
-            } else if let Some(obj) = style_val.as_object() {
-                let ov = get_style_overrides(&node.id, obj, ctx.caches);
+            }
+            Some(CoreStyle::Custom(style_map)) => {
+                let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
                 b = b.style(move |theme: &iced::Theme, status| {
                     let mut style = match ov.preset_base.as_deref() {
                         Some("primary") => button::primary(theme, status),
@@ -147,6 +150,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
                     style
                 });
             }
+            None => {}
         }
 
         {

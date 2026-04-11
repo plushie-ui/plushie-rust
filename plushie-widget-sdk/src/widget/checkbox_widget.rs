@@ -12,7 +12,8 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Font as PlushieFont, Length, LineHeight as PlushieLineHeight, PlushieType, Shaping, Wrapping,
+    Font as PlushieFont, Length, LineHeight as PlushieLineHeight, PlushieType, Shaping,
+    Style as CoreStyle, Wrapping,
 };
 
 struct CheckboxProps {
@@ -27,6 +28,7 @@ struct CheckboxProps {
     line_height: Option<PlushieLineHeight>,
     shaping: Option<Shaping>,
     wrapping: Option<Wrapping>,
+    style: Option<CoreStyle>,
 }
 
 impl CheckboxProps {
@@ -44,6 +46,7 @@ impl CheckboxProps {
             line_height: PlushieLineHeight::extract(p, "line_height"),
             shaping: Shaping::extract(p, "shaping"),
             wrapping: Wrapping::extract(p, "wrapping"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -167,10 +170,10 @@ fn render_checkbox<'a, R: PlushieRenderer>(
         cb = cb.icon(icon_struct);
     }
 
-    // Style: string name or style map object
-    if let Some(style_val) = node.props.get_value("style") {
-        if let Some(style_name) = style_val.as_str() {
-            cb = match style_name {
+    // Style: preset name or custom style map
+    match &cp.style {
+        Some(CoreStyle::Preset(name)) => {
+            cb = match name.as_str() {
                 "primary" => cb.style(checkbox::primary),
                 "secondary" => cb.style(checkbox::secondary),
                 "success" => cb.style(checkbox::success),
@@ -178,14 +181,15 @@ fn render_checkbox<'a, R: PlushieRenderer>(
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
+                        name,
                         "checkbox"
                     );
                     cb.style(checkbox::primary)
                 }
             };
-        } else if let Some(obj) = style_val.as_object() {
-            let ov = get_style_overrides(&node.id, obj, ctx.caches);
+        }
+        Some(CoreStyle::Custom(style_map)) => {
+            let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
             cb = cb.style(move |theme: &iced::Theme, status| {
                 let mut style = match ov.preset_base.as_deref() {
                     Some("primary") => checkbox::primary(theme, status),
@@ -226,6 +230,7 @@ fn render_checkbox<'a, R: PlushieRenderer>(
                 style
             });
         }
+        None => {}
     }
 
     {

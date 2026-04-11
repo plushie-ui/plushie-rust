@@ -40,7 +40,7 @@ pub use crate::iced_convert;
 // -- Widget helpers (parsing, style application) --
 pub use crate::widget::helpers::{
     StyleMapFields, StyleOverrides, container_style_from_base, get_style_overrides,
-    parse_padding_value, parse_style_map_fields, parse_style_overrides,
+    parse_style_map_fields, parse_style_overrides, style_overrides_from_style_map,
 };
 
 // -- Commonly needed iced types --

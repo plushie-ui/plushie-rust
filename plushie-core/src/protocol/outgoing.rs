@@ -146,7 +146,7 @@ impl OutgoingEvent {
 ///
 /// All fields default to `false`, so partial JSON like `{"shift": true}`
 /// deserializes correctly with unset modifiers left as `false`.
-#[derive(Debug, Clone, Default, Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct KeyModifiers {
     #[serde(default)]
     pub shift: bool,

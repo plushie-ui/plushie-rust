@@ -11,7 +11,7 @@
 //! let size = prop_f32(props, "size").unwrap_or(14.0);
 //! ```
 
-use iced::{Color, Length};
+use iced::Color;
 use plushie_core::protocol::Props;
 use plushie_core::types::PlushieType;
 use serde_json::Value;
@@ -258,20 +258,6 @@ pub fn prop_bool_default(props: &Props, key: &str, default: bool) -> bool {
     prop_bool(props, key).unwrap_or(default)
 }
 
-/// Get a Length prop value, returning `fallback` when absent or unparseable.
-pub fn prop_length(props: &Props, key: &str, fallback: Length) -> Length {
-    props
-        .get_value(key)
-        .as_ref()
-        .and_then(|v| match value_to_length(v) {
-            Some(len) => Some(len),
-            None => {
-                log::trace!("prop '{}': expected length, got {:?}", key, v);
-                None
-            }
-        })
-        .unwrap_or(fallback)
-}
 
 /// Parse a "range" prop as `[min, max]` into an inclusive `f32` range.
 pub fn prop_range_f32(props: &Props) -> std::ops::RangeInclusive<f32> {
@@ -335,38 +321,6 @@ pub fn prop_f32_array(props: &Props, key: &str) -> Option<Vec<f32>> {
             log::trace!("prop '{}': expected array, got {:?}", key, val);
             None
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Value conversion helpers (also public for advanced use)
-// ---------------------------------------------------------------------------
-
-/// Convert a JSON value to an iced Length.
-pub fn value_to_length(val: &Value) -> Option<Length> {
-    match val {
-        Value::Number(n) => n
-            .as_f64()
-            .map(f64_to_f32)
-            .filter(|v| *v >= 0.0)
-            .map(Length::Fixed),
-        Value::String(s) => match s.as_str() {
-            "fill" => Some(Length::Fill),
-            "shrink" => Some(Length::Shrink),
-            other => other
-                .parse::<f32>()
-                .ok()
-                .filter(|v| *v >= 0.0)
-                .map(Length::Fixed),
-        },
-        Value::Object(obj) => {
-            if let Some(n) = obj.get("fill_portion").and_then(|v| v.as_u64()) {
-                Some(Length::FillPortion(u16::try_from(n).unwrap_or(1).max(1)))
-            } else {
-                Some(Length::Shrink)
-            }
-        }
-        _ => None,
     }
 }
 
@@ -695,27 +649,6 @@ mod tests {
     }
 
     #[test]
-    fn test_prop_length_fixed() {
-        let p = make_props(json!({"width": 100}));
-        let len = prop_length(&p, "width", Length::Shrink);
-        assert!(matches!(len, Length::Fixed(v) if (v - 100.0).abs() < 0.001));
-    }
-
-    #[test]
-    fn test_prop_length_fill() {
-        let p = make_props(json!({"width": "fill"}));
-        let len = prop_length(&p, "width", Length::Shrink);
-        assert!(matches!(len, Length::Fill));
-    }
-
-    #[test]
-    fn test_prop_length_fallback() {
-        let p = make_props(json!({}));
-        let len = prop_length(&p, "width", Length::Shrink);
-        assert!(matches!(len, Length::Shrink));
-    }
-
-    #[test]
     fn test_prop_range_f32_present() {
         let p = make_props(json!({"range": [10.0, 50.0]}));
         let r = prop_range_f32(&p);
@@ -766,13 +699,6 @@ mod tests {
     fn test_prop_f32_array_not_array() {
         let p = make_props(json!({"data": "nope"}));
         assert!(prop_f32_array(&p, "data").is_none());
-    }
-
-    #[test]
-    fn test_value_to_length_fill_portion() {
-        let val = json!({"fill_portion": 3});
-        let len = value_to_length(&val).unwrap();
-        assert!(matches!(len, Length::FillPortion(3)));
     }
 
     #[test]

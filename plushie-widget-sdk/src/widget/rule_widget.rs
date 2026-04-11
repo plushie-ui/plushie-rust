@@ -8,13 +8,14 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::PlushieType;
+use plushie_core::types::{PlushieType, Style as CoreStyle};
 
 struct RuleProps {
     direction: Option<String>,
     width: Option<f32>,
     height: Option<f32>,
     thickness: Option<f32>,
+    style: Option<CoreStyle>,
 }
 
 impl RuleProps {
@@ -25,6 +26,7 @@ impl RuleProps {
             width: f32::extract(p, "width"),
             height: f32::extract(p, "height"),
             thickness: f32::extract(p, "thickness"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -57,32 +59,35 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
             rule::horizontal(thickness)
         };
 
-        // Style: string name or style map object
-        if let Some(style_val) = node.props.get_value("style") {
-            if let Some(style_name) = style_val.as_str() {
-                r = match style_name {
+        // Style: preset name or custom style map
+        match &rp.style {
+            Some(CoreStyle::Preset(name)) => {
+                r = match name.as_str() {
                     "default" => r.style(rule::default),
                     "weak" => r.style(rule::weak),
                     _ => {
                         log::warn!(
                             "unknown style {:?} for widget type {:?}, using default",
-                            style_name,
+                            name,
                             "rule"
                         );
                         r
                     }
                 };
-            } else if let Some(obj) = style_val.as_object() {
-                let ov = get_style_overrides(&node.id, obj, ctx.caches);
+            }
+            Some(CoreStyle::Custom(style_map)) => {
+                let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
                 r = r.style(move |theme: &iced::Theme| {
-                    let base_fn: fn(&iced::Theme) -> rule::Style = match ov.preset_base.as_deref() {
-                        Some("default") => rule::default,
-                        Some("weak") => rule::weak,
-                        _ => rule::default,
-                    };
+                    let base_fn: fn(&iced::Theme) -> rule::Style =
+                        match ov.preset_base.as_deref() {
+                            Some("default") => rule::default,
+                            Some("weak") => rule::weak,
+                            _ => rule::default,
+                        };
                     apply_rule_style(base_fn(theme), &ov.base)
                 });
             }
+            None => {}
         }
         r.into()
     }

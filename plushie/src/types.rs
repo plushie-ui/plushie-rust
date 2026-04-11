@@ -36,20 +36,12 @@ pub enum Align {
 }
 
 // -------------------------------------------------------------------------
-// SDK-specific: KeyModifiers
+// Re-export: KeyModifiers
 // -------------------------------------------------------------------------
 
 /// Keyboard modifier state exposed to app `update/2`.
 ///
-/// This is the SDK's user-facing type, separate from the protocol-level
-/// `plushie_core::protocol::KeyModifiers` which has Serialize/Deserialize
-/// for wire transport. The SDK version adds `Copy` and `Eq` for
-/// ergonomic pattern matching in event handlers.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct KeyModifiers {
-    pub ctrl: bool,
-    pub shift: bool,
-    pub alt: bool,
-    pub logo: bool,
-    pub command: bool,
-}
+/// Re-exported from `plushie_core::protocol::KeyModifiers`. The canonical
+/// definition lives in plushie-core with all necessary derives (Copy, Eq,
+/// Serialize, Deserialize).
+pub use plushie_core::protocol::KeyModifiers;

@@ -277,16 +277,7 @@ fn split_scoped_id(scoped: &str) -> (String, Vec<String>) {
 
 /// Extract KeyModifiers from an OutgoingEvent.
 fn extract_modifiers(event: &OutgoingEvent) -> KeyModifiers {
-    match &event.modifiers {
-        Some(m) => KeyModifiers {
-            shift: m.shift,
-            ctrl: m.ctrl,
-            alt: m.alt,
-            logo: m.logo,
-            command: m.command,
-        },
-        None => KeyModifiers::default(),
-    }
+    event.modifiers.unwrap_or_default()
 }
 
 fn json_str(value: &Value, key: &str) -> String {

@@ -10,7 +10,8 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Font, HorizontalAlignment, Length, LineHeight, PlushieType, Shaping, Wrapping,
+    Font, HorizontalAlignment, Length, LineHeight, PlushieType, Shaping, Style as CoreStyle,
+    Wrapping,
 };
 
 struct TogglerProps {
@@ -26,6 +27,7 @@ struct TogglerProps {
     shaping: Option<Shaping>,
     wrapping: Option<Wrapping>,
     text_alignment: Option<HorizontalAlignment>,
+    style: Option<CoreStyle>,
 }
 
 impl TogglerProps {
@@ -44,6 +46,7 @@ impl TogglerProps {
             shaping: Shaping::extract(p, "shaping"),
             wrapping: Wrapping::extract(p, "wrapping"),
             text_alignment: HorizontalAlignment::extract(p, "text_alignment"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -119,22 +122,23 @@ fn render_toggler<'a, R: PlushieRenderer>(
         t = t.alignment(iced_convert::horizontal_alignment(align));
     }
 
-    // Style: string name or style map object
-    if let Some(style_val) = node.props.get_value("style") {
-        if let Some(style_name) = style_val.as_str() {
-            t = match style_name {
+    // Style: preset name or custom style map
+    match &tp.style {
+        Some(CoreStyle::Preset(name)) => {
+            t = match name.as_str() {
                 "default" => t.style(toggler::default),
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
+                        name,
                         "toggler"
                     );
                     t
                 }
             };
-        } else if let Some(obj) = style_val.as_object() {
-            let ov = get_style_overrides(&node.id, obj, ctx.caches);
+        }
+        Some(CoreStyle::Custom(style_map)) => {
+            let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
             t = t.style(move |theme: &iced::Theme, status| {
                 let mut style = match ov.preset_base.as_deref() {
                     Some("default") => toggler::default(theme, status),
@@ -175,6 +179,7 @@ fn render_toggler<'a, R: PlushieRenderer>(
                 style
             });
         }
+        None => {}
     }
 
     {

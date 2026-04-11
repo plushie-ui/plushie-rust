@@ -9,7 +9,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, PlushieType, Range};
+use plushie_core::types::{Length, PlushieType, Range, Style as CoreStyle};
 
 struct ProgressBarProps {
     range: Option<Range>,
@@ -18,6 +18,7 @@ struct ProgressBarProps {
     height: Option<Length>,
     vertical: bool,
     label: Option<String>,
+    style: Option<CoreStyle>,
 }
 
 impl ProgressBarProps {
@@ -30,6 +31,7 @@ impl ProgressBarProps {
             height: Length::extract(p, "height"),
             vertical: prop_bool_default(p, "vertical", false),
             label: String::extract(p, "label"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -75,10 +77,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
             pb = pb.label(label);
         }
 
-        // Style: string name or style map object
-        if let Some(style_val) = node.props.get_value("style") {
-            if let Some(style_name) = style_val.as_str() {
-                pb = match style_name {
+        // Style: preset name or custom style map
+        match &pbp.style {
+            Some(CoreStyle::Preset(name)) => {
+                pb = match name.as_str() {
                     "primary" => pb.style(progress_bar::primary),
                     "secondary" => pb.style(progress_bar::secondary),
                     "success" => pb.style(progress_bar::success),
@@ -87,14 +89,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
                     _ => {
                         log::warn!(
                             "unknown style {:?} for widget type {:?}, using default",
-                            style_name,
+                            name,
                             "progress_bar"
                         );
                         pb.style(progress_bar::primary)
                     }
                 };
-            } else if let Some(obj) = style_val.as_object() {
-                let ov = get_style_overrides(&node.id, obj, ctx.caches);
+            }
+            Some(CoreStyle::Custom(style_map)) => {
+                let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
                 pb = pb.style(move |theme: &iced::Theme| {
                     let mut style = match ov.preset_base.as_deref() {
                         Some("primary") => progress_bar::primary(theme),
@@ -108,6 +111,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
                     style
                 });
             }
+            None => {}
         }
 
         pb.into()

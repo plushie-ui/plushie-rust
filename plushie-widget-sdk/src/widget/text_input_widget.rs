@@ -12,6 +12,7 @@ use crate::widget::helpers::*;
 
 use plushie_core::types::{
     Color, Font, HorizontalAlignment, InputPurpose, Length, LineHeight, Padding, PlushieType,
+    Style as CoreStyle,
 };
 
 struct TextInputProps {
@@ -26,6 +27,7 @@ struct TextInputProps {
     input_purpose: Option<InputPurpose>,
     placeholder_color: Option<Color>,
     selection_color: Option<Color>,
+    style: Option<CoreStyle>,
 }
 
 impl TextInputProps {
@@ -44,6 +46,7 @@ impl TextInputProps {
                 .or_else(|| InputPurpose::extract(p, "ime_purpose")),
             placeholder_color: Color::extract(p, "placeholder_color"),
             selection_color: Color::extract(p, "selection_color"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -162,11 +165,11 @@ fn render_text_input<'a, R: PlushieRenderer>(
     let placeholder_color = tp.placeholder_color.as_ref().map(iced_convert::color);
     let selection_color = tp.selection_color.as_ref().map(iced_convert::color);
 
-    // Style: string name or style map object
+    // Style: preset name or custom style map
     let has_color_overrides = placeholder_color.is_some() || selection_color.is_some();
-    if let Some(style_val) = props.get_value("style") {
-        if let Some(style_name) = style_val.as_str() {
-            ti = match style_name {
+    match &tp.style {
+        Some(CoreStyle::Preset(name)) => {
+            ti = match name.as_str() {
                 "default" => {
                     if has_color_overrides {
                         ti.style(move |theme: &iced::Theme, status| {
@@ -186,14 +189,15 @@ fn render_text_input<'a, R: PlushieRenderer>(
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
-                        style_name,
+                        name,
                         "text_input"
                     );
                     ti
                 }
             };
-        } else if let Some(obj) = style_val.as_object() {
-            let ov = get_style_overrides(&node.id, obj, ctx.caches);
+        }
+        Some(CoreStyle::Custom(style_map)) => {
+            let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
             ti = ti.style(move |theme: &iced::Theme, status| {
                 let base_fn: fn(&iced::Theme, text_input::Status) -> text_input::Style =
                     match ov.preset_base.as_deref() {
@@ -242,18 +246,21 @@ fn render_text_input<'a, R: PlushieRenderer>(
                 style
             });
         }
-    } else if has_color_overrides {
-        // No style prop but direct color overrides present
-        ti = ti.style(move |theme: &iced::Theme, status| {
-            let mut style = text_input::default(theme, status);
-            if let Some(pc) = placeholder_color {
-                style.placeholder = pc;
+        None => {
+            if has_color_overrides {
+                // No style prop but direct color overrides present
+                ti = ti.style(move |theme: &iced::Theme, status| {
+                    let mut style = text_input::default(theme, status);
+                    if let Some(pc) = placeholder_color {
+                        style.placeholder = pc;
+                    }
+                    if let Some(sc) = selection_color {
+                        style.selection = sc;
+                    }
+                    style
+                });
             }
-            if let Some(sc) = selection_color {
-                style.selection = sc;
-            }
-            style
-        });
+        }
     }
 
     ti.into()

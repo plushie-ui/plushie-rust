@@ -1,11 +1,21 @@
-#![allow(dead_code)] // Used by wire mode runner; dead when only direct feature is enabled.
+// Public API used by the wire runner; tests exercise it unconditionally.
+#![allow(dead_code)]
 
 //! Tree diffing: produce minimal patch operations between two trees.
 //!
 //! Walks old and new TreeNode trees simultaneously, emitting replace,
 //! update, insert, and remove operations. Children are matched by ID
-//! and diffed using a three-path strategy: fast (same order), medium
-//! (additions/removals only), and slow (reordering via LIS).
+//! and diffed using a three-path strategy:
+//!
+//! - **Fast**: identical ID sequences. Diff each pair recursively.
+//! - **Medium**: no reordering among common IDs. Pure inserts and
+//!   removes, no moves.
+//! - **Slow**: reordering detected. Uses longest increasing
+//!   subsequence (LIS) to minimize remove+insert operations.
+//!
+//! PatchOp output values are `serde_json::Value` for wire
+//! serialization, but the diff algorithm itself works on typed
+//! `TreeNode` structs.
 
 use std::collections::{HashMap, HashSet};
 
@@ -35,7 +45,7 @@ pub enum PatchOp {
 }
 
 fn node_to_value(node: &TreeNode) -> Value {
-    serde_json::to_value(node).unwrap_or_default()
+    serde_json::to_value(node).expect("TreeNode serialization cannot fail")
 }
 
 /// Diff two TreeNode trees and return a list of patch operations.
@@ -137,8 +147,11 @@ fn id_keyed_list_equal(old: &Value, new: &Value) -> bool {
         _ => return false,
     };
 
-    if old_arr.len() != new_arr.len() || old_arr.is_empty() {
+    if old_arr.len() != new_arr.len() {
         return false;
+    }
+    if old_arr.is_empty() {
+        return true;
     }
 
     // All elements must have "id" fields.

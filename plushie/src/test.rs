@@ -20,7 +20,7 @@ use serde_json::Value;
 
 use crate::event::{Event, EventType, WidgetEvent};
 use crate::runtime;
-use crate::widget::{EventResult, WidgetStateStore};
+use crate::widget::{EventResult, Interception, WidgetStateStore};
 use crate::App;
 
 // ---------------------------------------------------------------------------
@@ -114,29 +114,27 @@ impl<A: App> TestSession<A> {
     /// Dispatch a raw event through the widget interception layer
     /// and then to the app's update function.
     pub fn dispatch(&mut self, event: Event) {
-        // Step 1: Let composite widgets intercept the event.
-        let intercepted = self.widget_store.intercept_event(&event);
-
-        match intercepted {
-            Some(EventResult::Consumed) | Some(EventResult::UpdateState) => {
+        match self.widget_store.intercept_event(&event) {
+            Some(Interception { result: EventResult::Consumed, .. })
+            | Some(Interception { result: EventResult::UpdateState, .. }) => {
                 // Widget handled it; don't deliver to app.
             }
-            Some(EventResult::Emit { family, value }) => {
-                // Widget transformed the event; deliver the new one.
-                let widget_id = event.as_widget()
-                    .and_then(|w| w.scope.first().cloned())
-                    .unwrap_or_default();
+            Some(Interception {
+                result: EventResult::Emit { family, value },
+                widget_id,
+                outer_scope,
+                window_id,
+            }) => {
                 let new_event = Event::Widget(WidgetEvent {
                     event_type: crate::event::family_to_event_type(&family),
                     id: widget_id,
-                    window_id: "main".to_string(),
-                    scope: vec![],
+                    window_id,
+                    scope: outer_scope,
                     value,
                 });
                 let _cmd = A::update(&mut self.model, new_event);
             }
-            Some(EventResult::Ignored) | None => {
-                // Widget didn't handle it; deliver to app as-is.
+            Some(Interception { result: EventResult::Ignored, .. }) | None => {
                 let _cmd = A::update(&mut self.model, event);
             }
         }

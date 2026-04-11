@@ -24,7 +24,7 @@ use crate::App;
 use crate::command::Command;
 use crate::event::{Event, WidgetEvent};
 use crate::runtime;
-use crate::widget::{EventResult, WidgetStateStore};
+use crate::widget::{EventResult, Interception, WidgetStateStore};
 
 use super::queue_sink::{QueueSink, SinkEvent};
 
@@ -164,29 +164,30 @@ impl<A: App> DirectApp<A> {
     /// Run an SDK event through widget interception and deliver to
     /// the user's App::update(). Returns a Task if a command was produced.
     fn deliver_event(&mut self, event: Event) -> Option<Task<Message>> {
-        let intercepted = self.widget_store.intercept_event(&event);
-
-        match intercepted {
-            Some(EventResult::Consumed) | Some(EventResult::UpdateState) => {
+        match self.widget_store.intercept_event(&event) {
+            Some(Interception { result: EventResult::Consumed, .. })
+            | Some(Interception { result: EventResult::UpdateState, .. }) => {
                 self.refresh_view();
                 None
             }
-            Some(EventResult::Emit { family, value }) => {
-                let widget_id = event.as_widget()
-                    .and_then(|w| w.scope.first().cloned())
-                    .unwrap_or_default();
+            Some(Interception {
+                result: EventResult::Emit { family, value },
+                widget_id,
+                outer_scope,
+                window_id,
+            }) => {
                 let new_event = Event::Widget(WidgetEvent {
                     event_type: crate::event::family_to_event_type(&family),
                     id: widget_id,
-                    window_id: "main".to_string(),
-                    scope: vec![],
+                    window_id,
+                    scope: outer_scope,
                     value,
                 });
                 let cmd = A::update(&mut self.model, new_event);
                 self.refresh_view();
                 Some(self.execute_command(cmd))
             }
-            Some(EventResult::Ignored) | None => {
+            Some(Interception { result: EventResult::Ignored, .. }) | None => {
                 let cmd = A::update(&mut self.model, event);
                 self.refresh_view();
                 Some(self.execute_command(cmd))

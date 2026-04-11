@@ -14,9 +14,15 @@ pub mod tree_diff;
 
 /// Build, expand, and normalize a view tree from the current model.
 ///
-/// Calls `App::view()`, expands composite widgets, and normalizes
-/// IDs. Used by both the wire and direct runners to produce the
-/// canonical tree representation.
+/// Pipeline: `App::view()` -> widget expansion -> ID normalization.
+///
+/// Returns the normalized tree and any validation warnings (duplicate
+/// IDs, reserved characters). Used by both the direct runner and
+/// test session to produce the canonical tree representation.
+///
+/// The wire runner calls `normalize` directly (no widget expansion)
+/// because composite widgets are handled by the Elixir SDK, not the
+/// Rust SDK's view layer.
 pub fn prepare_tree<A: App>(
     model: &A::Model,
     widget_store: &mut WidgetStateStore,

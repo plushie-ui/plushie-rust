@@ -116,6 +116,20 @@ impl EventResult {
     }
 }
 
+/// The result of widget interception, including context about which
+/// widget intercepted the event and the remaining scope above it.
+#[derive(Debug)]
+pub struct Interception {
+    /// What the widget decided to do with the event.
+    pub result: EventResult,
+    /// The ID of the composite widget that intercepted the event.
+    pub widget_id: String,
+    /// Scope chain above the intercepting widget (for Emit events).
+    pub outer_scope: Vec<String>,
+    /// The window the event originated from.
+    pub window_id: String,
+}
+
 // ---------------------------------------------------------------------------
 // WidgetView - placeholder builder for using widgets in views
 // ---------------------------------------------------------------------------
@@ -275,19 +289,32 @@ impl WidgetStateStore {
     }
 
     /// Handle an event through widget interception.
-    pub fn intercept_event(&mut self, event: &Event) -> Option<EventResult> {
-        let scope = match event {
-            Event::Widget(w) => &w.scope,
+    ///
+    /// Walks the event's scope chain (innermost ancestor first) and
+    /// gives each registered composite widget a chance to handle the
+    /// event. Returns the result along with the interceptor's ID and
+    /// the remaining scope above it.
+    pub fn intercept_event(&mut self, event: &Event) -> Option<Interception> {
+        let (scope, window_id) = match event {
+            Event::Widget(w) => (&w.scope, &w.window_id),
             _ => return None,
         };
 
-        for ancestor_id in scope {
+        for (i, ancestor_id) in scope.iter().enumerate() {
             if let Some(expander) = self.expanders.get(ancestor_id) {
                 let state = self.states.get_mut(ancestor_id)?;
                 let result = expander.handle_event(event, state.as_mut());
                 match result {
                     EventResult::Ignored => continue,
-                    other => return Some(other),
+                    other => {
+                        return Some(Interception {
+                            result: other,
+                            widget_id: ancestor_id.clone(),
+                            // Remaining scope above the interceptor.
+                            outer_scope: scope[i + 1..].to_vec(),
+                            window_id: window_id.clone(),
+                        });
+                    }
                 }
             }
         }

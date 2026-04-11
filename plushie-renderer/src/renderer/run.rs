@@ -97,15 +97,22 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
 
     let transport_name = transport.name();
     let expected_token = transport.expected_token.clone();
-    let (reader, writer, _transport_guard, _token) = transport.into_parts();
+    let (reader, mut writer_opt, _transport_guard, _token) = {
+        let (r, w, g, t) = transport.into_parts();
+        (r, Some(w), g, t)
+    };
 
-    // Initialize the global output writer before any protocol I/O.
+    // Headless/mock modes handle their own sink initialization and
+    // codec detection internally. For windowed mode, we defer sink
+    // creation until after codec detection (below).
     let is_headless = has_flag("--headless") || has_flag("--mock");
     if is_headless {
-        plushie_renderer_lib::emitters::init_output(writer);
-    } else {
-        let channel_writer = crate::output::spawn_writer_thread(writer);
-        plushie_renderer_lib::emitters::init_output(Box::new(channel_writer));
+        let writer = writer_opt.take().unwrap();
+        let sink = plushie_renderer_lib::WriterSink::new(
+            writer,
+            plushie_widget_sdk::codec::Codec::MsgPack,
+        );
+        plushie_renderer_lib::emitters::init_sink(Box::new(sink));
     }
 
     // Collect custom type names before building the dispatcher so the
@@ -142,11 +149,19 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
     }
 
     // Startup handshake: detect codec, send Hello, then read Settings.
-    // This sequence is consistent across all native backends (windowed,
-    // headless, mock).
     let mut reader = reader;
     let codec = crate::startup::detect_codec(forced_codec, &mut reader);
     Codec::set_global(codec);
+
+    // Initialize the global sink for windowed mode now that we know
+    // the codec. Use a channel writer to avoid blocking the event loop.
+    let writer = writer_opt.take().expect("writer consumed by headless path");
+    let channel_writer = crate::output::spawn_writer_thread(writer);
+    let sink = plushie_renderer_lib::WriterSink::new(
+        Box::new(channel_writer),
+        codec,
+    );
+    plushie_renderer_lib::emitters::init_sink(Box::new(sink));
 
     let ext_key_refs: Vec<&str> = ext_keys.iter().map(|s| s.as_str()).collect();
     if let Err(e) = emit_hello("windowed", "wgpu", &ext_key_refs, &["iced"], transport_name) {

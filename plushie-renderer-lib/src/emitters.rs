@@ -100,33 +100,25 @@ fn with_sink<R>(f: impl FnOnce(&mut dyn EventSink) -> io::Result<R>) -> io::Resu
     f(&mut **guard)
 }
 
-// ---------------------------------------------------------------------------
-// Legacy compatibility: init_output / write_output
-// ---------------------------------------------------------------------------
-
-/// Initialize the global output writer (legacy API).
+/// A sink that wraps a raw writer and encodes via a codec.
 ///
-/// Wraps the writer in a `WriterSink` that encodes via the global
-/// Codec. Prefer [`init_sink`] with a typed sink for new code.
-pub fn init_output(writer: Box<dyn std::io::Write + Send>) {
-    init_sink(Box::new(WriterSink { writer }));
-}
-
-/// Write pre-encoded bytes through the global sink.
-pub fn write_output(bytes: &[u8]) -> io::Result<()> {
-    with_sink(|sink| sink.write_raw(bytes))
-}
-
-/// A sink that wraps a raw writer and encodes via the global Codec.
-/// Used by [`init_output`] for backwards compatibility.
-struct WriterSink {
+/// Used by the renderer binary and WASM entry points to write
+/// encoded wire protocol messages to stdout or a channel.
+pub struct WriterSink {
     writer: Box<dyn std::io::Write + Send>,
+    codec: plushie_widget_sdk::codec::Codec,
+}
+
+impl WriterSink {
+    /// Create a WriterSink with an explicit codec.
+    pub fn new(writer: Box<dyn std::io::Write + Send>, codec: plushie_widget_sdk::codec::Codec) -> Self {
+        Self { writer, codec }
+    }
 }
 
 impl EventSink for WriterSink {
     fn emit_event(&mut self, event: OutgoingEvent) -> io::Result<()> {
-        let codec = plushie_widget_sdk::codec::Codec::get_global();
-        let bytes = codec.encode(&event).map_err(io::Error::other)?;
+        let bytes = self.codec.encode(&event).map_err(io::Error::other)?;
         self.writer.write_all(&bytes)?;
         self.writer.flush()
     }
@@ -134,8 +126,7 @@ impl EventSink for WriterSink {
     fn emit_effect_response(
         &mut self, response: plushie_widget_sdk::protocol::EffectResponse,
     ) -> io::Result<()> {
-        let codec = plushie_widget_sdk::codec::Codec::get_global();
-        let bytes = codec.encode(&response).map_err(io::Error::other)?;
+        let bytes = self.codec.encode(&response).map_err(io::Error::other)?;
         self.writer.write_all(&bytes)?;
         self.writer.flush()
     }
@@ -150,8 +141,7 @@ impl EventSink for WriterSink {
             "tag": tag,
             "data": data,
         });
-        let codec = plushie_widget_sdk::codec::Codec::get_global();
-        let bytes = codec.encode(&msg).map_err(io::Error::other)?;
+        let bytes = self.codec.encode(&msg).map_err(io::Error::other)?;
         self.writer.write_all(&bytes)?;
         self.writer.flush()
     }
@@ -180,8 +170,7 @@ impl EventSink for WriterSink {
         } else {
             Some(("rgba", rgba_bytes))
         };
-        let codec = plushie_widget_sdk::codec::Codec::get_global();
-        let bytes = codec
+        let bytes = self.codec
             .encode_binary_message(map, binary)
             .map_err(io::Error::other)?;
         self.writer.write_all(&bytes)?;
@@ -216,8 +205,7 @@ impl EventSink for WriterSink {
             "widget_sets": widget_set_names,
             "widgets": all_widgets,
         });
-        let codec = plushie_widget_sdk::codec::Codec::get_global();
-        let bytes = codec.encode(&msg).map_err(io::Error::other)?;
+        let bytes = self.codec.encode(&msg).map_err(io::Error::other)?;
         self.writer.write_all(&bytes)?;
         self.writer.flush()
     }
@@ -226,6 +214,11 @@ impl EventSink for WriterSink {
         self.writer.write_all(bytes)?;
         self.writer.flush()
     }
+}
+
+/// Write pre-encoded bytes through the global sink.
+pub fn write_output(bytes: &[u8]) -> io::Result<()> {
+    with_sink(|sink| sink.write_raw(bytes))
 }
 
 // ---------------------------------------------------------------------------

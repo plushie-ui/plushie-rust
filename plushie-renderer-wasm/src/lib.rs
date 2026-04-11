@@ -43,7 +43,7 @@ use plushie_widget_sdk::message::{Message, StdinEvent};
 use plushie_widget_sdk::protocol::IncomingMessage;
 
 use plushie_renderer_lib::App;
-use plushie_renderer_lib::emitters::{emit_hello, init_output};
+use plushie_renderer_lib::emitters::emit_hello;
 
 use effects::WebEffectHandler;
 use output::WebOutputWriter;
@@ -118,8 +118,10 @@ impl PlushieApp {
         console_log::init_with_level(log::Level::Warn).ok();
 
         let writer = WebOutputWriter::new(on_event);
-        init_output(Box::new(writer));
-        Codec::set_global(Codec::Json);
+        let codec = Codec::Json;
+        let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), codec);
+        plushie_renderer_lib::emitters::init_sink(Box::new(sink));
+        Codec::set_global(codec);
 
         let settings: serde_json::Value = serde_json::from_str(settings_json)
             .map_err(|e| JsValue::from_str(&format!("invalid settings JSON: {e}")))?;

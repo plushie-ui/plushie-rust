@@ -37,3 +37,5 @@ pub use effects::EffectHandler;
 
 /// Pluggable output for renderer events. See [`emitters::EventSink`].
 pub use emitters::EventSink;
+/// An EventSink that encodes via a codec and writes to a writer.
+pub use emitters::WriterSink;

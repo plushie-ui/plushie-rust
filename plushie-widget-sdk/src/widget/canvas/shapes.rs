@@ -4,9 +4,13 @@ use iced::widget::canvas;
 use iced::{Color, Pixels, Point, Radians, Size, Vector, alignment};
 use serde_json::Value;
 
-use super::json_f32;
+use plushie_core::types::canvas::{
+    self as canvas_types, CanvasShape, ClipRect, Transform,
+};
+
 use super::types::MAX_SHAPES_PER_LAYER;
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::widget::helpers::*;
 
 /// Parse a `fill_rule` string into a `canvas::fill::Rule`. Defaults to `NonZero`.
@@ -306,35 +310,24 @@ pub(super) fn build_path_from_commands(commands: &[Value]) -> canvas::Path {
 /// Draw a sequence of shapes.
 ///
 /// Clips and transforms are handled at the group level -- each group
-/// carries its own `"transforms"` and `"clip"` fields, applied in
-/// [`draw_canvas_shape`] when rendering the `"group"` type.
+/// carries its own transforms and clip fields, applied in
+/// [`draw_canvas_shape`] when rendering groups.
 pub(super) fn draw_canvas_shapes<R: PlushieRenderer>(
     frame: &mut canvas::Frame<R>,
-    shapes: &[&Value],
+    shapes: &[&CanvasShape],
     images: &crate::image_registry::ImageRegistry,
     theme: &iced::Theme,
 ) {
-    for &shape in shapes {
-        let shape_type = shape.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        match shape_type {
-            // Standalone clip commands are no longer supported.
-            "push_clip" | "pop_clip" => {
-                log::warn!(
-                    "canvas: standalone '{shape_type}' commands are no longer supported. \
-                     Use group clip instead."
-                );
-            }
-            _ => draw_canvas_shape(frame, shape, images, theme),
-        }
+    for shape in shapes {
+        draw_canvas_shape(frame, shape, images, theme);
     }
 }
 
 /// Apply per-shape opacity to a `canvas::Fill`. Multiplies the opacity
 /// into solid color alpha. Gradient stops are left unchanged (the host
 /// should bake opacity into gradient stop colors if needed).
-pub(super) fn apply_opacity_to_fill(shape: &Value, mut fill: canvas::Fill) -> canvas::Fill {
-    if let Some(opacity) = shape.get("opacity").and_then(|v| v.as_f64()) {
-        let a = opacity as f32;
+pub(super) fn apply_opacity_to_fill(opacity: Option<f32>, mut fill: canvas::Fill) -> canvas::Fill {
+    if let Some(a) = opacity {
         if let canvas::Style::Solid(ref mut c) = fill.style {
             c.a *= a;
         }
@@ -344,11 +337,10 @@ pub(super) fn apply_opacity_to_fill(shape: &Value, mut fill: canvas::Fill) -> ca
 
 /// Apply per-shape opacity to a `canvas::Stroke`.
 pub(super) fn apply_opacity_to_stroke(
-    shape: &Value,
+    opacity: Option<f32>,
     mut stroke: canvas::Stroke<'static>,
 ) -> canvas::Stroke<'static> {
-    if let Some(opacity) = shape.get("opacity").and_then(|v| v.as_f64()) {
-        let a = opacity as f32;
+    if let Some(a) = opacity {
         if let canvas::Style::Solid(ref mut c) = stroke.style {
             c.a *= a;
         }
@@ -358,14 +350,15 @@ pub(super) fn apply_opacity_to_stroke(
 
 /// Apply per-shape opacity to a plain color (used by text fill and
 /// legacy line stroke).
-pub(super) fn apply_opacity_to_color(shape: &Value, mut color: Color) -> Color {
-    if let Some(opacity) = shape.get("opacity").and_then(|v| v.as_f64()) {
-        color.a *= opacity as f32;
+pub(super) fn apply_opacity_to_color(opacity: Option<f32>, mut color: Color) -> Color {
+    if let Some(a) = opacity {
+        color.a *= a;
     }
     color
 }
 
 /// Parse horizontal text alignment from a JSON string value.
+#[cfg(test)]
 pub(super) fn parse_canvas_text_align_x(value: Option<&Value>) -> iced::widget::text::Alignment {
     match value.and_then(|v| v.as_str()) {
         Some("left") => iced::widget::text::Alignment::Left,
@@ -376,11 +369,39 @@ pub(super) fn parse_canvas_text_align_x(value: Option<&Value>) -> iced::widget::
 }
 
 /// Parse vertical text alignment from a JSON string value.
+#[cfg(test)]
 pub(super) fn parse_canvas_text_align_y(value: Option<&Value>) -> alignment::Vertical {
     match value.and_then(|v| v.as_str()) {
         Some("center") => alignment::Vertical::Center,
         Some("bottom") => alignment::Vertical::Bottom,
         _ => alignment::Vertical::Top,
+    }
+}
+
+/// Parse horizontal text alignment from a string.
+fn parse_text_align_x(value: Option<&str>) -> iced::widget::text::Alignment {
+    match value {
+        Some("left") => iced::widget::text::Alignment::Left,
+        Some("center") => iced::widget::text::Alignment::Center,
+        Some("right") => iced::widget::text::Alignment::Right,
+        _ => iced::widget::text::Alignment::Default,
+    }
+}
+
+/// Parse vertical text alignment from a string.
+fn parse_text_align_y(value: Option<&str>) -> alignment::Vertical {
+    match value {
+        Some("center") => alignment::Vertical::Center,
+        Some("bottom") => alignment::Vertical::Bottom,
+        _ => alignment::Vertical::Top,
+    }
+}
+
+/// Parse a font from a string name.
+fn parse_font_str(s: &str) -> iced::Font {
+    match s {
+        "monospace" => iced::Font::MONOSPACE,
+        _ => iced::Font::new(Box::leak(s.to_string().into_boxed_str())),
     }
 }
 
@@ -397,43 +418,28 @@ pub(super) fn pick_action(
     existing.unwrap_or(new)
 }
 
-/// Apply a group's transforms to the drawing frame.
+/// Apply typed transforms to the drawing frame.
 ///
-/// Reads the `"transforms"` array and applies each entry in order.
-/// Supported transform types: `translate`, `rotate`, `scale`.
+/// Applies each entry in order.
 /// The caller is responsible for calling `frame.push_transform()` before
 /// and `frame.pop_transform()` after this function.
 pub(super) fn apply_group_transforms<R: PlushieRenderer>(
     frame: &mut canvas::Frame<R>,
-    group: &Value,
+    transforms: &[Transform],
 ) {
-    let transforms = match group.get("transforms").and_then(|v| v.as_array()) {
-        Some(arr) => arr,
-        None => return,
-    };
     for t in transforms {
-        let t_type = t.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        match t_type {
-            "translate" => {
-                let x = t.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                let y = t.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                frame.translate(Vector::new(x, y));
+        match t {
+            Transform::Translate { x, y } => {
+                frame.translate(Vector::new(*x, *y));
             }
-            "rotate" => {
-                let angle = t.get("angle").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                frame.rotate(Radians(angle));
+            Transform::Rotate { angle } => {
+                frame.rotate(Radians(*angle));
             }
-            "scale" => {
-                if let Some(factor) = t.get("factor").and_then(|v| v.as_f64()) {
-                    frame.scale(factor as f32);
-                } else {
-                    let x = t.get("x").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
-                    let y = t.get("y").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
-                    frame.scale_nonuniform(Vector::new(x, y));
-                }
+            Transform::Scale { x, y } => {
+                frame.scale_nonuniform(Vector::new(*x, *y));
             }
-            _ => {
-                log::warn!("canvas group: unknown transform type '{t_type}'");
+            Transform::ScaleUniform { factor } => {
+                frame.scale(*factor);
             }
         }
     }
@@ -441,31 +447,27 @@ pub(super) fn apply_group_transforms<R: PlushieRenderer>(
 
 /// Apply a group's clip region to the frame, drawing children inside.
 ///
-/// If the group has a `"clip"` field with `{x, y, w, h}`, children are
-/// drawn clipped to that rectangle. Otherwise children are drawn directly.
+/// If a `ClipRect` is provided, children are drawn clipped to that
+/// rectangle. Otherwise children are drawn directly.
 pub(super) fn draw_with_group_clip<R: PlushieRenderer>(
     frame: &mut canvas::Frame<R>,
-    group: &Value,
+    clip: Option<&ClipRect>,
     images: &crate::image_registry::ImageRegistry,
     theme: &iced::Theme,
-    children: &[&Value],
+    children: &[&CanvasShape],
     draw_fn: impl FnOnce(
         &mut canvas::Frame<R>,
-        &[&Value],
+        &[&CanvasShape],
         &crate::image_registry::ImageRegistry,
         &iced::Theme,
     ),
 ) {
-    if let Some(clip) = group.get("clip").and_then(|v| v.as_object()) {
-        let x = clip.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        let y = clip.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        let w = clip.get("w").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        let h = clip.get("h").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+    if let Some(c) = clip {
         let clip_rect = iced::Rectangle {
-            x,
-            y,
-            width: w,
-            height: h,
+            x: c.x,
+            y: c.y,
+            width: c.w,
+            height: c.h,
         };
         frame.with_clip(clip_rect, |f| {
             draw_fn(f, children, images, theme);
@@ -477,7 +479,7 @@ pub(super) fn draw_with_group_clip<R: PlushieRenderer>(
 
 /// Truncate a shape list if it exceeds the per-layer limit. Prevents
 /// excessive tessellation work from an oversized payload.
-pub(super) fn truncate_shapes(name: &str, mut shapes: Vec<Value>) -> Vec<Value> {
+pub(super) fn truncate_shapes(name: &str, mut shapes: Vec<CanvasShape>) -> Vec<CanvasShape> {
     if shapes.len() > MAX_SHAPES_PER_LAYER {
         log::warn!(
             "canvas layer `{name}` has {} shapes, truncating to {MAX_SHAPES_PER_LAYER}",
@@ -521,231 +523,224 @@ pub(super) fn resolve_color(value: &Value, theme: &iced::Theme) -> Option<Color>
     }
 }
 
-/// Theme-aware version of [`json_color`](super::json_color). Resolves palette
-/// names against the theme before falling back to hex parsing.
+/// Theme-aware version of json_color. Resolves palette names against
+/// the theme before falling back to hex parsing.
+#[cfg(test)]
+#[allow(dead_code)]
 pub(super) fn json_color_themed(val: &Value, key: &str, theme: &iced::Theme) -> Color {
     val.get(key)
         .and_then(|v| resolve_color(v, theme))
         .unwrap_or(Color::WHITE)
 }
 
-/// Draw a single shape (or transform command) into the frame.
+/// Resolve a core Color to an iced Color with theme palette support.
+///
+/// Palette names ("primary", "text", "background", etc.) are resolved
+/// against the theme. Hex strings are parsed directly.
+fn resolve_core_color(c: &plushie_core::types::Color, theme: &iced::Theme) -> Color {
+    let s = c.as_hex();
+    if s.starts_with('#') {
+        return parse_hex_color(s).unwrap_or(Color::WHITE);
+    }
+    let palette = theme.palette();
+    match s {
+        "primary" => palette.primary.base.color,
+        "text" => palette.background.base.text,
+        "background" => palette.background.base.color,
+        "success" => palette.success.base.color,
+        "danger" => palette.danger.base.color,
+        "warning" => palette.warning.base.color,
+        _ => parse_hex_color(s).unwrap_or(Color::WHITE),
+    }
+}
+
+/// Convert a typed CanvasFill to an iced canvas::Fill with theme support.
+fn typed_canvas_fill(
+    fill: &canvas_types::CanvasFill,
+    fill_rule: Option<&canvas_types::FillRule>,
+    theme: &iced::Theme,
+) -> canvas::Fill {
+    let rule = fill_rule
+        .map(|r| iced_convert::fill_rule(*r))
+        .unwrap_or(canvas::fill::Rule::NonZero);
+    match fill {
+        canvas_types::CanvasFill::Color(c) => canvas::Fill {
+            style: canvas::Style::Solid(resolve_core_color(c, theme)),
+            rule,
+        },
+        canvas_types::CanvasFill::Gradient(g) => canvas::Fill {
+            style: canvas::Style::Gradient(iced_convert::canvas_gradient(g)),
+            rule,
+        },
+    }
+}
+
+/// Convert a typed Stroke to an iced canvas::Stroke with theme support.
+fn typed_canvas_stroke(
+    s: &canvas_types::Stroke,
+    theme: &iced::Theme,
+) -> canvas::Stroke<'static> {
+    let color = resolve_core_color(&s.color, theme);
+    let mut out = canvas::Stroke::default()
+        .with_color(color)
+        .with_width(s.width)
+        .with_line_cap(
+            s.cap.map(iced_convert::line_cap).unwrap_or(canvas::LineCap::Butt),
+        )
+        .with_line_join(
+            s.join.map(iced_convert::line_join).unwrap_or(canvas::LineJoin::Miter),
+        );
+    if let Some(ref dash) = s.dash {
+        let segments = intern_dash_segments(dash.segments.clone());
+        out.line_dash = canvas::LineDash {
+            segments,
+            offset: dash.offset as usize,
+        };
+    }
+    out
+}
+
+/// Draw a single typed canvas shape into the frame.
 pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
     frame: &mut canvas::Frame<R>,
-    shape: &Value,
+    shape: &CanvasShape,
     images: &crate::image_registry::ImageRegistry,
     theme: &iced::Theme,
 ) {
-    let shape_type = shape.get("type").and_then(|v| v.as_str()).unwrap_or("");
-    match shape_type {
-        // Standalone transform/clip commands are no longer supported.
-        // Transforms and clips now live on groups via "transforms" and "clip" fields.
-        "push_transform" | "pop_transform" | "translate" | "rotate" | "scale" => {
-            log::warn!(
-                "canvas: standalone '{shape_type}' commands are no longer supported. \
-                 Use group transforms instead."
-            );
-        }
-        // -- Primitive shapes --
-        "rect" => {
-            let x = json_f32(shape, "x");
-            let y = json_f32(shape, "y");
-            let w = json_f32(shape, "w");
-            let h = json_f32(shape, "h");
-            let rect_path = if let Some(radius_val) = shape.get("radius") {
-                let radius = if let Some(r) = radius_val.as_f64() {
-                    // Uniform radius
-                    iced::border::Radius::from(r as f32)
-                } else if let Some(obj) = radius_val.as_object() {
-                    // Per-corner radius
-                    iced::border::Radius {
-                        top_left: obj.get("top_left").and_then(|v| v.as_f64()).unwrap_or(0.0)
-                            as f32,
-                        top_right: obj.get("top_right").and_then(|v| v.as_f64()).unwrap_or(0.0)
-                            as f32,
-                        bottom_right: obj
-                            .get("bottom_right")
-                            .and_then(|v| v.as_f64())
-                            .unwrap_or(0.0) as f32,
-                        bottom_left: obj
-                            .get("bottom_left")
-                            .and_then(|v| v.as_f64())
-                            .unwrap_or(0.0) as f32,
-                    }
-                } else {
-                    iced::border::Radius::from(0.0)
-                };
-                canvas::Path::rounded_rectangle(Point::new(x, y), Size::new(w, h), radius)
-            } else {
-                canvas::Path::rectangle(Point::new(x, y), Size::new(w, h))
+    match shape {
+        CanvasShape::Rect(r) => {
+            let rect_path = match &r.radius {
+                Some(radius) => {
+                    let iced_radius = iced_convert::radius(radius.clone());
+                    canvas::Path::rounded_rectangle(
+                        Point::new(r.x, r.y),
+                        Size::new(r.w, r.h),
+                        iced_radius,
+                    )
+                }
+                None => canvas::Path::rectangle(Point::new(r.x, r.y), Size::new(r.w, r.h)),
             };
-            if let Some(fill_val) = shape.get("fill") {
-                let fill = apply_opacity_to_fill(
-                    shape,
-                    parse_canvas_fill_themed(fill_val, shape, Some(theme)),
+            if let Some(ref fill) = r.fill {
+                let iced_fill = apply_opacity_to_fill(
+                    r.opacity,
+                    typed_canvas_fill(fill, r.fill_rule.as_ref(), theme),
                 );
-                frame.fill(&rect_path, fill);
-            } else if shape.get("stroke").is_none() {
-                // Legacy fallback: no fill or stroke key means solid white fill
-                let color = apply_opacity_to_color(shape, Color::WHITE);
-                frame.fill_rectangle(Point::new(x, y), Size::new(w, h), color);
+                frame.fill(&rect_path, iced_fill);
+            } else if r.stroke.is_none() {
+                // Legacy fallback: no fill or stroke means solid white fill
+                let color = apply_opacity_to_color(r.opacity, Color::WHITE);
+                frame.fill_rectangle(Point::new(r.x, r.y), Size::new(r.w, r.h), color);
             }
-            if let Some(stroke_val) = shape.get("stroke") {
-                let stroke = apply_opacity_to_stroke(
-                    shape,
-                    parse_canvas_stroke_themed(stroke_val, Some(theme)),
+            if let Some(ref stroke) = r.stroke {
+                let iced_stroke = apply_opacity_to_stroke(
+                    r.opacity,
+                    typed_canvas_stroke(stroke, theme),
                 );
-                frame.stroke(&rect_path, stroke);
+                frame.stroke(&rect_path, iced_stroke);
             }
         }
-        "circle" => {
-            let x = json_f32(shape, "x");
-            let y = json_f32(shape, "y");
-            let r = json_f32(shape, "r");
-            let circle_path = canvas::Path::circle(Point::new(x, y), r);
-            if let Some(fill_val) = shape.get("fill") {
-                let fill = apply_opacity_to_fill(
-                    shape,
-                    parse_canvas_fill_themed(fill_val, shape, Some(theme)),
+        CanvasShape::Circle(c) => {
+            let circle_path = canvas::Path::circle(Point::new(c.x, c.y), c.r);
+            if let Some(ref fill) = c.fill {
+                let iced_fill = apply_opacity_to_fill(
+                    c.opacity,
+                    typed_canvas_fill(fill, c.fill_rule.as_ref(), theme),
                 );
-                frame.fill(&circle_path, fill);
-            } else if shape.get("stroke").is_none() {
-                let color = apply_opacity_to_color(shape, Color::WHITE);
+                frame.fill(&circle_path, iced_fill);
+            } else if c.stroke.is_none() {
+                let color = apply_opacity_to_color(c.opacity, Color::WHITE);
                 frame.fill(&circle_path, color);
             }
-            if let Some(stroke_val) = shape.get("stroke") {
-                let stroke = apply_opacity_to_stroke(
-                    shape,
-                    parse_canvas_stroke_themed(stroke_val, Some(theme)),
+            if let Some(ref stroke) = c.stroke {
+                let iced_stroke = apply_opacity_to_stroke(
+                    c.opacity,
+                    typed_canvas_stroke(stroke, theme),
                 );
-                frame.stroke(&circle_path, stroke);
+                frame.stroke(&circle_path, iced_stroke);
             }
         }
-        "line" => {
-            let x1 = json_f32(shape, "x1");
-            let y1 = json_f32(shape, "y1");
-            let x2 = json_f32(shape, "x2");
-            let y2 = json_f32(shape, "y2");
-            let line_path = canvas::Path::line(Point::new(x1, y1), Point::new(x2, y2));
-            if let Some(stroke_val) = shape.get("stroke") {
-                let stroke = apply_opacity_to_stroke(
-                    shape,
-                    parse_canvas_stroke_themed(stroke_val, Some(theme)),
+        CanvasShape::Line(l) => {
+            let line_path = canvas::Path::line(
+                Point::new(l.x1, l.y1),
+                Point::new(l.x2, l.y2),
+            );
+            if let Some(ref stroke) = l.stroke {
+                let iced_stroke = apply_opacity_to_stroke(
+                    l.opacity,
+                    typed_canvas_stroke(stroke, theme),
                 );
-                frame.stroke(&line_path, stroke);
+                frame.stroke(&line_path, iced_stroke);
             } else {
-                // Legacy: use fill color as stroke color
-                let color = apply_opacity_to_color(shape, json_color_themed(shape, "fill", theme));
-                let width = shape
-                    .get("width")
-                    .and_then(|v| v.as_f64())
-                    .map(|v| v as f32)
-                    .unwrap_or(1.0);
+                // Legacy: line without explicit stroke defaults to a 1px white line
+                let color = apply_opacity_to_color(l.opacity, Color::WHITE);
                 frame.stroke(
                     &line_path,
-                    canvas::Stroke::default()
-                        .with_color(color)
-                        .with_width(width),
+                    canvas::Stroke::default().with_color(color).with_width(1.0),
                 );
             }
         }
-        "text" => {
-            let x = json_f32(shape, "x");
-            let y = json_f32(shape, "y");
-            let content = shape.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            let fill_color = apply_opacity_to_color(shape, json_color_themed(shape, "fill", theme));
-            let size = shape.get("size").and_then(|v| v.as_f64()).map(|v| v as f32);
-            let align_x = parse_canvas_text_align_x(
-                shape
-                    .get("align_x")
-                    .or_else(|| shape.get("horizontal_alignment")),
-            );
-            let align_y = parse_canvas_text_align_y(
-                shape
-                    .get("align_y")
-                    .or_else(|| shape.get("vertical_alignment")),
-            );
+        CanvasShape::Text(t) => {
+            let fill_color = t.fill.as_ref()
+                .and_then(|f| match f {
+                    canvas_types::CanvasFill::Color(c) => Some(resolve_core_color(c, theme)),
+                    _ => None,
+                })
+                .unwrap_or(Color::WHITE);
+            let fill_color = apply_opacity_to_color(t.opacity, fill_color);
+            let align_x = parse_text_align_x(t.align_x.as_deref());
+            let align_y = parse_text_align_y(t.align_y.as_deref());
             let mut canvas_text = canvas::Text {
-                content: content.to_owned(),
-                position: Point::new(x, y),
+                content: t.content.clone(),
+                position: Point::new(t.x, t.y),
                 color: fill_color,
                 align_x,
                 align_y,
                 ..canvas::Text::default()
             };
-            if let Some(s) = size {
+            if let Some(s) = t.size {
                 canvas_text.size = Pixels(s);
             }
-            if let Some(f) = shape.get("font") {
-                canvas_text.font = parse_font(f);
+            if let Some(ref font_name) = t.font {
+                canvas_text.font = parse_font_str(font_name);
             }
             frame.fill_text(canvas_text);
         }
-        "path" => {
-            let commands = shape
-                .get("commands")
-                .and_then(|v| v.as_array())
-                .map(|a| a.as_slice())
-                .unwrap_or(&[]);
-            let path = build_path_from_commands(commands);
-            if let Some(fill_val) = shape.get("fill") {
-                let fill = apply_opacity_to_fill(
-                    shape,
-                    parse_canvas_fill_themed(fill_val, shape, Some(theme)),
+        CanvasShape::Path(p) => {
+            let path = build_path_from_commands(&p.commands);
+            if let Some(ref fill) = p.fill {
+                let iced_fill = apply_opacity_to_fill(
+                    p.opacity,
+                    typed_canvas_fill(fill, p.fill_rule.as_ref(), theme),
                 );
-                frame.fill(&path, fill);
+                frame.fill(&path, iced_fill);
             }
-            if let Some(stroke_val) = shape.get("stroke") {
-                let stroke = apply_opacity_to_stroke(
-                    shape,
-                    parse_canvas_stroke_themed(stroke_val, Some(theme)),
+            if let Some(ref stroke) = p.stroke {
+                let iced_stroke = apply_opacity_to_stroke(
+                    p.opacity,
+                    typed_canvas_stroke(stroke, theme),
                 );
-                frame.stroke(&path, stroke);
+                frame.stroke(&path, iced_stroke);
             }
         }
-        "image" => {
-            let x = json_f32(shape, "x");
-            let y = json_f32(shape, "y");
-            let w = json_f32(shape, "w");
-            let h = json_f32(shape, "h");
+        CanvasShape::Image(img_shape) => {
             let bounds = iced::Rectangle {
-                x,
-                y,
-                width: w,
-                height: h,
+                x: img_shape.x,
+                y: img_shape.y,
+                width: img_shape.w,
+                height: img_shape.h,
             };
-            // Source can be a string (file path) or an object with "handle" key
-            // (in-memory image from the registry), same as the Image widget.
-            let source_val = shape.get("source");
-            let handle = match source_val {
-                Some(Value::Object(obj)) => {
-                    if let Some(name) = obj.get("handle").and_then(|v| v.as_str()) {
-                        match images.get(name) {
-                            Some(h) => h.clone(),
-                            None => {
-                                log::warn!("canvas image: unknown registry handle: {name}");
-                                return;
-                            }
-                        }
-                    } else {
-                        return;
-                    }
-                }
-                _ => {
-                    let path = source_val.and_then(|v| v.as_str()).unwrap_or("");
-                    iced::widget::image::Handle::from_path(path)
-                }
+            // Source can be a file path or a "{handle:name}" registry reference.
+            // The ImageShape.source is a plain string; check if it matches a
+            // registry handle pattern.
+            let handle = if let Some(h) = images.get(&img_shape.source) {
+                h.clone()
+            } else {
+                iced::widget::image::Handle::from_path(&img_shape.source)
             };
-            let rotation = shape
-                .get("rotation")
-                .and_then(|v| v.as_f64())
-                .map(|r| Radians(r as f32))
+            let rotation = img_shape.rotation
+                .map(|r| Radians(r))
                 .unwrap_or(Radians(0.0));
-            let opacity = shape
-                .get("opacity")
-                .and_then(|v| v.as_f64())
-                .map(|o| o as f32)
-                .unwrap_or(1.0);
+            let opacity = img_shape.opacity.unwrap_or(1.0);
             let img = iced::advanced::image::Image {
                 handle,
                 filter_method: iced::advanced::image::FilterMethod::default(),
@@ -755,52 +750,113 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
             };
             frame.draw_image(bounds, img);
         }
-        "svg" => {
-            let source = shape.get("source").and_then(|v| v.as_str()).unwrap_or("");
-            let x = json_f32(shape, "x");
-            let y = json_f32(shape, "y");
-            let w = json_f32(shape, "w");
-            let h = json_f32(shape, "h");
+        CanvasShape::Svg(s) => {
             let bounds = iced::Rectangle {
-                x,
-                y,
-                width: w,
-                height: h,
+                x: s.x,
+                y: s.y,
+                width: s.w,
+                height: s.h,
             };
-            let handle = iced::widget::svg::Handle::from_path(source);
+            let handle = iced::widget::svg::Handle::from_path(&s.source);
             frame.draw_svg(bounds, &handle);
         }
-        "group" => {
-            if let Some(children) = shape.get("children").and_then(|v| v.as_array()) {
-                let child_refs: Vec<&Value> = children.iter().collect();
-                let has_transforms = shape
-                    .get("transforms")
-                    .and_then(|v| v.as_array())
-                    .is_some_and(|a| !a.is_empty());
+        CanvasShape::Group(g) => {
+            let child_refs: Vec<&CanvasShape> = g.children.iter().collect();
+            let has_transforms = !g.transforms.is_empty();
 
-                if has_transforms {
-                    frame.push_transform();
-                    apply_group_transforms(frame, shape);
-                }
+            if has_transforms {
+                frame.push_transform();
+                apply_group_transforms(frame, &g.transforms);
+            }
 
-                // draw_with_group_clip handles the clip field (if present)
-                // using frame.with_clip, which manages its own scope.
-                draw_with_group_clip(
-                    frame,
-                    shape,
-                    images,
-                    theme,
-                    &child_refs,
-                    |f, c, img, theme| {
-                        draw_canvas_shapes(f, c, img, theme);
-                    },
-                );
+            draw_with_group_clip(
+                frame,
+                g.clip.as_ref(),
+                images,
+                theme,
+                &child_refs,
+                |f, c, img, theme| {
+                    draw_canvas_shapes(f, c, img, theme);
+                },
+            );
 
-                if has_transforms {
-                    frame.pop_transform();
-                }
+            if has_transforms {
+                frame.pop_transform();
             }
         }
-        _ => {}
+    }
+}
+
+/// Draw a shape with style overrides applied from an interactive state
+/// (hover, pressed, or focus). The override can replace fill, stroke,
+/// and/or opacity on the shape being drawn.
+pub(super) fn draw_canvas_shape_with_overrides<R: PlushieRenderer>(
+    frame: &mut canvas::Frame<R>,
+    shape: &CanvasShape,
+    images: &crate::image_registry::ImageRegistry,
+    theme: &iced::Theme,
+    overrides: &plushie_core::types::canvas::ShapeStyle,
+) {
+    // Build a modified clone of the shape with overrides applied, then draw it.
+    // This approach keeps the drawing logic in draw_canvas_shape.
+    let modified = apply_style_overrides(shape, overrides);
+    draw_canvas_shape(frame, &modified, images, theme);
+}
+
+/// Apply a ShapeStyle override to a shape, returning a modified clone.
+fn apply_style_overrides(
+    shape: &CanvasShape,
+    overrides: &plushie_core::types::canvas::ShapeStyle,
+) -> CanvasShape {
+    use plushie_core::types::canvas::CanvasFill;
+    use plushie_core::types::Color as CoreColor;
+
+    let override_fill = overrides.fill.as_ref().map(|f| CanvasFill::Color(CoreColor::hex(f)));
+    let override_stroke = overrides.stroke.as_ref().and_then(|v| {
+        <canvas_types::Stroke as plushie_core::types::PlushieType>::wire_decode(v)
+    });
+    let override_opacity = overrides.opacity;
+
+    match shape {
+        CanvasShape::Rect(r) => {
+            let mut r = r.clone();
+            if let Some(f) = override_fill { r.fill = Some(f); }
+            if let Some(s) = override_stroke { r.stroke = Some(s); }
+            if let Some(o) = override_opacity { r.opacity = Some(o); }
+            CanvasShape::Rect(r)
+        }
+        CanvasShape::Circle(c) => {
+            let mut c = c.clone();
+            if let Some(f) = override_fill { c.fill = Some(f); }
+            if let Some(s) = override_stroke { c.stroke = Some(s); }
+            if let Some(o) = override_opacity { c.opacity = Some(o); }
+            CanvasShape::Circle(c)
+        }
+        CanvasShape::Line(l) => {
+            let mut l = l.clone();
+            if let Some(s) = override_stroke { l.stroke = Some(s); }
+            if let Some(o) = override_opacity { l.opacity = Some(o); }
+            CanvasShape::Line(l)
+        }
+        CanvasShape::Text(t) => {
+            let mut t = t.clone();
+            if let Some(f) = override_fill { t.fill = Some(f); }
+            if let Some(o) = override_opacity { t.opacity = Some(o); }
+            CanvasShape::Text(t)
+        }
+        CanvasShape::Path(p) => {
+            let mut p = p.clone();
+            if let Some(f) = override_fill { p.fill = Some(f); }
+            if let Some(s) = override_stroke { p.stroke = Some(s); }
+            if let Some(o) = override_opacity { p.opacity = Some(o); }
+            CanvasShape::Path(p)
+        }
+        CanvasShape::Image(i) => {
+            let mut i = i.clone();
+            if let Some(o) = override_opacity { i.opacity = Some(o); }
+            CanvasShape::Image(i)
+        }
+        // Svg and Group don't have fill/stroke/opacity overrides
+        _ => shape.clone(),
     }
 }

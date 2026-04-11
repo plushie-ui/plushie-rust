@@ -85,9 +85,8 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     /// hashing.
     pub fn prepare(&mut self, node: &TreeNode, window_id: &str) {
         use std::collections::hash_map::DefaultHasher;
-        use std::hash::Hasher;
+        use std::hash::{Hash, Hasher};
 
-        use crate::shared_state::hash_json_value;
         use crate::widget::canvas::canvas_layers_from_node;
 
         let key = (window_id.to_string(), node.id.clone());
@@ -95,18 +94,16 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
 
         // Parse interactive elements from all layers.
         let mut interactive_elements = Vec::new();
-        for (layer_name, shapes_val) in &layer_map {
-            if let Some(shapes_arr) = shapes_val.as_array() {
-                canvas_widgets::collect_interactive_elements(
-                    shapes_arr,
-                    layer_name,
-                    canvas_widgets::TransformMatrix::identity(),
-                    None,
-                    None,
-                    "",
-                    &mut interactive_elements,
-                );
-            }
+        for (layer_name, shapes) in &layer_map {
+            canvas_widgets::collect_interactive_elements(
+                shapes,
+                layer_name,
+                canvas_widgets::TransformMatrix::identity(),
+                None,
+                None,
+                "",
+                &mut interactive_elements,
+            );
         }
 
         let diags = canvas_widgets::validate_interactive_elements(&node.id, &interactive_elements);
@@ -123,11 +120,13 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         self.interactions.insert(key.clone(), interactive_elements);
 
         // Update or create per-layer tessellation caches.
+        // Hash via Debug representation for cache invalidation.
         let node_caches = self.layer_caches.entry(key).or_default();
-        for (layer_name, shapes_val) in &layer_map {
+        for (layer_name, shapes) in &layer_map {
             let hash = {
                 let mut hasher = DefaultHasher::new();
-                hash_json_value(shapes_val, &mut hasher);
+                let debug_repr = format!("{:?}", shapes);
+                debug_repr.hash(&mut hasher);
                 hasher.finish()
             };
             match node_caches.get_mut(layer_name) {

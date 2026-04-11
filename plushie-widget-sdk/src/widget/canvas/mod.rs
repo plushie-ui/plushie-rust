@@ -23,8 +23,10 @@ mod tests;
 use std::collections::HashMap;
 
 use iced::widget::canvas;
-use iced::{Color, Element, Point, Theme};
-use serde_json::Value;
+use iced::{Element, Point, Theme};
+
+use plushie_core::types::canvas::{CanvasShape, extract_canvas_layers};
+use plushie_core::types::{self as core_types, PlushieType};
 
 use crate::PlushieRenderer;
 use crate::iced_convert;
@@ -32,8 +34,6 @@ use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
-
-use plushie_core::types::{self as core_types, PlushieType};
 
 // --- Public / pub(crate) re-exports ---
 
@@ -47,38 +47,9 @@ pub(crate) use shapes::{parse_canvas_fill, parse_canvas_stroke};
 #[cfg(test)]
 pub(crate) use types::{ArrowMode, CanvasState, DragAxis, HitRegion};
 
-// --- canvas_layers_from_node (moved from caches.rs) ---
+// --- canvas_layers_from_node ---
 
-/// Reconstruct a shape JSON Value from a tree node.
-///
-/// Shape nodes have `{id, type, props, children}`. This converts back to
-/// the `{type: type, id: id, ...props, children: [...]}` format that the
-/// canvas rendering and hit-testing code expects.
-fn tree_node_to_shape_value(node: &TreeNode) -> Value {
-    let mut map = serde_json::Map::new();
-    map.insert("type".to_string(), Value::String(node.type_name.clone()));
-
-    // Copy all props into the shape map. Uses as_value_cow() because
-    // the canvas drawing pipeline works with JSON Values internally
-    // (shapes are rendered from a flat list of Value maps).
-    let props_cow = node.props.as_value_cow();
-    if let Some(obj) = props_cow.as_object() {
-        for (k, v) in obj {
-            map.insert(k.clone(), v.clone());
-        }
-    }
-
-    // Recursively convert children (for group shapes)
-    if !node.children.is_empty() {
-        let child_shapes: Vec<Value> = node.children.iter().map(tree_node_to_shape_value).collect();
-        map.insert("children".to_string(), Value::Array(child_shapes));
-    }
-
-    Value::Object(map)
-}
-
-/// Extract canvas layer data from a node's children. Returns owned Values
-/// suitable for hashing and rendering.
+/// Extract canvas layer data from a node's children as typed shapes.
 ///
 /// Canvas nodes carry shapes as tree children:
 /// - `__layer__` children with a `name` prop and shape children (layered)
@@ -87,55 +58,23 @@ fn tree_node_to_shape_value(node: &TreeNode) -> Value {
 /// Returns a BTreeMap so layer order is deterministic (alphabetical by name).
 pub(crate) fn canvas_layers_from_node(
     node: &TreeNode,
-) -> std::collections::BTreeMap<String, Value> {
-    let mut map = std::collections::BTreeMap::new();
-
+) -> std::collections::BTreeMap<String, Vec<CanvasShape>> {
     // Check if children are __layer__ containers
     let has_layers = node.children.iter().any(|c| c.type_name == "__layer__");
 
     if has_layers {
-        for child in &node.children {
-            if child.type_name == "__layer__" {
-                let layer_name = child
-                    .props
-                    .as_object()
-                    .and_then(|p| p.get("name"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("default")
-                    .to_string();
-
-                let shapes: Vec<Value> = child
-                    .children
-                    .iter()
-                    .map(tree_node_to_shape_value)
-                    .collect();
-                map.insert(layer_name, Value::Array(shapes));
-            }
-        }
+        extract_canvas_layers(node)
     } else if !node.children.is_empty() {
-        // Direct shape children (flat canvas)
-        let shapes: Vec<Value> = node.children.iter().map(tree_node_to_shape_value).collect();
-        map.insert("default".to_string(), Value::Array(shapes));
+        // Direct shape children (flat canvas, treated as "default" layer)
+        let shapes: Vec<CanvasShape> = node.children.iter()
+            .filter_map(CanvasShape::from_node)
+            .collect();
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("default".to_string(), shapes);
+        map
+    } else {
+        std::collections::BTreeMap::new()
     }
-
-    map
-}
-
-// --- JSON helpers ---
-
-/// Parse an f32 from a JSON value by key, defaulting to 0.
-pub(crate) fn json_f32(val: &Value, key: &str) -> f32 {
-    val.get(key)
-        .and_then(|v| v.as_f64())
-        .map(|v| v as f32)
-        .unwrap_or(0.0)
-}
-
-/// Parse a Color from a JSON "fill" field. Accepts "#rrggbb" hex strings;
-/// defaults to white if missing or unparseable.
-#[allow(dead_code)] // used by tests
-pub(crate) fn json_color(val: &Value, key: &str) -> Color {
-    val.get(key).and_then(parse_color).unwrap_or(Color::WHITE)
 }
 
 // --- CanvasProps ---
@@ -192,11 +131,11 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
 
     // Build sorted layer data from children (shapes as tree nodes).
     let layer_map = canvas_layers_from_node(node);
-    let layers: Vec<(String, Vec<Value>)> = layer_map
+    let layers: Vec<(String, Vec<CanvasShape>)> = layer_map
         .into_iter()
-        .map(|(name, val)| {
-            let layer_shapes = val.as_array().cloned().unwrap_or_default();
-            (name.clone(), shapes::truncate_shapes(&name, layer_shapes))
+        .map(|(name, layer_shapes)| {
+            let truncated = shapes::truncate_shapes(&name, layer_shapes);
+            (name, truncated)
         })
         .collect();
 
@@ -269,18 +208,16 @@ pub fn canvas_hit_test(node: &crate::protocol::TreeNode, x: f32, y: f32) -> Opti
     let layer_map = canvas_layers_from_node(node);
 
     let mut interactive_elements = Vec::new();
-    for (layer_name, shapes_val) in &layer_map {
-        if let Some(shapes_arr) = shapes_val.as_array() {
-            collect_interactive_elements(
-                shapes_arr,
-                layer_name,
-                TransformMatrix::identity(),
-                None,
-                None,
-                "",
-                &mut interactive_elements,
-            );
-        }
+    for (layer_name, shapes) in &layer_map {
+        collect_interactive_elements(
+            shapes,
+            layer_name,
+            TransformMatrix::identity(),
+            None,
+            None,
+            "",
+            &mut interactive_elements,
+        );
     }
 
     interaction::find_hit_element(Point::new(x, y), &interactive_elements).map(|e| e.id.clone())
@@ -295,18 +232,16 @@ pub fn canvas_find_element_by_id(node: &crate::protocol::TreeNode, element_id: &
     let layer_map = canvas_layers_from_node(node);
 
     let mut interactive_elements = Vec::new();
-    for (layer_name, shapes_val) in &layer_map {
-        if let Some(shapes_arr) = shapes_val.as_array() {
-            collect_interactive_elements(
-                shapes_arr,
-                layer_name,
-                TransformMatrix::identity(),
-                None,
-                None,
-                "",
-                &mut interactive_elements,
-            );
-        }
+    for (layer_name, shapes) in &layer_map {
+        collect_interactive_elements(
+            shapes,
+            layer_name,
+            TransformMatrix::identity(),
+            None,
+            None,
+            "",
+            &mut interactive_elements,
+        );
     }
 
     interactive_elements.iter().any(|e| e.id == element_id)

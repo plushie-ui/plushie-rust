@@ -2,7 +2,6 @@
 
 use iced::widget::canvas;
 use iced::{Point, Radians, Vector};
-use serde_json::Value;
 
 use crate::PlushieRenderer;
 
@@ -209,7 +208,8 @@ impl TransformMatrix {
     ///
     /// Applies each transform entry in order: translate, rotate, scale.
     /// Returns the composed matrix.
-    pub fn from_transforms(transforms: &[Value]) -> Self {
+    #[cfg(test)]
+    pub fn from_transforms(transforms: &[serde_json::Value]) -> Self {
         let mut m = Self::identity();
         for t in transforms {
             let t_type = t.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -234,6 +234,24 @@ impl TransformMatrix {
                     }
                 }
                 _ => {}
+            }
+        }
+        m
+    }
+
+    /// Build a matrix from typed [`Transform`] values.
+    pub fn from_typed_transforms(
+        transforms: &[plushie_core::types::canvas::Transform],
+    ) -> Self {
+        use plushie_core::types::canvas::Transform;
+
+        let mut m = Self::identity();
+        for t in transforms {
+            match t {
+                Transform::Translate { x, y } => m = m.translate(*x, *y),
+                Transform::Rotate { angle } => m = m.rotate(*angle),
+                Transform::Scale { x, y } => m = m.scale(*x, *y),
+                Transform::ScaleUniform { factor } => m = m.scale(*factor, *factor),
             }
         }
         m

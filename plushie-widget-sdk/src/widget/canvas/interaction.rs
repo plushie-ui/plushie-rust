@@ -1,9 +1,11 @@
 //! Canvas interactive element collection, hit testing, and validation.
 
 use iced::{Point, Rectangle, mouse};
-use serde_json::Value;
 
-use super::json_f32;
+use plushie_core::types::canvas::{
+    CanvasShape, GroupShape, Transform,
+};
+
 use super::types::*;
 use crate::protocol::OutgoingEvent;
 
@@ -92,156 +94,74 @@ pub(super) fn find_hit_element(
     })
 }
 
-/// Parse an [`InteractiveElement`] from a group's top-level JSON fields.
+/// Parse an [`InteractiveElement`] from a typed [`GroupShape`].
 ///
-/// A group is interactive when it has an `"id"` field. All interactive
-/// properties (`on_click`, `a11y`, `hover_style`, etc.) live at the
-/// group's top level, not in a nested `"interactive"` sub-object.
+/// A group is interactive when it has an `id` field. Interactive
+/// properties (`on_click`, `hover_style`, etc.) are typed fields on
+/// the struct.
 ///
-/// Returns `None` if the group has no `"id"` or is not a group type.
+/// Returns `None` if the group has no id.
 pub(super) fn parse_interactive_element(
-    group: &Value,
+    group: &GroupShape,
     layer_name: &str,
 ) -> Option<InteractiveElement> {
-    // Only groups can be interactive elements.
-    let shape_type = group.get("type").and_then(|v| v.as_str())?;
-    if shape_type != "group" {
-        return None;
-    }
-
-    let id = group.get("id").and_then(|v| v.as_str())?.to_string();
+    let id = group.id.as_ref()?.clone();
     if id.is_empty() {
         return None;
     }
 
-    // Validate known fields -- warn on typos like "on_clck" or "focussable".
-    const KNOWN_GROUP_FIELDS: &[&str] = &[
-        "type",
-        "children",
-        "transforms",
-        "clip",
-        // Interactive
-        "id",
-        "on_click",
-        "on_hover",
-        "cursor",
-        "draggable",
-        "drag_axis",
-        "drag_bounds",
-        "tooltip",
-        "hit_rect",
-        "hover_style",
-        "pressed_style",
-        "focus_style",
-        "show_focus_ring",
-        "focus_ring_radius",
-        "focusable",
-        // Accessibility
-        "a11y",
-    ];
-    if let Some(obj) = group.as_object() {
-        for key in obj.keys() {
-            if !KNOWN_GROUP_FIELDS.contains(&key.as_str()) {
-                log::warn!("canvas element '{id}': unknown field '{key}'");
-            }
-        }
-    }
-
     // Warn on common mistakes.
-    let draggable = group
-        .get("draggable")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if !draggable && group.get("drag_bounds").is_some() {
+    let draggable = group.draggable.unwrap_or(false);
+    if !draggable && group.drag_bounds.is_some() {
         log::warn!("canvas element '{id}': drag_bounds set without draggable: true");
     }
-    if !draggable && group.get("drag_axis").is_some() {
+    if !draggable && group.drag_axis.is_some() {
         log::warn!("canvas element '{id}': drag_axis set without draggable: true");
     }
 
     let hit_region = compute_hit_region(group)?;
 
-    let drag_axis = match group
-        .get("drag_axis")
-        .and_then(|v| v.as_str())
-        .unwrap_or("both")
-    {
-        "x" => DragAxis::X,
-        "y" => DragAxis::Y,
+    let drag_axis = match group.drag_axis {
+        Some(plushie_core::types::canvas::DragAxis::X) => DragAxis::X,
+        Some(plushie_core::types::canvas::DragAxis::Y) => DragAxis::Y,
         _ => DragAxis::Both,
     };
 
-    let drag_bounds = group.get("drag_bounds").and_then(|v| {
-        let obj = v.as_object()?;
-        let get = |key: &str| -> Option<f32> {
-            let val = obj.get(key).and_then(|v| v.as_f64()).map(|v| v as f32);
-            if val.is_none() {
-                log::warn!("canvas element '{id}': drag_bounds missing '{key}'");
-            }
-            val
-        };
-        let min_x = get("min_x")?;
-        let max_x = get("max_x")?;
-        let min_y = get("min_y")?;
-        let max_y = get("max_y")?;
-        Some(DragBounds {
+    let drag_bounds = group.drag_bounds.as_ref().map(|db| {
+        let min_x = db.min_x.unwrap_or(f32::NEG_INFINITY);
+        let max_x = db.max_x.unwrap_or(f32::INFINITY);
+        let min_y = db.min_y.unwrap_or(f32::NEG_INFINITY);
+        let max_y = db.max_y.unwrap_or(f32::INFINITY);
+        DragBounds {
             min_x: min_x.min(max_x),
             max_x: min_x.max(max_x),
             min_y: min_y.min(max_y),
             max_y: min_y.max(max_y),
-        })
+        }
     });
-
-    let cursor = group
-        .get("cursor")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
 
     Some(InteractiveElement {
         id,
         layer: layer_name.to_string(),
         hit_region,
-        // Transform fields are set by collect_interactive_elements after
-        // parsing. Defaults here represent a top-level element with no
-        // ancestor transforms or clips.
         transform: TransformMatrix::identity(),
         inverse_transform: Some(TransformMatrix::identity()),
         clip_rect: None,
-        on_click: group
-            .get("on_click")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
-        on_hover: group
-            .get("on_hover")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
+        on_click: group.on_click.unwrap_or(false),
+        on_hover: group.on_hover.unwrap_or(false),
         draggable,
         drag_axis,
         drag_bounds,
-        cursor,
-        has_hover_style: group.get("hover_style").is_some(),
-        has_pressed_style: group.get("pressed_style").is_some(),
-        has_focus_style: group.get("focus_style").is_some(),
-        show_focus_ring: group
-            .get("show_focus_ring")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true),
-        focus_ring_radius: group
-            .get("focus_ring_radius")
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32),
-        focusable: group
-            .get("focusable")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
-        // Set by collect_interactive_elements based on nesting context.
+        cursor: group.cursor.clone(),
+        has_hover_style: group.hover_style.is_some(),
+        has_pressed_style: group.pressed_style.is_some(),
+        has_focus_style: group.focus_style.is_some(),
+        show_focus_ring: group.show_focus_ring.unwrap_or(true),
+        focus_ring_radius: group.focus_ring_radius,
+        focusable: group.focusable.unwrap_or(false),
         parent_group: None,
-        tooltip: group
-            .get("tooltip")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        a11y: group
-            .get("a11y")
+        tooltip: group.tooltip.clone(),
+        a11y: group.a11y.as_ref()
             .and_then(crate::a11y::A11yOverrides::from_a11y_value),
     })
 }
@@ -253,20 +173,19 @@ pub(super) fn parse_interactive_element(
 ///
 /// An explicit `hit_rect` on the group overrides automatic inference.
 /// `hit_rect` is in the group's local coordinate space.
-fn compute_hit_region(group: &Value) -> Option<HitRegion> {
+fn compute_hit_region(group: &GroupShape) -> Option<HitRegion> {
     // Explicit hit_rect overrides geometric inference.
-    // hit_rect is in local coordinates -- no offset needed.
-    if let Some(hr) = group.get("hit_rect").and_then(|v| v.as_object()) {
-        let x = hr.get("x")?.as_f64()? as f32;
-        let y = hr.get("y")?.as_f64()? as f32;
-        let w = hr.get("w").or(hr.get("width"))?.as_f64()? as f32;
-        let h = hr.get("h").or(hr.get("height"))?.as_f64()? as f32;
-        return Some(HitRegion::Rect { x, y, w, h });
+    if let Some(ref hr) = group.hit_rect {
+        return Some(HitRegion::Rect {
+            x: hr.x,
+            y: hr.y,
+            w: hr.w,
+            h: hr.h,
+        });
     }
 
     // Infer from children's bounding box.
-    let children = group.get("children").and_then(|v| v.as_array())?;
-    let (min_x, min_y, max_x, max_y) = children_bounds(children)?;
+    let (min_x, min_y, max_x, max_y) = children_bounds(&group.children)?;
     Some(HitRegion::Rect {
         x: min_x,
         y: min_y,
@@ -418,10 +337,10 @@ pub(super) fn intersect_rects(
 /// which controls two-level keyboard navigation: Tab moves between
 /// top-level entries, arrows navigate within a focused group's children.
 ///
-/// Only groups with an `"id"` field are collected as interactive elements.
-/// Non-group shapes are skipped regardless of any fields they carry.
+/// Only groups with an `id` field are collected as interactive elements.
+/// Non-group shapes are skipped.
 pub(crate) fn collect_interactive_elements(
-    shapes: &[Value],
+    shapes: &[CanvasShape],
     layer_name: &str,
     parent_transform: TransformMatrix,
     parent_clip: Option<(f32, f32, f32, f32)>,
@@ -430,36 +349,26 @@ pub(crate) fn collect_interactive_elements(
     out: &mut Vec<InteractiveElement>,
 ) {
     for shape in shapes {
-        let is_group = shape
-            .get("type")
-            .and_then(|v| v.as_str())
-            .is_some_and(|t| t == "group");
-
-        if !is_group {
-            continue;
-        }
+        let group = match shape {
+            CanvasShape::Group(g) => g,
+            _ => continue,
+        };
 
         // Compose this group's transforms with the parent's accumulated matrix.
-        let group_matrix = match shape.get("transforms").and_then(|v| v.as_array()) {
-            Some(arr) if !arr.is_empty() => {
-                let local = TransformMatrix::from_transforms(arr);
-                parent_transform.compose(&local)
-            }
-            _ => parent_transform,
+        let group_matrix = if !group.transforms.is_empty() {
+            let local = TransformMatrix::from_typed_transforms(&group.transforms);
+            parent_transform.compose(&local)
+        } else {
+            parent_transform
         };
 
         // Intersect this group's clip (if any) with parent clip.
-        let group_clip = if let Some(clip) = shape.get("clip").and_then(|v| v.as_object()) {
-            let cx = clip.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let cy = clip.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let cw = clip.get("w").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let ch = clip.get("h").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-
+        let group_clip = if let Some(ref clip) = group.clip {
             let corners = [
-                group_matrix.transform_point(cx, cy),
-                group_matrix.transform_point(cx + cw, cy),
-                group_matrix.transform_point(cx, cy + ch),
-                group_matrix.transform_point(cx + cw, cy + ch),
+                group_matrix.transform_point(clip.x, clip.y),
+                group_matrix.transform_point(clip.x + clip.w, clip.y),
+                group_matrix.transform_point(clip.x, clip.y + clip.h),
+                group_matrix.transform_point(clip.x + clip.w, clip.y + clip.h),
             ];
             let min_x = corners.iter().map(|c| c.0).fold(f32::MAX, f32::min);
             let min_y = corners.iter().map(|c| c.1).fold(f32::MAX, f32::min);
@@ -477,16 +386,11 @@ pub(crate) fn collect_interactive_elements(
         };
 
         // Collect this group if it's interactive (has an id).
-        // Determine the focusable context for children: if this group is
-        // focusable, its children get parent_group = this group's ID.
         let mut child_focusable_parent = focusable_parent;
         let mut focusable_group_id: Option<String> = None;
-
-        // Build hierarchical ID: prefix/local_id for nested groups.
         let mut child_id_prefix = id_prefix.to_string();
 
-        if let Some(mut element) = parse_interactive_element(shape, layer_name) {
-            // Apply hierarchical ID prefix for nested groups.
+        if let Some(mut element) = parse_interactive_element(group, layer_name) {
             if !id_prefix.is_empty() {
                 element.id = format!("{}/{}", id_prefix, element.id);
             }
@@ -500,29 +404,24 @@ pub(crate) fn collect_interactive_elements(
                 focusable_group_id = Some(element.id.clone());
             }
 
-            // Children of this group use its hierarchical ID as prefix.
             child_id_prefix = element.id.clone();
-
             out.push(element);
         }
 
-        // If this group is focusable, its children belong to it.
         if let Some(ref gid) = focusable_group_id {
             child_focusable_parent = Some(gid.as_str());
         }
 
         // Recurse into group children to find nested interactive elements.
-        if let Some(children) = shape.get("children").and_then(|v| v.as_array()) {
-            collect_interactive_elements(
-                children,
-                layer_name,
-                group_matrix,
-                group_clip,
-                child_focusable_parent,
-                &child_id_prefix,
-                out,
-            );
-        }
+        collect_interactive_elements(
+            &group.children,
+            layer_name,
+            group_matrix,
+            group_clip,
+            child_focusable_parent,
+            &child_id_prefix,
+            out,
+        );
     }
 }
 
@@ -661,17 +560,14 @@ pub(crate) fn validate_interactive_elements(
 /// sums their x/y components. Non-translate transforms (rotate, scale)
 /// are ignored for this purpose -- they affect hit testing via the
 /// transform matrix in Phase 2.5, not via this simple offset.
-fn group_translation(group: &Value) -> (f32, f32) {
-    let transforms = match group.get("transforms").and_then(|v| v.as_array()) {
-        Some(arr) => arr,
-        None => return (0.0, 0.0),
-    };
+/// Compute the translation offset from a group's transforms.
+fn group_translation(transforms: &[Transform]) -> (f32, f32) {
     let mut tx = 0.0f32;
     let mut ty = 0.0f32;
     for t in transforms {
-        if t.get("type").and_then(|v| v.as_str()) == Some("translate") {
-            tx += t.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            ty += t.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+        if let Transform::Translate { x, y } = t {
+            tx += x;
+            ty += y;
         }
     }
     (tx, ty)
@@ -680,62 +576,36 @@ fn group_translation(group: &Value) -> (f32, f32) {
 /// Compute the bounding box of a single shape in its parent's coordinate
 /// system. Returns `(min_x, min_y, max_x, max_y)` or `None` if bounds
 /// can't be determined for this shape type.
-fn child_bounds(child: &Value) -> Option<(f32, f32, f32, f32)> {
-    let ct = child.get("type").and_then(|v| v.as_str())?;
-    match ct {
-        "rect" => {
-            let x = json_f32(child, "x");
-            let y = json_f32(child, "y");
-            let w = json_f32(child, "w");
-            let h = json_f32(child, "h");
-            Some((x, y, x + w, y + h))
+fn child_bounds(child: &CanvasShape) -> Option<(f32, f32, f32, f32)> {
+    match child {
+        CanvasShape::Rect(r) => Some((r.x, r.y, r.x + r.w, r.y + r.h)),
+        CanvasShape::Circle(c) => Some((c.x - c.r, c.y - c.r, c.x + c.r, c.y + c.r)),
+        CanvasShape::Line(l) => Some((
+            l.x1.min(l.x2),
+            l.y1.min(l.y2),
+            l.x1.max(l.x2),
+            l.y1.max(l.y2),
+        )),
+        CanvasShape::Text(t) => {
+            let size = t.size.unwrap_or(16.0);
+            let est_w = t.content.chars().count() as f32 * size * 0.6;
+            Some((t.x, t.y - size, t.x + est_w, t.y))
         }
-        "circle" => {
-            let cx = json_f32(child, "x");
-            let cy = json_f32(child, "y");
-            let r = json_f32(child, "r");
-            Some((cx - r, cy - r, cx + r, cy + r))
-        }
-        "line" => {
-            let x1 = json_f32(child, "x1");
-            let y1 = json_f32(child, "y1");
-            let x2 = json_f32(child, "x2");
-            let y2 = json_f32(child, "y2");
-            Some((x1.min(x2), y1.min(y2), x1.max(x2), y1.max(y2)))
-        }
-        "text" => {
-            let x = json_f32(child, "x");
-            let y = json_f32(child, "y");
-            let content = child.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            let size = child.get("size").and_then(|v| v.as_f64()).unwrap_or(16.0) as f32;
-            let est_w = content.chars().count() as f32 * size * 0.6;
-            Some((x, y - size, x + est_w, y))
-        }
-        "image" | "svg" => {
-            let x = json_f32(child, "x");
-            let y = json_f32(child, "y");
-            let w = json_f32(child, "w");
-            let h = json_f32(child, "h");
-            Some((x, y, x + w, y + h))
-        }
-        "group" => {
-            let (gx, gy) = group_translation(child);
-            let nested = child.get("children").and_then(|v| v.as_array())?;
-            let (min_x, min_y, max_x, max_y) = children_bounds(nested)?;
+        CanvasShape::Image(i) => Some((i.x, i.y, i.x + i.w, i.y + i.h)),
+        CanvasShape::Svg(s) => Some((s.x, s.y, s.x + s.w, s.y + s.h)),
+        CanvasShape::Group(g) => {
+            let (gx, gy) = group_translation(&g.transforms);
+            let (min_x, min_y, max_x, max_y) = children_bounds(&g.children)?;
             Some((gx + min_x, gy + min_y, gx + max_x, gy + max_y))
         }
-        "path" => path_bounds(child),
-        // Other shape types can't have their bounds automatically
-        // determined. Use hit_rect on the parent group.
-        _ => None,
+        CanvasShape::Path(p) => path_bounds(&p.commands),
     }
 }
 
 /// Compute bounding box of a path from its commands.
 /// Examines move_to, line_to, and arc endpoints. Bezier control points
 /// are included conservatively (they bound the curve).
-fn path_bounds(shape: &Value) -> Option<(f32, f32, f32, f32)> {
-    let commands = shape.get("commands")?.as_array()?;
+fn path_bounds(commands: &[serde_json::Value]) -> Option<(f32, f32, f32, f32)> {
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
     let mut max_x = f32::MIN;
@@ -744,16 +614,14 @@ fn path_bounds(shape: &Value) -> Option<(f32, f32, f32, f32)> {
 
     for cmd in commands {
         let points: Vec<f32> = if let Some(arr) = cmd.as_array() {
-            // ["move_to", x, y] or ["line_to", x, y] etc.
             arr.iter()
                 .skip(1)
                 .filter_map(|v| v.as_f64().map(|f| f as f32))
                 .collect()
         } else {
-            continue; // "close" or other string commands
+            continue;
         };
 
-        // Take all numeric values as x,y pairs
         for pair in points.chunks(2) {
             if pair.len() == 2 {
                 min_x = min_x.min(pair[0]);
@@ -771,7 +639,7 @@ fn path_bounds(shape: &Value) -> Option<(f32, f32, f32, f32)> {
 /// Compute the union bounding box of a list of child shapes.
 /// Returns `(min_x, min_y, max_x, max_y)` or `None` if no children
 /// have computable bounds.
-fn children_bounds(children: &[Value]) -> Option<(f32, f32, f32, f32)> {
+fn children_bounds(children: &[CanvasShape]) -> Option<(f32, f32, f32, f32)> {
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
     let mut max_x = f32::MIN;

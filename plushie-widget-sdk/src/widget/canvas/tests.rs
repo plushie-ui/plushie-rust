@@ -3,8 +3,75 @@ use crate::protocol::TreeNode;
 use crate::shared_state::hash_str;
 use iced::widget::canvas;
 use iced::{Color, Point, alignment};
+use plushie_core::types::canvas::{CanvasShape, GroupShape};
 use serde_json::Value;
 use serde_json::json;
+
+/// Convert a flat JSON shape ({"type":"group","id":"g","on_click":true,...})
+/// into a TreeNode ({"id":"g","type":"group","props":{"on_click":true},...}).
+fn flat_shape_to_tree_node(val: &Value) -> TreeNode {
+    let obj = val.as_object().expect("expected JSON object");
+    let type_name = obj.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let id = obj.get("id").and_then(|v| v.as_str()).unwrap_or("__auto__").to_string();
+
+    // Everything except type, id, children goes into props.
+    let mut props = serde_json::Map::new();
+    for (k, v) in obj {
+        if k == "type" || k == "id" || k == "children" {
+            continue;
+        }
+        props.insert(k.clone(), v.clone());
+    }
+
+    let children: Vec<TreeNode> = obj.get("children")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().map(flat_shape_to_tree_node).collect())
+        .unwrap_or_default();
+
+    TreeNode {
+        id,
+        type_name,
+        props: Value::Object(props).into(),
+        children,
+    }
+}
+
+/// Helper: convert a flat JSON group shape into a GroupShape via TreeNode.
+fn group_from_json(val: &Value) -> GroupShape {
+    let node = flat_shape_to_tree_node(val);
+    GroupShape::from_node(&node)
+}
+
+/// Helper: convert a flat JSON shape array to Vec<CanvasShape> via TreeNodes.
+fn shapes_from_json(shapes: &[Value]) -> Vec<CanvasShape> {
+    shapes.iter().filter_map(|v| {
+        let node = flat_shape_to_tree_node(v);
+        CanvasShape::from_node(&node)
+    }).collect()
+}
+
+/// Helper: collect interactive elements from flat JSON shape values.
+/// Wraps the conversion from JSON to typed shapes + the actual collection.
+fn collect_interactive_from_json(
+    shapes: &[Value],
+    layer_name: &str,
+    parent_transform: TransformMatrix,
+    parent_clip: Option<(f32, f32, f32, f32)>,
+    focusable_parent: Option<&str>,
+    id_prefix: &str,
+    out: &mut Vec<InteractiveElement>,
+) {
+    let typed = shapes_from_json(shapes);
+    collect_interactive_elements(
+        &typed,
+        layer_name,
+        parent_transform,
+        parent_clip,
+        focusable_parent,
+        id_prefix,
+        out,
+    );
+}
 
 /// Helper: build a TreeNode with given children and optional props.
 fn make_canvas_node(props: Value, children: Vec<TreeNode>) -> TreeNode {
@@ -62,12 +129,9 @@ fn canvas_layers_from_layer_children() {
     assert!(result.contains_key("background"));
     assert!(result.contains_key("foreground"));
     let bg = result.get("background").unwrap();
-    assert!(bg.is_array());
-    assert_eq!(bg.as_array().unwrap().len(), 1);
-    // Shape should have "type" reconstructed from the node's type_name.
-    let shape = &bg.as_array().unwrap()[0];
-    assert_eq!(shape.get("type").and_then(|v| v.as_str()), Some("rect"));
-    assert_eq!(shape.get("width").and_then(|v| v.as_f64()), Some(100.0));
+    assert_eq!(bg.len(), 1);
+    // Shape should be a Rect variant.
+    assert!(matches!(&bg[0], plushie_core::types::canvas::CanvasShape::Rect(_)));
 }
 
 #[test]
@@ -291,8 +355,7 @@ fn text_align_y_defaults_to_top() {
 
 #[test]
 fn opacity_applied_to_fill() {
-    let shape = json!({"type": "rect", "fill": "#ff0000", "opacity": 0.5});
-    let fill = shapes::apply_opacity_to_fill(&shape, parse_canvas_fill(&json!("#ff0000"), &shape));
+    let fill = shapes::apply_opacity_to_fill(Some(0.5), parse_canvas_fill(&json!("#ff0000"), &json!({})));
     match fill.style {
         canvas::Style::Solid(c) => {
             assert!(
@@ -307,9 +370,8 @@ fn opacity_applied_to_fill() {
 
 #[test]
 fn opacity_applied_to_stroke() {
-    let shape = json!({"type": "rect", "opacity": 0.25});
     let stroke_val = json!({"color": "#00ff00", "width": 2.0});
-    let stroke = shapes::apply_opacity_to_stroke(&shape, parse_canvas_stroke(&stroke_val));
+    let stroke = shapes::apply_opacity_to_stroke(Some(0.25), parse_canvas_stroke(&stroke_val));
     match stroke.style {
         canvas::Style::Solid(c) => {
             assert!(
@@ -324,8 +386,7 @@ fn opacity_applied_to_stroke() {
 
 #[test]
 fn opacity_applied_to_color() {
-    let shape = json!({"opacity": 0.75});
-    let color = shapes::apply_opacity_to_color(&shape, Color::WHITE);
+    let color = shapes::apply_opacity_to_color(Some(0.75), Color::WHITE);
     assert!(
         (color.a - 0.75).abs() < 0.001,
         "expected alpha ~0.75, got {}",
@@ -335,8 +396,7 @@ fn opacity_applied_to_color() {
 
 #[test]
 fn no_opacity_leaves_alpha_unchanged() {
-    let shape = json!({"type": "rect", "fill": "#ff0000"});
-    let fill = shapes::apply_opacity_to_fill(&shape, parse_canvas_fill(&json!("#ff0000"), &shape));
+    let fill = shapes::apply_opacity_to_fill(None, parse_canvas_fill(&json!("#ff0000"), &json!({})));
     match fill.style {
         canvas::Style::Solid(c) => {
             assert!(
@@ -436,7 +496,7 @@ fn parse_interactive_group_basic() {
             {"type": "rect", "x": 10, "y": 20, "w": 30, "h": 40, "fill": "#ff0000"}
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "default").unwrap();
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     assert_eq!(result.id, "bar-1");
     assert!(result.on_click);
     assert!(result.on_hover);
@@ -457,7 +517,7 @@ fn parse_interactive_group_with_drag() {
             {"type": "circle", "x": 50, "y": 50, "r": 20}
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "layer1").unwrap();
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "layer1").unwrap();
     assert_eq!(result.id, "dot-1");
     assert!(result.draggable);
     assert_eq!(result.drag_axis, DragAxis::X);
@@ -476,7 +536,7 @@ fn parse_interactive_group_with_hit_rect() {
             {"type": "path", "commands": [["move_to", 0, 0], ["line_to", 100, 100]]}
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "default").unwrap();
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     assert_eq!(result.id, "path-group");
     assert!(matches!(result.hit_region, HitRegion::Rect { .. }));
 }
@@ -489,15 +549,12 @@ fn parse_interactive_missing_id_returns_none() {
         "on_click": true,
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 10, "h": 10}]
     });
-    assert!(interaction::parse_interactive_element(&shape, "default").is_none());
+    assert!(interaction::parse_interactive_element(&group_from_json(&shape), "default").is_none());
 }
 
-#[test]
-fn parse_interactive_non_group_returns_none() {
-    // Only groups can be interactive elements.
-    let shape = json!({"type": "rect", "x": 0, "y": 0, "w": 10, "h": 10, "id": "r"});
-    assert!(interaction::parse_interactive_element(&shape, "default").is_none());
-}
+// parse_interactive_non_group_returns_none: removed.
+// Non-group filtering is now enforced by the type system (only
+// GroupShape is accepted by parse_interactive_element).
 
 // -- Hit region to rect --
 
@@ -539,7 +596,7 @@ fn compute_hit_region_group_with_rect_children() {
             {"type": "rect", "x": 10, "y": 50, "w": 80, "h": 20}
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "default").unwrap();
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     // Bounding box of children in local space: x=0..100, y=0..70.
     match result.hit_region {
         HitRegion::Rect { x, y, w, h } => {
@@ -562,7 +619,7 @@ fn compute_hit_region_group_with_mixed_children() {
             {"type": "circle", "x": 80, "y": 15, "r": 10}
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "default").unwrap();
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     // Rect: 0..50, 0..30; Circle: 70..90, 5..25
     // Union in local space: 0..90, 0..30
     match result.hit_region {
@@ -583,7 +640,7 @@ fn compute_hit_region_group_no_children() {
         "id": "empty", "on_click": true,
         "children": []
     });
-    assert!(interaction::parse_interactive_element(&shape, "default").is_none());
+    assert!(interaction::parse_interactive_element(&group_from_json(&shape), "default").is_none());
 }
 
 #[test]
@@ -601,7 +658,7 @@ fn parse_interactive_group() {
             {"type": "text", "x": 30, "y": 25, "content": "Save", "fill": "#ccc"}
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "default").unwrap();
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     assert_eq!(result.id, "btn");
     assert!(result.on_click);
     assert!(result.on_hover);
@@ -630,7 +687,7 @@ fn parse_interactive_element_skips_non_groups() {
         "type": "rect", "x": 0, "y": 0, "w": 100, "h": 40,
         "id": "rect-btn", "on_click": true
     });
-    assert!(interaction::parse_interactive_element(&shape, "default").is_none());
+    assert!(interaction::parse_interactive_element(&group_from_json(&shape), "default").is_none());
 }
 
 #[test]
@@ -646,7 +703,7 @@ fn parse_interactive_group_with_new_fields() {
             {"type": "rect", "x": 0, "y": 0, "w": 60, "h": 30}
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "default").unwrap();
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     assert_eq!(result.id, "toggle");
     assert!(result.has_focus_style);
     assert!(!result.show_focus_ring);
@@ -669,7 +726,7 @@ fn group_translation_from_transforms() {
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 10, "h": 10}]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -691,7 +748,7 @@ fn group_translation_no_transforms() {
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 10, "h": 10}]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -732,7 +789,7 @@ fn collect_interactive_elements_recurses_into_groups() {
         }),
     ];
     let mut result = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -768,7 +825,7 @@ fn path_bounds_computes_from_commands() {
             "fill": "#ff0000"
         }]
     });
-    let result = interaction::parse_interactive_element(&shape, "default");
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default");
     assert!(
         result.is_some(),
         "group with path child should have a hit region"
@@ -795,7 +852,7 @@ fn interactive_group_with_path_child_gets_hit_region() {
             }
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "default");
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default");
     assert!(
         result.is_some(),
         "group with path child should have a hit region"
@@ -814,7 +871,7 @@ fn hit_rect_on_group_is_local_coordinates() {
             {"type": "rect", "x": 0, "y": 0, "w": 10, "h": 10}
         ]
     });
-    let result = interaction::parse_interactive_element(&shape, "default").unwrap();
+    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     match result.hit_region {
         HitRegion::Rect { x, y, w, h } => {
             // Local coordinates, no offset.
@@ -915,7 +972,7 @@ fn find_hit_element_with_transform() {
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 50, "h": 50}]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -947,7 +1004,7 @@ fn find_hit_element_with_rotation() {
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 100, "h": 20}]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -983,7 +1040,7 @@ fn find_hit_element_respects_clip() {
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 100, "h": 100}]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -1036,7 +1093,7 @@ fn collect_nested_transform_accumulates() {
         }]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -1133,7 +1190,7 @@ fn nested_clip_is_intersected() {
         }]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -1164,7 +1221,7 @@ fn clip_from_parent_propagates_to_child() {
         }]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -1190,7 +1247,7 @@ fn no_clip_means_no_clip_rect() {
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 50, "h": 50}]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -1498,7 +1555,7 @@ fn find_hit_element_singular_transform_not_hittable() {
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 100, "h": 100}]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -1565,7 +1622,7 @@ fn clip_transformed_by_group_matrix() {
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 100, "h": 100}]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -1704,7 +1761,7 @@ fn parent_group_set_for_children_of_focusable_group() {
         ]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),
@@ -1740,7 +1797,7 @@ fn parent_group_none_without_focusable() {
         ]
     })];
     let mut elements = Vec::new();
-    collect_interactive_elements(
+    collect_interactive_from_json(
         &shapes,
         "default",
         TransformMatrix::identity(),

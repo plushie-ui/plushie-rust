@@ -5,7 +5,8 @@ use std::collections::HashMap;
 
 use iced::widget::canvas;
 use iced::{Color, Pixels, Point, Radians, Size, Vector, keyboard, mouse};
-use serde_json::Value;
+
+use plushie_core::types::canvas::CanvasShape;
 
 use super::interaction::*;
 use super::shapes::*;
@@ -15,7 +16,7 @@ use crate::message::{Message, serialize_modifiers};
 
 pub(crate) struct CanvasProgram<'a, R: PlushieRenderer = iced::Renderer> {
     /// Sorted layer data: (layer_name, shapes array).
-    pub layers: Vec<(String, Vec<Value>)>,
+    pub layers: Vec<(String, Vec<CanvasShape>)>,
     /// Per-layer caches from SharedState.
     pub caches: Option<&'a HashMap<String, (u64, canvas::Cache<R>)>>,
     pub background: Option<Color>,
@@ -180,112 +181,71 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
     fn draw_shapes_with_overrides(
         &self,
         frame: &mut canvas::Frame<R>,
-        shapes: &[&Value],
+        shapes: &[&CanvasShape],
         state: &CanvasState,
         images: &crate::image_registry::ImageRegistry,
         theme: &iced::Theme,
     ) {
         let hovered = state.hovered_element.as_deref();
         let pressed = state.pressed_element.as_deref();
-        // Only apply focus_style when the canvas has iced-level focus.
         let focused = if state.canvas_focused && state.focus_visible {
             state.focused_id.as_deref()
         } else {
             None
         };
 
-        for &shape in shapes {
-            let shape_type = shape.get("type").and_then(|v| v.as_str()).unwrap_or("");
-
-            if shape_type == "group" {
-                // Interactive ID is now at the group's top level.
-                let group_id = shape.get("id").and_then(|v| v.as_str());
+        for shape in shapes {
+            if let CanvasShape::Group(g) = shape {
+                let group_id = g.id.as_deref();
                 let is_pressed = group_id.is_some_and(|gid| pressed == Some(gid));
                 let is_hovered = group_id.is_some_and(|gid| hovered == Some(gid));
                 let is_focused = group_id.is_some_and(|gid| focused == Some(gid));
 
-                if let Some(children) = shape.get("children").and_then(|v| v.as_array()) {
-                    let has_transforms = shape
-                        .get("transforms")
-                        .and_then(|v| v.as_array())
-                        .is_some_and(|a| !a.is_empty());
+                let has_transforms = !g.transforms.is_empty();
+                if has_transforms {
+                    frame.push_transform();
+                    apply_group_transforms(frame, &g.transforms);
+                }
 
-                    if has_transforms {
-                        frame.push_transform();
-                        apply_group_transforms(frame, shape);
-                    }
+                // Resolve the active style override from the GROUP.
+                // Priority: pressed > hover > focus.
+                let group_override = if is_pressed {
+                    g.pressed_style.as_ref()
+                } else {
+                    None
+                }
+                .or_else(|| if is_hovered { g.hover_style.as_ref() } else { None })
+                .or_else(|| if is_focused { g.focus_style.as_ref() } else { None });
 
-                    // Resolve the active style override from the GROUP (not children).
-                    // Priority: pressed > hover > focus.
-                    let group_override: Option<&Value> = if is_pressed {
-                        shape.get("pressed_style")
-                    } else {
-                        None
-                    }
-                    .or_else(|| {
-                        if is_hovered {
-                            shape.get("hover_style")
-                        } else {
-                            None
-                        }
-                    })
-                    .or_else(|| {
-                        if is_focused {
-                            shape.get("focus_style")
-                        } else {
-                            None
-                        }
-                    });
+                let child_refs: Vec<&CanvasShape> = g.children.iter().collect();
 
-                    let draw_children =
-                        |f: &mut canvas::Frame<R>,
-                         child_refs: &[&Value],
-                         img: &crate::image_registry::ImageRegistry,
-                         theme: &iced::Theme| {
-                            if let Some(overrides) = group_override {
-                                for &child in child_refs {
-                                    // Apply group-level style override to each child.
-                                    // Children can also have their own per-child overrides
-                                    // which take precedence (merged on top).
-                                    let child_override = if is_pressed {
-                                        child.get("pressed_style")
-                                    } else {
-                                        None
-                                    }
-                                    .or_else(|| {
-                                        if is_hovered {
-                                            child.get("hover_style")
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .or_else(|| {
-                                        if is_focused {
-                                            child.get("focus_style")
-                                        } else {
-                                            None
-                                        }
-                                    });
-
-                                    let effective = child_override.unwrap_or(overrides);
-                                    let merged = merge_shape_style(child, effective);
-                                    draw_canvas_shape(f, &merged, img, theme);
-                                }
-                            } else {
-                                draw_canvas_shapes(f, child_refs, img, theme);
+                let draw_children =
+                    |f: &mut canvas::Frame<R>,
+                     child_refs: &[&CanvasShape],
+                     img: &crate::image_registry::ImageRegistry,
+                     theme: &iced::Theme| {
+                        if let Some(overrides) = group_override {
+                            for child in child_refs {
+                                draw_canvas_shape_with_overrides(f, child, img, theme, overrides);
                             }
-                        };
+                        } else {
+                            draw_canvas_shapes(f, child_refs, img, theme);
+                        }
+                    };
 
-                    let child_refs: Vec<&Value> = children.iter().collect();
-                    draw_with_group_clip(frame, shape, images, theme, &child_refs, draw_children);
+                draw_with_group_clip(
+                    frame,
+                    g.clip.as_ref(),
+                    images,
+                    theme,
+                    &child_refs,
+                    draw_children,
+                );
 
-                    if has_transforms {
-                        frame.pop_transform();
-                    }
+                if has_transforms {
+                    frame.pop_transform();
                 }
             } else {
-                // Non-group shapes are never interactive elements in the
-                // new design. Draw them directly.
                 draw_canvas_shape(frame, shape, images, theme);
             }
         }
@@ -623,7 +583,11 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
 /// Merge style overrides into a shape's JSON. The override object can
 /// contain `fill`, `stroke`, `stroke_width`, `opacity` -- these replace
 /// the corresponding fields on the shape.
-pub(crate) fn merge_shape_style(shape: &Value, overrides: &Value) -> Value {
+#[cfg(test)]
+pub(crate) fn merge_shape_style(
+    shape: &serde_json::Value,
+    overrides: &serde_json::Value,
+) -> serde_json::Value {
     let mut merged = shape.clone();
     if let (Some(merged_obj), Some(override_obj)) = (merged.as_object_mut(), overrides.as_object())
     {
@@ -1294,7 +1258,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
         // Draw each layer, using its cache when available.
         let images = self.images;
         for (layer_name, shapes) in &self.layers {
-            let shape_refs: Vec<&Value> = shapes.iter().collect();
+            let shape_refs: Vec<&CanvasShape> = shapes.iter().collect();
             let force_redraw = active_layers.iter().any(|l| l == layer_name);
 
             let geom = if !force_redraw {

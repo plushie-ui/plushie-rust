@@ -1,12 +1,38 @@
 use iced::widget::grid;
-use iced::{Element, Length, Theme};
+use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{Length, PlushieType};
+
+struct GridProps {
+    columns: Option<u32>,
+    width: Option<f32>,
+    height: Option<f32>,
+    column_width: Option<Length>,
+    row_height: Option<Length>,
+    fluid: Option<f32>,
+}
+
+impl GridProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            columns: u32::extract(p, "columns"),
+            width: f32::extract(p, "width"),
+            height: f32::extract(p, "height"),
+            column_width: Length::extract(p, "column_width"),
+            row_height: Length::extract(p, "row_height"),
+            fluid: f32::extract(p, "fluid"),
+        }
+    }
+}
 
 pub(crate) struct GridWidget;
 
@@ -20,15 +46,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GridWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = &node.props;
-        let cols = props
-            .get_value("columns")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1) as usize;
-        let spacing = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing");
+        let gp = GridProps::from_node(node);
+        let spacing =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "spacing");
 
-        let column_width = prop_length(props, "column_width", Length::Shrink);
-        let row_height = prop_length(props, "row_height", Length::Shrink);
+        let cols = gp.columns.unwrap_or(1) as usize;
 
         let children = ctx.render_children(node);
 
@@ -39,27 +61,27 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GridWidget {
         }
 
         // Legacy pixel-only width/height props
-        if let Some(w) = prop_f32(props, "width") {
+        if let Some(w) = gp.width {
             g = g.width(w);
         }
-        if let Some(h) = prop_f32(props, "height") {
+        if let Some(h) = gp.height {
             g = g.height(h);
         }
 
         // Length-typed column_width: only Fixed maps to Pixels for iced's Grid::width
-        if props.get_value("column_width").is_some()
-            && let Length::Fixed(px) = column_width
-        {
-            g = g.width(px);
+        if let Some(ref cw) = gp.column_width {
+            if let Length::Fixed(px) = *cw {
+                g = g.width(px);
+            }
         }
 
         // Length-typed row_height: maps to Grid::height via Sizing::EvenlyDistribute
-        if props.get_value("row_height").is_some() {
-            g = g.height(row_height);
+        if let Some(ref rh) = gp.row_height {
+            g = g.height(iced_convert::length(rh));
         }
 
         // Fluid mode: auto-wrap columns with a max cell width
-        if let Some(max_w) = prop_f32(props, "fluid") {
+        if let Some(max_w) = gp.fluid {
             g = g.fluid(max_w);
         }
 

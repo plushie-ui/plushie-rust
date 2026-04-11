@@ -1,14 +1,17 @@
 use std::collections::{HashMap, HashSet};
 
 use iced::widget::{pane_grid, text};
-use iced::{Element, Length, Theme};
+use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{Color, Length, PlushieType};
 
 /// Stateful pane_grid factory (owns `pane_grid::State`).
 ///
@@ -329,6 +332,29 @@ fn find_pane_by_id(state: &pane_grid::State<String>, pane_id: &str) -> Option<pa
         .map(|(pane, _)| *pane)
 }
 
+struct PaneGridProps {
+    width: Option<Length>,
+    height: Option<Length>,
+    min_size: Option<f32>,
+    leeway: Option<f32>,
+    divider_color: Option<Color>,
+    divider_width: Option<f32>,
+}
+
+impl PaneGridProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            width: Length::extract(p, "width"),
+            height: Length::extract(p, "height"),
+            min_size: f32::extract(p, "min_size"),
+            leeway: f32::extract(p, "leeway"),
+            divider_color: Color::extract(p, "divider_color"),
+            divider_width: f32::extract(p, "divider_width"),
+        }
+    }
+}
+
 /// Render a pane_grid with the provided State.
 ///
 /// The pane_grid renders as nested containers with no inherent semantic
@@ -339,11 +365,13 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     ctx: RenderCtx<'a, R>,
     state: &'a pane_grid::State<String>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = &node.props;
-    let spacing = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing")
-        .unwrap_or(2.0);
-    let width = prop_length(props, "width", Length::Fill);
-    let height = prop_length(props, "height", Length::Fill);
+    let pgp = PaneGridProps::from_node(node);
+    let spacing =
+        prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "spacing")
+            .unwrap_or(2.0);
+
+    let width = pgp.width.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Fill);
+    let height = pgp.height.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Fill);
 
     // Pre-render children into a map keyed by plushie ID. Also extract
     // title props from child nodes before the closure consumes the elements.
@@ -386,8 +414,8 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     .height(height)
     .spacing(spacing);
 
-    let min_size = prop_f32(props, "min_size").unwrap_or(10.0).max(1.0);
-    let leeway = prop_f32(props, "leeway").unwrap_or(min_size);
+    let min_size = pgp.min_size.unwrap_or(10.0).max(1.0);
+    let leeway = pgp.leeway.unwrap_or(min_size);
 
     pg = pg.on_click(move |pane| Message::PaneClicked(window_id3.clone(), node_id3.clone(), pane));
     pg = pg.on_resize(leeway, move |evt| {
@@ -399,8 +427,8 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     });
 
     // Divider styling
-    let divider_color = prop_color(props, "divider_color");
-    let divider_width = prop_f32(props, "divider_width");
+    let divider_color = pgp.divider_color.as_ref().map(iced_convert::color);
+    let divider_width = pgp.divider_width;
     if divider_color.is_some() || divider_width.is_some() {
         pg = pg.style(move |theme: &iced::Theme| {
             let mut style = pane_grid::default(theme);

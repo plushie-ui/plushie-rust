@@ -1102,4 +1102,84 @@ mod tests {
             }
         }
     }
+
+    // -- Typed variant tests -------------------------------------------------
+
+    fn make_typed_props() -> Props {
+        let mut map = plushie_core::protocol::PropMap::new();
+        map.insert("label", "hello");
+        map.insert("size", 14.5f64);
+        map.insert("count", 42i64);
+        map.insert("visible", true);
+        map.insert("color", "#ff0000");
+        Props::Typed(map)
+    }
+
+    #[test]
+    fn typed_prop_str() {
+        let p = make_typed_props();
+        assert_eq!(prop_str(&p, "label"), Some("hello".to_string()));
+        assert_eq!(prop_str(&p, "missing"), None);
+    }
+
+    #[test]
+    fn typed_prop_f32() {
+        let p = make_typed_props();
+        let v = prop_f32(&p, "size").unwrap();
+        assert!((v - 14.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn typed_prop_f64() {
+        let p = make_typed_props();
+        assert_eq!(prop_f64(&p, "size"), Some(14.5));
+    }
+
+    #[test]
+    fn typed_prop_bool() {
+        let p = make_typed_props();
+        assert_eq!(prop_bool(&p, "visible"), Some(true));
+        assert_eq!(prop_bool_default(&p, "visible", false), true);
+        assert_eq!(prop_bool_default(&p, "missing", false), false);
+    }
+
+    #[test]
+    fn typed_prop_i64() {
+        let p = make_typed_props();
+        assert_eq!(prop_i64(&p, "count"), Some(42));
+    }
+
+    #[test]
+    fn typed_prop_u32() {
+        let p = make_typed_props();
+        assert_eq!(prop_u32(&p, "count"), Some(42));
+    }
+
+    #[test]
+    fn typed_prop_color() {
+        let p = make_typed_props();
+        let c = prop_color(&p, "color").unwrap();
+        assert!((c.r - 1.0).abs() < 0.01);
+        assert!(c.g.abs() < 0.01);
+        assert!(c.b.abs() < 0.01);
+    }
+
+    #[test]
+    fn typed_and_wire_produce_same_results() {
+        let typed = make_typed_props();
+        let wire = make_props(json!({
+            "label": "hello",
+            "size": 14.5,
+            "count": 42,
+            "visible": true,
+            "color": "#ff0000",
+        }));
+
+        assert_eq!(prop_str(&typed, "label"), prop_str(&wire, "label"));
+        assert_eq!(prop_f32(&typed, "size"), prop_f32(&wire, "size"));
+        assert_eq!(prop_f64(&typed, "size"), prop_f64(&wire, "size"));
+        assert_eq!(prop_bool(&typed, "visible"), prop_bool(&wire, "visible"));
+        assert_eq!(prop_i64(&typed, "count"), prop_i64(&wire, "count"));
+        assert_eq!(prop_u64(&typed, "count"), prop_u64(&wire, "count"));
+    }
 }

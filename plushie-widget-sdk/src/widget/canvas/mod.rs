@@ -55,7 +55,9 @@ fn tree_node_to_shape_value(node: &TreeNode) -> Value {
     let mut map = serde_json::Map::new();
     map.insert("type".to_string(), Value::String(node.type_name.clone()));
 
-    // Copy all props into the shape map
+    // Copy all props into the shape map. Uses as_value_cow() because
+    // the canvas drawing pipeline works with JSON Values internally
+    // (shapes are rendered from a flat list of Value maps).
     let props_cow = node.props.as_value_cow();
     if let Some(obj) = props_cow.as_object() {
         for (k, v) in obj {

@@ -12,7 +12,7 @@ categories = ["gui", "rendering"]
 
 [features]
 default = ["direct"]
-direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust"]
+direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "plushie-widget-sdk/tokio"]
 wire = ["dep:tokio", "dep:rmp-serde"]
 
 [dependencies]

@@ -48,6 +48,9 @@ struct DirectApp<A: App> {
     running_tasks: HashMap<String, plushie_widget_sdk::iced::task::Handle>,
     /// Subscription lifecycle manager.
     sub_manager: SubscriptionManager,
+    /// Active timer subscriptions (tag -> interval). Used by the
+    /// iced daemon subscription callback to produce repeating ticks.
+    active_timers: HashMap<String, std::time::Duration>,
 }
 
 impl<A: App> DirectApp<A> {
@@ -78,6 +81,7 @@ impl<A: App> DirectApp<A> {
             widget_store: WidgetStateStore::new(),
             running_tasks: HashMap::new(),
             sub_manager: SubscriptionManager::new(),
+            active_timers: HashMap::new(),
         };
 
         // Apply user settings to the renderer before the first view.
@@ -283,6 +287,32 @@ impl<A: App> DirectApp<A> {
         }
     }
 
+    /// Iced daemon subscription callback. Returns active timer
+    /// subscriptions as `iced::time::every` subscriptions. Each tick
+    /// pushes a `TimerEvent` to the event queue, which is drained
+    /// on the next `update()` cycle.
+    fn subscriptions(&self) -> plushie_widget_sdk::iced::Subscription<Message> {
+        let subs: Vec<plushie_widget_sdk::iced::Subscription<Message>> = self.active_timers.iter()
+            .map(|(tag, duration)| {
+                let queue = self.event_queue.clone();
+                let tag = tag.clone();
+                plushie_widget_sdk::iced::time::every(*duration).map(move |_| {
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    queue.lock().unwrap().push(
+                        SinkEvent::DelayedEvent(Event::Timer(
+                            crate::event::TimerEvent { tag: tag.clone(), timestamp }
+                        ))
+                    );
+                    Message::NoOp
+                })
+            })
+            .collect();
+        plushie_widget_sdk::iced::Subscription::batch(subs)
+    }
+
     /// Apply a subscription operation (subscribe, unsubscribe, or timer).
     fn apply_sub_op(&mut self, op: SubOp) -> Task<Message> {
         match op {
@@ -296,17 +326,15 @@ impl<A: App> DirectApp<A> {
                     kind, tag,
                 })
             }
-            SubOp::StartTimer { tag, .. } => {
-                // Timer subscriptions (Subscription::every) are not yet
-                // implemented in direct mode. The subscription is tracked
-                // for diffing but timer events are not delivered.
-                log::debug!("timer subscription not yet implemented: {tag}");
+            SubOp::StartTimer { tag, interval } => {
+                // Store the interval. The iced daemon's subscription
+                // callback reads active_timers and returns iced::time::every
+                // subscriptions. Iced manages the timer lifecycle.
+                self.active_timers.insert(tag, interval);
                 Task::none()
             }
             SubOp::StopTimer { tag } => {
-                if let Some(handle) = self.running_tasks.remove(&format!("__timer:{tag}")) {
-                    handle.abort();
-                }
+                self.active_timers.remove(&tag);
                 Task::none()
             }
         }
@@ -419,6 +447,7 @@ pub fn run<A: App>() -> crate::Result {
         DirectApp::<A>::view_window,
     )
     .settings(iced_settings)
+    .subscription(DirectApp::<A>::subscriptions)
     .title(DirectApp::<A>::title_for_window)
     .theme(DirectApp::<A>::theme_for_window)
     .scale_factor(DirectApp::<A>::scale_factor_for_window)

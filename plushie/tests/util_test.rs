@@ -38,12 +38,31 @@ fn multi_select_extends() {
 }
 
 #[test]
-fn toggle_adds_and_removes() {
+fn toggle_adds_and_removes_in_multi_mode() {
     let mut sel = Selection::new(SelectionMode::Multi, item_ids());
     sel.toggle("b");
     assert!(sel.is_selected("b"));
     sel.toggle("b");
     assert!(!sel.is_selected("b"));
+}
+
+#[test]
+fn toggle_in_single_mode_replaces_selection() {
+    let mut sel = Selection::new(SelectionMode::Single, item_ids());
+    sel.toggle("a");
+    assert!(sel.is_selected("a"));
+    assert_eq!(sel.count(), 1);
+
+    // toggling a different item replaces, not adds
+    sel.toggle("b");
+    assert!(!sel.is_selected("a"));
+    assert!(sel.is_selected("b"));
+    assert_eq!(sel.count(), 1);
+
+    // toggling the same item off clears everything
+    sel.toggle("b");
+    assert!(!sel.is_selected("b"));
+    assert_eq!(sel.count(), 0);
 }
 
 #[test]

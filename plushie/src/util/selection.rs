@@ -52,10 +52,19 @@ impl Selection {
         self.anchor = Some(id.to_string());
     }
 
-    /// Toggle an item: add if absent, remove if present.
+    /// Toggle an item's selection state.
+    ///
+    /// In `Single` mode: replaces the selection if toggling on,
+    /// clears entirely if toggling off.
+    /// In `Multi`/`Range` mode: adds if absent, removes if present.
     pub fn toggle(&mut self, id: &str) {
         if self.selected.contains(id) {
             self.selected.remove(id);
+            if self.mode == SelectionMode::Single {
+                self.anchor = None;
+            }
+        } else if self.mode == SelectionMode::Single {
+            self.select(id);
         } else {
             self.selected.insert(id.to_string());
         }

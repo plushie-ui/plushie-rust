@@ -1,13 +1,44 @@
 use iced::widget::text::LineHeight;
 use iced::widget::{rich_text, span};
-use iced::{Element, Font, Length, Padding, Pixels, Theme};
+use iced::{Element, Font, Padding, Pixels, Theme};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{
+    Color, Ellipsis, Length, Wrapping,
+};
+use plushie_core::types::{PlushieType};
+
+struct RichTextProps {
+    width: Option<Length>,
+    height: Option<Length>,
+    font: Option<plushie_core::types::Font>,
+    color: Option<Color>,
+    line_height: Option<plushie_core::types::LineHeight>,
+    wrapping: Option<Wrapping>,
+    ellipsis: Option<Ellipsis>,
+}
+
+impl RichTextProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            width: Length::extract(p, "width"),
+            height: Length::extract(p, "height"),
+            font: plushie_core::types::Font::extract(p, "font"),
+            color: Color::extract(p, "color"),
+            line_height: plushie_core::types::LineHeight::extract(p, "line_height"),
+            wrapping: Wrapping::extract(p, "wrapping"),
+            ellipsis: Ellipsis::extract(p, "ellipsis"),
+        }
+    }
+}
 
 pub(crate) struct RichTextWidget;
 
@@ -21,12 +52,20 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = &node.props;
-        let width = prop_length(props, "width", Length::Shrink);
-        let height = prop_length(props, "height", Length::Shrink);
+        let rp = RichTextProps::from_node(node);
+        let width = rp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
+        let height = rp
+            .height
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
 
-        // spans is an array of objects: {text, size, color, font, link}
-        let spans_val = props.get_value("spans");
+        // Spans: keep as raw prop access (complex array of objects)
+        let spans_val = node.props.get_value("spans");
         let spans_value = spans_val
             .as_ref()
             .and_then(|v| v.as_array());
@@ -100,29 +139,30 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
         let id = node.id.clone();
         let mut rt = rich_text(span_list).width(width).height(height);
 
-        if let Some(sz) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "size")
+        // size: animated prop, keep as raw access for transition support
+        if let Some(sz) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "size")
             .or(ctx.default_text_size)
         {
             rt = rt.size(sz);
         }
-        let font = props
-            .get_value("font")
-            .as_ref().map(parse_font)
+        let font = rp
+            .font
+            .map(|f| iced_convert::font(&f))
             .or(ctx.default_font);
         if let Some(f) = font {
             rt = rt.font(f);
         }
-        if let Some(c) = props.get_value("color").as_ref().and_then(parse_color) {
-            rt = rt.color(c);
+        if let Some(ref c) = rp.color {
+            rt = rt.color(iced_convert::color(c));
         }
-        if let Some(lh) = parse_line_height(props) {
-            rt = rt.line_height(lh);
+        if let Some(lh) = rp.line_height {
+            rt = rt.line_height(iced_convert::line_height(lh));
         }
-        if let Some(w) = parse_wrapping(props) {
-            rt = rt.wrapping(w);
+        if let Some(w) = rp.wrapping {
+            rt = rt.wrapping(iced_convert::wrapping(w));
         }
-        if let Some(e) = parse_ellipsis(props) {
-            rt = rt.ellipsis(e);
+        if let Some(e) = rp.ellipsis {
+            rt = rt.ellipsis(iced_convert::ellipsis(e));
         }
 
         let window_id = ctx.window_id.to_string();

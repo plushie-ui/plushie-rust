@@ -10,6 +10,29 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
+use plushie_core::types::PlushieType;
+
+struct TooltipProps {
+    tip: Option<String>,
+    gap: Option<f32>,
+    padding: Option<f32>,
+    snap_within_viewport: Option<bool>,
+    delay: Option<f64>,
+}
+
+impl TooltipProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            tip: String::extract(p, "tip"),
+            gap: f32::extract(p, "gap"),
+            padding: f32::extract(p, "padding"),
+            snap_within_viewport: bool::extract(p, "snap_within_viewport"),
+            delay: f64::extract(p, "delay"),
+        }
+    }
+}
+
 pub(crate) struct TooltipWidget;
 
 impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
@@ -33,10 +56,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = &node.props;
-        let tip = prop_str(props, "tip").unwrap_or_default();
-        let gap = prop_f32(props, "gap");
-        let position = prop_str(props, "position")
+        let tp = TooltipProps::from_node(node);
+
+        // Position: keep as raw prop access (tooltip::Position includes
+        // FollowCursor which doesn't map to plushie-core's Position type)
+        let position = prop_str(&node.props, "position")
             .map(|s| match s.to_ascii_lowercase().as_str() {
                 "bottom" => tooltip::Position::Bottom,
                 "left" => tooltip::Position::Left,
@@ -52,25 +76,26 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
             .map(|c| ctx.render_child(c))
             .unwrap_or_else(|| Space::new().into());
 
+        let tip = tp.tip.unwrap_or_default();
         let mut tt = tooltip(child, text(tip), position);
-        if let Some(g) = gap {
+        if let Some(g) = tp.gap {
             tt = tt.gap(g);
         }
 
         // Tooltip padding is a single f32 value (not per-side)
-        if let Some(p) = prop_f32(props, "padding") {
+        if let Some(p) = tp.padding {
             tt = tt.padding(p);
         }
 
-        let snap = prop_bool_default(props, "snap_within_viewport", true);
+        let snap = tp.snap_within_viewport.unwrap_or(true);
         tt = tt.snap_within_viewport(snap);
 
-        if let Some(d) = prop_f64(props, "delay") {
+        if let Some(d) = tp.delay {
             tt = tt.delay(Duration::from_millis(d as u64));
         }
 
-        // Style: string name or style map (tooltip uses container::Style)
-        if let Some(style_val) = props.get_value("style") {
+        // Style: keep as raw prop access (string name or style map)
+        if let Some(style_val) = node.props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 tt = match style_name {
                     "transparent" => tt.style(container::transparent),

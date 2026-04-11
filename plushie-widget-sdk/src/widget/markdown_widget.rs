@@ -1,11 +1,33 @@
 use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{Color, Length, PlushieType};
+
+struct MarkdownProps {
+    content: Option<String>,
+    width: Option<Length>,
+    link_color: Option<Color>,
+    code_theme: Option<String>,
+}
+
+impl MarkdownProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            content: String::extract(p, "content"),
+            width: Length::extract(p, "width"),
+            link_color: Color::extract(p, "link_color"),
+            code_theme: String::extract(p, "code_theme"),
+        }
+    }
+}
 
 /// Stateful markdown factory (owns parsed `markdown::Item` lists).
 pub(crate) struct MarkdownWidget {
@@ -33,8 +55,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
         use crate::shared_state::hash_str;
 
         let key = (window_id.to_string(), node.id.clone());
-        let props = &node.props;
-        let mut content_str = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
+        let mp = MarkdownProps::from_node(node);
+        let mut content_str = mp.content.unwrap_or_default();
         if content_str.len() > Self::MAX_CONTENT {
             log::warn!(
                 "[id={}] markdown content ({} bytes) exceeds limit ({} bytes), truncating",
@@ -48,7 +70,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
             }
             content_str.truncate(end);
         }
-        let code_theme_str = crate::prop_helpers::prop_str(props, "code_theme").unwrap_or_default();
+        let code_theme_str = mp.code_theme.unwrap_or_default();
         let hash = hash_str(&format!("{content_str}\0{code_theme_str}"));
 
         if let Some((existing_hash, _)) = self.items.get(&key)
@@ -93,6 +115,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
             }
         };
 
+        let mp = MarkdownProps::from_node(node);
+
+        // text_size, h1_size, h2_size, h3_size, code_size, spacing: keep as
+        // animated prop access (these support renderer-side transitions)
         let props = &node.props;
         let mut settings = if let Some(text_size) =
             prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "text_size")
@@ -130,15 +156,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
         {
             settings.spacing = iced::Pixels(v);
         }
-        if let Some(lc) = prop_color(props, "link_color") {
-            settings.style.link_color = lc;
+        if let Some(ref lc) = mp.link_color {
+            settings.style.link_color = iced_convert::color(lc);
         }
 
         let mut md: Element<'a, Message, iced::Theme, R> =
             iced::widget::markdown::view(items, settings).map(Message::MarkdownUrl);
 
-        if let Some(w) = value_to_length_opt(props.get_value("width").as_ref()) {
-            md = iced::widget::container(md).width(w).into();
+        if let Some(ref w) = mp.width {
+            md = iced::widget::container(md).width(iced_convert::length(w)).into();
         }
 
         md

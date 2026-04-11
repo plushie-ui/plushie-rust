@@ -1,13 +1,14 @@
 use iced::widget::canvas;
-use iced::{Color, Element, Length, Point, Size, Theme, mouse};
+use iced::{Element, Length, Point, Size, Theme, mouse};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
-use crate::theming::parse_hex_color;
-use crate::widget::helpers::*;
+
+use plushie_core::types::PlushieType;
 
 // ---------------------------------------------------------------------------
 // QrCodeProgram (canvas program for drawing QR modules)
@@ -16,8 +17,8 @@ use crate::widget::helpers::*;
 struct QrCodeProgram<'a, R: PlushieRenderer = iced::Renderer> {
     modules: Vec<Vec<bool>>,
     cell_size: f32,
-    cell_color: Color,
-    background: Color,
+    cell_color: iced::Color,
+    background: iced::Color,
     cache: Option<&'a (u64, canvas::Cache<R>)>,
 }
 
@@ -62,6 +63,35 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for QrCodeProg
 }
 
 // ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
+struct QrCodeProps {
+    data: Option<String>,
+    cell_size: Option<f32>,
+    cell_color: Option<plushie_core::types::Color>,
+    background: Option<plushie_core::types::Color>,
+    error_correction: Option<String>,
+    alt: Option<String>,
+    description: Option<String>,
+}
+
+impl QrCodeProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            data: String::extract(p, "data"),
+            cell_size: f32::extract(p, "cell_size"),
+            cell_color: plushie_core::types::Color::extract(p, "cell_color"),
+            background: plushie_core::types::Color::extract(p, "background"),
+            error_correction: String::extract(p, "error_correction"),
+            alt: String::extract(p, "alt"),
+            description: String::extract(p, "description"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // QrCodeWidget (stateful, owns R-generic canvas::Cache)
 // ---------------------------------------------------------------------------
 
@@ -90,10 +120,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         use std::hash::{Hash, Hasher};
 
         let key = (window_id.to_string(), node.id.clone());
-        let props = &node.props;
-        let data = crate::prop_helpers::prop_str(props, "data").unwrap_or_default();
-        let cell_size = crate::prop_helpers::prop_f32(props, "cell_size").unwrap_or(4.0);
-        let ec = crate::prop_helpers::prop_str(props, "error_correction").unwrap_or_default();
+        let qp = QrCodeProps::from_node(node);
+        let data = qp.data.unwrap_or_default();
+        let cell_size = qp.cell_size.unwrap_or(4.0);
+        let ec = qp.error_correction.unwrap_or_default();
 
         let mut hasher = DefaultHasher::new();
         data.hash(&mut hasher);
@@ -119,16 +149,20 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = &node.props;
-        let data = prop_str(props, "data").unwrap_or_default();
-        let cell_size = prop_f32(props, "cell_size").unwrap_or(4.0).clamp(1.0, 50.0);
-        let ec_str = prop_str(props, "error_correction").unwrap_or_default();
-        let cell_color = prop_str(props, "cell_color")
-            .and_then(|s| parse_hex_color(&s))
-            .unwrap_or(Color::BLACK);
-        let background = prop_str(props, "background")
-            .and_then(|s| parse_hex_color(&s))
-            .unwrap_or(Color::WHITE);
+        let qp = QrCodeProps::from_node(node);
+        let data = qp.data.unwrap_or_default();
+        let cell_size = qp.cell_size.unwrap_or(4.0).clamp(1.0, 50.0);
+        let ec_str = qp.error_correction.unwrap_or_default();
+        let cell_color = qp
+            .cell_color
+            .as_ref()
+            .map(iced_convert::color)
+            .unwrap_or(iced::Color::BLACK);
+        let background = qp
+            .background
+            .as_ref()
+            .map(iced_convert::color)
+            .unwrap_or(iced::Color::WHITE);
 
         let ec_level = match ec_str.as_str() {
             "low" => qrcode::EcLevel::L,
@@ -170,10 +204,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
             .width(Length::Fixed(pixel_size))
             .height(Length::Fixed(pixel_size));
 
-        if let Some(alt) = prop_str(props, "alt") {
+        if let Some(alt) = qp.alt {
             qr_canvas = qr_canvas.alt(alt);
         }
-        if let Some(desc) = prop_str(props, "description") {
+        if let Some(desc) = qp.description {
             qr_canvas = qr_canvas.description(desc);
         }
 

@@ -5,11 +5,14 @@ use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::a11y::{A11yOverride, A11yOverrides};
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{self as core_types, PlushieType};
 
 /// Wrap an element with an accessibility role override.
 fn with_role<'a, R: PlushieRenderer>(
@@ -75,6 +78,39 @@ fn parse_table_columns(props: &plushie_core::protocol::Props) -> Vec<TableColumn
         .unwrap_or_default()
 }
 
+struct TableProps {
+    header: Option<bool>,
+    separator: Option<bool>,
+    width: Option<core_types::Length>,
+    padding: Option<core_types::Padding>,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
+    header_text_size: Option<f32>,
+    row_text_size: Option<f32>,
+    cell_spacing: Option<f32>,
+    row_spacing: Option<f32>,
+    separator_thickness: Option<f32>,
+}
+
+impl TableProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            header: bool::extract(p, "header"),
+            separator: bool::extract(p, "separator"),
+            width: core_types::Length::extract(p, "width"),
+            padding: core_types::Padding::extract(p, "padding"),
+            sort_by: String::extract(p, "sort_by"),
+            sort_order: String::extract(p, "sort_order"),
+            header_text_size: f32::extract(p, "header_text_size"),
+            row_text_size: f32::extract(p, "row_text_size"),
+            cell_spacing: f32::extract(p, "cell_spacing"),
+            row_spacing: f32::extract(p, "row_spacing"),
+            separator_thickness: f32::extract(p, "separator_thickness"),
+        }
+    }
+}
+
 pub(crate) struct TableWidget;
 
 impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
@@ -87,27 +123,32 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = &node.props;
-        let width = prop_length(props, "width", Length::Fill);
-        let show_header = prop_bool_default(props, "header", true);
-        let padding_val = parse_padding_value(props);
+        let tp = TableProps::from_node(node);
+        let width = tp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Fill);
+        let show_header = tp.header.unwrap_or(true);
         let table_id = node.id.clone();
 
-        let header_text_size = prop_f32(props, "header_text_size");
-        let row_text_size = prop_f32(props, "row_text_size");
+        let header_text_size = tp.header_text_size;
+        let row_text_size = tp.row_text_size;
 
-        let cell_spacing = prop_f32(props, "cell_spacing");
-        let row_spacing = prop_f32(props, "row_spacing");
-        let separator_thickness = prop_f32(props, "separator_thickness").unwrap_or(1.0);
-        let separator_color = prop_color(props, "separator_color");
+        let cell_spacing = tp.cell_spacing;
+        let row_spacing = tp.row_spacing;
+        let separator_thickness = tp.separator_thickness.unwrap_or(1.0);
+        // separator_color: keep as raw prop access (returns iced::Color directly)
+        let separator_color = prop_color(&node.props, "separator_color");
 
-        let sort_by = prop_str(props, "sort_by");
-        let sort_order = prop_str(props, "sort_order");
+        let sort_by = tp.sort_by;
+        let sort_order = tp.sort_order;
 
-        let columns = parse_table_columns(props);
+        // Columns and rows: keep as raw prop access (complex array of objects)
+        let columns = parse_table_columns(&node.props);
 
-        // "rows" is an array of objects.
-        let rows_val = props.get_value("rows");
+        // Rows: keep as raw prop access (complex array of objects)
+        let rows_val = node.props.get_value("rows");
         let rows: Vec<&Value> = rows_val
             .as_ref()
             .and_then(|v| v.as_array())
@@ -176,7 +217,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
             table_rows.push(with_role(header.into(), accessible::Role::Row));
 
             // Separator
-            let show_separator = prop_bool_default(props, "separator", true);
+            let show_separator = tp.separator.unwrap_or(true);
             if show_separator {
                 let sep: Element<'a, Message, Theme, R> = if let Some(sep_col) = separator_color {
                     rule::horizontal(separator_thickness)
@@ -228,8 +269,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
             table_col = table_col.spacing(rs);
         }
 
-        if let Some(p) = padding_val {
-            table_col = table_col.padding(p);
+        if let Some(ref p) = tp.padding {
+            table_col = table_col.padding(iced_convert::padding(p));
         }
 
         with_role(scrollable(table_col).into(), accessible::Role::Table)

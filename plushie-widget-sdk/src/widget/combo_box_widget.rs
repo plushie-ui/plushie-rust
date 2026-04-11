@@ -1,14 +1,50 @@
 use iced::widget::{combo_box, container, text_input};
-use iced::{Element, Length, Theme, widget};
+use iced::{Element, Theme, widget};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::a11y::A11yOverrides;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{
+    Ellipsis, Font, Length, LineHeight, Padding, PlushieType, Shaping,
+};
+
+struct ComboBoxProps {
+    selected: Option<String>,
+    placeholder: Option<String>,
+    width: Option<Length>,
+    padding: Option<Padding>,
+    size: Option<f32>,
+    font: Option<Font>,
+    line_height: Option<LineHeight>,
+    menu_height: Option<f32>,
+    shaping: Option<Shaping>,
+    ellipsis: Option<Ellipsis>,
+}
+
+impl ComboBoxProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            selected: String::extract(p, "selected"),
+            placeholder: String::extract(p, "placeholder"),
+            width: Length::extract(p, "width"),
+            padding: Padding::extract(p, "padding"),
+            size: f32::extract(p, "size"),
+            font: Font::extract(p, "font"),
+            line_height: LineHeight::extract(p, "line_height"),
+            menu_height: f32::extract(p, "menu_height"),
+            shaping: Shaping::extract(p, "shaping"),
+            ellipsis: Ellipsis::extract(p, "ellipsis"),
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // ComboBoxWidget (stateful)
@@ -101,60 +137,64 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     ctx: RenderCtx<'a, R>,
     state: &'a combo_box::State<String>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = &node.props;
-    let selected: Option<String> = prop_str(props, "selected");
-    let placeholder = prop_str(props, "placeholder").unwrap_or_default();
-    let width = prop_length(props, "width", Length::Fill);
-    let padding_val = parse_padding_value(props);
+    let cp = ComboBoxProps::from_node(node);
+    let placeholder = cp.placeholder.unwrap_or_default();
     let id = node.id.clone();
     let input_id = node.id.clone();
     let window_id = ctx.window_id.to_string();
     let input_window_id = window_id.clone();
 
-    let mut cb = combo_box(state, &placeholder, selected.as_ref(), move |selected| {
+    let width = cp
+        .width
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Fill);
+
+    let mut cb = combo_box(state, &placeholder, cp.selected.as_ref(), move |selected| {
         Message::Select(window_id.clone(), id.clone(), selected)
     })
     .width(width);
 
-    if let Some(p) = padding_val {
-        cb = cb.padding(p);
+    if let Some(ref p) = cp.padding {
+        cb = cb.padding(iced_convert::padding(p));
     }
 
     // on_input: emit Input events so the host can filter
     cb = cb.on_input(move |v| Message::Input(input_window_id.clone(), input_id.clone(), v));
 
-    if let Some(sz) = prop_f32(props, "size").or(ctx.default_text_size) {
+    if let Some(sz) = cp.size.or(ctx.default_text_size) {
         cb = cb.size(sz);
     }
-    let font = props
-        .get_value("font")
-        .as_ref().map(parse_font)
+    let font = cp
+        .font
+        .map(|f| iced_convert::font(&f))
         .or(ctx.default_font);
     if let Some(f) = font {
         cb = cb.font(f);
     }
-    if let Some(lh) = parse_line_height(props) {
-        cb = cb.line_height(lh);
+    if let Some(lh) = cp.line_height {
+        cb = cb.line_height(iced_convert::line_height(lh));
     }
-    if let Some(shaping) = parse_shaping(props) {
-        cb = cb.shaping(shaping);
+    if let Some(s) = cp.shaping {
+        cb = cb.shaping(iced_convert::shaping(s));
     }
-    if let Some(mh) = prop_f32(props, "menu_height") {
+    if let Some(mh) = cp.menu_height {
         cb = cb.menu_height(mh);
     }
-    if let Some(icon) = props
+    // Icon: keep as raw prop access (complex iced type)
+    if let Some(icon) = node.props
         .get_value("icon")
         .as_ref()
         .and_then(parse_text_input_icon)
     {
         cb = cb.icon(icon);
     }
-    if let Some(e) = parse_ellipsis(props) {
-        cb = cb.ellipsis(e);
+    if let Some(e) = cp.ellipsis {
+        cb = cb.ellipsis(iced_convert::ellipsis(e));
     }
 
-    // Menu style: inline overrides for the dropdown menu
-    if let Some(ms) = parse_menu_style(props) {
+    // Menu style: keep as raw prop access (complex inline style object)
+    if let Some(ms) = parse_menu_style(&node.props) {
         cb = cb.menu_style(move |theme: &iced::Theme| {
             use iced::overlay::menu;
             let mut style = menu::default(theme);
@@ -163,14 +203,14 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         });
     }
 
-    if prop_bool_default(props, "on_option_hovered", false) {
+    if prop_bool_default(&node.props, "on_option_hovered", false) {
         let hover_id = node.id.clone();
         let hover_window_id = ctx.window_id.to_string();
         cb = cb.on_option_hovered(move |val| {
             Message::OptionHovered(hover_window_id.clone(), hover_id.clone(), val)
         });
     }
-    if prop_bool_default(props, "on_open", false) {
+    if prop_bool_default(&node.props, "on_open", false) {
         let open_id = node.id.clone();
         cb = cb.on_open(Message::Event {
             window_id: ctx.window_id.to_string(),
@@ -179,7 +219,7 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
             family: "open".into(),
         });
     }
-    if prop_bool_default(props, "on_close", false) {
+    if prop_bool_default(&node.props, "on_close", false) {
         let close_id = node.id.clone();
         cb = cb.on_close(Message::Event {
             window_id: ctx.window_id.to_string(),
@@ -189,8 +229,8 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         });
     }
 
-    // Style: string name or style map object (applies to the input field)
-    if let Some(style_val) = props.get_value("style") {
+    // Style: keep as raw prop access (string name or style map object)
+    if let Some(style_val) = node.props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             cb = match style_name {
                 "default" => cb.input_style(text_input::default),

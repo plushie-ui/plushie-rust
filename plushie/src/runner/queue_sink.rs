@@ -22,18 +22,28 @@ pub(crate) struct QueueSink {
     queue: Arc<Mutex<Vec<SinkEvent>>>,
 }
 
-/// An event collected by the QueueSink.
+/// An event collected by the QueueSink or produced by SDK-local
+/// commands (async tasks, timers, delayed events).
 #[cfg(feature = "direct")]
 #[derive(Debug)]
-#[allow(dead_code)] // Fields read when draining the queue in Phase 10+
 pub(crate) enum SinkEvent {
+    /// An OutgoingEvent from the renderer.
     Event(OutgoingEvent),
+    /// An effect response from the renderer.
     EffectResponse(EffectResponse),
+    /// A query response from the renderer.
     QueryResponse {
         kind: String,
         tag: String,
         data: serde_json::Value,
     },
+    /// Result of an async task (Command::Async).
+    AsyncResult {
+        tag: String,
+        result: Result<serde_json::Value, serde_json::Value>,
+    },
+    /// A delayed event (Command::SendAfter).
+    DelayedEvent(crate::event::Event),
 }
 
 #[cfg(feature = "direct")]

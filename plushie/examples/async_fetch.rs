@@ -1,20 +1,15 @@
 //! Async command example: a button that triggers background work.
 //!
-//! Demonstrates Command::Async for off-thread work, pattern matching
-//! on AsyncEvent for success/error, and loading state management.
-//!
-//! The direct runner does not execute async tasks yet. Clicking
-//! "Fetch Data" transitions to loading state and constructs the
-//! correct Command::Async, but the async result will not arrive
-//! until the runner gains async support. The AsyncEvent handling
-//! code is complete and ready for when that lands.
+//! Demonstrates `Command::async_task` for off-thread work, pattern
+//! matching on `AsyncEvent` for success/error, and loading state
+//! management.
 //!
 //! Run with: `cargo run -p plushie --example async_fetch`
 
-use std::thread;
 use std::time::Duration;
 
 use plushie::prelude::*;
+use serde_json::json;
 
 struct FetchApp {
     status: Status,
@@ -28,16 +23,6 @@ enum Status {
     Loading,
     Done,
     Error,
-}
-
-/// Simulated async fetch task. In a real app this would do network
-/// I/O, database queries, or other blocking work. The closure is
-/// boxed as `dyn Any + Send` for the Command::Async variant.
-fn fetch_task() -> Box<dyn std::any::Any + Send> {
-    Box::new(move || -> Result<String, String> {
-        thread::sleep(Duration::from_millis(500));
-        Ok(format!("Fetched at {:?}", std::time::SystemTime::now()))
-    })
 }
 
 impl App for FetchApp {
@@ -60,10 +45,11 @@ impl App for FetchApp {
                 // The runner will execute this task on a background
                 // thread and deliver the result as an AsyncEvent
                 // once async command support is complete.
-                return Command::Async {
-                    tag: "fetch_result".to_string(),
-                    task: fetch_task(),
-                };
+                return Command::async_task("fetch_result", || async {
+                    // Simulate network delay.
+                    std::thread::sleep(Duration::from_millis(500));
+                    Ok(json!(format!("Fetched at {:?}", std::time::SystemTime::now())))
+                });
             }
             _ => {}
         }

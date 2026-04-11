@@ -238,8 +238,8 @@ fn execute_wire_command(bridge: &mut Bridge, cmd: &Command) -> std::io::Result<(
         Command::Renderer(op) => {
             execute_wire_renderer_op(bridge, op)?;
         }
-        _ => {
-            log::debug!("unhandled wire command: {cmd:?}");
+        Command::Async { .. } | Command::Cancel { .. } | Command::SendAfter { .. } => {
+            log::warn!("SDK-local command not yet supported in wire mode: {cmd:?}");
         }
     }
     Ok(())

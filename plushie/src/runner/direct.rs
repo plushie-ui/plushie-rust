@@ -38,11 +38,13 @@ struct DirectApp<A: App> {
     model: A::Model,
     /// Renderer-lib App that handles commands, effects, and state.
     renderer: plushie_renderer_lib::App,
-    /// Queue for events emitted by the renderer during command execution.
+    /// Queue for events emitted by the renderer and SDK-local commands.
     event_queue: Arc<Mutex<Vec<SinkEvent>>>,
     current_tree: Option<TreeNode>,
     window_iced_ids: HashMap<String, plushie_widget_sdk::iced::window::Id>,
     widget_store: WidgetStateStore,
+    /// Handles for running async tasks, keyed by tag for cancellation.
+    running_tasks: HashMap<String, plushie_widget_sdk::iced::task::Handle>,
 }
 
 impl<A: App> DirectApp<A> {
@@ -71,6 +73,7 @@ impl<A: App> DirectApp<A> {
             current_tree: None,
             window_iced_ids: HashMap::new(),
             widget_store: WidgetStateStore::new(),
+            running_tasks: HashMap::new(),
         };
 
         // Apply user settings to the renderer before the first view.
@@ -232,9 +235,32 @@ impl<A: App> DirectApp<A> {
                 Task::batch(tasks)
             }
             Command::Renderer(op) => self.renderer.execute(op),
-            _ => {
-                log::debug!("unhandled command in direct runner: {cmd:?}");
+            Command::Async { tag, task } => {
+                let queue = self.event_queue.clone();
+                let tag_clone = tag.clone();
+                let future = (task)();
+                let (task, handle) = Task::perform(future, move |result| {
+                    queue.lock().unwrap().push(SinkEvent::AsyncResult { tag: tag_clone, result });
+                    Message::NoOp
+                }).abortable();
+                self.running_tasks.insert(tag, handle);
+                task
+            }
+            Command::Cancel { tag } => {
+                if let Some(handle) = self.running_tasks.remove(&tag) {
+                    handle.abort();
+                }
                 Task::none()
+            }
+            Command::SendAfter { delay, event } => {
+                let queue = self.event_queue.clone();
+                Task::perform(
+                    async move { std::thread::sleep(delay); },
+                    move |_| {
+                        queue.lock().unwrap().push(SinkEvent::DelayedEvent(*event));
+                        Message::NoOp
+                    },
+                )
             }
         }
     }

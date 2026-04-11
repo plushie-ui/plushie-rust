@@ -7,6 +7,8 @@
 //! Operation types ([`WindowOp`], [`ImageOp`], [`EffectRequest`], etc.)
 //! are defined in [`plushie_core::ops`] and re-exported here.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -15,6 +17,16 @@ use crate::event::Event;
 
 // Re-export all operation types from plushie-core.
 pub use plushie_core::ops::*;
+
+/// A boxed async closure that produces a result.
+///
+/// The closure is called once to produce a future. The future resolves
+/// to `Ok(value)` or `Err(value)`, delivered as
+/// [`AsyncEvent`](crate::event::AsyncEvent).
+pub type AsyncTaskFn = Box<
+    dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<Value, Value>> + Send>>
+        + Send
+>;
 
 // ---------------------------------------------------------------------------
 // Command
@@ -28,7 +40,6 @@ pub use plushie_core::ops::*;
 /// Commands that go to the renderer are wrapped in
 /// [`Command::Renderer`]. SDK-local commands (async tasks, timers)
 /// are handled in-process and never reach the renderer.
-#[derive(Debug)]
 pub enum Command {
     /// No side effect.
     None,
@@ -39,15 +50,11 @@ pub enum Command {
 
     // -- SDK-local (never sent to renderer) --
 
-    /// Run an async task. Result delivered as [`AsyncEvent`](crate::event::AsyncEvent).
+    /// Run an async task. Result delivered as
+    /// [`AsyncEvent`](crate::event::AsyncEvent).
     Async {
         tag: String,
-        task: Box<dyn std::any::Any + Send>,
-    },
-    /// Run a streaming async task that emits multiple values.
-    Stream {
-        tag: String,
-        task: Box<dyn std::any::Any + Send>,
+        task: AsyncTaskFn,
     },
     /// Cancel a running async task or stream by tag.
     Cancel { tag: String },
@@ -58,6 +65,22 @@ pub enum Command {
 
     /// An operation for the renderer to execute.
     Renderer(RendererOp),
+}
+
+impl std::fmt::Debug for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "None"),
+            Self::Batch(cmds) => f.debug_tuple("Batch").field(cmds).finish(),
+            Self::Exit => write!(f, "Exit"),
+            Self::Async { tag, .. } => f.debug_struct("Async").field("tag", tag).finish(),
+            Self::Cancel { tag } => f.debug_struct("Cancel").field("tag", tag).finish(),
+            Self::SendAfter { delay, .. } => {
+                f.debug_struct("SendAfter").field("delay", delay).finish()
+            }
+            Self::Renderer(op) => f.debug_tuple("Renderer").field(op).finish(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -81,7 +104,32 @@ impl Command {
         Self::SendAfter { delay, event: Box::new(event) }
     }
 
-    /// Cancel a running async task or stream by tag.
+    /// Run an async task. The result is delivered as
+    /// [`AsyncEvent`](crate::event::AsyncEvent).
+    ///
+    /// ```ignore
+    /// Command::async_task("fetch", || async {
+    ///     let data = reqwest::get("https://api.example.com/data")
+    ///         .await
+    ///         .map_err(|e| serde_json::json!(e.to_string()))?
+    ///         .text()
+    ///         .await
+    ///         .map_err(|e| serde_json::json!(e.to_string()))?;
+    ///     Ok(serde_json::json!(data))
+    /// })
+    /// ```
+    pub fn async_task<F, Fut>(tag: &str, f: F) -> Self
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<Value, Value>> + Send + 'static,
+    {
+        Self::Async {
+            tag: tag.to_string(),
+            task: Box::new(move || Box::pin(f())),
+        }
+    }
+
+    /// Cancel a running async task by tag.
     pub fn cancel(tag: &str) -> Self {
         Self::Cancel { tag: tag.to_string() }
     }

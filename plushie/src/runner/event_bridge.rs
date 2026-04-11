@@ -22,6 +22,10 @@ pub(crate) fn sink_event_to_sdk(sink_event: SinkEvent) -> Option<Event> {
         SinkEvent::QueryResponse { kind, tag, data } => {
             Some(query_response_to_sdk(&kind, &tag, data))
         }
+        SinkEvent::AsyncResult { tag, result } => {
+            Some(Event::Async(AsyncEvent { tag, result }))
+        }
+        SinkEvent::DelayedEvent(event) => Some(event),
     }
 }
 

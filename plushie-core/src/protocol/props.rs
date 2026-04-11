@@ -338,12 +338,24 @@ impl Props {
 
     /// Get a raw Value ref by key (Wire variant only).
     ///
-    /// Returns None for Typed props. Prefer typed accessors for
-    /// new code.
+    /// Returns None for Typed props. Use `get_value()` for code
+    /// that needs to work with both variants.
     pub fn get(&self, key: &str) -> Option<&Value> {
         match self {
             Self::Wire(v) => v.get(key),
             Self::Typed(_) => None,
+        }
+    }
+
+    /// Get a prop value as an owned `Value`, working with both variants.
+    ///
+    /// For Wire, clones the value. For Typed, converts PropValue to Value.
+    /// Use sparingly for complex prop access (styles, fonts). For simple
+    /// types, prefer `get_str`/`get_f64`/`get_bool`.
+    pub fn get_value(&self, key: &str) -> Option<Value> {
+        match self {
+            Self::Wire(v) => v.get(key).cloned(),
+            Self::Typed(m) => m.get(key).map(|pv| Value::from(pv.clone())),
         }
     }
 

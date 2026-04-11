@@ -7,6 +7,9 @@ use crate::protocol::{PropValue, Props};
 use super::PlushieType;
 
 /// Direction of scrolling or layout.
+///
+/// ## Wire format
+/// Snake_case string: `"horizontal"`, `"vertical"`, `"both"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Horizontal,
@@ -50,6 +53,9 @@ impl PlushieType for Direction {
 }
 
 /// Anchor point for positioning.
+///
+/// ## Wire format
+/// Snake_case string: `"start"`, `"end"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Anchor {
     Start,
@@ -89,6 +95,9 @@ impl PlushieType for Anchor {
 }
 
 /// Position of a tooltip or overlay relative to its target.
+///
+/// ## Wire format
+/// Snake_case string: `"below"`, `"above"`, `"left"`, `"right"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
     Below,
@@ -136,6 +145,9 @@ impl PlushieType for Position {
 }
 
 /// How an image or content should be fit within its container.
+///
+/// ## Wire format
+/// Snake_case string: `"contain"`, `"cover"`, `"fill"`, `"none"`, `"scale_down"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContentFit {
     /// Scale to fit entirely within the container, preserving aspect ratio.

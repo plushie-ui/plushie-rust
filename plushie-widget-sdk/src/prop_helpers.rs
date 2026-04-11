@@ -78,7 +78,7 @@ pub fn prop_f32(props: &Props, key: &str) -> Option<f32> {
                 None
             }
         },
-        Value::String(s) => match s.trim().parse::<f32>().ok().filter(|f| f.is_finite()) {
+        Value::String(s) => match s.parse::<f32>().ok().filter(|f| f.is_finite()) {
             Some(f) => Some(f),
             None => {
                 log::trace!("prop '{}': string not parseable as f32: {:?}", key, s);
@@ -106,7 +106,7 @@ pub fn prop_f64(props: &Props, key: &str) -> Option<f64> {
                 None
             }
         },
-        Value::String(s) => match s.trim().parse::<f64>().ok().filter(|f| f.is_finite()) {
+        Value::String(s) => match s.parse::<f64>().ok().filter(|f| f.is_finite()) {
             Some(f) => Some(f),
             None => {
                 log::trace!("prop '{}': string not parseable as f64: {:?}", key, s);
@@ -134,7 +134,7 @@ pub fn prop_u32(props: &Props, key: &str) -> Option<u32> {
                 None
             }
         },
-        Value::String(s) => match s.trim().parse::<u32>() {
+        Value::String(s) => match s.parse::<u32>() {
             Ok(u) => Some(u),
             Err(_) => {
                 log::trace!("prop '{}': string not parseable as u32: {:?}", key, s);
@@ -162,7 +162,7 @@ pub fn prop_u64(props: &Props, key: &str) -> Option<u64> {
                 None
             }
         },
-        Value::String(s) => match s.trim().parse::<u64>() {
+        Value::String(s) => match s.parse::<u64>() {
             Ok(u) => Some(u),
             Err(_) => {
                 log::trace!("prop '{}': string not parseable as u64: {:?}", key, s);
@@ -195,7 +195,7 @@ pub fn prop_i32(props: &Props, key: &str) -> Option<i32> {
                 None
             }
         },
-        Value::String(s) => match s.trim().parse::<i32>() {
+        Value::String(s) => match s.parse::<i32>() {
             Ok(i) => Some(i),
             Err(_) => {
                 log::trace!("prop '{}': string not parseable as i32: {:?}", key, s);
@@ -223,7 +223,7 @@ pub fn prop_i64(props: &Props, key: &str) -> Option<i64> {
                 None
             }
         },
-        Value::String(s) => match s.trim().parse::<i64>() {
+        Value::String(s) => match s.parse::<i64>() {
             Ok(i) => Some(i),
             Err(_) => {
                 log::trace!("prop '{}': string not parseable as i64: {:?}", key, s);
@@ -370,7 +370,7 @@ pub fn prop_vertical_alignment(props: &Props, key: &str) -> alignment::Vertical 
 /// Parse a content-fit prop.
 pub fn prop_content_fit(props: &Props) -> Option<ContentFit> {
     let s = prop_str(props, "content_fit")?;
-    match s.to_ascii_lowercase().as_str() {
+    match s.as_str() {
         "contain" => Some(ContentFit::Contain),
         "cover" => Some(ContentFit::Cover),
         "fill" => Some(ContentFit::Fill),
@@ -395,9 +395,9 @@ pub fn value_to_length(val: &Value) -> Option<Length> {
             .map(f64_to_f32)
             .filter(|v| *v >= 0.0)
             .map(Length::Fixed),
-        Value::String(s) => match s.trim().to_ascii_lowercase().as_str() {
-            "fill" | "full" | "expand" | "stretch" => Some(Length::Fill),
-            "shrink" | "auto" | "fit" => Some(Length::Shrink),
+        Value::String(s) => match s.as_str() {
+            "fill" => Some(Length::Fill),
+            "shrink" => Some(Length::Shrink),
             other => other
                 .parse::<f32>()
                 .ok()
@@ -416,7 +416,7 @@ pub fn value_to_length(val: &Value) -> Option<Length> {
 }
 
 pub fn value_to_horizontal_alignment(s: &str) -> Option<alignment::Horizontal> {
-    match s.trim().to_ascii_lowercase().as_str() {
+    match s {
         "left" => Some(alignment::Horizontal::Left),
         "center" => Some(alignment::Horizontal::Center),
         "right" => Some(alignment::Horizontal::Right),
@@ -428,7 +428,7 @@ pub fn value_to_horizontal_alignment(s: &str) -> Option<alignment::Horizontal> {
 }
 
 pub fn value_to_vertical_alignment(s: &str) -> Option<alignment::Vertical> {
-    match s.trim().to_ascii_lowercase().as_str() {
+    match s {
         "top" => Some(alignment::Vertical::Top),
         "center" => Some(alignment::Vertical::Center),
         "bottom" => Some(alignment::Vertical::Bottom),

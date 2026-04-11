@@ -724,7 +724,7 @@ mod tests {
     fn settings_sets_default_font_default_for_unknown_family() {
         let mut core: Core = Core::new();
         let msg = IncomingMessage::Settings {
-            settings: serde_json::json!({"default_font": {"family": "sans-serif"}}),
+            settings: serde_json::json!({"default_font": {"family": "sans_serif"}}),
         };
         core.apply(msg);
         assert_eq!(core.default_font, Some(iced::Font::DEFAULT));

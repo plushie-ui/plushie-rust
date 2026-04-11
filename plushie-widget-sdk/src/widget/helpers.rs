@@ -165,7 +165,7 @@ pub fn parse_color(value: &Value) -> Option<Color> {
 
 /// Parse a background from a JSON value. Accepts:
 /// - A color string ("#rrggbb" or "#rrggbbaa") -> Background::Color
-/// - A gradient object: {"type": "linear", "angle": 45, "stops": [{"offset": 0.0, "color": "#ff0000"}, ...]}
+/// - A gradient object: {"type": "linear", "start": [x, y], "end": [x, y], "stops": [[offset, "#color"], ...]}
 pub fn parse_background(value: &Value) -> Option<iced::Background> {
     match value {
         Value::String(_) => parse_color(value).map(iced::Background::Color),
@@ -173,7 +173,7 @@ pub fn parse_background(value: &Value) -> Option<iced::Background> {
             match obj.get("type").and_then(|v| v.as_str()) {
                 Some("linear") => {
                     // Warn on unrecognized gradient keys
-                    let valid_keys: &[&str] = &["type", "angle", "stops"];
+                    let valid_keys: &[&str] = &["type", "start", "end", "stops"];
                     for key in obj.keys() {
                         if !valid_keys.contains(&key.as_str()) {
                             log::warn!(
@@ -184,31 +184,38 @@ pub fn parse_background(value: &Value) -> Option<iced::Background> {
                         }
                     }
 
-                    let angle_deg = obj.get("angle").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                    let angle = Radians(angle_deg.to_radians());
+                    // Parse start/end coordinate pairs to derive angle
+                    let start = obj
+                        .get("start")
+                        .and_then(|v| v.as_array())
+                        .and_then(|a| {
+                            Some((a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32))
+                        })
+                        .unwrap_or((0.0, 0.0));
+                    let end = obj
+                        .get("end")
+                        .and_then(|v| v.as_array())
+                        .and_then(|a| {
+                            Some((a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32))
+                        })
+                        .unwrap_or((0.0, 1.0));
+
+                    let dx = end.0 - start.0;
+                    let dy = end.1 - start.1;
+                    let angle = Radians(dy.atan2(dx));
                     let mut linear = iced::gradient::Linear::new(angle);
 
                     if let Some(stops) = obj.get("stops").and_then(|v| v.as_array()) {
-                        let valid_stop_keys: &[&str] = &["offset", "color"];
                         for stop in stops {
-                            if let Some(stop_obj) = stop.as_object() {
-                                for key in stop_obj.keys() {
-                                    if !valid_stop_keys.contains(&key.as_str()) {
-                                        log::warn!(
-                                            "unrecognized gradient stop key '{}' (valid: {:?})",
-                                            key,
-                                            valid_stop_keys
-                                        );
-                                    }
-                                }
+                            if let Some(arr) = stop.as_array() {
+                                let offset =
+                                    arr.first().and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                let color = arr
+                                    .get(1)
+                                    .and_then(parse_color)
+                                    .unwrap_or(Color::TRANSPARENT);
+                                linear = linear.add_stop(offset, color);
                             }
-                            let offset =
-                                stop.get("offset").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                            let color = stop
-                                .get("color")
-                                .and_then(parse_color)
-                                .unwrap_or(Color::TRANSPARENT);
-                            linear = linear.add_stop(offset, color);
                         }
                     }
 
@@ -247,7 +254,7 @@ const MAX_FONT_FAMILY_CACHE: usize = 1024;
 /// Intern a custom font family name so identical strings share one leaked
 /// allocation. Names exceeding [`MAX_FONT_FAMILY_LEN`] are truncated.
 /// The cache is bounded to [`MAX_FONT_FAMILY_CACHE`] entries.
-fn intern_font_family(name: &str) -> &'static str {
+pub(crate) fn intern_font_family(name: &str) -> &'static str {
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{LazyLock, Mutex};
@@ -298,7 +305,7 @@ fn intern_font_family(name: &str) -> &'static str {
 /// - An object with optional family, weight, style fields
 pub fn parse_font(value: &Value) -> Font {
     match value {
-        Value::String(s) => match s.to_ascii_lowercase().as_str() {
+        Value::String(s) => match s.as_str() {
             "monospace" => Font::MONOSPACE,
             _ => Font::DEFAULT,
         },
@@ -306,8 +313,8 @@ pub fn parse_font(value: &Value) -> Font {
             let mut f = Font::DEFAULT;
 
             if let Some(family) = obj.get("family").and_then(|v| v.as_str()) {
-                match family.to_ascii_lowercase().as_str() {
-                    "monospace" | "mono" => {
+                match family {
+                    "monospace" => {
                         f.family = font::Family::Monospace;
                     }
                     "serif" => {
@@ -319,47 +326,31 @@ pub fn parse_font(value: &Value) -> Font {
                     "fantasy" => {
                         f.family = font::Family::Fantasy;
                     }
-                    // Default is SansSerif; unrecognized names are passed
-                    // through as custom font families (user-loaded fonts).
-                    "default" | "sans_serif" | "sans-serif" | "sansserif" | "" => {}
+                    "default" | "sans_serif" | "" => {}
                     other => {
                         f.family = font::Family::Name(intern_font_family(other));
                     }
                 }
             }
 
-            if let Some(weight_val) = obj.get("weight") {
-                if let Some(weight_num) = weight_val.as_u64() {
-                    f.weight = match weight_num {
-                        100 => font::Weight::Thin,
-                        200 => font::Weight::ExtraLight,
-                        300 => font::Weight::Light,
-                        400 => font::Weight::Normal,
-                        500 => font::Weight::Medium,
-                        600 => font::Weight::Semibold,
-                        700 => font::Weight::Bold,
-                        800 => font::Weight::ExtraBold,
-                        900 => font::Weight::Black,
-                        _ => font::Weight::Normal,
-                    };
-                } else if let Some(weight) = weight_val.as_str() {
-                    f.weight = match weight.to_ascii_lowercase().as_str() {
-                        "thin" => font::Weight::Thin,
-                        "extralight" | "extra_light" => font::Weight::ExtraLight,
-                        "light" => font::Weight::Light,
-                        "normal" | "regular" => font::Weight::Normal,
-                        "medium" => font::Weight::Medium,
-                        "semibold" | "semi_bold" => font::Weight::Semibold,
-                        "bold" => font::Weight::Bold,
-                        "extrabold" | "extra_bold" => font::Weight::ExtraBold,
-                        "black" => font::Weight::Black,
-                        _ => font::Weight::Normal,
-                    };
-                }
+            if let Some(weight) = obj.get("weight").and_then(|v| v.as_str()) {
+                f.weight = match weight {
+                    "thin" => font::Weight::Thin,
+                    "extra_light" => font::Weight::ExtraLight,
+                    "light" => font::Weight::Light,
+                    "normal" => font::Weight::Normal,
+                    "medium" => font::Weight::Medium,
+                    "semi_bold" => font::Weight::Semibold,
+                    "bold" => font::Weight::Bold,
+                    "extra_bold" => font::Weight::ExtraBold,
+                    "black" => font::Weight::Black,
+                    _ => font::Weight::Normal,
+                };
             }
 
             if let Some(style) = obj.get("style").and_then(|v| v.as_str()) {
-                f.style = match style.to_ascii_lowercase().as_str() {
+                f.style = match style {
+                    "normal" => font::Style::Normal,
                     "italic" => font::Style::Italic,
                     "oblique" => font::Style::Oblique,
                     _ => font::Style::Normal,
@@ -367,16 +358,16 @@ pub fn parse_font(value: &Value) -> Font {
             }
 
             if let Some(stretch_val) = obj.get("stretch").and_then(|v| v.as_str()) {
-                f.stretch = match stretch_val.to_ascii_lowercase().as_str() {
-                    "ultra_condensed" | "ultracondensed" => font::Stretch::UltraCondensed,
-                    "extra_condensed" | "extracondensed" => font::Stretch::ExtraCondensed,
+                f.stretch = match stretch_val {
+                    "ultra_condensed" => font::Stretch::UltraCondensed,
+                    "extra_condensed" => font::Stretch::ExtraCondensed,
                     "condensed" => font::Stretch::Condensed,
-                    "semi_condensed" | "semicondensed" => font::Stretch::SemiCondensed,
+                    "semi_condensed" => font::Stretch::SemiCondensed,
                     "normal" => font::Stretch::Normal,
-                    "semi_expanded" | "semiexpanded" => font::Stretch::SemiExpanded,
+                    "semi_expanded" => font::Stretch::SemiExpanded,
                     "expanded" => font::Stretch::Expanded,
-                    "extra_expanded" | "extraexpanded" => font::Stretch::ExtraExpanded,
-                    "ultra_expanded" | "ultraexpanded" => font::Stretch::UltraExpanded,
+                    "extra_expanded" => font::Stretch::ExtraExpanded,
+                    "ultra_expanded" => font::Stretch::UltraExpanded,
                     _ => font::Stretch::Normal,
                 };
             }
@@ -852,7 +843,7 @@ pub fn parse_line_height(props: &Props) -> Option<LineHeight> {
 pub fn parse_shaping(props: &Props) -> Option<iced::widget::text::Shaping> {
     use iced::widget::text::Shaping;
     let s = prop_str(props, "shaping")?;
-    match s.to_ascii_lowercase().as_str() {
+    match s.as_str() {
         "basic" => Some(Shaping::Basic),
         "advanced" => Some(Shaping::Advanced),
         "auto" => Some(Shaping::Auto),
@@ -863,7 +854,7 @@ pub fn parse_shaping(props: &Props) -> Option<iced::widget::text::Shaping> {
 /// Parse wrapping prop from a string.
 pub fn parse_wrapping(props: &Props) -> Option<Wrapping> {
     let s = prop_str(props, "wrapping")?;
-    match s.to_ascii_lowercase().as_str() {
+    match s.as_str() {
         "none" => Some(Wrapping::None),
         "word" => Some(Wrapping::Word),
         "glyph" => Some(Wrapping::Glyph),
@@ -875,7 +866,7 @@ pub fn parse_wrapping(props: &Props) -> Option<Wrapping> {
 pub fn parse_ellipsis(props: &Props) -> Option<iced::widget::text::Ellipsis> {
     use iced::widget::text::Ellipsis;
     let s = prop_str(props, "ellipsis")?;
-    match s.to_ascii_lowercase().as_str() {
+    match s.as_str() {
         "none" => Some(Ellipsis::None),
         "start" => Some(Ellipsis::Start),
         "middle" => Some(Ellipsis::Middle),
@@ -957,7 +948,7 @@ pub fn parse_text_input_icon(value: &Value) -> Option<text_input::Icon<Font>> {
         .unwrap_or(4.0);
 
     let side = match obj.get("side").and_then(|v| v.as_str()).unwrap_or("left") {
-        "right" | "trailing" => text_input::Side::Right,
+        "right" => text_input::Side::Right,
         _ => text_input::Side::Left,
     };
 

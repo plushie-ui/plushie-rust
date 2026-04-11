@@ -2,6 +2,33 @@
 //!
 //! Manages in-flight effects with wire ID generation, one-per-tag
 //! enforcement, deadline-based timeouts, and typed result parsing.
+//!
+//! Both the direct and wire runners use `EffectTracker` to decouple
+//! the user-facing tag from the wire ID sent to the renderer. The
+//! typical flow:
+//!
+//! ```ignore
+//! // 1. Track: generates a unique wire ID and starts the deadline.
+//! let wire_id = tracker.track("save_file", "file_save", Duration::from_secs(120));
+//! // Send wire_id to the renderer as the effect's ID.
+//!
+//! // 2. Resolve: when the renderer responds, recover the user's tag
+//! //    and the effect kind for typed result parsing.
+//! if let Some((tag, kind)) = tracker.resolve(&wire_id) {
+//!     let result = EffectResult::parse(&kind, status, value);
+//!     // Deliver Event::Effect(EffectEvent { tag, result }) to the app.
+//! }
+//!
+//! // 3. Timeouts: periodically check for expired effects.
+//! for (tag, kind) in tracker.check_timeouts() {
+//!     // Deliver Event::Effect(EffectEvent { tag, result: Timeout })
+//! }
+//!
+//! // 4. Flush: on renderer restart, cancel all pending effects.
+//! for (tag, kind) in tracker.flush_all() {
+//!     // Deliver Event::Effect(EffectEvent { tag, result: RendererRestarted })
+//! }
+//! ```
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -77,8 +104,8 @@ impl EffectTracker {
     }
 
     /// Flush all pending effects (e.g. on renderer restart).
-    /// Returns (tag, kind) pairs for all flushed effects.
-    #[allow(dead_code)]
+    /// Returns (tag, kind) pairs for all flushed effects so the
+    /// caller can deliver `RendererRestarted` events to the app.
     pub fn flush_all(&mut self) -> Vec<(String, String)> {
         self.pending
             .drain()
@@ -87,18 +114,25 @@ impl EffectTracker {
     }
 
     /// Number of in-flight effects.
-    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.pending.len()
     }
 
-    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.pending.is_empty()
     }
 }
 
 /// Default timeout for each effect kind.
+///
+/// File dialogs get 120s because users interact with the native OS
+/// picker at their own pace. Clipboard and notification effects get
+/// 5s since they complete programmatically. Unknown kinds get a
+/// conservative 30s fallback.
+///
+/// Callers can override per-effect via the `timeout` field on
+/// `RendererOp::Effect`. This function is only consulted when no
+/// explicit timeout is provided.
 pub fn default_timeout(kind: &str) -> Duration {
     match kind {
         "file_open" | "file_open_multiple" | "file_save" | "directory_select"

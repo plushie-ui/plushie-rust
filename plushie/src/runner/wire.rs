@@ -13,11 +13,13 @@ use crate::App;
 #[cfg(feature = "wire")]
 use crate::command::Command;
 #[cfg(feature = "wire")]
-use crate::event::Event;
+use crate::event::{Event, EffectEvent, EffectResult};
 #[cfg(feature = "wire")]
 use crate::runtime::{normalize, tree_diff};
 #[cfg(feature = "wire")]
 use super::bridge::Bridge;
+#[cfg(feature = "wire")]
+use super::effect_tracker::{self, EffectTracker};
 
 /// Run the app in wire mode.
 ///
@@ -42,6 +44,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     let (mut model, init_cmd) = A::init();
 
     let mut sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
+    let mut effect_tracker = EffectTracker::new();
 
     // First render: full snapshot.
     let view = A::view(&model, &mut crate::widget::WidgetRegistrar::new());
@@ -51,7 +54,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
     // Execute the initial command (e.g. focus a field, start
     // async work) so apps work from the first frame.
-    if let Err(e) = execute_wire_command(&mut bridge, &init_cmd) {
+    if let Err(e) = execute_wire_command(&mut bridge, &init_cmd, &mut effect_tracker) {
         log::error!("initial command execution failed: {e}");
     }
 
@@ -66,14 +69,29 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
             Ok(msg) => msg,
             Err(e) => {
                 log::error!("renderer connection lost: {e}");
+
+                // Flush all pending effects so the app gets
+                // RendererRestarted events for in-flight effects.
+                for (tag, _kind) in effect_tracker.flush_all() {
+                    let event = Event::Effect(EffectEvent {
+                        tag,
+                        result: EffectResult::RendererRestarted,
+                    });
+                    A::update(&mut model, event);
+                }
+
                 break;
             }
         };
 
         // Convert wire event to SDK Event via the shared event bridge.
-        if let Some(event) = wire_to_sdk_event(&raw) {
+        // Effect responses are resolved through the tracker to recover
+        // the user's tag and the effect kind for typed result parsing.
+        let event = wire_to_sdk_event(&raw, &mut effect_tracker);
+
+        if let Some(event) = event {
             let cmd = A::update(&mut model, event);
-            if let Err(e) = execute_wire_command(&mut bridge, &cmd) {
+            if let Err(e) = execute_wire_command(&mut bridge, &cmd, &mut effect_tracker) {
                 log::error!("command execution failed: {e}");
             }
 
@@ -101,6 +119,20 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
                 log::error!("subscription sync failed: {e}");
             }
         }
+
+        // Check for timed-out effects after processing each message.
+        // The wire event loop blocks on receive(), so timeouts are
+        // checked opportunistically as messages arrive.
+        for (tag, _kind) in effect_tracker.check_timeouts() {
+            let event = Event::Effect(EffectEvent {
+                tag,
+                result: EffectResult::Timeout,
+            });
+            let cmd = A::update(&mut model, event);
+            if let Err(e) = execute_wire_command(&mut bridge, &cmd, &mut effect_tracker) {
+                log::error!("timeout command execution failed: {e}");
+            }
+        }
     }
 
     Ok(())
@@ -110,9 +142,11 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 /// shared event bridge.
 ///
 /// Constructs a SinkEvent from the raw JSON fields and feeds it
-/// through the event bridge for type-safe conversion.
+/// through the event bridge for type-safe conversion. Effect
+/// responses are resolved through the tracker to recover the user's
+/// tag and the effect kind for typed result parsing.
 #[cfg(feature = "wire")]
-fn wire_to_sdk_event(msg: &Value) -> Option<Event> {
+fn wire_to_sdk_event(msg: &Value, effect_tracker: &mut EffectTracker) -> Option<Event> {
     use plushie_core::protocol::{OutgoingEvent, EffectResponse, KeyModifiers};
     use super::event_bridge::{SinkEvent, sink_event_to_sdk};
 
@@ -136,15 +170,31 @@ fn wire_to_sdk_event(msg: &Value) -> Option<Event> {
             SinkEvent::Event(event)
         }
         "effect_response" => {
+            let wire_id = msg.get("id")?.as_str()?;
+            let status = match msg.get("status").and_then(|v| v.as_str()) {
+                Some("ok") => "ok",
+                Some("cancelled") => "cancelled",
+                Some("unsupported") => "unsupported",
+                _ => "error",
+            };
+
+            // Resolve via the tracker for typed result parsing.
+            if let Some((tag, kind)) = effect_tracker.resolve(wire_id) {
+                let error_as_value = msg.get("error")
+                    .and_then(|v| v.as_str())
+                    .map(|e| Value::String(e.to_string()));
+                let value = msg.get("result").or(error_as_value.as_ref());
+                let result = EffectResult::parse(&kind, status, value);
+                return Some(Event::Effect(EffectEvent { tag, result }));
+            }
+
+            // Fallback: no tracker entry (e.g. stale response after
+            // restart). Use the untyped event bridge conversion.
             let response = EffectResponse {
                 message_type: "effect_response",
                 session: String::new(),
-                id: msg.get("id")?.as_str()?.to_string(),
-                status: match msg.get("status").and_then(|v| v.as_str()) {
-                    Some("ok") => "ok",
-                    Some("cancelled") => "cancelled",
-                    _ => "error",
-                },
+                id: wire_id.to_string(),
+                status,
                 result: msg.get("result").cloned(),
                 error: msg.get("error").and_then(|v| v.as_str()).map(String::from),
             };
@@ -171,7 +221,11 @@ fn wire_to_sdk_event(msg: &Value) -> Option<Event> {
 
 /// Execute a Command by sending messages through the bridge.
 #[cfg(feature = "wire")]
-fn execute_wire_command(bridge: &mut Bridge, cmd: &Command) -> std::io::Result<()> {
+fn execute_wire_command(
+    bridge: &mut Bridge,
+    cmd: &Command,
+    effect_tracker: &mut EffectTracker,
+) -> std::io::Result<()> {
     match cmd {
         Command::None => {}
         Command::Exit => {
@@ -179,11 +233,11 @@ fn execute_wire_command(bridge: &mut Bridge, cmd: &Command) -> std::io::Result<(
         }
         Command::Batch(cmds) => {
             for c in cmds {
-                execute_wire_command(bridge, c)?;
+                execute_wire_command(bridge, c, effect_tracker)?;
             }
         }
         Command::Renderer(op) => {
-            execute_wire_renderer_op(bridge, op)?;
+            execute_wire_renderer_op(bridge, op, effect_tracker)?;
         }
         Command::Async { .. } | Command::Cancel { .. } | Command::SendAfter { .. } => {
             log::warn!("SDK-local command not yet supported in wire mode: {cmd:?}");
@@ -194,7 +248,11 @@ fn execute_wire_command(bridge: &mut Bridge, cmd: &Command) -> std::io::Result<(
 
 /// Serialize a RendererOp to wire messages and send via the bridge.
 #[cfg(feature = "wire")]
-fn execute_wire_renderer_op(bridge: &mut Bridge, op: &plushie_core::ops::RendererOp) -> std::io::Result<()> {
+fn execute_wire_renderer_op(
+    bridge: &mut Bridge,
+    op: &plushie_core::ops::RendererOp,
+    effect_tracker: &mut EffectTracker,
+) -> std::io::Result<()> {
     use plushie_core::ops::RendererOp;
     match op {
         RendererOp::Focus(id) => bridge.send_widget_op("focus", &serde_json::json!({"target": id})),
@@ -212,9 +270,13 @@ fn execute_wire_renderer_op(bridge: &mut Bridge, op: &plushie_core::ops::Rendere
         RendererOp::Window(op) => execute_wire_window_op(bridge, op),
         RendererOp::WidgetCommand { node_id, op, payload } => bridge.send_widget_command(node_id, op, payload),
         RendererOp::Announce(text) => bridge.send_widget_op("announce", &serde_json::json!({"text": text})),
-        RendererOp::Effect { tag, request, .. } => {
-            let (kind, payload) = plushie_core::ops::effect_request_to_wire(request);
-            bridge.send_effect(tag, kind, &payload)
+        RendererOp::Effect { tag, request, timeout } => {
+            let kind = request.kind();
+            let effective_timeout = timeout
+                .unwrap_or_else(|| effect_tracker::default_timeout(kind));
+            let wire_id = effect_tracker.track(tag, kind, effective_timeout);
+            let (_, payload) = plushie_core::ops::effect_request_to_wire(request);
+            bridge.send_effect(&wire_id, kind, &payload)
         }
         RendererOp::Subscribe { kind, tag, max_rate, window_id } => {
             bridge.send_subscribe(&kind, &tag, *max_rate, window_id.as_deref())

@@ -549,6 +549,19 @@ pub enum EffectResult {
 
 impl EffectResult {
     /// Parse a typed result from effect kind, status, and raw value.
+    ///
+    /// The `status` field from the wire protocol determines the
+    /// top-level outcome:
+    /// - `"ok"`: success, parsed into a typed variant based on `kind`
+    /// - `"cancelled"`: user dismissed the dialog (returns `Cancelled`)
+    /// - `"unsupported"`: the backend doesn't support this effect
+    /// - `"error"`: platform error, `value` contains the error message
+    /// - anything else: logged as a warning, returns `Other`
+    ///
+    /// The `kind` string (e.g. `"file_open"`, `"clipboard_read"`)
+    /// controls how `"ok"` results are destructured into typed
+    /// variants like `FileOpened`, `ClipboardText`, etc. Unknown
+    /// kinds fall through to `Other` with the raw value preserved.
     pub fn parse(kind: &str, status: &str, value: Option<&Value>) -> Self {
         match status {
             "cancelled" => Self::Cancelled,

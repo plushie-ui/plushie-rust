@@ -203,11 +203,13 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
 
 /// Convert an EffectResponse to an SDK EffectEvent.
 ///
-/// Used directly by the wire runner (no tracker) and as a fallback
-/// in the direct runner when a response has no matching tracker entry.
+/// Fallback path when a response has no matching tracker entry
+/// (e.g. stale response after a renderer restart). Without the
+/// tracker's kind context, "ok" results use the untyped `Other`
+/// variant.
 pub(crate) fn effect_response_to_sdk(response: EffectResponse) -> Event {
     // Without tracker context (no kind available), we fall back to
-    // untyped variants. The wire runner uses this path.
+    // untyped variants.
     let result = match response.status {
         "ok" => EffectResult::Other(response.result.unwrap_or(Value::Null)),
         "cancelled" => EffectResult::Cancelled,

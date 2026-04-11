@@ -24,6 +24,7 @@ use crate::App;
 use crate::command::Command;
 use crate::event::{Event, WidgetEvent};
 use crate::runtime;
+use crate::runtime::subscriptions::{SubscriptionManager, SubOp};
 use crate::widget::{EventResult, Interception, WidgetStateStore};
 
 use super::queue_sink::{QueueSink, SinkEvent};
@@ -45,6 +46,8 @@ struct DirectApp<A: App> {
     widget_store: WidgetStateStore,
     /// Handles for running async tasks, keyed by tag for cancellation.
     running_tasks: HashMap<String, plushie_widget_sdk::iced::task::Handle>,
+    /// Subscription lifecycle manager.
+    sub_manager: SubscriptionManager,
 }
 
 impl<A: App> DirectApp<A> {
@@ -74,6 +77,7 @@ impl<A: App> DirectApp<A> {
             window_iced_ids: HashMap::new(),
             widget_store: WidgetStateStore::new(),
             running_tasks: HashMap::new(),
+            sub_manager: SubscriptionManager::new(),
         };
 
         // Apply user settings to the renderer before the first view.
@@ -171,6 +175,13 @@ impl<A: App> DirectApp<A> {
         // not after each individual event.
         if delivered {
             self.refresh_view();
+
+            // Sync subscriptions after the model has changed.
+            let new_subs = A::subscribe(&self.model);
+            let ops = self.sub_manager.sync(new_subs);
+            for op in ops {
+                tasks.push(self.apply_sub_op(op));
+            }
         }
 
         if tasks.is_empty() {
@@ -265,6 +276,34 @@ impl<A: App> DirectApp<A> {
         }
     }
 
+    /// Apply a subscription operation (subscribe, unsubscribe, or timer).
+    fn apply_sub_op(&mut self, op: SubOp) -> Task<Message> {
+        match op {
+            SubOp::Subscribe { kind, tag, max_rate, window_id } => {
+                self.renderer.execute(plushie_core::ops::RendererOp::Subscribe {
+                    kind, tag, max_rate, window_id,
+                })
+            }
+            SubOp::Unsubscribe { kind, tag } => {
+                self.renderer.execute(plushie_core::ops::RendererOp::Unsubscribe {
+                    kind, tag,
+                })
+            }
+            SubOp::StartTimer { tag, .. } => {
+                // Timer subscriptions (Subscription::every) are not yet
+                // implemented in direct mode. The subscription is tracked
+                // for diffing but timer events are not delivered.
+                log::debug!("timer subscription not yet implemented: {tag}");
+                Task::none()
+            }
+            SubOp::StopTimer { tag } => {
+                if let Some(handle) = self.running_tasks.remove(&format!("__timer:{tag}")) {
+                    handle.abort();
+                }
+                Task::none()
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

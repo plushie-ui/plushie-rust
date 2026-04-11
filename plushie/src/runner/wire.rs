@@ -41,8 +41,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     // Initialize the app.
     let (mut model, init_cmd) = A::init();
 
-    // Track active subscriptions for diffing.
-    let mut active_subs: Vec<crate::subscription::Subscription> = Vec::new();
+    let mut sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
 
     // First render: full snapshot.
     let view = A::view(&model);
@@ -58,8 +57,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
     // Initial subscription sync.
     let new_subs = A::subscribe(&model);
-    sync_subscriptions(&mut bridge, &active_subs, &new_subs)?;
-    active_subs = new_subs;
+    apply_wire_sub_ops(&mut bridge, sub_manager.sync(new_subs))?;
 
     // Event loop.
     loop {
@@ -99,10 +97,9 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
             // Sync subscriptions.
             let new_subs = A::subscribe(&model);
-            if let Err(e) = sync_subscriptions(&mut bridge, &active_subs, &new_subs) {
+            if let Err(e) = apply_wire_sub_ops(&mut bridge, sub_manager.sync(new_subs)) {
                 log::error!("subscription sync failed: {e}");
             }
-            active_subs = new_subs;
         }
     }
 
@@ -298,51 +295,25 @@ fn build_settings<A: App>() -> Value {
     json
 }
 
-/// Diff old and new subscription lists and send Subscribe/Unsubscribe
-/// messages for the differences.
-///
-/// Timer subscriptions (kind "every") are filtered out since they're
-/// handled SDK-side, not by the renderer.
+/// Apply subscription operations by sending wire messages.
 #[cfg(feature = "wire")]
-fn sync_subscriptions(
+fn apply_wire_sub_ops(
     bridge: &mut Bridge,
-    old: &[crate::subscription::Subscription],
-    new: &[crate::subscription::Subscription],
+    ops: Vec<crate::runtime::subscriptions::SubOp>,
 ) -> std::io::Result<()> {
-    use std::collections::HashSet;
-
-    // Filter to renderer-side subscriptions only (skip timers).
-    let is_renderer_sub = |s: &&crate::subscription::Subscription| s.wire_kind() != "every";
-
-    let old_keys: HashSet<(&str, &str)> = old.iter()
-        .filter(is_renderer_sub)
-        .map(|s| s.diff_key())
-        .collect();
-    let new_keys: HashSet<(&str, &str)> = new.iter()
-        .filter(is_renderer_sub)
-        .map(|s| s.diff_key())
-        .collect();
-
-    // Unsubscribe removed subscriptions.
-    for sub in old.iter().filter(is_renderer_sub) {
-        let key = sub.diff_key();
-        if !new_keys.contains(&key) {
-            bridge.send_unsubscribe(sub.wire_kind(), &sub.tag)?;
+    use crate::runtime::subscriptions::SubOp;
+    for op in ops {
+        match op {
+            SubOp::Subscribe { kind, tag, max_rate, window_id } => {
+                bridge.send_subscribe(&kind, &tag, max_rate, window_id.as_deref())?;
+            }
+            SubOp::Unsubscribe { kind, tag } => {
+                bridge.send_unsubscribe(&kind, &tag)?;
+            }
+            SubOp::StartTimer { tag, .. } | SubOp::StopTimer { tag, .. } => {
+                log::debug!("timer subscription not yet implemented in wire mode: {tag}");
+            }
         }
     }
-
-    // Subscribe new subscriptions.
-    for sub in new.iter().filter(is_renderer_sub) {
-        let key = sub.diff_key();
-        if !old_keys.contains(&key) {
-            bridge.send_subscribe(
-                sub.wire_kind(),
-                &sub.tag,
-                sub.max_rate,
-                sub.window_id.as_deref(),
-            )?;
-        }
-    }
-
     Ok(())
 }

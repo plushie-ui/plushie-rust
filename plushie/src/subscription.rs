@@ -149,7 +149,6 @@ impl Subscription {
     }
 
     /// Wire kind string for this subscription.
-    #[cfg(feature = "wire")]
     pub(crate) fn wire_kind(&self) -> &str {
         match &self.kind {
             SubscriptionKind::Every(_) => "every",
@@ -176,7 +175,6 @@ impl Subscription {
     }
 
     /// Unique key for diffing: `(kind, tag)`.
-    #[cfg(feature = "wire")]
     pub(crate) fn diff_key(&self) -> (&str, &str) {
         (self.wire_kind(), &self.tag)
     }

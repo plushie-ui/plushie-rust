@@ -84,19 +84,36 @@ impl SubscriptionManager {
                 }
                 Some(new_sub) => {
                     // Present in both. Check if parameters changed.
-                    if sub.max_rate != new_sub.max_rate || sub.window_id != new_sub.window_id {
-                        if !matches!(sub.kind, SubscriptionKind::Every(_)) {
-                            ops.push(SubOp::Unsubscribe {
-                                kind: sub.wire_kind().to_string(),
-                                tag: sub.tag.clone(),
-                            });
-                            ops.push(SubOp::Subscribe {
-                                kind: new_sub.wire_kind().to_string(),
+                    let params_changed = sub.max_rate != new_sub.max_rate
+                        || sub.window_id != new_sub.window_id;
+
+                    // For timers, also check if the interval changed.
+                    let interval_changed = match (&sub.kind, &new_sub.kind) {
+                        (SubscriptionKind::Every(old), SubscriptionKind::Every(new)) => old != new,
+                        _ => false,
+                    };
+
+                    if interval_changed {
+                        // Timer interval changed: stop old, start new.
+                        ops.push(SubOp::StopTimer { tag: sub.tag.clone() });
+                        if let SubscriptionKind::Every(interval) = new_sub.kind {
+                            ops.push(SubOp::StartTimer {
                                 tag: new_sub.tag.clone(),
-                                max_rate: new_sub.max_rate,
-                                window_id: new_sub.window_id.clone(),
+                                interval,
                             });
                         }
+                    } else if params_changed && !matches!(sub.kind, SubscriptionKind::Every(_)) {
+                        // Renderer subscription parameters changed.
+                        ops.push(SubOp::Unsubscribe {
+                            kind: sub.wire_kind().to_string(),
+                            tag: sub.tag.clone(),
+                        });
+                        ops.push(SubOp::Subscribe {
+                            kind: new_sub.wire_kind().to_string(),
+                            tag: new_sub.tag.clone(),
+                            max_rate: new_sub.max_rate,
+                            window_id: new_sub.window_id.clone(),
+                        });
                     }
                 }
             }

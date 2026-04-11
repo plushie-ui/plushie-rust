@@ -296,7 +296,9 @@ impl<A: App> DirectApp<A> {
             .map(|(tag, duration)| {
                 let queue = self.event_queue.clone();
                 let tag = tag.clone();
-                plushie_widget_sdk::iced::time::every(*duration).map(move |_| {
+                plushie_widget_sdk::iced::time::every(*duration)
+                    .with(tag.clone()) // Unique identity per tag
+                    .map(move |_| {
                     let timestamp = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()

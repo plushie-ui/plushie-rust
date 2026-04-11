@@ -102,19 +102,6 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
         (r, Some(w), g, t)
     };
 
-    // Headless/mock modes handle their own sink initialization and
-    // codec detection internally. For windowed mode, we defer sink
-    // creation until after codec detection (below).
-    let is_headless = has_flag("--headless") || has_flag("--mock");
-    if is_headless {
-        let writer = writer_opt.take().unwrap();
-        let sink = plushie_renderer_lib::WriterSink::new(
-            writer,
-            plushie_widget_sdk::codec::Codec::MsgPack,
-        );
-        plushie_renderer_lib::emitters::init_sink(Box::new(sink));
-    }
-
     // Collect custom type names before building the dispatcher so the
     // hello message can report which widget types are available.
     let ext_keys = builder
@@ -123,7 +110,10 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
         .map(|s| s.to_string())
         .collect::<Vec<_>>();
 
+    // Headless/mock modes handle their own sink initialization
+    // after codec detection. They receive the writer directly.
     if has_flag("--mock") {
+        let writer = writer_opt.take().unwrap();
         crate::headless::run(
             forced_codec,
             crate::headless::Mode::Mock,
@@ -131,11 +121,13 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
             &ext_keys,
             transport_name,
             reader,
+            writer,
             expected_token.as_deref(),
         );
         return Ok(());
     }
     if has_flag("--headless") {
+        let writer = writer_opt.take().unwrap();
         crate::headless::run(
             forced_codec,
             crate::headless::Mode::Headless,
@@ -143,6 +135,7 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
             &ext_keys,
             transport_name,
             reader,
+            writer,
             expected_token.as_deref(),
         );
         return Ok(());

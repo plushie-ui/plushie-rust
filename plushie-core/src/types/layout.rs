@@ -190,3 +190,47 @@ impl PlushieType for ContentFit {
         "content_fit"
     }
 }
+
+/// Sort direction for table columns.
+///
+/// ## Wire format
+/// Snake_case string: `"asc"` or `"desc"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortOrder {
+    /// Ascending order (A-Z, 0-9).
+    Asc,
+    /// Descending order (Z-A, 9-0).
+    Desc,
+}
+
+impl PlushieType for SortOrder {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        match value.as_str()? {
+            "asc" => Some(Self::Asc),
+            "desc" => Some(Self::Desc),
+            _ => None,
+        }
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::Str(
+            match self {
+                Self::Asc => "asc",
+                Self::Desc => "desc",
+            }
+            .into(),
+        )
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        match props.get_str(key)? {
+            "asc" => Some(Self::Asc),
+            "desc" => Some(Self::Desc),
+            _ => None,
+        }
+    }
+
+    fn type_name() -> &'static str {
+        "sort_order"
+    }
+}

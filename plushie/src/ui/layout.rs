@@ -133,10 +133,9 @@ impl WindowBuilder {
         self
     }
 
-    /// Window stacking level: `"normal"`, `"always_on_top"`, or
-    /// `"always_on_bottom"`.
-    pub fn level(mut self, level: &str) -> Self {
-        super::set_prop(&mut self.props, "level", level);
+    /// Window stacking level.
+    pub fn level(mut self, level: WindowLevel) -> Self {
+        super::set_prop(&mut self.props, "level", level.wire_encode());
         self
     }
 

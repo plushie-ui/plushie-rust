@@ -8,7 +8,7 @@ use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 
-use plushie_core::types::PlushieType;
+use plushie_core::types::{ErrorCorrection, PlushieType};
 
 // ---------------------------------------------------------------------------
 // QrCodeProgram (canvas program for drawing QR modules)
@@ -71,7 +71,7 @@ struct QrCodeProps {
     cell_size: Option<f32>,
     cell_color: Option<plushie_core::types::Color>,
     background: Option<plushie_core::types::Color>,
-    error_correction: Option<String>,
+    error_correction: Option<ErrorCorrection>,
     alt: Option<String>,
     description: Option<String>,
 }
@@ -84,7 +84,7 @@ impl QrCodeProps {
             cell_size: f32::extract(p, "cell_size"),
             cell_color: plushie_core::types::Color::extract(p, "cell_color"),
             background: plushie_core::types::Color::extract(p, "background"),
-            error_correction: String::extract(p, "error_correction"),
+            error_correction: ErrorCorrection::extract(p, "error_correction"),
             alt: String::extract(p, "alt"),
             description: String::extract(p, "description"),
         }
@@ -123,7 +123,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         let qp = QrCodeProps::from_node(node);
         let data = qp.data.unwrap_or_default();
         let cell_size = qp.cell_size.unwrap_or(4.0);
-        let ec = qp.error_correction.unwrap_or_default();
+        let ec = qp.error_correction;
 
         let mut hasher = DefaultHasher::new();
         data.hash(&mut hasher);
@@ -152,7 +152,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         let qp = QrCodeProps::from_node(node);
         let data = qp.data.unwrap_or_default();
         let cell_size = qp.cell_size.unwrap_or(4.0).clamp(1.0, 50.0);
-        let ec_str = qp.error_correction.unwrap_or_default();
+        let ec = qp.error_correction;
         let cell_color = qp
             .cell_color
             .as_ref()
@@ -164,11 +164,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
             .map(iced_convert::color)
             .unwrap_or(iced::Color::WHITE);
 
-        let ec_level = match ec_str.as_str() {
-            "low" => qrcode::EcLevel::L,
-            "quartile" => qrcode::EcLevel::Q,
-            "high" => qrcode::EcLevel::H,
-            _ => qrcode::EcLevel::M,
+        let ec_level = match ec {
+            Some(ErrorCorrection::Low) => qrcode::EcLevel::L,
+            Some(ErrorCorrection::Quartile) => qrcode::EcLevel::Q,
+            Some(ErrorCorrection::High) => qrcode::EcLevel::H,
+            Some(ErrorCorrection::Medium) | None => qrcode::EcLevel::M,
         };
 
         let qr = match qrcode::QrCode::with_error_correction_level(data.as_bytes(), ec_level) {

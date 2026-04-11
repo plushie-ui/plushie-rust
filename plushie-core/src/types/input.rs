@@ -113,3 +113,53 @@ impl PlushieType for FilterMethod {
         "filter_method"
     }
 }
+
+/// QR code error correction level.
+///
+/// ## Wire format
+/// Snake_case string: `"low"`, `"medium"`, `"quartile"`, `"high"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorCorrection {
+    Low,
+    Medium,
+    Quartile,
+    High,
+}
+
+impl PlushieType for ErrorCorrection {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        match value.as_str()? {
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "quartile" => Some(Self::Quartile),
+            "high" => Some(Self::High),
+            _ => None,
+        }
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::Str(
+            match self {
+                Self::Low => "low",
+                Self::Medium => "medium",
+                Self::Quartile => "quartile",
+                Self::High => "high",
+            }
+            .into(),
+        )
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        match props.get_str(key)? {
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "quartile" => Some(Self::Quartile),
+            "high" => Some(Self::High),
+            _ => None,
+        }
+    }
+
+    fn type_name() -> &'static str {
+        "error_correction"
+    }
+}

@@ -381,7 +381,7 @@ impl QrCodeBuilder {
     pub fn cell_size(mut self, s: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "cell_size", s.into().wire_encode()); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
-    pub fn error_correction(mut self, level: &str) -> Self { super::set_prop(&mut self.props, "error_correction", level); self }
+    pub fn error_correction(mut self, level: ErrorCorrection) -> Self { super::set_prop(&mut self.props, "error_correction", level.wire_encode()); self }
     pub fn cell_color(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "cell_color", c.into().wire_encode()); self }
     pub fn background(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "background", c.into().wire_encode()); self }
     /// Accessible label for the QR code.

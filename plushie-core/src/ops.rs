@@ -515,6 +515,36 @@ pub fn effect_request_from_wire(kind: &str, payload: &Value) -> Option<EffectReq
     }
 }
 
+// ---------------------------------------------------------------------------
+// PlushieType impls for operation enums
+// ---------------------------------------------------------------------------
+
+impl crate::types::PlushieType for WindowLevel {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        match value.as_str()? {
+            "normal" => Some(Self::Normal),
+            "always_on_top" => Some(Self::AlwaysOnTop),
+            "always_on_bottom" => Some(Self::AlwaysOnBottom),
+            _ => None,
+        }
+    }
+
+    fn wire_encode(&self) -> crate::protocol::PropValue {
+        crate::protocol::PropValue::Str(
+            match self {
+                Self::Normal => "normal",
+                Self::AlwaysOnTop => "always_on_top",
+                Self::AlwaysOnBottom => "always_on_bottom",
+            }
+            .into(),
+        )
+    }
+
+    fn type_name() -> &'static str {
+        "window_level"
+    }
+}
+
 fn file_dialog_opts_from_value(payload: &Value) -> FileDialogOpts {
     let mut filters = Vec::new();
     if let Some(filter_arr) = payload.get("filters").and_then(|v| v.as_array()) {

@@ -9,7 +9,7 @@ use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
-use plushie_core::types::{self as core_types, PlushieType};
+use plushie_core::types::{self as core_types, PlushieType, SortOrder};
 use plushie_core::types::{Color as CoreColor, HorizontalAlignment};
 use plushie_core::types::a11y::Role;
 
@@ -78,7 +78,7 @@ struct TableProps {
     width: Option<core_types::Length>,
     padding: Option<core_types::Padding>,
     sort_by: Option<String>,
-    sort_order: Option<String>,
+    sort_order: Option<SortOrder>,
     header_text_size: Option<f32>,
     row_text_size: Option<f32>,
     cell_spacing: Option<f32>,
@@ -96,7 +96,7 @@ impl TableProps {
             width: core_types::Length::extract(p, "width"),
             padding: core_types::Padding::extract(p, "padding"),
             sort_by: String::extract(p, "sort_by"),
-            sort_order: String::extract(p, "sort_order"),
+            sort_order: SortOrder::extract(p, "sort_order"),
             header_text_size: f32::extract(p, "header_text_size"),
             row_text_size: f32::extract(p, "row_text_size"),
             cell_spacing: f32::extract(p, "cell_spacing"),
@@ -163,10 +163,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
                 .map(|col| {
                     // Build sort indicator if this column is currently sorted.
                     let sort_indicator = if sort_by.as_deref() == Some(&col.key) {
-                        match sort_order.as_deref() {
-                            Some("asc") => " \u{25B2}",
-                            Some("desc") => " \u{25BC}",
-                            _ => "",
+                        match sort_order {
+                            Some(SortOrder::Asc) => " \u{25B2}",
+                            Some(SortOrder::Desc) => " \u{25BC}",
+                            None => "",
                         }
                     } else {
                         ""

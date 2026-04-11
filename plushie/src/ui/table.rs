@@ -70,9 +70,9 @@ impl TableBuilder {
         self
     }
 
-    /// Sort direction: `"asc"` or `"desc"`.
-    pub fn sort_order(mut self, order: &str) -> Self {
-        super::set_prop(&mut self.props, "sort_order", order);
+    /// Sort direction.
+    pub fn sort_order(mut self, order: SortOrder) -> Self {
+        super::set_prop(&mut self.props, "sort_order", order.wire_encode());
         self
     }
 

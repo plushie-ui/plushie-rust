@@ -25,9 +25,9 @@ pub use plushie_core::types::{
     // Alignment
     HorizontalAlignment, VerticalAlignment,
     // Layout
-    Direction, Anchor, Position, ContentFit,
+    Direction, Anchor, Position, ContentFit, SortOrder,
     // Input
-    InputPurpose, FilterMethod, CursorStyle,
+    InputPurpose, ErrorCorrection, FilterMethod, CursorStyle,
     // Style
     Style, StyleMap,
     // Value
@@ -76,3 +76,12 @@ pub enum Align {
 /// definition lives in plushie-core with all necessary derives (Copy, Eq,
 /// Serialize, Deserialize).
 pub use plushie_core::protocol::KeyModifiers;
+
+// -------------------------------------------------------------------------
+// Re-export: WindowLevel
+// -------------------------------------------------------------------------
+
+/// Window stacking level.
+///
+/// Re-exported from `plushie_core::ops::WindowLevel`.
+pub use plushie_core::ops::WindowLevel;

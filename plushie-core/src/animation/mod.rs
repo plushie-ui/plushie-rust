@@ -42,13 +42,21 @@ use serde_json::Value;
 /// ```
 #[derive(Debug, Clone)]
 pub struct Transition<T: PlushieType = PropValue> {
+    /// Target value to animate towards.
     pub to: T,
+    /// Animation duration in milliseconds.
     pub duration: u64,
+    /// Easing function controlling the acceleration curve.
     pub easing: Easing,
+    /// Delay before the animation starts, in milliseconds.
     pub delay: u64,
+    /// Starting value. If None, animates from the current value.
     pub from: Option<T>,
+    /// Number of times to repeat, or forever.
     pub repeat: Option<Repeat>,
+    /// Whether to reverse direction on each repeat cycle.
     pub auto_reverse: bool,
+    /// Event tag emitted when the animation finishes.
     pub on_complete: Option<String>,
 }
 
@@ -188,12 +196,19 @@ pub enum Repeat {
 /// ```
 #[derive(Debug, Clone)]
 pub struct Spring<T: PlushieType = PropValue> {
+    /// Target value the spring settles towards.
     pub to: T,
+    /// Spring constant. Higher values produce faster motion. Default: 100.
     pub stiffness: f64,
+    /// Resistance force. Higher values reduce oscillation. Default: 10.
     pub damping: f64,
+    /// Simulated mass. Higher values produce slower, heavier motion. Default: 1.0.
     pub mass: f64,
+    /// Initial velocity. Default: 0.0.
     pub velocity: f64,
+    /// Starting value. If None, starts from the current value.
     pub from: Option<T>,
+    /// Event tag emitted when the spring settles.
     pub on_complete: Option<String>,
 }
 
@@ -306,7 +321,9 @@ impl<T: PlushieType> PlushieType for Spring<T> {
 /// it by the `"type": "sequence"` field and runs each step in turn.
 #[derive(Debug, Clone)]
 pub struct Sequence<T: PlushieType = PropValue> {
+    /// Ordered list of animation steps to execute.
     pub steps: Vec<AnimationStep<T>>,
+    /// Event tag emitted when all steps finish.
     pub on_complete: Option<String>,
 }
 
@@ -540,5 +557,34 @@ mod tests {
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["to"], 42.0);
+    }
+
+    #[test]
+    fn color_transition_round_trips() {
+        use crate::types::Color;
+        let t = Transition::<Color>::new(300, Color::hex("#ff0000"))
+            .from(Color::hex("#0000ff"))
+            .easing(Easing::EaseOut);
+        let encoded = t.wire_encode();
+        let decoded = Transition::<Color>::wire_decode(
+            &serde_json::Value::from(encoded),
+        )
+        .unwrap();
+        assert_eq!(decoded.to.as_hex(), "#ff0000");
+        assert_eq!(decoded.from.unwrap().as_hex(), "#0000ff");
+        assert_eq!(decoded.duration, 300);
+    }
+
+    #[test]
+    fn color_spring_round_trips() {
+        use crate::types::Color;
+        let s = Spring::<Color>::new(Color::hex("#00ff00"))
+            .stiffness(200.0)
+            .damping(15.0);
+        let encoded = s.wire_encode();
+        let decoded =
+            Spring::<Color>::wire_decode(&serde_json::Value::from(encoded)).unwrap();
+        assert_eq!(decoded.to.as_hex(), "#00ff00");
+        assert_eq!(decoded.stiffness, 200.0);
     }
 }

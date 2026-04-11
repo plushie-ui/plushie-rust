@@ -3,6 +3,14 @@
 //! Widget builder setters accept `impl Into<Animatable<T>>`, allowing
 //! both static values and animation descriptors through the same method.
 //!
+//! # Wire format
+//!
+//! Static values encode directly as their underlying type (number, string,
+//! etc.). Animation descriptors encode as JSON objects with a `"type"` field
+//! (`"transition"`, `"spring"`, or `"sequence"`) that the renderer detects
+//! during prop diffing. This means the same prop slot carries either a plain
+//! value or an animation descriptor transparently.
+//!
 //! ```
 //! use plushie_core::animation::{Transition, Spring, Easing};
 //! use plushie_core::types::{Animatable, Color};
@@ -28,6 +36,10 @@ use crate::types::PlushieType;
 ///
 /// Widget builder setters accept `impl Into<Animatable<T>>`, allowing
 /// both static values and animation descriptors through the same method.
+///
+/// Static values encode to their underlying wire type. Animation
+/// descriptors encode as objects with a `"type"` discriminator field
+/// that the renderer's animation system detects during prop diffing.
 #[derive(Debug, Clone)]
 pub enum Animatable<T: PlushieType> {
     /// A static value applied immediately.
@@ -55,46 +67,46 @@ impl<T: PlushieType> Animatable<T> {
     }
 }
 
-// From impls for transparent usage.
-//
-// T -> Animatable<T>: static value
+/// Wrap a static value as [`Animatable::Value`].
 impl<T: PlushieType> From<T> for Animatable<T> {
     fn from(v: T) -> Self {
         Self::Value(v)
     }
 }
 
-// Transition<T> -> Animatable<T>
+/// Wrap a transition descriptor as [`Animatable::Transition`].
 impl<T: PlushieType> From<Transition<T>> for Animatable<T> {
     fn from(t: Transition<T>) -> Self {
         Self::Transition(t)
     }
 }
 
-// Spring<T> -> Animatable<T>
+/// Wrap a spring descriptor as [`Animatable::Spring`].
 impl<T: PlushieType> From<Spring<T>> for Animatable<T> {
     fn from(s: Spring<T>) -> Self {
         Self::Spring(s)
     }
 }
 
-// Sequence<T> -> Animatable<T>
+/// Wrap a sequence descriptor as [`Animatable::Sequence`].
 impl<T: PlushieType> From<Sequence<T>> for Animatable<T> {
     fn from(seq: Sequence<T>) -> Self {
         Self::Sequence(seq)
     }
 }
 
-// Convenience: &str -> Animatable<Color> for color props that accept
-// hex strings. Without this, users would need two explicit conversions
-// (&str -> Color -> Animatable<Color>) which Rust's Into doesn't chain.
+/// Convert a hex string to a static color value.
+///
+/// Convenience impl so color props accept `"#rrggbb"` directly
+/// without requiring the intermediate `&str -> Color` conversion
+/// that Rust's `Into` cannot chain.
 impl From<&str> for Animatable<Color> {
     fn from(s: &str) -> Self {
         Self::Value(Color::from(s))
     }
 }
 
-// Convenience: String -> Animatable<Color>
+/// Convert an owned hex string to a static color value.
 impl From<String> for Animatable<Color> {
     fn from(s: String) -> Self {
         Self::Value(Color::from(s))

@@ -156,12 +156,12 @@ impl<W: Widget> From<WidgetView<W>> for View {
         let mut props = wv.props;
         props.insert("__widget__".to_string(), Value::Bool(true));
 
-        View(serde_json::json!({
-            "id": wv.id,
-            "type": "__widget__",
-            "props": Value::Object(props),
-            "children": [],
-        }))
+        View {
+            id: wv.id,
+            type_name: "__widget__".to_string(),
+            props: Value::Object(props),
+            children: vec![],
+        }
     }
 }
 
@@ -268,7 +268,7 @@ impl WidgetStateStore {
             let state = self.states.get(id).expect("widget state missing");
             let props = &node["props"];
             let expanded = expander.expand(id, props, state.as_ref());
-            return self.expand_node(&expanded.0);
+            return self.expand_node(&serde_json::to_value(&expanded).unwrap());
         }
 
         let children = node["children"]

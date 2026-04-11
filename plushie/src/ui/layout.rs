@@ -179,7 +179,7 @@ impl WindowBuilder {
 
 impl From<WindowBuilder> for View {
     fn from(b: WindowBuilder) -> Self {
-        View::node(b.id, "window", b.props, b.children)
+        super::view_node(b.id, "window", b.props, b.children)
     }
 }
 
@@ -299,7 +299,7 @@ impl ColumnBuilder {
 
 impl From<ColumnBuilder> for View {
     fn from(b: ColumnBuilder) -> Self {
-        View::node(b.id, "column", b.props, b.children)
+        super::view_node(b.id, "column", b.props, b.children)
     }
 }
 
@@ -424,7 +424,7 @@ impl RowBuilder {
 
 impl From<RowBuilder> for View {
     fn from(b: RowBuilder) -> Self {
-        View::node(b.id, "row", b.props, b.children)
+        super::view_node(b.id, "row", b.props, b.children)
     }
 }
 
@@ -578,7 +578,7 @@ impl ContainerBuilder {
 impl From<ContainerBuilder> for View {
     fn from(b: ContainerBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "container", b.props, children)
+        super::view_node(b.id, "container", b.props, children)
     }
 }
 
@@ -655,7 +655,7 @@ impl StackBuilder {
 
 impl From<StackBuilder> for View {
     fn from(b: StackBuilder) -> Self {
-        View::node(b.id, "stack", b.props, b.children)
+        super::view_node(b.id, "stack", b.props, b.children)
     }
 }
 
@@ -759,7 +759,7 @@ impl GridBuilder {
 
 impl From<GridBuilder> for View {
     fn from(b: GridBuilder) -> Self {
-        View::node(b.id, "grid", b.props, b.children)
+        super::view_node(b.id, "grid", b.props, b.children)
     }
 }
 
@@ -831,7 +831,7 @@ impl PinBuilder {
 impl From<PinBuilder> for View {
     fn from(b: PinBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "pin", b.props, children)
+        super::view_node(b.id, "pin", b.props, children)
     }
 }
 
@@ -928,7 +928,7 @@ impl KeyedColumnBuilder {
 
 impl From<KeyedColumnBuilder> for View {
     fn from(b: KeyedColumnBuilder) -> Self {
-        View::node(b.id, "keyed_column", b.props, b.children)
+        super::view_node(b.id, "keyed_column", b.props, b.children)
     }
 }
 
@@ -1011,7 +1011,7 @@ impl FloatingBuilder {
 impl From<FloatingBuilder> for View {
     fn from(b: FloatingBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "float", b.props, children)
+        super::view_node(b.id, "float", b.props, children)
     }
 }
 
@@ -1073,7 +1073,7 @@ impl ResponsiveBuilder {
 impl From<ResponsiveBuilder> for View {
     fn from(b: ResponsiveBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "responsive", b.props, children)
+        super::view_node(b.id, "responsive", b.props, children)
     }
 }
 
@@ -1189,7 +1189,7 @@ impl ScrollableBuilder {
 impl From<ScrollableBuilder> for View {
     fn from(b: ScrollableBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "scrollable", b.props, children)
+        super::view_node(b.id, "scrollable", b.props, children)
     }
 }
 
@@ -1294,6 +1294,6 @@ impl PaneGridBuilder {
 
 impl From<PaneGridBuilder> for View {
     fn from(b: PaneGridBuilder) -> Self {
-        View::node(b.id, "pane_grid", b.props, b.children)
+        super::view_node(b.id, "pane_grid", b.props, b.children)
     }
 }

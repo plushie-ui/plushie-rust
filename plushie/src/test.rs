@@ -43,7 +43,7 @@ impl<A: App> TestSession<A> {
         let (model, _cmd) = A::init();
         let mut widget_store = WidgetStateStore::new();
         let view = A::view(&model);
-        let expanded = widget_store.expand_widgets(&view.0);
+        let expanded = widget_store.expand_widgets(&serde_json::to_value(&view).unwrap());
         let (tree, _) = normalize::normalize(&expanded);
         Self { model, tree, widget_store }
     }
@@ -144,7 +144,7 @@ impl<A: App> TestSession<A> {
 
         // Re-render and expand widgets.
         let view = A::view(&self.model);
-        let expanded = self.widget_store.expand_widgets(&view.0);
+        let expanded = self.widget_store.expand_widgets(&serde_json::to_value(&view).unwrap());
         let (tree, _) = normalize::normalize(&expanded);
         self.tree = tree;
     }

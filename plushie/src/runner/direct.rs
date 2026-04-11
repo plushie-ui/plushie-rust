@@ -179,7 +179,7 @@ impl<A: App> DirectApp<A> {
 
     fn refresh_view(&mut self) {
         let view = A::view(&self.model);
-        let expanded = self.widget_store.expand_widgets(&view.0);
+        let expanded = self.widget_store.expand_widgets(&serde_json::to_value(&view).unwrap());
         let (normalized, warnings) = normalize::normalize(&expanded);
         for warning in &warnings {
             log::warn!("view normalization: {warning}");

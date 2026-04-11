@@ -37,24 +37,22 @@ use crate::View;
 use crate::types::*;
 
 // ---------------------------------------------------------------------------
-// View
+// View construction helpers
 // ---------------------------------------------------------------------------
 
-impl View {
-    /// Create a View from a TreeNode-like structure.
-    pub(crate) fn node(id: String, type_name: &str, props: Map<String, Value>, children: Vec<View>) -> Self {
-        View(json!({
-            "id": id,
-            "type": type_name,
-            "props": Value::Object(props),
-            "children": children.into_iter().map(|v| v.0).collect::<Vec<_>>(),
-        }))
+/// Create a View (TreeNode) with children.
+pub(crate) fn view_node(id: String, type_name: &str, props: Map<String, Value>, children: Vec<View>) -> View {
+    View {
+        id,
+        type_name: type_name.to_string(),
+        props: Value::Object(props),
+        children,
     }
+}
 
-    /// Create a leaf View (no children).
-    pub(crate) fn leaf(id: String, type_name: &str, props: Map<String, Value>) -> Self {
-        Self::node(id, type_name, props, vec![])
-    }
+/// Create a leaf View (no children).
+pub(crate) fn view_leaf(id: String, type_name: &str, props: Map<String, Value>) -> View {
+    view_node(id, type_name, props, vec![])
 }
 
 // ---------------------------------------------------------------------------

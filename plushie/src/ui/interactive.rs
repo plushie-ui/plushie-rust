@@ -102,7 +102,7 @@ impl ButtonBuilder {
 
 impl From<ButtonBuilder> for View {
     fn from(b: ButtonBuilder) -> Self {
-        View::leaf(b.id, "button", b.props)
+        super::view_leaf(b.id, "button", b.props)
     }
 }
 
@@ -225,7 +225,7 @@ impl PointerAreaBuilder {
 impl From<PointerAreaBuilder> for View {
     fn from(b: PointerAreaBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "pointer_area", b.props, children)
+        super::view_node(b.id, "pointer_area", b.props, children)
     }
 }
 
@@ -301,7 +301,7 @@ impl SensorBuilder {
 impl From<SensorBuilder> for View {
     fn from(b: SensorBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "sensor", b.props, children)
+        super::view_node(b.id, "sensor", b.props, children)
     }
 }
 
@@ -384,7 +384,7 @@ impl TooltipBuilder {
 impl From<TooltipBuilder> for View {
     fn from(b: TooltipBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "tooltip", b.props, children)
+        super::view_node(b.id, "tooltip", b.props, children)
     }
 }
 
@@ -436,7 +436,7 @@ impl ThemerBuilder {
 impl From<ThemerBuilder> for View {
     fn from(b: ThemerBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        View::node(b.id, "themer", b.props, children)
+        super::view_node(b.id, "themer", b.props, children)
     }
 }
 
@@ -533,6 +533,6 @@ impl OverlayBuilder {
 
 impl From<OverlayBuilder> for View {
     fn from(b: OverlayBuilder) -> Self {
-        View::node(b.id, "overlay", b.props, b.children)
+        super::view_node(b.id, "overlay", b.props, b.children)
     }
 }

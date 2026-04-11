@@ -79,23 +79,12 @@ use event::Event;
 use settings::{ExitReason, Settings, WindowConfig};
 use subscription::Subscription;
 
-/// An opaque view tree returned from [`App::view`].
+/// A view tree returned from [`App::view`].
 ///
+/// This is a type alias for [`plushie_core::protocol::TreeNode`].
 /// Built using UI builder functions (`window`, `column`, `button`,
-/// `text`, etc.). Internally wraps a JSON value for both direct
-/// and wire mode rendering.
-#[derive(Debug, Clone)]
-pub struct View(pub(crate) serde_json::Value);
-
-impl View {
-    /// Access the internal JSON representation.
-    ///
-    /// Primarily useful for testing and debugging. In production
-    /// code, the View is consumed by the runtime.
-    pub fn as_json(&self) -> &serde_json::Value {
-        &self.0
-    }
-}
+/// `text`, etc.).
+pub type View = plushie_core::protocol::TreeNode;
 
 /// The core trait for plushie applications.
 ///

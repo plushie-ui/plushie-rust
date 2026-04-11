@@ -49,7 +49,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
     // First render: full snapshot.
     let view = A::view(&model);
-    let (mut current_tree, _) = normalize::normalize(&view.0);
+    let (mut current_tree, _) = normalize::normalize(&serde_json::to_value(&view).unwrap());
     bridge.send_snapshot(&current_tree)?;
 
     // Event loop.
@@ -72,7 +72,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
             // Re-render and diff.
             let view = A::view(&model);
-            let (new_tree, warnings) = normalize::normalize(&view.0);
+            let (new_tree, warnings) = normalize::normalize(&serde_json::to_value(&view).unwrap());
             for warning in &warnings {
                 log::warn!("view normalization: {warning}");
             }

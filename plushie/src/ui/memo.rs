@@ -30,7 +30,7 @@ pub fn memo(key: impl Into<String>, view_fn: impl FnOnce() -> View) -> View {
     let mut props = Map::new();
     props.insert("__memo_key__".into(), json!(key_str));
 
-    View::node(
+    super::view_node(
         format!("memo:{key_str}"),
         "__memo__",
         props,

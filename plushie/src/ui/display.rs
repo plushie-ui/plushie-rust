@@ -77,7 +77,7 @@ impl TextBuilder {
 
 impl From<TextBuilder> for View {
     fn from(b: TextBuilder) -> View {
-        View::leaf(b.id, "text", b.props)
+        super::view_leaf(b.id, "text", b.props)
     }
 }
 
@@ -121,7 +121,7 @@ impl RichTextBuilder {
 
 impl From<RichTextBuilder> for View {
     fn from(b: RichTextBuilder) -> View {
-        View::leaf(b.id, "rich_text", b.props)
+        super::view_leaf(b.id, "rich_text", b.props)
     }
 }
 
@@ -151,7 +151,7 @@ impl SpaceBuilder {
 
 impl From<SpaceBuilder> for View {
     fn from(b: SpaceBuilder) -> View {
-        View::leaf(b.id, "space", b.props)
+        super::view_leaf(b.id, "space", b.props)
     }
 }
 
@@ -183,7 +183,7 @@ impl RuleBuilder {
 
 impl From<RuleBuilder> for View {
     fn from(b: RuleBuilder) -> View {
-        View::leaf(b.id, "rule", b.props)
+        super::view_leaf(b.id, "rule", b.props)
     }
 }
 
@@ -243,7 +243,7 @@ impl ProgressBarBuilder {
 
 impl From<ProgressBarBuilder> for View {
     fn from(b: ProgressBarBuilder) -> View {
-        View::leaf(b.id, "progress_bar", b.props)
+        super::view_leaf(b.id, "progress_bar", b.props)
     }
 }
 
@@ -317,7 +317,7 @@ impl ImageBuilder {
 
 impl From<ImageBuilder> for View {
     fn from(b: ImageBuilder) -> View {
-        View::leaf(b.id, "image", b.props)
+        super::view_leaf(b.id, "image", b.props)
     }
 }
 
@@ -362,7 +362,7 @@ impl SvgBuilder {
 
 impl From<SvgBuilder> for View {
     fn from(b: SvgBuilder) -> View {
-        View::leaf(b.id, "svg", b.props)
+        super::view_leaf(b.id, "svg", b.props)
     }
 }
 
@@ -405,7 +405,7 @@ impl MarkdownBuilder {
 
 impl From<MarkdownBuilder> for View {
     fn from(b: MarkdownBuilder) -> View {
-        View::leaf(b.id, "markdown", b.props)
+        super::view_leaf(b.id, "markdown", b.props)
     }
 }
 
@@ -449,6 +449,6 @@ impl QrCodeBuilder {
 
 impl From<QrCodeBuilder> for View {
     fn from(b: QrCodeBuilder) -> View {
-        View::leaf(b.id, "qr_code", b.props)
+        super::view_leaf(b.id, "qr_code", b.props)
     }
 }

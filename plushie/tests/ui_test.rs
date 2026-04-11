@@ -10,7 +10,7 @@ use serde_json::Value;
 /// Extract the JSON value from a View for inspection.
 fn view_json(v: impl Into<View>) -> Value {
     let view: View = v.into();
-    view.as_json().clone()
+    serde_json::to_value(&view).unwrap()
 }
 
 fn get_type(v: &Value) -> &str {

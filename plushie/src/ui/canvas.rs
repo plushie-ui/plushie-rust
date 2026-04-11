@@ -97,7 +97,7 @@ impl CanvasBuilder {
 
 impl From<CanvasBuilder> for View {
     fn from(b: CanvasBuilder) -> Self {
-        View::node(b.id, "canvas", b.props, b.children)
+        super::view_node(b.id, "canvas", b.props, b.children)
     }
 }
 
@@ -141,7 +141,7 @@ impl LayerBuilder {
 
 impl From<LayerBuilder> for View {
     fn from(b: LayerBuilder) -> Self {
-        View::node(b.id, "__layer__", b.props, b.children)
+        super::view_node(b.id, "__layer__", b.props, b.children)
     }
 }
 
@@ -253,7 +253,7 @@ impl GroupBuilder {
 
 impl From<GroupBuilder> for View {
     fn from(b: GroupBuilder) -> Self {
-        View::node(b.id, "group", b.props, b.children)
+        super::view_node(b.id, "group", b.props, b.children)
     }
 }
 
@@ -316,7 +316,7 @@ impl RectBuilder {
 
 impl From<RectBuilder> for View {
     fn from(b: RectBuilder) -> View {
-        View::leaf(b.id, "rect", b.props)
+        super::view_leaf(b.id, "rect", b.props)
     }
 }
 
@@ -365,7 +365,7 @@ impl CircleBuilder {
 
 impl From<CircleBuilder> for View {
     fn from(b: CircleBuilder) -> View {
-        View::leaf(b.id, "circle", b.props)
+        super::view_leaf(b.id, "circle", b.props)
     }
 }
 
@@ -408,7 +408,7 @@ impl LineBuilder {
 
 impl From<LineBuilder> for View {
     fn from(b: LineBuilder) -> View {
-        View::leaf(b.id, "line", b.props)
+        super::view_leaf(b.id, "line", b.props)
     }
 }
 
@@ -458,7 +458,7 @@ impl PathBuilder {
 
 impl From<PathBuilder> for View {
     fn from(b: PathBuilder) -> View {
-        View::leaf(b.id, "path", b.props)
+        super::view_leaf(b.id, "path", b.props)
     }
 }
 
@@ -497,7 +497,7 @@ impl CanvasTextBuilder {
 
 impl From<CanvasTextBuilder> for View {
     fn from(b: CanvasTextBuilder) -> View {
-        View::leaf(b.id, "text", b.props)
+        super::view_leaf(b.id, "text", b.props)
     }
 }
 
@@ -532,7 +532,7 @@ impl CanvasImageBuilder {
 
 impl From<CanvasImageBuilder> for View {
     fn from(b: CanvasImageBuilder) -> View {
-        View::leaf(b.id, "image", b.props)
+        super::view_leaf(b.id, "image", b.props)
     }
 }
 
@@ -565,7 +565,7 @@ impl CanvasSvgBuilder {
 
 impl From<CanvasSvgBuilder> for View {
     fn from(b: CanvasSvgBuilder) -> View {
-        View::leaf(b.id, "svg", b.props)
+        super::view_leaf(b.id, "svg", b.props)
     }
 }
 

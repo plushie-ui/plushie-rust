@@ -52,7 +52,7 @@ impl TextInputBuilder {
 
 impl From<TextInputBuilder> for View {
     fn from(b: TextInputBuilder) -> View {
-        View::leaf(b.id, "text_input", b.props)
+        super::view_leaf(b.id, "text_input", b.props)
     }
 }
 
@@ -108,7 +108,7 @@ impl TextEditorBuilder {
 
 impl From<TextEditorBuilder> for View {
     fn from(b: TextEditorBuilder) -> View {
-        View::leaf(b.id, "text_editor", b.props)
+        super::view_leaf(b.id, "text_editor", b.props)
     }
 }
 
@@ -152,7 +152,7 @@ impl CheckboxBuilder {
 
 impl From<CheckboxBuilder> for View {
     fn from(b: CheckboxBuilder) -> View {
-        View::leaf(b.id, "checkbox", b.props)
+        super::view_leaf(b.id, "checkbox", b.props)
     }
 }
 
@@ -196,7 +196,7 @@ impl TogglerBuilder {
 
 impl From<TogglerBuilder> for View {
     fn from(b: TogglerBuilder) -> View {
-        View::leaf(b.id, "toggler", b.props)
+        super::view_leaf(b.id, "toggler", b.props)
     }
 }
 
@@ -243,7 +243,7 @@ impl RadioBuilder {
 
 impl From<RadioBuilder> for View {
     fn from(b: RadioBuilder) -> View {
-        View::leaf(b.id, "radio", b.props)
+        super::view_leaf(b.id, "radio", b.props)
     }
 }
 
@@ -287,7 +287,7 @@ impl SliderBuilder {
 
 impl From<SliderBuilder> for View {
     fn from(b: SliderBuilder) -> View {
-        View::leaf(b.id, "slider", b.props)
+        super::view_leaf(b.id, "slider", b.props)
     }
 }
 
@@ -329,7 +329,7 @@ impl VerticalSliderBuilder {
 
 impl From<VerticalSliderBuilder> for View {
     fn from(b: VerticalSliderBuilder) -> View {
-        View::leaf(b.id, "vertical_slider", b.props)
+        super::view_leaf(b.id, "vertical_slider", b.props)
     }
 }
 
@@ -377,7 +377,7 @@ impl PickListBuilder {
 
 impl From<PickListBuilder> for View {
     fn from(b: PickListBuilder) -> View {
-        View::leaf(b.id, "pick_list", b.props)
+        super::view_leaf(b.id, "pick_list", b.props)
     }
 }
 
@@ -426,6 +426,6 @@ impl ComboBoxBuilder {
 
 impl From<ComboBoxBuilder> for View {
     fn from(b: ComboBoxBuilder) -> View {
-        View::leaf(b.id, "combo_box", b.props)
+        super::view_leaf(b.id, "combo_box", b.props)
     }
 }

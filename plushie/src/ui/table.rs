@@ -150,6 +150,6 @@ impl TableBuilder {
 
 impl From<TableBuilder> for View {
     fn from(b: TableBuilder) -> View {
-        View::node(b.id, "table", b.props, b.children)
+        super::view_node(b.id, "table", b.props, b.children)
     }
 }

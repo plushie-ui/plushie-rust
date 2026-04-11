@@ -8,7 +8,23 @@ use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
-use crate::widget::helpers::*;
+
+use plushie_core::types::PlushieType;
+
+struct SensorProps {
+    delay: Option<f64>,
+    anticipate: Option<f32>,
+}
+
+impl SensorProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            delay: f64::extract(p, "delay"),
+            anticipate: f32::extract(p, "anticipate"),
+        }
+    }
+}
 
 pub(crate) struct SensorWidget;
 
@@ -22,6 +38,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
+        let sp = SensorProps::from_node(node);
+
         let child: Element<'a, Message, Theme, R> = node
             .children
             .first()
@@ -33,8 +51,6 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
         let show_id = node.id.clone();
         let resize_id = node.id.clone();
         let hide_id = format!("{}:hide", node.id);
-
-        let props = &node.props;
 
         let mut s = sensor(child)
             .key(id)
@@ -62,10 +78,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
             })
             .on_hide(Message::Click(ctx.window_id.to_string(), hide_id));
 
-        if let Some(d) = prop_f64(props, "delay") {
+        if let Some(d) = sp.delay {
             s = s.delay(Duration::from_millis(d as u64));
         }
-        if let Some(a) = prop_f32(props, "anticipate") {
+        if let Some(a) = sp.anticipate {
             s = s.anticipate(a);
         }
 

@@ -23,14 +23,17 @@ mod tests;
 use std::collections::HashMap;
 
 use iced::widget::canvas;
-use iced::{Color, Element, Length, Point, Theme};
+use iced::{Color, Element, Point, Theme};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{self as core_types, PlushieType};
 
 // --- Public / pub(crate) re-exports ---
 
@@ -135,6 +138,33 @@ pub(crate) fn json_color(val: &Value, key: &str) -> Color {
     val.get(key).and_then(parse_color).unwrap_or(Color::WHITE)
 }
 
+// --- CanvasProps ---
+
+struct CanvasProps {
+    width: Option<core_types::Length>,
+    height: Option<core_types::Length>,
+    background: Option<core_types::Color>,
+    alt: Option<String>,
+    description: Option<String>,
+    role: Option<String>,
+    arrow_mode: Option<String>,
+}
+
+impl CanvasProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            width: core_types::Length::extract(p, "width"),
+            height: core_types::Length::extract(p, "height"),
+            background: core_types::Color::extract(p, "background"),
+            alt: String::extract(p, "alt"),
+            description: String::extract(p, "description"),
+            role: String::extract(p, "role"),
+            arrow_mode: String::extract(p, "arrow_mode"),
+        }
+    }
+}
+
 // --- render_canvas_with_state ---
 
 /// Render a canvas with the provided cache state.
@@ -146,9 +176,19 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
     interactive_elements: &'a [InteractiveElement],
     pending_focus: Option<String>,
 ) -> Element<'a, Message, Theme, R> {
+    let cp = CanvasProps::from_node(node);
     let props = &node.props;
-    let width = prop_length(props, "width", Length::Fill);
-    let height = prop_length(props, "height", Length::Fixed(200.0));
+
+    let width = cp
+        .width
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Fill);
+    let height = cp
+        .height
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Fixed(200.0));
 
     // Build sorted layer data from children (shapes as tree nodes).
     let layer_map = canvas_layers_from_node(node);
@@ -160,8 +200,7 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
         })
         .collect();
 
-    let bg_val = props.get_value("background");
-    let background = bg_val.as_ref().and_then(parse_color);
+    let background = cp.background.as_ref().map(iced_convert::color);
 
     let on_press = prop_bool_default(props, "on_press", false);
     let on_release = prop_bool_default(props, "on_release", false);
@@ -182,8 +221,10 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
         on_scroll: on_scroll || interactive,
         images: ctx.images,
         interactive_elements,
-        arrow_mode: prop_str(props, "arrow_mode")
-            .map(|s| types::ArrowMode::from_str(&s))
+        arrow_mode: cp
+            .arrow_mode
+            .as_deref()
+            .map(types::ArrowMode::from_str)
             .unwrap_or_default(),
         pending_focus,
     })
@@ -192,15 +233,15 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
 
     c = c.id(iced::widget::Id::from(node.id.clone()));
 
-    if let Some(alt) = prop_str(props, "alt") {
+    if let Some(alt) = cp.alt {
         c = c.alt(alt);
     }
-    if let Some(desc) = prop_str(props, "description") {
+    if let Some(desc) = cp.description {
         c = c.description(desc);
     }
 
-    if let Some(role_str) = prop_str(props, "role") {
-        if let Some(role) = crate::a11y::parse_role_str(&role_str) {
+    if let Some(ref role_str) = cp.role {
+        if let Some(role) = crate::a11y::parse_role_str(role_str) {
             c = c.role(role);
         } else {
             log::warn!("canvas '{}': unknown role '{role_str}'", node.id);

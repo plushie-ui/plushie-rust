@@ -2,11 +2,30 @@ use iced::widget::{Space, container};
 use iced::{Element, Fill, Theme};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
-use crate::widget::helpers::*;
+
+use plushie_core::types::{Length, Padding, PlushieType};
+
+struct WindowProps {
+    padding: Option<Padding>,
+    width: Option<Length>,
+    height: Option<Length>,
+}
+
+impl WindowProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            padding: Padding::extract(p, "padding"),
+            width: Length::extract(p, "width"),
+            height: Length::extract(p, "height"),
+        }
+    }
+}
 
 pub(crate) struct WindowWidget;
 
@@ -20,10 +39,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for WindowWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = &node.props;
-        let padding = parse_padding_value(props);
-        let width = prop_length(props, "width", Fill);
-        let height = prop_length(props, "height", Fill);
+        let wp = WindowProps::from_node(node);
+
+        let width = wp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(Fill.into());
+        let height = wp
+            .height
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(Fill.into());
 
         let child_ctx = ctx.with_window_id(&node.id);
 
@@ -35,8 +62,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for WindowWidget {
 
         let mut c = container(child).width(width).height(height);
 
-        if let Some(p) = padding {
-            c = c.padding(p);
+        if let Some(ref p) = wp.padding {
+            c = c.padding(iced_convert::padding(p));
         }
 
         c.into()

@@ -1,12 +1,29 @@
 use iced::widget::{Space, container, sensor};
-use iced::{Element, Length, Theme};
+use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
-use crate::widget::helpers::*;
+
+use plushie_core::types::{Length, PlushieType};
+
+struct ResponsiveProps {
+    width: Option<Length>,
+    height: Option<Length>,
+}
+
+impl ResponsiveProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            width: Length::extract(p, "width"),
+            height: Length::extract(p, "height"),
+        }
+    }
+}
 
 pub(crate) struct ResponsiveWidget;
 
@@ -24,9 +41,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ResponsiveWidget {
         // an Element. Since we can't call back to the host within a single frame,
         // we render the children as-is and wrap in a sensor so the host receives
         // resize events with the actual measured size.
-        let props = &node.props;
-        let width = prop_length(props, "width", Length::Fill);
-        let height = prop_length(props, "height", Length::Fill);
+        let rp = ResponsiveProps::from_node(node);
+
+        let width = rp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Fill);
+        let height = rp
+            .height
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Fill);
 
         let child: Element<'a, Message, Theme, R> = node
             .children

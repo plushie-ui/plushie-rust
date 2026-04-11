@@ -9,6 +9,29 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 use crate::widget::overlay;
 
+use plushie_core::types::PlushieType;
+
+struct OverlayProps {
+    position: Option<String>,
+    gap: Option<f32>,
+    offset_x: Option<f32>,
+    offset_y: Option<f32>,
+    align: Option<String>,
+}
+
+impl OverlayProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            position: String::extract(p, "position"),
+            gap: f32::extract(p, "gap"),
+            offset_x: f32::extract(p, "offset_x"),
+            offset_y: f32::extract(p, "offset_y"),
+            align: String::extract(p, "align"),
+        }
+    }
+}
+
 pub(crate) struct OverlayWidget;
 
 impl<R: PlushieRenderer> PlushieWidget<R> for OverlayWidget {
@@ -21,13 +44,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for OverlayWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
+        let op = OverlayProps::from_node(node);
         let props = &node.props;
-        let position = prop_str(props, "position").unwrap_or_else(|| "below".to_string());
-        let gap = prop_f32(props, "gap").unwrap_or(0.0);
-        let offset_x = prop_f32(props, "offset_x").unwrap_or(0.0);
-        let offset_y = prop_f32(props, "offset_y").unwrap_or(0.0);
+
+        let position = op.position.as_deref().unwrap_or("below");
+        let gap = op.gap.unwrap_or(0.0);
+        let offset_x = op.offset_x.unwrap_or(0.0);
+        let offset_y = op.offset_y.unwrap_or(0.0);
         let flip = prop_bool_default(props, "flip", false);
-        let align = match prop_str(props, "align").as_deref() {
+        let align = match op.align.as_deref() {
             Some("start") => overlay::Align::Start,
             Some("end") => overlay::Align::End,
             _ => overlay::Align::Center,
@@ -41,7 +66,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for OverlayWidget {
         let anchor = ctx.render_child(&children[0]);
         let content = ctx.render_child(&children[1]);
 
-        let pos = match position.as_str() {
+        let pos = match position {
             "above" => overlay::Position::Above,
             "left" => overlay::Position::Left,
             "right" => overlay::Position::Right,

@@ -2,11 +2,27 @@ use iced::widget::{Space, mouse_area};
 use iced::{Element, Theme, mouse};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{CursorStyle, PlushieType};
+
+struct PointerAreaProps {
+    cursor: Option<CursorStyle>,
+}
+
+impl PointerAreaProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            cursor: CursorStyle::extract(p, "cursor"),
+        }
+    }
+}
 
 pub(crate) struct PointerAreaWidget;
 
@@ -20,7 +36,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
+        let pap = PointerAreaProps::from_node(node);
         let props = &node.props;
+
         let child: Element<'a, Message, Theme, R> = node
             .children
             .first()
@@ -137,10 +155,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
             });
         }
 
-        if let Some(cursor) = prop_str(props, "cursor")
-            && let Some(interaction) = parse_interaction(&cursor)
-        {
-            ma = ma.interaction(interaction);
+        if let Some(cursor) = pap.cursor {
+            ma = ma.interaction(iced_convert::cursor_style(cursor));
         }
 
         ma.into()

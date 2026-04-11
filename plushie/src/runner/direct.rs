@@ -73,6 +73,9 @@ impl<A: App> DirectApp<A> {
             widget_store: WidgetStateStore::new(),
         };
 
+        // Apply user settings to the renderer before the first view.
+        apply_settings::<A>(&mut app.renderer);
+
         app.refresh_view();
 
         // Execute the initial command (e.g. focus a field, start
@@ -136,11 +139,11 @@ impl<A: App> DirectApp<A> {
     }
 
     fn scale_factor_for_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> f32 {
-        1.0
+        self.renderer.scale_factor
     }
 
-    /// Drain the event queue, run widget interception, and deliver
-    /// events to the user's App::update().
+    /// Drain the event queue, run widget interception, deliver events
+    /// to the user's App::update(), then refresh the view once.
     fn drain_event_queue(&mut self) -> Option<Task<Message>> {
         let events: Vec<SinkEvent> = {
             let mut queue = self.event_queue.lock().unwrap();
@@ -151,12 +154,20 @@ impl<A: App> DirectApp<A> {
         };
 
         let mut tasks = Vec::new();
+        let mut delivered = false;
         for sink_event in events {
             if let Some(sdk_event) = super::event_bridge::sink_event_to_sdk(sink_event) {
                 if let Some(task) = self.deliver_event(sdk_event) {
                     tasks.push(task);
                 }
+                delivered = true;
             }
+        }
+
+        // Rebuild the view once after all events are processed,
+        // not after each individual event.
+        if delivered {
+            self.refresh_view();
         }
 
         if tasks.is_empty() {
@@ -167,12 +178,12 @@ impl<A: App> DirectApp<A> {
     }
 
     /// Run an SDK event through widget interception and deliver to
-    /// the user's App::update(). Returns a Task if a command was produced.
+    /// the user's App::update(). Returns a Task if a command was
+    /// produced. Does NOT refresh the view (the caller batches that).
     fn deliver_event(&mut self, event: Event) -> Option<Task<Message>> {
         match self.widget_store.intercept_event(&event) {
             Some(Interception { result: EventResult::Consumed, .. })
             | Some(Interception { result: EventResult::UpdateState, .. }) => {
-                self.refresh_view();
                 None
             }
             Some(Interception {
@@ -189,12 +200,10 @@ impl<A: App> DirectApp<A> {
                     value,
                 });
                 let cmd = A::update(&mut self.model, new_event);
-                self.refresh_view();
                 Some(self.execute_command(cmd))
             }
             Some(Interception { result: EventResult::Ignored, .. }) | None => {
                 let cmd = A::update(&mut self.model, event);
-                self.refresh_view();
                 Some(self.execute_command(cmd))
             }
         }
@@ -230,6 +239,86 @@ impl<A: App> DirectApp<A> {
         }
     }
 
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+/// Apply the user's `A::settings()` to the renderer.
+///
+/// Converts the SDK's `Settings` struct to the wire-format JSON that
+/// `Core::apply(IncomingMessage::Settings)` expects. Also applies
+/// settings that Core doesn't handle (theme, scale factor).
+fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
+    let settings = A::settings();
+
+    // Build the wire-format settings JSON that Core understands.
+    let mut json = serde_json::json!({ "protocol_version": 1 });
+    if let Some(size) = settings.default_text_size {
+        json["default_text_size"] = serde_json::json!(size);
+    }
+    if let Some(rate) = settings.default_event_rate {
+        json["default_event_rate"] = serde_json::json!(rate);
+    }
+    if !settings.widget_config.is_empty() {
+        json["widget_config"] = serde_json::to_value(&settings.widget_config)
+            .unwrap_or(serde_json::Value::Null);
+    }
+
+    // Apply to Core (handles text size, event rate, font, widget config).
+    let effects = renderer.core.apply(
+        plushie_widget_sdk::protocol::IncomingMessage::Settings { settings: json },
+    );
+    for effect in effects {
+        match effect {
+            plushie_widget_sdk::engine::CoreEffect::WidgetConfig(config) => {
+                let ctx = plushie_widget_sdk::registry::InitCtx {
+                    config: &config,
+                    theme: &renderer.theme,
+                    default_text_size: renderer.core.default_text_size,
+                    default_font: renderer.core.default_font,
+                };
+                renderer.registry.init_all(&ctx);
+            }
+            _ => {}
+        }
+    }
+
+    // Scale factor (not handled by Core).
+    if let Some(sf) = settings.scale_factor {
+        renderer.scale_factor = plushie_renderer_lib::app::validate_scale_factor(sf);
+    }
+
+    // Event rate on the emitter (Core stores it but the emitter
+    // also needs it for rate limiting).
+    renderer.emitter.set_default_rate(settings.default_event_rate);
+
+    // Theme (not handled by Core for initial settings).
+    if let Some(theme) = settings.theme {
+        match theme {
+            plushie_core::settings::Theme::System => {
+                renderer.theme_follows_system = true;
+            }
+            plushie_core::settings::Theme::Named(name) => {
+                renderer.theme = plushie_widget_sdk::theming::resolve_theme(
+                    &serde_json::Value::String(name),
+                );
+            }
+            plushie_core::settings::Theme::Custom(palette) => {
+                let mut map = serde_json::Map::new();
+                if let Some(bg) = palette.background { map.insert("background".into(), bg.into()); }
+                if let Some(text) = palette.text { map.insert("text".into(), text.into()); }
+                if let Some(primary) = palette.primary { map.insert("primary".into(), primary.into()); }
+                if let Some(success) = palette.success { map.insert("success".into(), success.into()); }
+                if let Some(warning) = palette.warning { map.insert("warning".into(), warning.into()); }
+                if let Some(danger) = palette.danger { map.insert("danger".into(), danger.into()); }
+                renderer.theme = plushie_widget_sdk::theming::resolve_theme(
+                    &serde_json::Value::Object(map),
+                );
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

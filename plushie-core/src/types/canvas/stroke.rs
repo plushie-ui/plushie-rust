@@ -1,0 +1,196 @@
+//! Canvas stroke types.
+
+use serde_json::Value;
+
+use crate::protocol::{PropMap, PropValue};
+
+use super::super::{Color, PlushieType};
+
+/// Stroke style for canvas shapes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stroke {
+    pub color: Color,
+    pub width: f32,
+    pub cap: Option<LineCap>,
+    pub join: Option<LineJoin>,
+    pub dash: Option<Dash>,
+}
+
+/// Line cap style for stroke endpoints.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LineCap {
+    Butt,
+    Round,
+    Square,
+}
+
+/// Line join style for stroke corners.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LineJoin {
+    Miter,
+    Round,
+    Bevel,
+}
+
+/// Dash pattern for strokes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Dash {
+    pub segments: Vec<f32>,
+    pub offset: f32,
+}
+
+impl PlushieType for LineCap {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        match value.as_str()? {
+            "butt" => Some(Self::Butt),
+            "round" => Some(Self::Round),
+            "square" => Some(Self::Square),
+            _ => None,
+        }
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::Str(match self {
+            Self::Butt => "butt",
+            Self::Round => "round",
+            Self::Square => "square",
+        }.into())
+    }
+
+    fn type_name() -> &'static str {
+        "line_cap"
+    }
+}
+
+impl PlushieType for LineJoin {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        match value.as_str()? {
+            "miter" => Some(Self::Miter),
+            "round" => Some(Self::Round),
+            "bevel" => Some(Self::Bevel),
+            _ => None,
+        }
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::Str(match self {
+            Self::Miter => "miter",
+            Self::Round => "round",
+            Self::Bevel => "bevel",
+        }.into())
+    }
+
+    fn type_name() -> &'static str {
+        "line_join"
+    }
+}
+
+impl PlushieType for Dash {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        let obj = value.as_object()?;
+        let segments = obj.get("segments")?
+            .as_array()?
+            .iter()
+            .filter_map(|v| v.as_f64().map(|f| f as f32))
+            .collect();
+        let offset = obj.get("offset")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as f32;
+        Some(Self { segments, offset })
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        let mut m = PropMap::new();
+        m.insert("segments", PropValue::Array(
+            self.segments.iter().map(|s| PropValue::F64(*s as f64)).collect(),
+        ));
+        m.insert("offset", PropValue::F64(self.offset as f64));
+        PropValue::Object(m)
+    }
+
+    fn type_name() -> &'static str {
+        "dash"
+    }
+}
+
+impl PlushieType for Stroke {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        let obj = value.as_object()?;
+        let color = Color::wire_decode(obj.get("color")?)?;
+        let width = obj.get("width")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0) as f32;
+        let cap = obj.get("cap").and_then(LineCap::wire_decode);
+        let join = obj.get("join").and_then(LineJoin::wire_decode);
+        let dash = obj.get("dash").and_then(Dash::wire_decode);
+        Some(Self { color, width, cap, join, dash })
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        let mut m = PropMap::new();
+        m.insert("color", self.color.wire_encode());
+        m.insert("width", PropValue::F64(self.width as f64));
+        if let Some(ref cap) = self.cap {
+            m.insert("cap", cap.wire_encode());
+        }
+        if let Some(ref join) = self.join {
+            m.insert("join", join.wire_encode());
+        }
+        if let Some(ref dash) = self.dash {
+            m.insert("dash", dash.wire_encode());
+        }
+        PropValue::Object(m)
+    }
+
+    fn type_name() -> &'static str {
+        "stroke"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn stroke_minimal() {
+        let val = json!({"color": "#ff0000", "width": 2.0});
+        let stroke = Stroke::wire_decode(&val).unwrap();
+        assert_eq!(stroke.width, 2.0);
+        assert!(stroke.cap.is_none());
+        assert!(stroke.join.is_none());
+        assert!(stroke.dash.is_none());
+    }
+
+    #[test]
+    fn stroke_full() {
+        let val = json!({
+            "color": "#000000",
+            "width": 3.0,
+            "cap": "round",
+            "join": "bevel",
+            "dash": {"segments": [5.0, 3.0], "offset": 1.0}
+        });
+        let stroke = Stroke::wire_decode(&val).unwrap();
+        assert_eq!(stroke.cap, Some(LineCap::Round));
+        assert_eq!(stroke.join, Some(LineJoin::Bevel));
+        let dash = stroke.dash.as_ref().unwrap();
+        assert_eq!(dash.segments, vec![5.0, 3.0]);
+        assert_eq!(dash.offset, 1.0);
+    }
+
+    #[test]
+    fn stroke_round_trip() {
+        let original = Stroke {
+            color: Color::hex("#abcdef"),
+            width: 2.5,
+            cap: Some(LineCap::Square),
+            join: Some(LineJoin::Miter),
+            dash: None,
+        };
+        let encoded = original.wire_encode();
+        let json_val: Value = encoded.into();
+        let decoded = Stroke::wire_decode(&json_val).unwrap();
+        assert_eq!(original, decoded);
+    }
+}

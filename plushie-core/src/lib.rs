@@ -9,3 +9,4 @@ pub mod animation;
 pub mod ops;
 pub mod protocol;
 pub mod settings;
+pub mod types;

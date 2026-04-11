@@ -1,0 +1,213 @@
+//! Shared property types for Plushie.
+//!
+//! These types define the data model for widget properties. Each type
+//! implements [`PlushieType`] with wire encode/decode, making them
+//! usable by both SDK builders (encode) and widget renderers (decode).
+
+mod alignment;
+mod background;
+mod border;
+pub mod canvas;
+mod color;
+mod font;
+mod gradient;
+mod input;
+mod interaction;
+mod layout;
+mod length;
+mod line_height;
+mod padding;
+mod range;
+mod shadow;
+mod text;
+
+use serde_json::Value;
+
+use crate::protocol::{PropValue, Props};
+
+pub use alignment::{HorizontalAlignment, VerticalAlignment};
+pub use background::Background;
+pub use border::{Border, Radius};
+pub use color::Color;
+pub use font::{Font, FontStretch, FontStyle, FontWeight};
+pub use gradient::{Gradient, GradientStop};
+pub use input::{FilterMethod, InputPurpose};
+pub use interaction::CursorStyle;
+pub use layout::{Anchor, ContentFit, Direction, Position};
+pub use length::Length;
+pub use line_height::LineHeight;
+pub use padding::Padding;
+pub use range::Range;
+pub use shadow::Shadow;
+pub use text::{Ellipsis, Shaping, Wrapping};
+
+/// Behaviour trait for Plushie property types.
+///
+/// Mirrors Elixir's `Plushie.Type` behaviour. Each type owns its
+/// wire format encoding and decoding.
+pub trait PlushieType: Sized {
+    /// Decode from a wire-format JSON value.
+    fn wire_decode(value: &Value) -> Option<Self>;
+
+    /// Encode to PropValue for wire transport / direct mode.
+    fn wire_encode(&self) -> PropValue;
+
+    /// Extract this type from a Props store by key.
+    ///
+    /// Default implementation uses `get_value` + `wire_decode`.
+    /// Primitive types override for efficiency.
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_value(key).and_then(|v| Self::wire_decode(&v))
+    }
+
+    /// Wire type name for diagnostics.
+    fn type_name() -> &'static str;
+}
+
+// -------------------------------------------------------------------------
+// Primitive PlushieType impls
+// -------------------------------------------------------------------------
+
+impl PlushieType for f32 {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        value.as_f64().map(|v| v as f32).filter(|v| v.is_finite())
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::F64(*self as f64)
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_f32(key)
+    }
+
+    fn type_name() -> &'static str {
+        "f32"
+    }
+}
+
+impl PlushieType for f64 {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        value.as_f64().filter(|v| v.is_finite())
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::F64(*self)
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_f64(key)
+    }
+
+    fn type_name() -> &'static str {
+        "f64"
+    }
+}
+
+impl PlushieType for i32 {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        value.as_i64().and_then(|v| i32::try_from(v).ok())
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::I64(*self as i64)
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_i64(key).and_then(|v| i32::try_from(v).ok())
+    }
+
+    fn type_name() -> &'static str {
+        "i32"
+    }
+}
+
+impl PlushieType for i64 {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        value.as_i64()
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::I64(*self)
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_i64(key)
+    }
+
+    fn type_name() -> &'static str {
+        "i64"
+    }
+}
+
+impl PlushieType for u32 {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        value.as_u64().and_then(|v| u32::try_from(v).ok())
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::U64(*self as u64)
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_u64(key).and_then(|v| u32::try_from(v).ok())
+    }
+
+    fn type_name() -> &'static str {
+        "u32"
+    }
+}
+
+impl PlushieType for u64 {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        value.as_u64()
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::U64(*self)
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_u64(key)
+    }
+
+    fn type_name() -> &'static str {
+        "u64"
+    }
+}
+
+impl PlushieType for bool {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        value.as_bool()
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::Bool(*self)
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_bool(key)
+    }
+
+    fn type_name() -> &'static str {
+        "bool"
+    }
+}
+
+impl PlushieType for String {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        value.as_str().map(|s| s.to_string())
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        PropValue::Str(self.clone())
+    }
+
+    fn extract(props: &Props, key: &str) -> Option<Self> {
+        props.get_str(key).map(|s| s.to_string())
+    }
+
+    fn type_name() -> &'static str {
+        "string"
+    }
+}

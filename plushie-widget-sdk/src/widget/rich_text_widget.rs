@@ -21,14 +21,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let width = prop_length(props, "width", Length::Shrink);
         let height = prop_length(props, "height", Length::Shrink);
 
         // spans is an array of objects: {text, size, color, font, link}
-        let spans_value = props
-            .and_then(|p| p.get("spans"))
+        let spans_val = props.get_value("spans");
+        let spans_value = spans_val
+            .as_ref()
             .and_then(|v| v.as_array());
 
         let span_list: Vec<iced::widget::text::Span<'a, String, Font>> = spans_value
@@ -106,13 +106,13 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
             rt = rt.size(sz);
         }
         let font = props
-            .and_then(|p| p.get("font"))
-            .map(parse_font)
+            .get_value("font")
+            .as_ref().map(parse_font)
             .or(ctx.default_font);
         if let Some(f) = font {
             rt = rt.font(f);
         }
-        if let Some(c) = props.and_then(|p| p.get("color")).and_then(parse_color) {
+        if let Some(c) = props.get_value("color").as_ref().and_then(parse_color) {
             rt = rt.color(c);
         }
         if let Some(lh) = parse_line_height(props) {

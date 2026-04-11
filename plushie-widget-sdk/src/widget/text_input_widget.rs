@@ -25,8 +25,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextInputWidget {
     }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
@@ -62,8 +61,7 @@ fn render_text_input<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+    let props = &node.props;
     let value = prop_str(props, "value").unwrap_or_default();
     let placeholder = prop_str(props, "placeholder").unwrap_or_default();
     let width = prop_length(props, "width", Length::Fill);
@@ -96,8 +94,8 @@ fn render_text_input<'a, R: PlushieRenderer>(
         ti = ti.size(s);
     }
     let font = props
-        .and_then(|p| p.get("font"))
-        .map(parse_font)
+        .get_value("font")
+        .as_ref().map(parse_font)
         .or(ctx.default_font);
     if let Some(f) = font {
         ti = ti.font(f);
@@ -106,8 +104,7 @@ fn render_text_input<'a, R: PlushieRenderer>(
         ti = ti.line_height(lh);
     }
     if let Some(ax) = props
-        .and_then(|p| p.get("align_x"))
-        .and_then(|v| v.as_str())
+        .get_str("align_x")
         .and_then(value_to_horizontal_alignment)
     {
         ti = ti.align_x(ax);
@@ -136,7 +133,8 @@ fn render_text_input<'a, R: PlushieRenderer>(
     }
 
     if let Some(icon) = props
-        .and_then(|p| p.get("icon"))
+        .get_value("icon")
+        .as_ref()
         .and_then(parse_text_input_icon)
     {
         ti = ti.icon(icon);
@@ -153,7 +151,7 @@ fn render_text_input<'a, R: PlushieRenderer>(
 
     // Style: string name or style map object
     let has_color_overrides = placeholder_color.is_some() || selection_color.is_some();
-    if let Some(style_val) = props.and_then(|p| p.get("style")) {
+    if let Some(style_val) = props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             ti = match style_name {
                 "default" => {

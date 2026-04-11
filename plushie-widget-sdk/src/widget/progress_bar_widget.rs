@@ -20,8 +20,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let range = prop_range_f32(props);
         let value = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "value")
             .unwrap_or(0.0)
@@ -39,7 +38,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
         }
 
         // Style: string name or style map object
-        if let Some(style_val) = props.and_then(|p| p.get("style")) {
+        if let Some(style_val) = props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 pb = match style_name {
                     "primary" => pb.style(progress_bar::primary),

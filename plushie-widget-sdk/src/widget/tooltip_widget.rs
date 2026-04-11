@@ -33,8 +33,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let tip = prop_str(props, "tip").unwrap_or_default();
         let gap = prop_f32(props, "gap");
         let position = prop_str(props, "position")
@@ -71,7 +70,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
         }
 
         // Style: string name or style map (tooltip uses container::Style)
-        if let Some(style_val) = props.and_then(|p| p.get("style")) {
+        if let Some(style_val) = props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 tt = match style_name {
                     "transparent" => tt.style(container::transparent),

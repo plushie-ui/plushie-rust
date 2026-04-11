@@ -21,8 +21,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let width = prop_length(props, "width", Length::Shrink);
         let height = prop_length(props, "height", Length::Shrink);
         let spacing = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing");
@@ -36,7 +35,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
         let direction = prop_str(props, "direction").unwrap_or_default();
 
         // Build scrollbar configuration from props
-        let build_scrollbar = |props: JsonProps<'_>| -> scrollable::Scrollbar {
+        let build_scrollbar = |props: &plushie_core::protocol::Props| -> scrollable::Scrollbar {
             let mut sb = scrollable::Scrollbar::default();
             if let Some(w) = prop_f32(props, "scrollbar_width") {
                 sb = sb.width(w);

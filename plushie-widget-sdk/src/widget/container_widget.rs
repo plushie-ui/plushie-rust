@@ -20,8 +20,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let padding = parse_padding_value(props);
         let width = prop_length(props, "width", Length::Shrink);
         let height = prop_length(props, "height", Length::Shrink);
@@ -59,15 +58,13 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
         }
 
         if let Some(ax) = props
-            .and_then(|p| p.get("align_x"))
-            .and_then(|v| v.as_str())
+            .get_str("align_x")
             .and_then(value_to_horizontal_alignment)
         {
             c = c.align_x(ax);
         }
         if let Some(ay) = props
-            .and_then(|p| p.get("align_y"))
-            .and_then(|v| v.as_str())
+            .get_str("align_y")
             .and_then(value_to_vertical_alignment)
         {
             c = c.align_y(ay);
@@ -75,11 +72,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
 
         // Inline styling via custom style closure
         let bg = props
-            .and_then(|p| p.get("background"))
+            .get_value("background")
+            .as_ref()
             .and_then(parse_background);
-        let text_color = props.and_then(|p| p.get("color")).and_then(parse_color);
-        let border_val = props.and_then(|p| p.get("border")).map(parse_border);
-        let shadow_val = props.and_then(|p| p.get("shadow")).map(parse_shadow);
+        let text_color = props.get_value("color").as_ref().and_then(parse_color);
+        let border_val = props.get_value("border").as_ref().map(parse_border);
+        let shadow_val = props.get_value("shadow").as_ref().map(parse_shadow);
         let has_inline_style =
             bg.is_some() || text_color.is_some() || border_val.is_some() || shadow_val.is_some();
 
@@ -101,7 +99,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
         }
 
         // Named style or style map (overrides inline if both present)
-        if let Some(style_val) = props.and_then(|p| p.get("style")) {
+        if let Some(style_val) = props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 c = match style_name {
                     "transparent" => c.style(container::transparent),

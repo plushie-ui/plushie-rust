@@ -151,8 +151,7 @@ fn render_slider<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+    let props = &node.props;
     let range = prop_range_f64(props);
     let value = prop_f64(props, "value").unwrap_or(*range.start());
     let step = prop_f64(props, "step");
@@ -200,7 +199,7 @@ fn render_slider<'a, R: PlushieRenderer>(
             apply_rail_overrides(&mut style, rail_color, rail_width);
             style
         });
-    } else if let Some(style_val) = props.and_then(|p| p.get("style")) {
+    } else if let Some(style_val) = props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             s = match style_name {
                 "default" => {
@@ -262,8 +261,7 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+    let props = &node.props;
     let range = prop_range_f64(props);
     let value = prop_f64(props, "value").unwrap_or(*range.start());
     let step = prop_f64(props, "step");
@@ -303,7 +301,7 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     let has_rail_overrides = rail_color.is_some() || rail_width.is_some();
 
     // Style: string name or style map object
-    if let Some(style_val) = props.and_then(|p| p.get("style")) {
+    if let Some(style_val) = props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             s = match style_name {
                 "default" => {

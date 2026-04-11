@@ -365,8 +365,7 @@ mod tests {
     /// without actually rendering (avoids needing image handles etc.).
     fn infer_a11y_overrides(node: &TreeNode) -> Option<crate::a11y::A11yOverrides> {
         crate::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
-            let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+            let props = &node.props;
             match node.type_name.as_str() {
                 // Image and SVG use iced's native .alt()/.description() methods
                 // directly, so no A11yOverride wrapping needed for those.

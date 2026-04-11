@@ -32,8 +32,7 @@ fn render_radio<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+    let props = &node.props;
     let value = prop_str(props, "value").unwrap_or_default();
     let selected_str = prop_str(props, "selected").unwrap_or_default();
     let label = prop_str(props, "label").unwrap_or_else(|| value.clone());
@@ -58,7 +57,7 @@ fn render_radio<'a, R: PlushieRenderer>(
     if let Some(s) = prop_f32(props, "spacing") {
         r = r.spacing(s);
     }
-    if let Some(w) = value_to_length_opt(props.and_then(|p| p.get("width"))) {
+    if let Some(w) = value_to_length_opt(props.get_value("width").as_ref()) {
         r = r.width(w);
     }
     if let Some(sz) = prop_f32(props, "size") {
@@ -68,8 +67,8 @@ fn render_radio<'a, R: PlushieRenderer>(
         r = r.text_size(ts);
     }
     let font = props
-        .and_then(|p| p.get("font"))
-        .map(parse_font)
+        .get_value("font")
+        .as_ref().map(parse_font)
         .or(ctx.default_font);
     if let Some(f) = font {
         r = r.font(f);
@@ -85,7 +84,7 @@ fn render_radio<'a, R: PlushieRenderer>(
     }
 
     // Style: string name or style map object
-    if let Some(style_val) = props.and_then(|p| p.get("style")) {
+    if let Some(style_val) = props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             r = match style_name {
                 "default" => r.style(iced::widget::radio::default),

@@ -38,10 +38,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
 
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
         let key = (window_id.to_string(), node.id.clone());
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
-        let new_options: Vec<String> = props
-            .and_then(|p| p.get("options"))
+        let props = &node.props;
+        let opts_val = props.get_value("options");
+        let new_options: Vec<String> = opts_val
+            .as_ref()
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -76,8 +76,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
     }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
@@ -102,8 +101,7 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     ctx: RenderCtx<'a, R>,
     state: &'a combo_box::State<String>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+    let props = &node.props;
     let selected: Option<String> = prop_str(props, "selected");
     let placeholder = prop_str(props, "placeholder").unwrap_or_default();
     let width = prop_length(props, "width", Length::Fill);
@@ -129,8 +127,8 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         cb = cb.size(sz);
     }
     let font = props
-        .and_then(|p| p.get("font"))
-        .map(parse_font)
+        .get_value("font")
+        .as_ref().map(parse_font)
         .or(ctx.default_font);
     if let Some(f) = font {
         cb = cb.font(f);
@@ -145,7 +143,8 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         cb = cb.menu_height(mh);
     }
     if let Some(icon) = props
-        .and_then(|p| p.get("icon"))
+        .get_value("icon")
+        .as_ref()
         .and_then(parse_text_input_icon)
     {
         cb = cb.icon(icon);
@@ -191,7 +190,7 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     }
 
     // Style: string name or style map object (applies to the input field)
-    if let Some(style_val) = props.and_then(|p| p.get("style")) {
+    if let Some(style_val) = props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             cb = match style_name {
                 "default" => cb.input_style(text_input::default),

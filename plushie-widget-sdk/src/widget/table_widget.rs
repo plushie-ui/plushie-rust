@@ -35,9 +35,10 @@ struct TableColumn {
     sortable: bool,
 }
 
-fn parse_table_columns(props: JsonProps<'_>) -> Vec<TableColumn> {
-    props
-        .and_then(|p| p.get("columns"))
+fn parse_table_columns(props: &plushie_core::protocol::Props) -> Vec<TableColumn> {
+    let cols_val = props.get_value("columns");
+    cols_val
+        .as_ref()
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
@@ -86,8 +87,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let width = prop_length(props, "width", Length::Fill);
         let show_header = prop_bool_default(props, "header", true);
         let padding_val = parse_padding_value(props);
@@ -107,8 +107,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
         let columns = parse_table_columns(props);
 
         // "rows" is an array of objects.
-        let rows: Vec<&Value> = props
-            .and_then(|p| p.get("rows"))
+        let rows_val = props.get_value("rows");
+        let rows: Vec<&Value> = rows_val
+            .as_ref()
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().collect())
             .unwrap_or_default();

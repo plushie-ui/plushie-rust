@@ -11,6 +11,7 @@ use iced::widget::{
     toggler,
 };
 use iced::{Border, Color, Font, Length, Padding, Pixels, Radians, Shadow, Vector, font, mouse};
+use plushie_core::protocol::Props;
 use serde_json::Value;
 
 // Re-export all public prop helpers so widget submodules using `use super::*`
@@ -39,8 +40,8 @@ pub fn value_to_length_opt(val: Option<&Value>) -> Option<Length> {
 /// - `"padding": 10` -- uniform padding
 /// - `"padding": {"top": 10, "right": 5, "bottom": 10, "left": 5}` -- per-side
 /// - Individual `"padding_top"` etc. keys (legacy)
-pub fn parse_padding_value(props: JsonProps<'_>) -> Option<Padding> {
-    let padding_val = props.and_then(|p| p.get("padding"));
+pub fn parse_padding_value(props: &Props) -> Option<Padding> {
+    let padding_val = wire_map(props).and_then(|p| p.get("padding"));
 
     match padding_val {
         Some(Value::Object(obj)) => {
@@ -827,8 +828,8 @@ pub fn alpha_gradient(gradient: iced::Gradient, alpha: f32) -> iced::Gradient {
 /// Parse line_height prop. Accepts:
 /// - A number (interpreted as relative multiplier)
 /// - An object {"relative": 1.5} or {"absolute": 20}
-pub fn parse_line_height(props: JsonProps<'_>) -> Option<LineHeight> {
-    let val = props?.get("line_height")?;
+pub fn parse_line_height(props: &Props) -> Option<LineHeight> {
+    let val = wire_map(props)?.get("line_height")?;
     match val {
         Value::Number(n) => {
             let v = n.as_f64()? as f32;
@@ -848,7 +849,7 @@ pub fn parse_line_height(props: JsonProps<'_>) -> Option<LineHeight> {
 }
 
 /// Parse text_shaping prop from a string.
-pub fn parse_shaping(props: JsonProps<'_>) -> Option<iced::widget::text::Shaping> {
+pub fn parse_shaping(props: &Props) -> Option<iced::widget::text::Shaping> {
     use iced::widget::text::Shaping;
     let s = prop_str(props, "shaping")?;
     match s.to_ascii_lowercase().as_str() {
@@ -860,7 +861,7 @@ pub fn parse_shaping(props: JsonProps<'_>) -> Option<iced::widget::text::Shaping
 }
 
 /// Parse wrapping prop from a string.
-pub fn parse_wrapping(props: JsonProps<'_>) -> Option<Wrapping> {
+pub fn parse_wrapping(props: &Props) -> Option<Wrapping> {
     let s = prop_str(props, "wrapping")?;
     match s.to_ascii_lowercase().as_str() {
         "none" => Some(Wrapping::None),
@@ -871,7 +872,7 @@ pub fn parse_wrapping(props: JsonProps<'_>) -> Option<Wrapping> {
     }
 }
 
-pub fn parse_ellipsis(props: JsonProps<'_>) -> Option<iced::widget::text::Ellipsis> {
+pub fn parse_ellipsis(props: &Props) -> Option<iced::widget::text::Ellipsis> {
     use iced::widget::text::Ellipsis;
     let s = prop_str(props, "ellipsis")?;
     match s.to_ascii_lowercase().as_str() {
@@ -898,8 +899,8 @@ pub struct MenuStyleOverrides {
 }
 
 /// Parse a `menu_style` prop into overrides for dropdown menu styling.
-pub fn parse_menu_style(props: JsonProps<'_>) -> Option<MenuStyleOverrides> {
-    let obj = props?.get("menu_style")?.as_object()?;
+pub fn parse_menu_style(props: &Props) -> Option<MenuStyleOverrides> {
+    let obj = wire_map(props)?.get("menu_style")?.as_object()?;
 
     Some(MenuStyleOverrides {
         background: obj.get("background").and_then(parse_background),
@@ -985,9 +986,10 @@ pub fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font>> {
         .and_then(|v| v.as_f64())
         .map(|v| Pixels(v as f32));
 
-    let line_height = parse_line_height(Some(obj)).unwrap_or(LineHeight::Relative(1.2));
+    let icon_props = Props::Wire(value.clone());
+    let line_height = parse_line_height(&icon_props).unwrap_or(LineHeight::Relative(1.2));
 
-    let shaping = parse_shaping(Some(obj)).unwrap_or(iced::widget::text::Shaping::Basic);
+    let shaping = parse_shaping(&icon_props).unwrap_or(iced::widget::text::Shaping::Basic);
 
     Some(pick_list::Icon {
         font,
@@ -999,8 +1001,8 @@ pub fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font>> {
 }
 
 /// Parse a PickList Handle from props.
-pub fn parse_pick_list_handle(props: JsonProps<'_>) -> Option<pick_list::Handle<Font>> {
-    let handle_obj = props?.get("handle")?.as_object()?;
+pub fn parse_pick_list_handle(props: &Props) -> Option<pick_list::Handle<Font>> {
+    let handle_obj = wire_map(props)?.get("handle")?.as_object()?;
     let handle_type = handle_obj.get("type")?.as_str()?;
 
     match handle_type {
@@ -1032,114 +1034,114 @@ mod tests {
     use serde_json::json;
 
     /// Helper: build a Props from a json! value. The value must be an object.
-    fn make_props(v: &Value) -> JsonProps<'_> {
-        v.as_object()
+    fn make_props(v: Value) -> Props {
+        Props::Wire(v)
     }
 
     // -- prop_f32 --
 
     #[test]
     fn prop_f32_returns_number() {
-        let v = json!({"size": 16.0});
-        assert_eq!(prop_f32(make_props(&v), "size"), Some(16.0));
+        let p = make_props(json!({"size": 16.0}));
+        assert_eq!(prop_f32(&p, "size"), Some(16.0));
     }
 
     #[test]
     fn prop_f32_parses_string() {
-        let v = json!({"size": "24.5"});
-        assert_eq!(prop_f32(make_props(&v), "size"), Some(24.5));
+        let p = make_props(json!({"size": "24.5"}));
+        assert_eq!(prop_f32(&p, "size"), Some(24.5));
     }
 
     #[test]
     fn prop_f32_returns_none_for_missing_key() {
-        let v = json!({"other": 10});
-        assert_eq!(prop_f32(make_props(&v), "size"), None);
+        let p = make_props(json!({"other": 10}));
+        assert_eq!(prop_f32(&p, "size"), None);
     }
 
     #[test]
     fn prop_f32_returns_none_for_bool() {
-        let v = json!({"size": true});
-        assert_eq!(prop_f32(make_props(&v), "size"), None);
+        let p = make_props(json!({"size": true}));
+        assert_eq!(prop_f32(&p, "size"), None);
     }
 
     // -- prop_bool --
 
     #[test]
     fn prop_bool_returns_true() {
-        let v = json!({"visible": true});
-        assert_eq!(prop_bool(make_props(&v), "visible"), Some(true));
+        let p = make_props(json!({"visible": true}));
+        assert_eq!(prop_bool(&p, "visible"), Some(true));
     }
 
     #[test]
     fn prop_bool_returns_false() {
-        let v = json!({"visible": false});
-        assert_eq!(prop_bool(make_props(&v), "visible"), Some(false));
+        let p = make_props(json!({"visible": false}));
+        assert_eq!(prop_bool(&p, "visible"), Some(false));
     }
 
     #[test]
     fn prop_bool_returns_none_for_missing() {
-        let v = json!({"other": 1});
-        assert_eq!(prop_bool(make_props(&v), "visible"), None);
+        let p = make_props(json!({"other": 1}));
+        assert_eq!(prop_bool(&p, "visible"), None);
     }
 
     #[test]
     fn prop_bool_default_uses_fallback() {
-        let v = json!({});
-        assert!(prop_bool_default(make_props(&v), "clip", true));
-        assert!(!prop_bool_default(make_props(&v), "clip", false));
+        let p = make_props(json!({}));
+        assert!(prop_bool_default(&p, "clip", true));
+        assert!(!prop_bool_default(&p, "clip", false));
     }
 
     // -- prop_str --
 
     #[test]
     fn prop_str_returns_string() {
-        let v = json!({"label": "hello"});
-        assert_eq!(prop_str(make_props(&v), "label"), Some("hello".to_string()));
+        let p = make_props(json!({"label": "hello"}));
+        assert_eq!(prop_str(&p, "label"), Some("hello".to_string()));
     }
 
     // -- prop_length --
 
     #[test]
     fn prop_length_fill_string() {
-        let v = json!({"width": "fill"});
-        assert_eq!(prop_length(make_props(&v), "width", Length::Shrink), Fill);
+        let p = make_props(json!({"width": "fill"}));
+        assert_eq!(prop_length(&p, "width", Length::Shrink), Fill);
     }
 
     #[test]
     fn prop_length_shrink_string() {
-        let v = json!({"width": "shrink"});
-        assert_eq!(prop_length(make_props(&v), "width", Fill), Length::Shrink);
+        let p = make_props(json!({"width": "shrink"}));
+        assert_eq!(prop_length(&p, "width", Fill), Length::Shrink);
     }
 
     #[test]
     fn prop_length_fixed_number() {
-        let v = json!({"width": 200.0});
+        let p = make_props(json!({"width": 200.0}));
         assert_eq!(
-            prop_length(make_props(&v), "width", Length::Shrink),
+            prop_length(&p, "width", Length::Shrink),
             Length::Fixed(200.0)
         );
     }
 
     #[test]
     fn prop_length_fill_portion_object() {
-        let v = json!({"width": {"fill_portion": 3}});
+        let p = make_props(json!({"width": {"fill_portion": 3}}));
         assert_eq!(
-            prop_length(make_props(&v), "width", Length::Shrink),
+            prop_length(&p, "width", Length::Shrink),
             Length::FillPortion(3)
         );
     }
 
     #[test]
     fn prop_length_returns_fallback_for_missing() {
-        let v = json!({});
-        assert_eq!(prop_length(make_props(&v), "width", Fill), Fill);
+        let p = make_props(json!({}));
+        assert_eq!(prop_length(&p, "width", Fill), Fill);
     }
 
     #[test]
     fn prop_length_numeric_string() {
-        let v = json!({"width": "150"});
+        let p = make_props(json!({"width": "150"}));
         assert_eq!(
-            prop_length(make_props(&v), "width", Length::Shrink),
+            prop_length(&p, "width", Length::Shrink),
             Length::Fixed(150.0)
         );
     }
@@ -1223,28 +1225,28 @@ mod tests {
 
     #[test]
     fn parse_padding_uniform_number() {
-        let v = json!({"padding": 10});
-        let p = parse_padding_value(make_props(&v)).unwrap();
-        assert_eq!(p.top, 10.0);
-        assert_eq!(p.right, 10.0);
-        assert_eq!(p.bottom, 10.0);
-        assert_eq!(p.left, 10.0);
+        let p = make_props(json!({"padding": 10}));
+        let pad = parse_padding_value(&p).unwrap();
+        assert_eq!(pad.top, 10.0);
+        assert_eq!(pad.right, 10.0);
+        assert_eq!(pad.bottom, 10.0);
+        assert_eq!(pad.left, 10.0);
     }
 
     #[test]
     fn parse_padding_per_side_object() {
-        let v = json!({"padding": {"top": 1, "right": 2, "bottom": 3, "left": 4}});
-        let p = parse_padding_value(make_props(&v)).unwrap();
-        assert_eq!(p.top, 1.0);
-        assert_eq!(p.right, 2.0);
-        assert_eq!(p.bottom, 3.0);
-        assert_eq!(p.left, 4.0);
+        let p = make_props(json!({"padding": {"top": 1, "right": 2, "bottom": 3, "left": 4}}));
+        let pad = parse_padding_value(&p).unwrap();
+        assert_eq!(pad.top, 1.0);
+        assert_eq!(pad.right, 2.0);
+        assert_eq!(pad.bottom, 3.0);
+        assert_eq!(pad.left, 4.0);
     }
 
     #[test]
     fn parse_padding_returns_none_when_absent() {
-        let v = json!({});
-        assert!(parse_padding_value(make_props(&v)).is_none());
+        let p = make_props(json!({}));
+        assert!(parse_padding_value(&p).is_none());
     }
 
     // -- parse_border --
@@ -1407,26 +1409,26 @@ mod tests {
 
     #[test]
     fn parse_shaping_basic() {
-        let props = json!({"shaping": "basic"});
+        let p = make_props(json!({"shaping": "basic"}));
         assert_eq!(
-            parse_shaping(props.as_object()),
+            parse_shaping(&p),
             Some(iced::widget::text::Shaping::Basic)
         );
     }
 
     #[test]
     fn parse_shaping_advanced() {
-        let props = json!({"shaping": "advanced"});
+        let p = make_props(json!({"shaping": "advanced"}));
         assert_eq!(
-            parse_shaping(props.as_object()),
+            parse_shaping(&p),
             Some(iced::widget::text::Shaping::Advanced)
         );
     }
 
     #[test]
     fn parse_shaping_missing() {
-        let props = json!({});
-        assert_eq!(parse_shaping(props.as_object()), None);
+        let p = make_props(json!({}));
+        assert_eq!(parse_shaping(&p), None);
     }
 
     #[test]

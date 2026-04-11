@@ -24,8 +24,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ResponsiveWidget {
         // an Element. Since we can't call back to the host within a single frame,
         // we render the children as-is and wrap in a sensor so the host receives
         // resize events with the actual measured size.
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let width = prop_length(props, "width", Length::Fill);
         let height = prop_length(props, "height", Length::Fill);
 

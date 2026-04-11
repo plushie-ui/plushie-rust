@@ -7,6 +7,7 @@
 //! The tests don't render pixels -- they exercise the type system and verify
 //! that method calls, field access, and trait implementations are correct.
 
+use plushie_core::protocol::Props;
 use plushie_widget_sdk::prelude::*;
 use plushie_widget_sdk::testing::*;
 use serde_json::json;
@@ -71,27 +72,26 @@ fn doc_gauge_no_props() {
 
 #[test]
 fn doc_prop_parsing() {
-    let props_val = json!({
+    let props = Props::Wire(json!({
         "value": 42.5,
         "label": "test",
         "color": "#3498db",
         "show_label": true,
         "width": "fill",
-    });
-    let props = props_val.as_object();
+    }));
 
     // Free function style
-    let _value: Option<f32> = prop_f32(props, "value");
-    let _label: Option<String> = prop_str(props, "label");
-    let _color: Option<Color> = prop_color(props, "color");
-    let _show_label: bool = prop_bool_default(props, "show_label", true);
-    let _width: Length = prop_length(props, "width", Length::Fill);
+    let _value: Option<f32> = prop_f32(&props, "value");
+    let _label: Option<String> = prop_str(&props, "label");
+    let _color: Option<Color> = prop_color(&props, "color");
+    let _show_label: bool = prop_bool_default(&props, "show_label", true);
+    let _width: Length = prop_length(&props, "width", Length::Fill);
 
     // TreeNode shorthand style
-    let node = node_with_props("n1", "test", props_val.clone());
+    let node = node_with_props("n1", "test", props.to_value());
     let _value: Option<f32> = node.prop_f32("value");
-    let _label: Option<String> = node.prop_str("label");
-    let _color: Option<Color> = node.prop_color("color");
+    let _label: Option<&str> = node.prop_str("label");
+    let _color: Option<Color> = prop_color(&node.props, "color");
 }
 
 // ============================================================================
@@ -193,10 +193,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocRating {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0) as usize;
-        let max = prop_u32(node.props(), "max").unwrap_or(5) as usize;
+        let max = prop_u32(&node.props, "max").unwrap_or(5) as usize;
         let size = node.prop_f32("size").unwrap_or(24.0);
-        let color = node
-            .prop_color("color")
+        let color = prop_color(&node.props, "color")
             .unwrap_or(ctx.theme.palette().primary.base.color);
         let disabled_color = Color {
             a: color.a * 0.3,

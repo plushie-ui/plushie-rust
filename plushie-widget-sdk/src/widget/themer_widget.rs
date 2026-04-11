@@ -30,10 +30,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
 
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &Theme) {
         let key = (window_id.to_string(), node.id.clone());
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         if let Some(resolved) = props
-            .and_then(|p| p.get("theme"))
+            .get_value("theme")
+            .as_ref()
             .and_then(crate::theming::resolve_theme_only)
         {
             self.themes.insert(key, resolved);

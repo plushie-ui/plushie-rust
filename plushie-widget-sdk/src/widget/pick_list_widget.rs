@@ -33,10 +33,10 @@ fn render_pick_list<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
-    let options: Vec<String> = props
-        .and_then(|p| p.get("options"))
+    let props = &node.props;
+    let opts_val = props.get_value("options");
+    let options: Vec<String> = opts_val
+        .as_ref()
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
@@ -66,8 +66,8 @@ fn render_pick_list<'a, R: PlushieRenderer>(
         pl = pl.text_size(ts);
     }
     let font = props
-        .and_then(|p| p.get("font"))
-        .map(parse_font)
+        .get_value("font")
+        .as_ref().map(parse_font)
         .or(ctx.default_font);
     if let Some(f) = font {
         pl = pl.font(f);
@@ -99,7 +99,7 @@ fn render_pick_list<'a, R: PlushieRenderer>(
     }
 
     // Style: string name or style map object
-    if let Some(style_val) = props.and_then(|p| p.get("style")) {
+    if let Some(style_val) = props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             pl = match style_name {
                 "default" => pl.style(pick_list::default),

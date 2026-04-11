@@ -194,9 +194,8 @@ mod tests {
     #[test]
     fn node_props_work_with_prop_helpers() {
         let n = node_with_props("s-1", "sparkline", json!({"label": "cpu", "max": 100.0}));
-        let props = n.props.as_object();
-        assert_eq!(prop_str(props, "label"), Some("cpu".to_string()));
-        assert!((prop_f32(props, "max").unwrap() - 100.0).abs() < 0.001);
+        assert_eq!(prop_str(&n.props, "label"), Some("cpu".to_string()));
+        assert!((prop_f32(&n.props, "max").unwrap() - 100.0).abs() < 0.001);
     }
 
     // -- TestEnv --------------------------------------------------------------

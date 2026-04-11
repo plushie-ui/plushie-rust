@@ -20,8 +20,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for FloatWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
 
         let child: Element<'a, Message, Theme, R> = node
             .children

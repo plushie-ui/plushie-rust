@@ -22,15 +22,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ImageWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let width = prop_length(props, "width", Length::Shrink);
         let height = prop_length(props, "height", Length::Shrink);
         let content_fit = prop_content_fit(props);
 
         // source can be a string (file path) or an object with a "handle" field
         // (in-memory image from the registry).
-        let source_val = props.and_then(|p| p.get("source"));
+        let source_val = props.get_value("source");
         if source_val.is_none() {
             log::warn!("[id={}] image: no 'source' prop specified", node.id);
         }
@@ -101,8 +100,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ImageWidget {
             img = img.decorative();
         }
         // crop: {"x": u32, "y": u32, "width": u32, "height": u32}
-        if let Some(crop_obj) = props
-            .and_then(|p| p.get("crop"))
+        let crop_val = props.get_value("crop");
+        if let Some(crop_obj) = crop_val
+            .as_ref()
             .and_then(|v| v.as_object())
         {
             let cx = crop_obj.get("x").and_then(|v| v.as_u64()).unwrap_or(0) as u32;

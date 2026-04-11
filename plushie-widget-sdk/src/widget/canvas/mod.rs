@@ -144,8 +144,7 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
     interactive_elements: &'a [InteractiveElement],
     pending_focus: Option<String>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+    let props = &node.props;
     let width = prop_length(props, "width", Length::Fill);
     let height = prop_length(props, "height", Length::Fixed(200.0));
 
@@ -159,9 +158,8 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
         })
         .collect();
 
-    let background = props
-        .and_then(|p| p.get("background"))
-        .and_then(parse_color);
+    let bg_val = props.get_value("background");
+    let background = bg_val.as_ref().and_then(parse_color);
 
     let on_press = prop_bool_default(props, "on_press", false);
     let on_release = prop_bool_default(props, "on_release", false);

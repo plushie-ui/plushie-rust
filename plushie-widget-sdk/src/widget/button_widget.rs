@@ -20,8 +20,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let id = node.id.clone();
         let window_id = ctx.window_id.to_string();
 
@@ -56,7 +55,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
         }
 
         // Style: string name or style map object
-        if let Some(style_val) = props.and_then(|p| p.get("style")) {
+        if let Some(style_val) = props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 b = match style_name {
                     "primary" => b.style(button::primary),

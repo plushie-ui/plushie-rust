@@ -20,8 +20,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let direction = prop_str(props, "direction").unwrap_or_default();
 
         // Thickness is the cross-axis dimension:
@@ -40,7 +39,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
         } else {
             rule::horizontal(thickness)
         };
-        if let Some(style_val) = props.and_then(|p| p.get("style")) {
+        if let Some(style_val) = props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 r = match style_name {
                     "default" => r.style(rule::default),

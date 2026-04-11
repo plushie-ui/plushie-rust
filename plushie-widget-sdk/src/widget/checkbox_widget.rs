@@ -34,8 +34,7 @@ fn render_checkbox<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+    let props = &node.props;
     let label = prop_str(props, "label").unwrap_or_default();
     let checked = prop_bool_default(props, "checked", false);
     let spacing = prop_f32(props, "spacing");
@@ -60,8 +59,8 @@ fn render_checkbox<'a, R: PlushieRenderer>(
         cb = cb.text_size(ts);
     }
     let font = props
-        .and_then(|p| p.get("font"))
-        .map(parse_font)
+        .get_value("font")
+        .as_ref().map(parse_font)
         .or(ctx.default_font);
     if let Some(f) = font {
         cb = cb.font(f);
@@ -75,8 +74,9 @@ fn render_checkbox<'a, R: PlushieRenderer>(
     if let Some(w) = parse_wrapping(props) {
         cb = cb.wrapping(w);
     }
-    if let Some(icon_val) = props
-        .and_then(|p| p.get("icon"))
+    let icon_prop = props.get_value("icon");
+    if let Some(icon_val) = icon_prop
+        .as_ref()
         .and_then(|v| v.as_object())
         && let Some(cp_str) = icon_val.get("code_point").and_then(|v| v.as_str())
         && let Some(code_point) = cp_str.chars().next()
@@ -125,7 +125,7 @@ fn render_checkbox<'a, R: PlushieRenderer>(
         cb = cb.icon(icon_struct);
     }
     // Style: string name or style map object
-    if let Some(style_val) = props.and_then(|p| p.get("style")) {
+    if let Some(style_val) = props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             cb = match style_name {
                 "primary" => cb.style(checkbox::primary),

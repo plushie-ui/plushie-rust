@@ -20,8 +20,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let content = prop_str(props, "content").unwrap_or_default();
         let size = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "size")
             .or(ctx.default_text_size);
@@ -31,34 +30,32 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
             t = t.size(s);
         }
         let font = props
-            .and_then(|p| p.get("font"))
-            .map(parse_font)
+            .get_value("font")
+            .as_ref().map(parse_font)
             .or(ctx.default_font);
         if let Some(f) = font {
             t = t.font(f);
         }
-        if let Some(c) = props.and_then(|p| p.get("color")).and_then(parse_color) {
+        if let Some(c) = props.get_value("color").as_ref().and_then(parse_color) {
             t = t.color(c);
         }
-        if let Some(w) = value_to_length_opt(props.and_then(|p| p.get("width"))) {
+        if let Some(w) = value_to_length_opt(props.get_value("width").as_ref()) {
             t = t.width(w);
         }
-        if let Some(h) = value_to_length_opt(props.and_then(|p| p.get("height"))) {
+        if let Some(h) = value_to_length_opt(props.get_value("height").as_ref()) {
             t = t.height(h);
         }
         if let Some(lh) = parse_line_height(props) {
             t = t.line_height(lh);
         }
         if let Some(ax) = props
-            .and_then(|p| p.get("align_x"))
-            .and_then(|v| v.as_str())
+            .get_str("align_x")
             .and_then(value_to_horizontal_alignment)
         {
             t = t.align_x(ax);
         }
         if let Some(ay) = props
-            .and_then(|p| p.get("align_y"))
-            .and_then(|v| v.as_str())
+            .get_str("align_y")
             .and_then(value_to_vertical_alignment)
         {
             t = t.align_y(ay);

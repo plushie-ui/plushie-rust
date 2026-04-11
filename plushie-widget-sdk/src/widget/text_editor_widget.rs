@@ -222,8 +222,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
         use crate::shared_state::hash_str;
 
         let key = (window_id.to_string(), node.id.clone());
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let mut content_str = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
         if content_str.len() > Self::MAX_CONTENT {
             log::warn!(
@@ -287,8 +286,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
     }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
@@ -313,8 +311,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     ctx: RenderCtx<'a, R>,
     content: &'a text_editor::Content<R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+    let props = &node.props;
     let height = prop_length(props, "height", Length::Shrink);
     let placeholder = prop_str(props, "placeholder").unwrap_or_default();
     let id = node.id.clone();
@@ -330,8 +327,8 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
         te = te.placeholder(placeholder);
     }
     let font = props
-        .and_then(|p| p.get("font"))
-        .map(parse_font)
+        .get_value("font")
+        .as_ref().map(parse_font)
         .or(ctx.default_font);
     if let Some(f) = font {
         te = te.font(f);
@@ -360,8 +357,9 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     }
 
     // Key bindings: declarative rules parsed into a closure
-    if let Some(rules) = props
-        .and_then(|p| p.get("key_bindings"))
+    let key_bindings_val = props.get_value("key_bindings");
+    if let Some(rules) = key_bindings_val
+        .as_ref()
         .and_then(|v| v.as_array())
     {
         let editor_id = node.id.clone();
@@ -461,7 +459,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     // Style closure, shared between plain and highlighted paths
     #[allow(clippy::type_complexity)]
     let style_fn: Option<Box<dyn Fn(&iced::Theme, text_editor::Status) -> text_editor::Style>> =
-        if let Some(style_val) = props.and_then(|p| p.get("style")) {
+        if let Some(style_val) = props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 match style_name {
                     "default" => {

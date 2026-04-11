@@ -6,27 +6,34 @@
 //! `serde_json::Value`.
 //!
 //! ```ignore
-//! let props = node.props.as_object();
+//! let props = &node.props;
 //! let label = prop_str(props, "label").unwrap_or_default();
 //! let size = prop_f32(props, "size").unwrap_or(14.0);
 //! ```
 
 use iced::{Color, ContentFit, Length, alignment};
+use plushie_core::protocol::Props;
 use serde_json::Value;
 
 use crate::theming::parse_hex_color;
 
 // ---------------------------------------------------------------------------
-// Props type alias
+// Props type alias (deprecated)
 // ---------------------------------------------------------------------------
 
 /// A borrowed reference to a JSON object's field map, or `None` when
 /// the node has no props (e.g. `Value::Null`).
 ///
-/// Widget renderers get this via `node.props.as_object()` for Wire
-/// mode props. The prop_helper functions accept this type for
-/// backward compatibility with existing widget code.
+/// Deprecated: use `&Props` directly. Kept for backward compatibility
+/// with external widget code that hasn't migrated yet.
+#[deprecated(note = "use &Props directly")]
 pub type JsonProps<'a> = Option<&'a serde_json::Map<String, Value>>;
+
+/// Access the Wire-mode JSON map from `&Props`. Returns `None` for
+/// `Props::Typed`. Use this for fallback paths that need raw map access.
+pub fn wire_map(props: &Props) -> Option<&serde_json::Map<String, Value>> {
+    props.as_object()
+}
 
 /// Safely narrow an f64 to f32, clamping values outside f32's range
 /// instead of silently producing infinity.
@@ -43,8 +50,11 @@ pub fn f64_to_f32(v: f64) -> f32 {
 // ---------------------------------------------------------------------------
 
 /// Get a string prop value.
-pub fn prop_str(props: JsonProps<'_>, key: &str) -> Option<String> {
-    let val = props?.get(key)?;
+pub fn prop_str(props: &Props, key: &str) -> Option<String> {
+    if let Props::Typed(_) = props {
+        return props.get_str(key).map(|s| s.to_string());
+    }
+    let val = props.as_object()?.get(key)?;
     match val.as_str() {
         Some(s) => Some(s.to_owned()),
         None => {
@@ -55,8 +65,11 @@ pub fn prop_str(props: JsonProps<'_>, key: &str) -> Option<String> {
 }
 
 /// Get an f32 prop value. Accepts both JSON numbers and numeric strings.
-pub fn prop_f32(props: JsonProps<'_>, key: &str) -> Option<f32> {
-    let val = props?.get(key)?;
+pub fn prop_f32(props: &Props, key: &str) -> Option<f32> {
+    if let Props::Typed(_) = props {
+        return props.get_f32(key);
+    }
+    let val = props.as_object()?.get(key)?;
     match val {
         Value::Number(n) => match n.as_f64() {
             Some(f) => Some(f64_to_f32(f)),
@@ -80,8 +93,11 @@ pub fn prop_f32(props: JsonProps<'_>, key: &str) -> Option<f32> {
 }
 
 /// Get an f64 prop value. Accepts both JSON numbers and numeric strings.
-pub fn prop_f64(props: JsonProps<'_>, key: &str) -> Option<f64> {
-    let val = props?.get(key)?;
+pub fn prop_f64(props: &Props, key: &str) -> Option<f64> {
+    if let Props::Typed(_) = props {
+        return props.get_f64(key);
+    }
+    let val = props.as_object()?.get(key)?;
     match val {
         Value::Number(n) => match n.as_f64() {
             Some(f) => Some(f),
@@ -105,8 +121,11 @@ pub fn prop_f64(props: JsonProps<'_>, key: &str) -> Option<f64> {
 }
 
 /// Get a u32 prop value. Accepts JSON numbers and numeric strings.
-pub fn prop_u32(props: JsonProps<'_>, key: &str) -> Option<u32> {
-    let val = props?.get(key)?;
+pub fn prop_u32(props: &Props, key: &str) -> Option<u32> {
+    if let Props::Typed(_) = props {
+        return props.get_u64(key).and_then(|v| u32::try_from(v).ok());
+    }
+    let val = props.as_object()?.get(key)?;
     match val {
         Value::Number(n) => match n.as_u64().and_then(|v| u32::try_from(v).ok()) {
             Some(u) => Some(u),
@@ -130,8 +149,11 @@ pub fn prop_u32(props: JsonProps<'_>, key: &str) -> Option<u32> {
 }
 
 /// Get a u64 prop value. Accepts JSON numbers and numeric strings.
-pub fn prop_u64(props: JsonProps<'_>, key: &str) -> Option<u64> {
-    let val = props?.get(key)?;
+pub fn prop_u64(props: &Props, key: &str) -> Option<u64> {
+    if let Props::Typed(_) = props {
+        return props.get_u64(key);
+    }
+    let val = props.as_object()?.get(key)?;
     match val {
         Value::Number(n) => match n.as_u64() {
             Some(u) => Some(u),
@@ -155,13 +177,16 @@ pub fn prop_u64(props: JsonProps<'_>, key: &str) -> Option<u64> {
 }
 
 /// Get a usize prop value. Accepts JSON numbers and numeric strings.
-pub fn prop_usize(props: JsonProps<'_>, key: &str) -> Option<usize> {
+pub fn prop_usize(props: &Props, key: &str) -> Option<usize> {
     prop_u64(props, key).and_then(|v| usize::try_from(v).ok())
 }
 
 /// Get an i32 prop value. Accepts both JSON numbers and numeric strings.
-pub fn prop_i32(props: JsonProps<'_>, key: &str) -> Option<i32> {
-    let val = props?.get(key)?;
+pub fn prop_i32(props: &Props, key: &str) -> Option<i32> {
+    if let Props::Typed(_) = props {
+        return props.get_i64(key).and_then(|v| i32::try_from(v).ok());
+    }
+    let val = props.as_object()?.get(key)?;
     match val {
         Value::Number(n) => match n.as_i64().and_then(|v| i32::try_from(v).ok()) {
             Some(i) => Some(i),
@@ -185,8 +210,11 @@ pub fn prop_i32(props: JsonProps<'_>, key: &str) -> Option<i32> {
 }
 
 /// Get an i64 prop value. Accepts JSON numbers and numeric strings.
-pub fn prop_i64(props: JsonProps<'_>, key: &str) -> Option<i64> {
-    let val = props?.get(key)?;
+pub fn prop_i64(props: &Props, key: &str) -> Option<i64> {
+    if let Props::Typed(_) = props {
+        return props.get_i64(key);
+    }
+    let val = props.as_object()?.get(key)?;
     match val {
         Value::Number(n) => match n.as_i64() {
             Some(i) => Some(i),
@@ -210,8 +238,11 @@ pub fn prop_i64(props: JsonProps<'_>, key: &str) -> Option<i64> {
 }
 
 /// Get a boolean prop value.
-pub fn prop_bool(props: JsonProps<'_>, key: &str) -> Option<bool> {
-    let val = props?.get(key)?;
+pub fn prop_bool(props: &Props, key: &str) -> Option<bool> {
+    if let Props::Typed(_) = props {
+        return props.get_bool(key);
+    }
+    let val = props.as_object()?.get(key)?;
     match val.as_bool() {
         Some(b) => Some(b),
         None => {
@@ -222,14 +253,15 @@ pub fn prop_bool(props: JsonProps<'_>, key: &str) -> Option<bool> {
 }
 
 /// Get a boolean prop value with a default.
-pub fn prop_bool_default(props: JsonProps<'_>, key: &str, default: bool) -> bool {
+pub fn prop_bool_default(props: &Props, key: &str, default: bool) -> bool {
     prop_bool(props, key).unwrap_or(default)
 }
 
 /// Get a Length prop value, returning `fallback` when absent or unparseable.
-pub fn prop_length(props: JsonProps<'_>, key: &str, fallback: Length) -> Length {
+pub fn prop_length(props: &Props, key: &str, fallback: Length) -> Length {
     props
-        .and_then(|p| p.get(key))
+        .get_value(key)
+        .as_ref()
         .and_then(|v| match value_to_length(v) {
             Some(len) => Some(len),
             None => {
@@ -241,9 +273,10 @@ pub fn prop_length(props: JsonProps<'_>, key: &str, fallback: Length) -> Length 
 }
 
 /// Parse a "range" prop as `[min, max]` into an inclusive `f32` range.
-pub fn prop_range_f32(props: JsonProps<'_>) -> std::ops::RangeInclusive<f32> {
+pub fn prop_range_f32(props: &Props) -> std::ops::RangeInclusive<f32> {
     props
-        .and_then(|p| p.get("range"))
+        .get_value("range")
+        .as_ref()
         .and_then(|v| v.as_array())
         .and_then(|arr| {
             let mut min = f64_to_f32(arr.first()?.as_f64()?);
@@ -258,9 +291,10 @@ pub fn prop_range_f32(props: JsonProps<'_>) -> std::ops::RangeInclusive<f32> {
 }
 
 /// Parse a "range" prop as `[min, max]` into an inclusive `f64` range.
-pub fn prop_range_f64(props: JsonProps<'_>) -> std::ops::RangeInclusive<f64> {
+pub fn prop_range_f64(props: &Props) -> std::ops::RangeInclusive<f64> {
     props
-        .and_then(|p| p.get("range"))
+        .get_value("range")
+        .as_ref()
         .and_then(|v| v.as_array())
         .and_then(|arr| {
             let mut min = arr.first()?.as_f64()?;
@@ -277,7 +311,7 @@ pub fn prop_range_f64(props: JsonProps<'_>) -> std::ops::RangeInclusive<f64> {
 /// Parse a color prop to `iced::Color`.
 ///
 /// Accepts hex strings: `"#RRGGBB"` or `"#RRGGBBAA"`.
-pub fn prop_color(props: JsonProps<'_>, key: &str) -> Option<Color> {
+pub fn prop_color(props: &Props, key: &str) -> Option<Color> {
     let s = prop_str(props, key)?;
     match parse_hex_color(&s) {
         Some(c) => Some(c),
@@ -290,8 +324,8 @@ pub fn prop_color(props: JsonProps<'_>, key: &str) -> Option<Color> {
 
 /// Get an array of f32 values from a prop.
 /// Non-numeric elements are silently dropped with a warning.
-pub fn prop_f32_array(props: JsonProps<'_>, key: &str) -> Option<Vec<f32>> {
-    let val = props?.get(key)?;
+pub fn prop_f32_array(props: &Props, key: &str) -> Option<Vec<f32>> {
+    let val = props.get_value(key)?;
     match val.as_array() {
         Some(arr) => {
             let mut result = Vec::with_capacity(arr.len());
@@ -318,25 +352,23 @@ pub fn prop_f32_array(props: JsonProps<'_>, key: &str) -> Option<Vec<f32>> {
 }
 
 /// Parse a horizontal alignment prop.
-pub fn prop_horizontal_alignment(props: JsonProps<'_>, key: &str) -> alignment::Horizontal {
+pub fn prop_horizontal_alignment(props: &Props, key: &str) -> alignment::Horizontal {
     props
-        .and_then(|p| p.get(key))
-        .and_then(|v| v.as_str())
+        .get_str(key)
         .and_then(value_to_horizontal_alignment)
         .unwrap_or(alignment::Horizontal::Left)
 }
 
 /// Parse a vertical alignment prop.
-pub fn prop_vertical_alignment(props: JsonProps<'_>, key: &str) -> alignment::Vertical {
+pub fn prop_vertical_alignment(props: &Props, key: &str) -> alignment::Vertical {
     props
-        .and_then(|p| p.get(key))
-        .and_then(|v| v.as_str())
+        .get_str(key)
         .and_then(value_to_vertical_alignment)
         .unwrap_or(alignment::Vertical::Top)
 }
 
 /// Parse a content-fit prop.
-pub fn prop_content_fit(props: JsonProps<'_>) -> Option<ContentFit> {
+pub fn prop_content_fit(props: &Props) -> Option<ContentFit> {
     let s = prop_str(props, "content_fit")?;
     match s.to_ascii_lowercase().as_str() {
         "contain" => Some(ContentFit::Contain),
@@ -409,8 +441,8 @@ pub fn value_to_vertical_alignment(s: &str) -> Option<alignment::Vertical> {
 
 /// Get an f64 prop value. Accepts JSON numbers and numeric strings.
 /// Non-numeric elements are silently dropped with a warning.
-pub fn prop_f64_array(props: JsonProps<'_>, key: &str) -> Option<Vec<f64>> {
-    let val = props?.get(key)?;
+pub fn prop_f64_array(props: &Props, key: &str) -> Option<Vec<f64>> {
+    let val = props.get_value(key)?;
     match val.as_array() {
         Some(arr) => {
             let mut result = Vec::with_capacity(arr.len());
@@ -437,8 +469,8 @@ pub fn prop_f64_array(props: JsonProps<'_>, key: &str) -> Option<Vec<f64>> {
 }
 
 /// Get an array of string values from a prop.
-pub fn prop_str_array(props: JsonProps<'_>, key: &str) -> Option<Vec<String>> {
-    let val = props?.get(key)?;
+pub fn prop_str_array(props: &Props, key: &str) -> Option<Vec<String>> {
+    let val = props.get_value(key)?;
     match val.as_array() {
         Some(arr) => Some(
             arr.iter()
@@ -452,9 +484,12 @@ pub fn prop_str_array(props: JsonProps<'_>, key: &str) -> Option<Vec<String>> {
     }
 }
 
-/// Get a reference to a JSON object prop.
-pub fn prop_object<'a>(props: JsonProps<'a>, key: &str) -> Option<&'a serde_json::Map<String, Value>> {
-    let val = props?.get(key)?;
+/// Get a reference to a JSON object prop (Wire variant only).
+///
+/// Returns `None` for `Props::Typed`. For code that needs to work
+/// with both variants, use `props.get_value(key)` instead.
+pub fn prop_object<'a>(props: &'a Props, key: &str) -> Option<&'a serde_json::Map<String, Value>> {
+    let val = props.as_object()?.get(key)?;
     match val.as_object() {
         Some(obj) => Some(obj),
         None => {
@@ -464,9 +499,12 @@ pub fn prop_object<'a>(props: JsonProps<'a>, key: &str) -> Option<&'a serde_json
     }
 }
 
-/// Get a reference to a raw JSON value prop.
-pub fn prop_value<'a>(props: JsonProps<'a>, key: &str) -> Option<&'a Value> {
-    props?.get(key)
+/// Get a reference to a raw JSON value prop (Wire variant only).
+///
+/// Returns `None` for `Props::Typed`. For code that needs to work
+/// with both variants, use `props.get_value(key)` instead.
+pub fn prop_value<'a>(props: &'a Props, key: &str) -> Option<&'a Value> {
+    props.as_object()?.get(key)
 }
 
 /// Parse padding from a `"padding"` prop.
@@ -478,7 +516,7 @@ pub fn prop_value<'a>(props: JsonProps<'a>, key: &str) -> Option<&'a Value> {
 ///
 /// Returns `None` if no padding props are present, preserving iced defaults.
 /// Negative values are clamped to `0.0` in the object and uniform formats.
-pub fn prop_padding(props: JsonProps<'_>) -> Option<iced::Padding> {
+pub fn prop_padding(props: &Props) -> Option<iced::Padding> {
     crate::widget::parse_padding_value(props)
 }
 
@@ -496,7 +534,7 @@ pub fn prop_padding(props: JsonProps<'_>) -> Option<iced::Padding> {
 pub fn prop_animated_f32(
     interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
     node_id: &str,
-    props: JsonProps<'_>,
+    props: &Props,
     key: &str,
 ) -> Option<f32> {
     // Check interpolated cache first
@@ -506,12 +544,13 @@ pub fn prop_animated_f32(
         return val.as_f64().map(f64_to_f32);
     }
     // Fall back to tree props (skip descriptor maps)
-    let val = props?.get(key)?;
-    if val.is_object() {
-        // This is likely an animation descriptor -- the renderer hasn't
-        // started animating yet (first frame) or it just completed.
-        // Return None so the widget uses its default.
-        return None;
+    if let Some(val) = props.get(key) {
+        if val.is_object() {
+            // This is likely an animation descriptor -- the renderer hasn't
+            // started animating yet (first frame) or it just completed.
+            // Return None so the widget uses its default.
+            return None;
+        }
     }
     prop_f32(props, key)
 }
@@ -520,7 +559,7 @@ pub fn prop_animated_f32(
 pub fn prop_animated_color(
     interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
     node_id: &str,
-    props: JsonProps<'_>,
+    props: &Props,
     key: &str,
 ) -> Option<Color> {
     if let Some(overrides) = interpolated.get(node_id)
@@ -528,9 +567,10 @@ pub fn prop_animated_color(
     {
         return val.as_str().and_then(parse_hex_color);
     }
-    let val = props?.get(key)?;
-    if val.is_object() {
-        return None;
+    if let Some(val) = props.get(key) {
+        if val.is_object() {
+            return None;
+        }
     }
     prop_color(props, key)
 }
@@ -544,61 +584,60 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn make_props(val: Value) -> Value {
-        val
+    fn make_props(val: Value) -> Props {
+        Props::Wire(val)
     }
 
     #[test]
     fn test_prop_str() {
         let p = make_props(json!({"label": "hello"}));
-        let props = p.as_object();
-        assert_eq!(prop_str(props, "label"), Some("hello".to_string()));
-        assert_eq!(prop_str(props, "missing"), None);
+        assert_eq!(prop_str(&p, "label"), Some("hello".to_string()));
+        assert_eq!(prop_str(&p, "missing"), None);
     }
 
     #[test]
     fn test_prop_str_non_string() {
         let p = make_props(json!({"num": 42}));
-        assert_eq!(prop_str(p.as_object(), "num"), None);
+        assert_eq!(prop_str(&p, "num"), None);
     }
 
     #[test]
     fn test_prop_f32_number() {
         let p = make_props(json!({"size": 14.5}));
-        let v = prop_f32(p.as_object(), "size").unwrap();
+        let v = prop_f32(&p, "size").unwrap();
         assert!((v - 14.5).abs() < 0.001);
     }
 
     #[test]
     fn test_prop_f32_string() {
         let p = make_props(json!({"size": "14.5"}));
-        let v = prop_f32(p.as_object(), "size").unwrap();
+        let v = prop_f32(&p, "size").unwrap();
         assert!((v - 14.5).abs() < 0.001);
     }
 
     #[test]
     fn test_prop_f32_missing() {
         let p = make_props(json!({}));
-        assert!(prop_f32(p.as_object(), "size").is_none());
+        assert!(prop_f32(&p, "size").is_none());
     }
 
     #[test]
     fn test_prop_f32_wrong_type() {
         let p = make_props(json!({"size": true}));
-        assert!(prop_f32(p.as_object(), "size").is_none());
+        assert!(prop_f32(&p, "size").is_none());
     }
 
     #[test]
     fn test_prop_f64_number() {
         let p = make_props(json!({"value": 99.9}));
-        let v = prop_f64(p.as_object(), "value").unwrap();
+        let v = prop_f64(&p, "value").unwrap();
         assert!((v - 99.9).abs() < 0.0001);
     }
 
     #[test]
     fn test_prop_f64_string() {
         let p = make_props(json!({"value": "99.9"}));
-        let v = prop_f64(p.as_object(), "value").unwrap();
+        let v = prop_f64(&p, "value").unwrap();
         assert!((v - 99.9).abs() < 0.0001);
     }
 
@@ -607,31 +646,31 @@ mod tests {
     #[test]
     fn test_prop_u32_number() {
         let p = make_props(json!({"count": 42}));
-        assert_eq!(prop_u32(p.as_object(), "count"), Some(42));
+        assert_eq!(prop_u32(&p, "count"), Some(42));
     }
 
     #[test]
     fn test_prop_u32_string() {
         let p = make_props(json!({"count": "123"}));
-        assert_eq!(prop_u32(p.as_object(), "count"), Some(123));
+        assert_eq!(prop_u32(&p, "count"), Some(123));
     }
 
     #[test]
     fn test_prop_u32_missing() {
         let p = make_props(json!({}));
-        assert_eq!(prop_u32(p.as_object(), "count"), None);
+        assert_eq!(prop_u32(&p, "count"), None);
     }
 
     #[test]
     fn test_prop_u32_negative() {
         let p = make_props(json!({"count": -1}));
-        assert_eq!(prop_u32(p.as_object(), "count"), None);
+        assert_eq!(prop_u32(&p, "count"), None);
     }
 
     #[test]
     fn test_prop_u32_overflow() {
         let p = make_props(json!({"count": 5_000_000_000u64}));
-        assert_eq!(prop_u32(p.as_object(), "count"), None);
+        assert_eq!(prop_u32(&p, "count"), None);
     }
 
     // -- prop_u64 --
@@ -639,25 +678,25 @@ mod tests {
     #[test]
     fn test_prop_u64_number() {
         let p = make_props(json!({"big": 9_000_000_000u64}));
-        assert_eq!(prop_u64(p.as_object(), "big"), Some(9_000_000_000));
+        assert_eq!(prop_u64(&p, "big"), Some(9_000_000_000));
     }
 
     #[test]
     fn test_prop_u64_string() {
         let p = make_props(json!({"big": "999"}));
-        assert_eq!(prop_u64(p.as_object(), "big"), Some(999));
+        assert_eq!(prop_u64(&p, "big"), Some(999));
     }
 
     #[test]
     fn test_prop_u64_missing() {
         let p = make_props(json!({}));
-        assert_eq!(prop_u64(p.as_object(), "big"), None);
+        assert_eq!(prop_u64(&p, "big"), None);
     }
 
     #[test]
     fn test_prop_u64_negative() {
         let p = make_props(json!({"big": -1}));
-        assert_eq!(prop_u64(p.as_object(), "big"), None);
+        assert_eq!(prop_u64(&p, "big"), None);
     }
 
     // -- prop_usize --
@@ -665,19 +704,19 @@ mod tests {
     #[test]
     fn test_prop_usize_number() {
         let p = make_props(json!({"idx": 7}));
-        assert_eq!(prop_usize(p.as_object(), "idx"), Some(7));
+        assert_eq!(prop_usize(&p, "idx"), Some(7));
     }
 
     #[test]
     fn test_prop_usize_string() {
         let p = make_props(json!({"idx": "42"}));
-        assert_eq!(prop_usize(p.as_object(), "idx"), Some(42));
+        assert_eq!(prop_usize(&p, "idx"), Some(42));
     }
 
     #[test]
     fn test_prop_usize_missing() {
         let p = make_props(json!({}));
-        assert_eq!(prop_usize(p.as_object(), "idx"), None);
+        assert_eq!(prop_usize(&p, "idx"), None);
     }
 
     // -- prop_i32 --
@@ -685,31 +724,31 @@ mod tests {
     #[test]
     fn test_prop_i32_positive() {
         let p = make_props(json!({"x": 42}));
-        assert_eq!(prop_i32(p.as_object(), "x"), Some(42));
+        assert_eq!(prop_i32(&p, "x"), Some(42));
     }
 
     #[test]
     fn test_prop_i32_negative() {
         let p = make_props(json!({"x": -100}));
-        assert_eq!(prop_i32(p.as_object(), "x"), Some(-100));
+        assert_eq!(prop_i32(&p, "x"), Some(-100));
     }
 
     #[test]
     fn test_prop_i32_string() {
         let p = make_props(json!({"x": "-7"}));
-        assert_eq!(prop_i32(p.as_object(), "x"), Some(-7));
+        assert_eq!(prop_i32(&p, "x"), Some(-7));
     }
 
     #[test]
     fn test_prop_i32_missing() {
         let p = make_props(json!({}));
-        assert_eq!(prop_i32(p.as_object(), "x"), None);
+        assert_eq!(prop_i32(&p, "x"), None);
     }
 
     #[test]
     fn test_prop_i32_overflow() {
         let p = make_props(json!({"x": 5_000_000_000i64}));
-        assert_eq!(prop_i32(p.as_object(), "x"), None);
+        assert_eq!(prop_i32(&p, "x"), None);
     }
 
     // -- prop_i64 --
@@ -717,75 +756,73 @@ mod tests {
     #[test]
     fn test_prop_i64_positive() {
         let p = make_props(json!({"offset": 100}));
-        assert_eq!(prop_i64(p.as_object(), "offset"), Some(100));
+        assert_eq!(prop_i64(&p, "offset"), Some(100));
     }
 
     #[test]
     fn test_prop_i64_negative() {
         let p = make_props(json!({"offset": -50}));
-        assert_eq!(prop_i64(p.as_object(), "offset"), Some(-50));
+        assert_eq!(prop_i64(&p, "offset"), Some(-50));
     }
 
     #[test]
     fn test_prop_i64_string() {
         let p = make_props(json!({"offset": "-99"}));
-        assert_eq!(prop_i64(p.as_object(), "offset"), Some(-99));
+        assert_eq!(prop_i64(&p, "offset"), Some(-99));
     }
 
     #[test]
     fn test_prop_i64_missing() {
         let p = make_props(json!({}));
-        assert_eq!(prop_i64(p.as_object(), "offset"), None);
+        assert_eq!(prop_i64(&p, "offset"), None);
     }
 
     #[test]
     fn test_prop_bool() {
         let p = make_props(json!({"disabled": true}));
-        let props = p.as_object();
-        assert_eq!(prop_bool(props, "disabled"), Some(true));
-        assert_eq!(prop_bool(props, "missing"), None);
+        assert_eq!(prop_bool(&p, "disabled"), Some(true));
+        assert_eq!(prop_bool(&p, "missing"), None);
     }
 
     #[test]
     fn test_prop_bool_default() {
         let p = make_props(json!({"disabled": true}));
-        let props = p.as_object();
-        assert!(prop_bool_default(props, "disabled", false));
-        assert!(!prop_bool_default(props, "missing", false));
-        assert!(prop_bool_default(props, "missing", true));
+        assert!(prop_bool_default(&p, "disabled", false));
+        assert!(!prop_bool_default(&p, "missing", false));
+        assert!(prop_bool_default(&p, "missing", true));
     }
 
     #[test]
     fn test_prop_bool_wrong_type() {
         let p = make_props(json!({"disabled": "yes"}));
-        assert_eq!(prop_bool(p.as_object(), "disabled"), None);
+        assert_eq!(prop_bool(&p, "disabled"), None);
     }
 
     #[test]
     fn test_prop_length_fixed() {
         let p = make_props(json!({"width": 100}));
-        let len = prop_length(p.as_object(), "width", Length::Shrink);
+        let len = prop_length(&p, "width", Length::Shrink);
         assert!(matches!(len, Length::Fixed(v) if (v - 100.0).abs() < 0.001));
     }
 
     #[test]
     fn test_prop_length_fill() {
         let p = make_props(json!({"width": "fill"}));
-        let len = prop_length(p.as_object(), "width", Length::Shrink);
+        let len = prop_length(&p, "width", Length::Shrink);
         assert!(matches!(len, Length::Fill));
     }
 
     #[test]
     fn test_prop_length_fallback() {
         let p = make_props(json!({}));
-        let len = prop_length(p.as_object(), "width", Length::Shrink);
+        let len = prop_length(&p, "width", Length::Shrink);
         assert!(matches!(len, Length::Shrink));
     }
 
     #[test]
     fn test_prop_range_f32_present() {
         let p = make_props(json!({"range": [10.0, 50.0]}));
-        let r = prop_range_f32(p.as_object());
+        let r = prop_range_f32(&p);
         assert_eq!(*r.start(), 10.0);
         assert_eq!(*r.end(), 50.0);
     }
@@ -793,7 +830,7 @@ mod tests {
     #[test]
     fn test_prop_range_f32_default() {
         let p = make_props(json!({}));
-        let r = prop_range_f32(p.as_object());
+        let r = prop_range_f32(&p);
         assert_eq!(*r.start(), 0.0);
         assert_eq!(*r.end(), 100.0);
     }
@@ -801,7 +838,7 @@ mod tests {
     #[test]
     fn test_prop_range_f64_present() {
         let p = make_props(json!({"range": [1.0, 2.0]}));
-        let r = prop_range_f64(p.as_object());
+        let r = prop_range_f64(&p);
         assert_eq!(*r.start(), 1.0);
         assert_eq!(*r.end(), 2.0);
     }
@@ -809,7 +846,7 @@ mod tests {
     #[test]
     fn test_prop_color_valid() {
         let p = make_props(json!({"bg": "#ff0000"}));
-        let c = prop_color(p.as_object(), "bg").unwrap();
+        let c = prop_color(&p, "bg").unwrap();
         assert!((c.r - 1.0).abs() < 0.01);
         assert!(c.g.abs() < 0.01);
         assert!(c.b.abs() < 0.01);
@@ -818,32 +855,32 @@ mod tests {
     #[test]
     fn test_prop_color_with_alpha() {
         let p = make_props(json!({"bg": "#ff000080"}));
-        let c = prop_color(p.as_object(), "bg").unwrap();
+        let c = prop_color(&p, "bg").unwrap();
         assert!((c.a - 0.502).abs() < 0.01);
     }
 
     #[test]
     fn test_prop_color_invalid() {
         let p = make_props(json!({"bg": "not-a-color"}));
-        assert!(prop_color(p.as_object(), "bg").is_none());
+        assert!(prop_color(&p, "bg").is_none());
     }
 
     #[test]
     fn test_prop_color_rejects_object() {
-        let props = json!({"color": {"r": 1.0, "g": 0.0, "b": 0.0}});
-        assert_eq!(prop_color(props.as_object(), "color"), None);
+        let p = make_props(json!({"color": {"r": 1.0, "g": 0.0, "b": 0.0}}));
+        assert_eq!(prop_color(&p, "color"), None);
     }
 
     #[test]
     fn test_prop_color_missing() {
         let p = make_props(json!({}));
-        assert!(prop_color(p.as_object(), "bg").is_none());
+        assert!(prop_color(&p, "bg").is_none());
     }
 
     #[test]
     fn test_prop_f32_array() {
         let p = make_props(json!({"data": [1.0, 2.5, 3.0]}));
-        let arr = prop_f32_array(p.as_object(), "data").unwrap();
+        let arr = prop_f32_array(&p, "data").unwrap();
         assert_eq!(arr.len(), 3);
         assert!((arr[0] - 1.0).abs() < 0.001);
         assert!((arr[1] - 2.5).abs() < 0.001);
@@ -853,27 +890,27 @@ mod tests {
     #[test]
     fn test_prop_f32_array_empty() {
         let p = make_props(json!({"data": []}));
-        let arr = prop_f32_array(p.as_object(), "data").unwrap();
+        let arr = prop_f32_array(&p, "data").unwrap();
         assert!(arr.is_empty());
     }
 
     #[test]
     fn test_prop_f32_array_missing() {
         let p = make_props(json!({}));
-        assert!(prop_f32_array(p.as_object(), "data").is_none());
+        assert!(prop_f32_array(&p, "data").is_none());
     }
 
     #[test]
     fn test_prop_f32_array_not_array() {
         let p = make_props(json!({"data": "nope"}));
-        assert!(prop_f32_array(p.as_object(), "data").is_none());
+        assert!(prop_f32_array(&p, "data").is_none());
     }
 
     #[test]
     fn test_prop_horizontal_alignment() {
         let p = make_props(json!({"align": "center"}));
         assert!(matches!(
-            prop_horizontal_alignment(p.as_object(), "align"),
+            prop_horizontal_alignment(&p, "align"),
             alignment::Horizontal::Center
         ));
     }
@@ -882,7 +919,7 @@ mod tests {
     fn test_prop_horizontal_alignment_default() {
         let p = make_props(json!({}));
         assert!(matches!(
-            prop_horizontal_alignment(p.as_object(), "align"),
+            prop_horizontal_alignment(&p, "align"),
             alignment::Horizontal::Left
         ));
     }
@@ -891,7 +928,7 @@ mod tests {
     fn test_prop_vertical_alignment() {
         let p = make_props(json!({"valign": "bottom"}));
         assert!(matches!(
-            prop_vertical_alignment(p.as_object(), "valign"),
+            prop_vertical_alignment(&p, "valign"),
             alignment::Vertical::Bottom
         ));
     }
@@ -899,13 +936,13 @@ mod tests {
     #[test]
     fn test_prop_content_fit() {
         let p = make_props(json!({"content_fit": "cover"}));
-        assert_eq!(prop_content_fit(p.as_object()), Some(ContentFit::Cover));
+        assert_eq!(prop_content_fit(&p), Some(ContentFit::Cover));
     }
 
     #[test]
     fn test_prop_content_fit_missing() {
         let p = make_props(json!({}));
-        assert_eq!(prop_content_fit(p.as_object()), None);
+        assert_eq!(prop_content_fit(&p), None);
     }
 
     #[test]
@@ -919,34 +956,34 @@ mod tests {
     fn test_prop_f32_string_nan() {
         // "NaN" strings are rejected -- non-finite values return None.
         let p = make_props(json!({"size": "NaN"}));
-        assert!(prop_f32(p.as_object(), "size").is_none());
+        assert!(prop_f32(&p, "size").is_none());
     }
 
     #[test]
     fn test_prop_f32_string_infinity() {
         // "Infinity" strings are rejected -- non-finite values return None.
         let p = make_props(json!({"size": "Infinity"}));
-        assert!(prop_f32(p.as_object(), "size").is_none());
+        assert!(prop_f32(&p, "size").is_none());
     }
 
     #[test]
     fn test_prop_f32_empty_string() {
         let p = make_props(json!({"size": ""}));
-        assert!(prop_f32(p.as_object(), "size").is_none());
+        assert!(prop_f32(&p, "size").is_none());
     }
 
     #[test]
     fn test_prop_u32_non_numeric_string() {
         let p = make_props(json!({"count": "not_a_number"}));
-        assert_eq!(prop_u32(p.as_object(), "count"), None);
+        assert_eq!(prop_u32(&p, "count"), None);
     }
 
     #[test]
     fn test_empty_props() {
-        let props: JsonProps<'_> = None;
-        assert!(prop_str(props, "anything").is_none());
-        assert!(prop_f32(props, "anything").is_none());
-        assert!(prop_bool(props, "anything").is_none());
+        let p = Props::default();
+        assert!(prop_str(&p, "anything").is_none());
+        assert!(prop_f32(&p, "anything").is_none());
+        assert!(prop_bool(&p, "anything").is_none());
     }
 
     // -- prop_f64_array --
@@ -954,7 +991,7 @@ mod tests {
     #[test]
     fn test_prop_f64_array() {
         let p = make_props(json!({"data": [1.0, 2.5, 3.0]}));
-        let arr = prop_f64_array(p.as_object(), "data").unwrap();
+        let arr = prop_f64_array(&p, "data").unwrap();
         assert_eq!(arr.len(), 3);
         assert!((arr[0] - 1.0).abs() < 0.0001);
         assert!((arr[1] - 2.5).abs() < 0.0001);
@@ -964,7 +1001,7 @@ mod tests {
     #[test]
     fn test_prop_f64_array_skips_non_numeric() {
         let p = make_props(json!({"data": [1.0, "nope", 3.0]}));
-        let arr = prop_f64_array(p.as_object(), "data").unwrap();
+        let arr = prop_f64_array(&p, "data").unwrap();
         assert_eq!(arr.len(), 2);
         assert!((arr[0] - 1.0).abs() < 0.0001);
         assert!((arr[1] - 3.0).abs() < 0.0001);
@@ -973,7 +1010,7 @@ mod tests {
     #[test]
     fn test_prop_f64_array_missing() {
         let p = make_props(json!({}));
-        assert!(prop_f64_array(p.as_object(), "data").is_none());
+        assert!(prop_f64_array(&p, "data").is_none());
     }
 
     // -- prop_str_array --
@@ -981,21 +1018,21 @@ mod tests {
     #[test]
     fn test_prop_str_array() {
         let p = make_props(json!({"tags": ["a", "b", "c"]}));
-        let arr = prop_str_array(p.as_object(), "tags").unwrap();
+        let arr = prop_str_array(&p, "tags").unwrap();
         assert_eq!(arr, vec!["a", "b", "c"]);
     }
 
     #[test]
     fn test_prop_str_array_skips_non_string() {
         let p = make_props(json!({"tags": ["a", 42, "c"]}));
-        let arr = prop_str_array(p.as_object(), "tags").unwrap();
+        let arr = prop_str_array(&p, "tags").unwrap();
         assert_eq!(arr, vec!["a", "c"]);
     }
 
     #[test]
     fn test_prop_str_array_missing() {
         let p = make_props(json!({}));
-        assert!(prop_str_array(p.as_object(), "tags").is_none());
+        assert!(prop_str_array(&p, "tags").is_none());
     }
 
     // -- prop_object --
@@ -1003,20 +1040,20 @@ mod tests {
     #[test]
     fn test_prop_object() {
         let p = make_props(json!({"style": {"color": "red"}}));
-        let obj = prop_object(p.as_object(), "style").unwrap();
+        let obj = prop_object(&p, "style").unwrap();
         assert_eq!(obj.get("color").and_then(|v| v.as_str()), Some("red"));
     }
 
     #[test]
     fn test_prop_object_missing() {
         let p = make_props(json!({}));
-        assert!(prop_object(p.as_object(), "style").is_none());
+        assert!(prop_object(&p, "style").is_none());
     }
 
     #[test]
     fn test_prop_object_wrong_type() {
         let p = make_props(json!({"style": "not an object"}));
-        assert!(prop_object(p.as_object(), "style").is_none());
+        assert!(prop_object(&p, "style").is_none());
     }
 
     // -- prop_value --
@@ -1024,21 +1061,21 @@ mod tests {
     #[test]
     fn test_prop_value_string() {
         let p = make_props(json!({"x": "hello"}));
-        let v = prop_value(p.as_object(), "x").unwrap();
+        let v = prop_value(&p, "x").unwrap();
         assert_eq!(v.as_str(), Some("hello"));
     }
 
     #[test]
     fn test_prop_value_number() {
         let p = make_props(json!({"x": 42}));
-        let v = prop_value(p.as_object(), "x").unwrap();
+        let v = prop_value(&p, "x").unwrap();
         assert_eq!(v.as_i64(), Some(42));
     }
 
     #[test]
     fn test_prop_value_missing() {
         let p = make_props(json!({}));
-        assert!(prop_value(p.as_object(), "x").is_none());
+        assert!(prop_value(&p, "x").is_none());
     }
 
     // -- Property-based tests -------------------------------------------------
@@ -1052,8 +1089,8 @@ mod tests {
             /// return Some for all finite inputs.
             #[test]
             fn prop_f32_never_panics(val: f64) {
-                let p = json!({"v": val});
-                let result = prop_f32(p.as_object(), "v");
+                let p = make_props(json!({"v": val}));
+                let result = prop_f32(&p, "v");
                 if val.is_finite() {
                     prop_assert!(result.is_some(), "expected Some for finite {val}");
                     let f = result.unwrap();

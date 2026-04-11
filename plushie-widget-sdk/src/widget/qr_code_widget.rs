@@ -90,8 +90,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         use std::hash::{Hash, Hasher};
 
         let key = (window_id.to_string(), node.id.clone());
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let data = crate::prop_helpers::prop_str(props, "data").unwrap_or_default();
         let cell_size = crate::prop_helpers::prop_f32(props, "cell_size").unwrap_or(4.0);
         let ec = crate::prop_helpers::prop_str(props, "error_correction").unwrap_or_default();
@@ -120,8 +119,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props_cow = node.props.as_value_cow();
-        let props = props_cow.as_object();
+        let props = &node.props;
         let data = prop_str(props, "data").unwrap_or_default();
         let cell_size = prop_f32(props, "cell_size").unwrap_or(4.0).clamp(1.0, 50.0);
         let ec_str = prop_str(props, "error_correction").unwrap_or_default();

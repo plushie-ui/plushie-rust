@@ -42,7 +42,7 @@ impl TextInputBuilder {
     pub fn align_x(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_x", super::halign_to_value(a)); self }
     pub fn icon(mut self, icon: PropValue) -> Self { super::set_prop(&mut self.props, "icon", icon); self }
     pub fn on_paste(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_paste", enabled); self }
-    pub fn input_purpose(mut self, purpose: &str) -> Self { super::set_prop(&mut self.props, "input_purpose", purpose); self }
+    pub fn input_purpose(mut self, purpose: InputPurpose) -> Self { super::set_prop(&mut self.props, "input_purpose", purpose.wire_encode()); self }
     pub fn placeholder_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "placeholder_color", super::color_to_value(&c.into())); self }
     pub fn selection_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "selection_color", super::color_to_value(&c.into())); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
@@ -89,9 +89,9 @@ impl TextEditorBuilder {
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
     pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
-    pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
-    /// Input purpose hint: `"normal"`, `"secure"`, or `"terminal"`.
-    pub fn input_purpose(mut self, purpose: &str) -> Self { super::set_prop(&mut self.props, "input_purpose", purpose); self }
+    pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
+    /// Input purpose hint for the text editor.
+    pub fn input_purpose(mut self, purpose: InputPurpose) -> Self { super::set_prop(&mut self.props, "input_purpose", purpose.wire_encode()); self }
     pub fn highlight_syntax(mut self, lang: &str) -> Self { super::set_prop(&mut self.props, "highlight_syntax", lang); self }
     pub fn highlight_theme(mut self, theme: &str) -> Self { super::set_prop(&mut self.props, "highlight_theme", theme); self }
     /// Declarative key binding rules for the editor.
@@ -142,8 +142,8 @@ impl CheckboxBuilder {
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
     pub fn icon(mut self, icon: PropValue) -> Self { super::set_prop(&mut self.props, "icon", icon); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
-    pub fn shaping(mut self, s: &str) -> Self { super::set_prop(&mut self.props, "shaping", s); self }
-    pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
+    pub fn shaping(mut self, s: Shaping) -> Self { super::set_prop(&mut self.props, "shaping", s.wire_encode()); self }
+    pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
     pub fn disabled(mut self, d: bool) -> Self { super::set_prop(&mut self.props, "disabled", d); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
@@ -185,9 +185,9 @@ impl TogglerBuilder {
     pub fn text_size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "text_size", s); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
-    pub fn shaping(mut self, s: &str) -> Self { super::set_prop(&mut self.props, "shaping", s); self }
-    pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
-    pub fn text_alignment(mut self, a: &str) -> Self { super::set_prop(&mut self.props, "text_alignment", a); self }
+    pub fn shaping(mut self, s: Shaping) -> Self { super::set_prop(&mut self.props, "shaping", s.wire_encode()); self }
+    pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
+    pub fn text_alignment(mut self, a: HorizontalAlignment) -> Self { super::set_prop(&mut self.props, "text_alignment", a.wire_encode()); self }
     pub fn disabled(mut self, d: bool) -> Self { super::set_prop(&mut self.props, "disabled", d); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
@@ -234,8 +234,8 @@ impl RadioBuilder {
     pub fn text_size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "text_size", s); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
-    pub fn shaping(mut self, s: &str) -> Self { super::set_prop(&mut self.props, "shaping", s); self }
-    pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
+    pub fn shaping(mut self, s: Shaping) -> Self { super::set_prop(&mut self.props, "shaping", s.wire_encode()); self }
+    pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
@@ -365,9 +365,9 @@ impl PickListBuilder {
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
     pub fn menu_height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "menu_height", h); self }
-    pub fn shaping(mut self, s: &str) -> Self { super::set_prop(&mut self.props, "shaping", s); self }
+    pub fn shaping(mut self, s: Shaping) -> Self { super::set_prop(&mut self.props, "shaping", s.wire_encode()); self }
     pub fn handle(mut self, h: PropValue) -> Self { super::set_prop(&mut self.props, "handle", h); self }
-    pub fn ellipsis(mut self, e: &str) -> Self { super::set_prop(&mut self.props, "ellipsis", e); self }
+    pub fn ellipsis(mut self, e: Ellipsis) -> Self { super::set_prop(&mut self.props, "ellipsis", e.wire_encode()); self }
     pub fn menu_style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "menu_style", super::style_to_value(&s.into())); self }
     pub fn on_open(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_open", enabled); self }
     pub fn on_close(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_close", enabled); self }
@@ -418,8 +418,8 @@ impl ComboBoxBuilder {
     pub fn on_option_hovered(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_option_hovered", enabled); self }
     pub fn on_open(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_open", enabled); self }
     pub fn on_close(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_close", enabled); self }
-    pub fn shaping(mut self, s: &str) -> Self { super::set_prop(&mut self.props, "shaping", s); self }
-    pub fn ellipsis(mut self, e: &str) -> Self { super::set_prop(&mut self.props, "ellipsis", e); self }
+    pub fn shaping(mut self, s: Shaping) -> Self { super::set_prop(&mut self.props, "shaping", s.wire_encode()); self }
+    pub fn ellipsis(mut self, e: Ellipsis) -> Self { super::set_prop(&mut self.props, "ellipsis", e.wire_encode()); self }
     pub fn menu_style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "menu_style", super::style_to_value(&s.into())); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }

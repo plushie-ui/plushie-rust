@@ -28,9 +28,12 @@ pub use crate::ui::*;
 
 // Property types
 pub use crate::types::{
-    A11y, Align, Background, Border, Color, Font, FontStretch, Gradient,
-    KeyModifiers, Length, Length::*, Padding, PlushieType, Radius,
-    Shadow, Style, StyleMap,
+    A11y, Align, Anchor, Background, Border, Color, ContentFit,
+    CursorStyle, Direction, DragAxis, Ellipsis, FillRule, FilterMethod,
+    Font, FontStretch, Gradient, HorizontalAlignment, InputPurpose,
+    KeyModifiers, Length, Length::*, LineCap, LineJoin, Padding,
+    PlushieType, Position, Radius, Shadow, Shaping, Style, StyleMap,
+    Wrapping,
 };
 
 // A11y sub-types for typed accessibility builders

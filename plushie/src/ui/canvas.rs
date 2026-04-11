@@ -196,8 +196,8 @@ impl GroupBuilder {
     /// Emit enter/leave events when the cursor hovers over this group.
     pub fn on_hover(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "on_hover", enabled); self }
     pub fn draggable(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "draggable", enabled); self }
-    /// Constrain drag direction: `"x"`, `"y"`, or `"both"` (default).
-    pub fn drag_axis(mut self, axis: &str) -> Self { super::set_prop(&mut self.props, "drag_axis", axis); self }
+    /// Constrain drag direction.
+    pub fn drag_axis(mut self, axis: DragAxis) -> Self { super::set_prop(&mut self.props, "drag_axis", axis.wire_encode()); self }
     /// Make this group keyboard-focusable.
     pub fn focusable(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "focusable", enabled); self }
     /// Show the default focus ring when focused (default: true).
@@ -210,7 +210,7 @@ impl GroupBuilder {
     pub fn pressed_style(mut self, style: PropValue) -> Self { super::set_prop(&mut self.props, "pressed_style", style); self }
     /// Style overrides applied when this group has keyboard focus.
     pub fn focus_style(mut self, style: PropValue) -> Self { super::set_prop(&mut self.props, "focus_style", style); self }
-    pub fn cursor(mut self, c: &str) -> Self { super::set_prop(&mut self.props, "cursor", c); self }
+    pub fn cursor(mut self, c: CursorStyle) -> Self { super::set_prop(&mut self.props, "cursor", c.wire_encode()); self }
     pub fn tooltip(mut self, text: &str) -> Self { super::set_prop(&mut self.props, "tooltip", text); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
@@ -311,8 +311,8 @@ impl RectBuilder {
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self { stroke_set(&mut self.props, "color", super::color_to_value(&c.into())); self }
     pub fn stroke_width(mut self, w: f32) -> Self { stroke_set(&mut self.props, "width", w); self }
-    pub fn stroke_cap(mut self, cap: &str) -> Self { stroke_set(&mut self.props, "cap", cap); self }
-    pub fn stroke_join(mut self, join: &str) -> Self { stroke_set(&mut self.props, "join", join); self }
+    pub fn stroke_cap(mut self, cap: LineCap) -> Self { stroke_set(&mut self.props, "cap", cap.wire_encode()); self }
+    pub fn stroke_join(mut self, join: LineJoin) -> Self { stroke_set(&mut self.props, "join", join.wire_encode()); self }
     pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
         let mut dash = PropMap::new();
         let segs: Vec<PropValue> = segments.iter().map(|s| PropValue::F64(*s as f64)).collect();
@@ -335,7 +335,7 @@ impl RectBuilder {
         self
     }
     /// Fill rule: `"nonzero"` (default) or `"evenodd"`.
-    pub fn fill_rule(mut self, rule: &str) -> Self { super::set_prop(&mut self.props, "fill_rule", rule); self }
+    pub fn fill_rule(mut self, rule: FillRule) -> Self { super::set_prop(&mut self.props, "fill_rule", rule.wire_encode()); self }
     pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
         super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
@@ -379,8 +379,8 @@ impl CircleBuilder {
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self { stroke_set(&mut self.props, "color", super::color_to_value(&c.into())); self }
     pub fn stroke_width(mut self, w: f32) -> Self { stroke_set(&mut self.props, "width", w); self }
-    pub fn stroke_cap(mut self, cap: &str) -> Self { stroke_set(&mut self.props, "cap", cap); self }
-    pub fn stroke_join(mut self, join: &str) -> Self { stroke_set(&mut self.props, "join", join); self }
+    pub fn stroke_cap(mut self, cap: LineCap) -> Self { stroke_set(&mut self.props, "cap", cap.wire_encode()); self }
+    pub fn stroke_join(mut self, join: LineJoin) -> Self { stroke_set(&mut self.props, "join", join.wire_encode()); self }
     pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
         let mut dash = PropMap::new();
         let segs: Vec<PropValue> = segments.iter().map(|s| PropValue::F64(*s as f64)).collect();
@@ -391,7 +391,7 @@ impl CircleBuilder {
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     /// Fill rule: `"nonzero"` (default) or `"evenodd"`.
-    pub fn fill_rule(mut self, rule: &str) -> Self { super::set_prop(&mut self.props, "fill_rule", rule); self }
+    pub fn fill_rule(mut self, rule: FillRule) -> Self { super::set_prop(&mut self.props, "fill_rule", rule.wire_encode()); self }
     pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
         super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
@@ -432,8 +432,8 @@ impl LineBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self { stroke_set(&mut self.props, "color", super::color_to_value(&c.into())); self }
     pub fn stroke_width(mut self, w: f32) -> Self { stroke_set(&mut self.props, "width", w); self }
-    pub fn stroke_cap(mut self, cap: &str) -> Self { stroke_set(&mut self.props, "cap", cap); self }
-    pub fn stroke_join(mut self, join: &str) -> Self { stroke_set(&mut self.props, "join", join); self }
+    pub fn stroke_cap(mut self, cap: LineCap) -> Self { stroke_set(&mut self.props, "cap", cap.wire_encode()); self }
+    pub fn stroke_join(mut self, join: LineJoin) -> Self { stroke_set(&mut self.props, "join", join.wire_encode()); self }
     pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
         let mut dash = PropMap::new();
         let segs: Vec<PropValue> = segments.iter().map(|s| PropValue::F64(*s as f64)).collect();
@@ -481,8 +481,8 @@ impl PathBuilder {
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self { stroke_set(&mut self.props, "color", super::color_to_value(&c.into())); self }
     pub fn stroke_width(mut self, w: f32) -> Self { stroke_set(&mut self.props, "width", w); self }
-    pub fn stroke_cap(mut self, cap: &str) -> Self { stroke_set(&mut self.props, "cap", cap); self }
-    pub fn stroke_join(mut self, join: &str) -> Self { stroke_set(&mut self.props, "join", join); self }
+    pub fn stroke_cap(mut self, cap: LineCap) -> Self { stroke_set(&mut self.props, "cap", cap.wire_encode()); self }
+    pub fn stroke_join(mut self, join: LineJoin) -> Self { stroke_set(&mut self.props, "join", join.wire_encode()); self }
     pub fn stroke_dash(mut self, segments: &[f32], offset: f32) -> Self {
         let mut dash = PropMap::new();
         let segs: Vec<PropValue> = segments.iter().map(|s| PropValue::F64(*s as f64)).collect();
@@ -492,7 +492,7 @@ impl PathBuilder {
         self
     }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
-    pub fn fill_rule(mut self, rule: &str) -> Self { super::set_prop(&mut self.props, "fill_rule", rule); self }
+    pub fn fill_rule(mut self, rule: FillRule) -> Self { super::set_prop(&mut self.props, "fill_rule", rule.wire_encode()); self }
     pub fn fill_gradient(mut self, x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Self {
         super::set_prop(&mut self.props, "fill", gradient_fill(x1, y1, x2, y2, stops));
         self
@@ -534,10 +534,10 @@ impl CanvasTextBuilder {
     /// Fill color for the text.
     pub fn fill(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into())); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
-    /// Horizontal text alignment: `"left"`, `"center"`, or `"right"`.
-    pub fn align_x(mut self, a: &str) -> Self { super::set_prop(&mut self.props, "align_x", a); self }
-    /// Vertical text alignment: `"top"`, `"center"`, or `"bottom"`.
-    pub fn align_y(mut self, a: &str) -> Self { super::set_prop(&mut self.props, "align_y", a); self }
+    /// Horizontal text alignment.
+    pub fn align_x(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_x", super::halign_to_value(a)); self }
+    /// Vertical text alignment.
+    pub fn align_y(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_y", super::valign_to_value(a)); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
 }
 

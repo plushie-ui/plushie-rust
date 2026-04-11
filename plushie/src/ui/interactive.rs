@@ -198,10 +198,9 @@ impl PointerAreaBuilder {
         self
     }
 
-    /// Mouse cursor to show on hover (e.g. `"pointer"`, `"grab"`,
-    /// `"crosshair"`, `"text"`).
-    pub fn cursor(mut self, cursor: &str) -> Self {
-        super::set_prop(&mut self.props, "cursor", cursor);
+    /// Mouse cursor to show on hover.
+    pub fn cursor(mut self, cursor: CursorStyle) -> Self {
+        super::set_prop(&mut self.props, "cursor", cursor.wire_encode());
         self
     }
 
@@ -330,8 +329,8 @@ pub fn tooltip(id: &str, tip: &str) -> TooltipBuilder {
 }
 
 impl TooltipBuilder {
-    pub fn position(mut self, pos: &str) -> Self {
-        super::set_prop(&mut self.props, "position", pos);
+    pub fn position(mut self, pos: Position) -> Self {
+        super::set_prop(&mut self.props, "position", pos.wire_encode());
         self
     }
 
@@ -464,8 +463,8 @@ pub fn overlay(id: &str) -> OverlayBuilder {
 }
 
 impl OverlayBuilder {
-    pub fn position(mut self, pos: &str) -> Self {
-        super::set_prop(&mut self.props, "position", pos);
+    pub fn position(mut self, pos: Position) -> Self {
+        super::set_prop(&mut self.props, "position", pos.wire_encode());
         self
     }
 

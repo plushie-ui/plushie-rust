@@ -4,6 +4,7 @@
 //! the resulting View contains the correct type, props, and children.
 
 use plushie::prelude::*;
+use plushie::types::Direction;
 use plushie::View;
 use serde_json::Value;
 
@@ -108,7 +109,7 @@ fn stack_with_children() {
 
 #[test]
 fn scrollable_with_direction() {
-    let v = view_json(scrollable().direction("horizontal"));
+    let v = view_json(scrollable().direction(Direction::Horizontal));
     assert_eq!(get_type(&v), "scrollable");
     assert_eq!(get_prop(&v, "direction").as_str(), Some("horizontal"));
 }

@@ -1120,8 +1120,8 @@ impl ScrollableBuilder {
         self
     }
 
-    pub fn direction(mut self, dir: &str) -> Self {
-        super::set_prop(&mut self.props, "direction", dir);
+    pub fn direction(mut self, dir: Direction) -> Self {
+        super::set_prop(&mut self.props, "direction", dir.wire_encode());
         self
     }
 
@@ -1140,8 +1140,8 @@ impl ScrollableBuilder {
         self
     }
 
-    pub fn anchor(mut self, a: &str) -> Self {
-        super::set_prop(&mut self.props, "anchor", a);
+    pub fn anchor(mut self, a: Anchor) -> Self {
+        super::set_prop(&mut self.props, "anchor", a.wire_encode());
         self
     }
 

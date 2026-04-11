@@ -40,10 +40,10 @@ impl TextBuilder {
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn align_x(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_x", super::halign_to_value(a)); self }
     pub fn align_y(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_y", super::valign_to_value(a)); self }
-    pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
-    pub fn shaping(mut self, s: &str) -> Self { super::set_prop(&mut self.props, "shaping", s); self }
+    pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
+    pub fn shaping(mut self, s: Shaping) -> Self { super::set_prop(&mut self.props, "shaping", s.wire_encode()); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
-    pub fn ellipsis(mut self, e: &str) -> Self { super::set_prop(&mut self.props, "ellipsis", e); self }
+    pub fn ellipsis(mut self, e: Ellipsis) -> Self { super::set_prop(&mut self.props, "ellipsis", e.wire_encode()); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
@@ -115,8 +115,8 @@ impl RichTextBuilder {
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn line_height(mut self, lh: f32) -> Self { super::set_prop(&mut self.props, "line_height", lh); self }
-    pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
-    pub fn ellipsis(mut self, e: &str) -> Self { super::set_prop(&mut self.props, "ellipsis", e); self }
+    pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
+    pub fn ellipsis(mut self, e: Ellipsis) -> Self { super::set_prop(&mut self.props, "ellipsis", e.wire_encode()); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 }
@@ -177,7 +177,7 @@ impl RuleBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "width", w); self }
     pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", h); self }
-    pub fn direction(mut self, d: &str) -> Self { super::set_prop(&mut self.props, "direction", d); self }
+    pub fn direction(mut self, d: Direction) -> Self { super::set_prop(&mut self.props, "direction", d.wire_encode()); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
     pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
@@ -262,7 +262,7 @@ pub struct ImageBuilder {
 /// Create an image widget from a file path or handle name.
 ///
 /// ```ignore
-/// image("assets/logo.png").width(200.0).content_fit("contain")
+/// image("assets/logo.png").width(200.0).content_fit(ContentFit::Contain)
 /// ```
 #[track_caller]
 pub fn image(source: &str) -> ImageBuilder {
@@ -275,8 +275,8 @@ impl ImageBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
-    pub fn content_fit(mut self, fit: &str) -> Self { super::set_prop(&mut self.props, "content_fit", fit); self }
-    pub fn filter_method(mut self, method: &str) -> Self { super::set_prop(&mut self.props, "filter_method", method); self }
+    pub fn content_fit(mut self, fit: ContentFit) -> Self { super::set_prop(&mut self.props, "content_fit", fit.wire_encode()); self }
+    pub fn filter_method(mut self, method: FilterMethod) -> Self { super::set_prop(&mut self.props, "filter_method", method.wire_encode()); self }
     pub fn rotation(mut self, degrees: f32) -> Self { super::set_prop(&mut self.props, "rotation", degrees); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     /// Corner radius for rounded image borders.
@@ -355,7 +355,7 @@ impl SvgBuilder {
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "color", super::color_to_value(&c.into())); self }
-    pub fn content_fit(mut self, fit: &str) -> Self { super::set_prop(&mut self.props, "content_fit", fit); self }
+    pub fn content_fit(mut self, fit: ContentFit) -> Self { super::set_prop(&mut self.props, "content_fit", fit.wire_encode()); self }
     pub fn rotation(mut self, degrees: f32) -> Self { super::set_prop(&mut self.props, "rotation", degrees); self }
     pub fn opacity(mut self, o: f32) -> Self { super::set_prop(&mut self.props, "opacity", o); self }
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }

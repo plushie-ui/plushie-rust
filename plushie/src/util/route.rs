@@ -56,9 +56,14 @@ impl Route {
 
     /// Replace the current (top) route without changing history depth.
     pub fn replace_top(&mut self, path: &str) {
+        self.replace_top_with_params(path, HashMap::new());
+    }
+
+    /// Replace the current route with a new path and parameters.
+    pub fn replace_top_with_params(&mut self, path: &str, params: HashMap<String, serde_json::Value>) {
         if let Some(top) = self.stack.last_mut() {
             top.path = path.to_string();
-            top.params.clear();
+            top.params = params;
         }
     }
 
@@ -80,5 +85,10 @@ impl Route {
     /// How many entries are in the stack (including root).
     pub fn depth(&self) -> usize {
         self.stack.len()
+    }
+
+    /// The full navigation history as path strings (most recent first).
+    pub fn history(&self) -> Vec<&str> {
+        self.stack.iter().rev().map(|e| e.path.as_str()).collect()
     }
 }

@@ -282,6 +282,26 @@ fn replace_top_clears_params() {
     assert!(route.params().is_empty());
 }
 
+#[test]
+fn replace_top_with_params_preserves_new_params() {
+    let mut route = Route::new("/home");
+    route.push("/item");
+    let mut params = HashMap::new();
+    params.insert("id".to_string(), serde_json::json!(42));
+    route.replace_top_with_params("/detail", params);
+    assert_eq!(route.current(), "/detail");
+    assert_eq!(route.params()["id"], 42);
+}
+
+#[test]
+fn history_returns_paths_most_recent_first() {
+    let mut route = Route::new("/home");
+    route.push("/about");
+    route.push("/contact");
+    let history = route.history();
+    assert_eq!(history, vec!["/contact", "/about", "/home"]);
+}
+
 // ---------------------------------------------------------------------------
 // Query
 // ---------------------------------------------------------------------------

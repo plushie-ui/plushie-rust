@@ -21,7 +21,7 @@ use plushie_widget_sdk::widget::widget_set::iced_widget_set;
 use crate::App;
 use crate::command::Command;
 use crate::event::{Event, EventType, WidgetEvent};
-use crate::runtime::normalize;
+use crate::runtime;
 use crate::widget::{EventResult, WidgetStateStore};
 
 use super::queue_sink::{QueueSink, SinkEvent};
@@ -187,31 +187,8 @@ impl<A: App> DirectApp<A> {
 
         let mut tasks = Vec::new();
         for sink_event in events {
-            let sdk_event = match sink_event {
-                SinkEvent::EffectResponse(resp) => {
-                    let result = match resp.status {
-                        "ok" => crate::event::EffectResult::Ok(
-                            resp.result.unwrap_or(serde_json::Value::Null),
-                        ),
-                        "cancelled" => crate::event::EffectResult::Cancelled,
-                        _ => crate::event::EffectResult::Error(
-                            resp.result.unwrap_or(serde_json::Value::Null),
-                        ),
-                    };
-                    Some(Event::Effect(crate::event::EffectEvent {
-                        tag: resp.id.clone(),
-                        result,
-                    }))
-                }
-                SinkEvent::Event(_) | SinkEvent::QueryResponse { .. } => {
-                    // Widget/subscription events and query responses are
-                    // handled through the iced Message path, not the queue.
-                    None
-                }
-            };
-
-            if let Some(event) = sdk_event {
-                let cmd = A::update(&mut self.model, event);
+            if let Some(sdk_event) = super::event_bridge::sink_event_to_sdk(sink_event) {
+                let cmd = A::update(&mut self.model, sdk_event);
                 self.refresh_view();
                 tasks.push(self.execute_command(cmd));
             }
@@ -225,16 +202,14 @@ impl<A: App> DirectApp<A> {
     }
 
     fn refresh_view(&mut self) {
-        let view = A::view(&self.model);
-        let expanded = self.widget_store.expand_tree(&view);
-        let (normalized, warnings) = normalize::normalize(&expanded);
+        let (tree, warnings) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
         for warning in &warnings {
             log::warn!("view normalization: {warning}");
         }
 
         self.renderer.registry
-            .prepare_walk(&normalized, &mut self.renderer.core.caches, &self.renderer.theme);
-        self.current_tree = Some(normalized);
+            .prepare_walk(&tree, &mut self.renderer.core.caches, &self.renderer.theme);
+        self.current_tree = Some(tree);
     }
 
     fn execute_command(&mut self, cmd: Command) -> Task<Message> {

@@ -19,7 +19,7 @@ use plushie_core::protocol::TreeNode;
 use serde_json::Value;
 
 use crate::event::{Event, EventType, WidgetEvent};
-use crate::runtime::normalize;
+use crate::runtime;
 use crate::widget::{EventResult, WidgetStateStore};
 use crate::App;
 
@@ -43,9 +43,7 @@ impl<A: App> TestSession<A> {
     pub fn start() -> Self {
         let (model, _cmd) = A::init();
         let mut widget_store = WidgetStateStore::new();
-        let view = A::view(&model);
-        let expanded = widget_store.expand_tree(&view);
-        let (tree, _) = normalize::normalize(&expanded);
+        let (tree, _) = runtime::prepare_tree::<A>(&model, &mut widget_store);
         Self { model, tree, widget_store }
     }
 
@@ -144,9 +142,7 @@ impl<A: App> TestSession<A> {
         }
 
         // Re-render and expand widgets.
-        let view = A::view(&self.model);
-        let expanded = self.widget_store.expand_tree(&view);
-        let (tree, _) = normalize::normalize(&expanded);
+        let (tree, _) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
         self.tree = tree;
     }
 

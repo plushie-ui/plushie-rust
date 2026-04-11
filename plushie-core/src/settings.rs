@@ -91,9 +91,8 @@ pub struct WindowConfig {
     pub minimizable: Option<bool>,
     /// Blur the window background (platform-dependent).
     pub blur: Option<bool>,
-    /// Window stacking level: `"normal"`, `"always_on_top"`, or
-    /// `"always_on_bottom"`.
-    pub level: Option<String>,
+    /// Window stacking level.
+    pub level: Option<crate::ops::WindowLevel>,
     /// Whether closing the window exits the application.
     pub exit_on_close_request: Option<bool>,
     /// Max events per second for coalescable events.

@@ -4,9 +4,69 @@
 //! These are the typed commands that flow from the SDK to the renderer
 //! with zero serialization overhead in direct mode.
 
+use std::fmt;
 use std::time::Duration;
 
 use serde_json::Value;
+
+// ---------------------------------------------------------------------------
+// Typed enums for string-based parameters
+// ---------------------------------------------------------------------------
+
+/// Window display mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowMode {
+    Windowed,
+    Fullscreen,
+}
+
+impl fmt::Display for WindowMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Windowed => f.write_str("windowed"),
+            Self::Fullscreen => f.write_str("fullscreen"),
+        }
+    }
+}
+
+/// Window stacking level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowLevel {
+    Normal,
+    AlwaysOnTop,
+    AlwaysOnBottom,
+}
+
+impl fmt::Display for WindowLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Normal => f.write_str("normal"),
+            Self::AlwaysOnTop => f.write_str("always_on_top"),
+            Self::AlwaysOnBottom => f.write_str("always_on_bottom"),
+        }
+    }
+}
+
+/// Notification urgency level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationUrgency {
+    Low,
+    Normal,
+    Critical,
+}
+
+impl fmt::Display for NotificationUrgency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Low => f.write_str("low"),
+            Self::Normal => f.write_str("normal"),
+            Self::Critical => f.write_str("critical"),
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // RendererOp
@@ -121,16 +181,16 @@ pub enum WindowOp {
     Maximize { window_id: String, maximized: bool },
     /// Set or unset the minimized state.
     Minimize { window_id: String, minimized: bool },
-    /// Set the window mode (e.g. "fullscreen", "windowed").
-    SetMode { window_id: String, mode: String },
+    /// Set the window display mode.
+    SetMode { window_id: String, mode: WindowMode },
     /// Toggle between maximized and restored states.
     ToggleMaximize(String),
     /// Toggle window decorations (title bar, borders).
     ToggleDecorations(String),
     /// Bring a window to the front and give it focus.
     FocusWindow(String),
-    /// Set the window stacking level (e.g. "always_on_top", "normal").
-    SetLevel { window_id: String, level: String },
+    /// Set the window stacking level.
+    SetLevel { window_id: String, level: WindowLevel },
     /// Begin an interactive window drag.
     DragWindow(String),
     /// Begin an interactive window resize from the given edge/direction.
@@ -263,8 +323,8 @@ pub struct NotificationOpts {
     pub icon: Option<String>,
     /// How long the notification should be displayed.
     pub timeout: Option<Duration>,
-    /// Urgency level (e.g. "low", "normal", "critical").
-    pub urgency: Option<String>,
+    /// Urgency level for the notification.
+    pub urgency: Option<NotificationUrgency>,
     /// Sound name to play with the notification.
     pub sound: Option<String>,
 }
@@ -284,9 +344,9 @@ impl NotificationOpts {
         self
     }
 
-    /// Set the urgency level (`"low"`, `"normal"`, or `"critical"`).
-    pub fn urgency(mut self, urgency: &str) -> Self {
-        self.urgency = Some(urgency.to_string());
+    /// Set the urgency level.
+    pub fn urgency(mut self, urgency: NotificationUrgency) -> Self {
+        self.urgency = Some(urgency);
         self
     }
 
@@ -443,8 +503,8 @@ pub fn effect_request_from_wire(kind: &str, payload: &Value) -> Option<EffectReq
             if let Some(ms) = payload.get("timeout").and_then(|v| v.as_u64()) {
                 opts.timeout = Some(Duration::from_millis(ms));
             }
-            if let Some(urgency) = payload.get("urgency").and_then(|v| v.as_str()) {
-                opts.urgency = Some(urgency.to_string());
+            if let Some(urgency_val) = payload.get("urgency") {
+                opts.urgency = serde_json::from_value(urgency_val.clone()).ok();
             }
             if let Some(sound) = payload.get("sound").and_then(|v| v.as_str()) {
                 opts.sound = Some(sound.to_string());

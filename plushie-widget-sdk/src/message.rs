@@ -321,14 +321,6 @@ pub enum Message {
     /// task scheduled by the EventEmitter when rate-limited events
     /// are pending.
     FlushCoalesce,
-    /// An effect completed with a response (tag, status, result).
-    /// Used by the direct runner to deliver effect results back
-    /// through the iced update cycle.
-    EffectResult {
-        tag: String,
-        status: String,
-        result: Value,
-    },
 }
 
 impl Message {

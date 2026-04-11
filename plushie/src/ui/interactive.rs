@@ -392,8 +392,9 @@ pub fn themer(id: &str) -> ThemerBuilder {
 }
 
 impl ThemerBuilder {
-    pub fn theme(mut self, theme: &str) -> Self {
-        super::set_prop(&mut self.props, "theme", theme);
+    pub fn theme(mut self, theme: impl Into<Theme>) -> Self {
+        let theme: Theme = theme.into();
+        super::set_prop(&mut self.props, "theme", theme.wire_encode());
         self
     }
 

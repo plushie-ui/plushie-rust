@@ -75,8 +75,9 @@ impl WindowBuilder {
         self
     }
 
-    pub fn theme(mut self, theme: &str) -> Self {
-        super::set_prop(&mut self.props, "theme", theme);
+    pub fn theme(mut self, theme: impl Into<Theme>) -> Self {
+        let theme: Theme = theme.into();
+        super::set_prop(&mut self.props, "theme", theme.wire_encode());
         self
     }
 
@@ -463,8 +464,8 @@ impl ContainerBuilder {
         self
     }
 
-    pub fn background(mut self, c: impl Into<Animatable<Color>>) -> Self {
-        super::set_prop(&mut self.props, "background", c.into().wire_encode());
+    pub fn background(mut self, bg: impl Into<Animatable<Background>>) -> Self {
+        super::set_prop(&mut self.props, "background", bg.into().wire_encode());
         self
     }
 

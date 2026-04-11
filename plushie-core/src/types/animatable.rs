@@ -29,7 +29,10 @@
 
 use crate::animation::{Sequence, Spring, Transition};
 use crate::protocol::PropValue;
+use crate::types::background::Background;
 use crate::types::color::Color;
+use crate::types::gradient::Gradient;
+use crate::types::line_height::LineHeight;
 use crate::types::PlushieType;
 
 /// A value that can be either static or animated.
@@ -110,6 +113,51 @@ impl From<&str> for Animatable<Color> {
 impl From<String> for Animatable<Color> {
     fn from(s: String) -> Self {
         Self::Value(Color::from(s))
+    }
+}
+
+/// Convert a bare f32 to a relative line height.
+///
+/// Allows `.line_height(1.5_f32)` without wrapping in `LineHeight::Relative`.
+impl From<f32> for Animatable<LineHeight> {
+    fn from(v: f32) -> Self {
+        Self::Value(LineHeight::Relative(v))
+    }
+}
+
+/// Convert a bare f64 to a relative line height.
+///
+/// Allows `.line_height(1.5)` (Rust defaults float literals to f64).
+impl From<f64> for Animatable<LineHeight> {
+    fn from(v: f64) -> Self {
+        Self::Value(LineHeight::Relative(v as f32))
+    }
+}
+
+/// Convert a solid color to a background.
+///
+/// Allows `.background(Color::red())` without wrapping in `Background::Color`.
+impl From<Color> for Animatable<Background> {
+    fn from(c: Color) -> Self {
+        Self::Value(Background::Color(c))
+    }
+}
+
+/// Convert a hex string to a solid-color background.
+///
+/// Allows `.background("#ff0000")`.
+impl From<&str> for Animatable<Background> {
+    fn from(s: &str) -> Self {
+        Self::Value(Background::Color(Color::hex(s)))
+    }
+}
+
+/// Convert a gradient to a background.
+///
+/// Allows `.background(gradient)` without wrapping in `Background::Gradient`.
+impl From<Gradient> for Animatable<Background> {
+    fn from(g: Gradient) -> Self {
+        Self::Value(Background::Gradient(g))
     }
 }
 

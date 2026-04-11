@@ -41,3 +41,13 @@ impl PlushieType for Theme {
         "theme"
     }
 }
+
+impl From<&str> for Theme {
+    fn from(s: &str) -> Self {
+        if s == "system" {
+            Theme::System
+        } else {
+            Theme::Named(s.to_string())
+        }
+    }
+}

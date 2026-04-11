@@ -42,7 +42,7 @@ impl TextBuilder {
     pub fn align_y(mut self, a: Align) -> Self { super::set_prop(&mut self.props, "align_y", super::valign_to_value(a)); self }
     pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
     pub fn shaping(mut self, s: Shaping) -> Self { super::set_prop(&mut self.props, "shaping", s.wire_encode()); self }
-    pub fn line_height(mut self, lh: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "line_height", lh.into().wire_encode()); self }
+    pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self { super::set_prop(&mut self.props, "line_height", lh.into().wire_encode()); self }
     pub fn ellipsis(mut self, e: Ellipsis) -> Self { super::set_prop(&mut self.props, "ellipsis", e.wire_encode()); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
@@ -88,7 +88,7 @@ impl RichTextBuilder {
     pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self { super::set_prop(&mut self.props, "color", c.into().wire_encode()); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
-    pub fn line_height(mut self, lh: impl Into<Animatable<f32>>) -> Self { super::set_prop(&mut self.props, "line_height", lh.into().wire_encode()); self }
+    pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self { super::set_prop(&mut self.props, "line_height", lh.into().wire_encode()); self }
     pub fn wrapping(mut self, w: Wrapping) -> Self { super::set_prop(&mut self.props, "wrapping", w.wire_encode()); self }
     pub fn ellipsis(mut self, e: Ellipsis) -> Self { super::set_prop(&mut self.props, "ellipsis", e.wire_encode()); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }

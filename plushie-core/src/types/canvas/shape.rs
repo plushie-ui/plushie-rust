@@ -225,6 +225,7 @@ pub struct ImageShape {
     pub y: f32,
     pub w: f32,
     pub h: f32,
+    /// Rotation angle in radians (Elixir normalizes degrees to radians at cast time).
     pub rotation: Option<f32>,
     pub opacity: Option<f32>,
 }

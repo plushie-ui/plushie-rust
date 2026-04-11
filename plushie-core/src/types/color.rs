@@ -8,6 +8,9 @@ use super::PlushieType;
 
 /// A color value, stored as a canonical hex string.
 ///
+/// Wire format: a JSON string in `#rrggbb` or `#rrggbbaa` hex notation.
+/// Named color constructors produce canonical hex strings internally.
+///
 /// Construct with named colors, hex strings, or RGB values:
 ///
 /// ```
@@ -21,7 +24,11 @@ use super::PlushieType;
 pub struct Color(String);
 
 impl Color {
-    /// Create a color from a hex string (e.g. `"#ff0000"` or `"#ff000080"`).
+    /// Create a color from a hex string.
+    ///
+    /// The string should be in `#rrggbb` or `#rrggbbaa` format.
+    /// No validation is performed; invalid formats will be
+    /// silently ignored by the renderer.
     pub fn hex(s: &str) -> Self {
         Self(s.to_string())
     }

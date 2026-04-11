@@ -8,6 +8,10 @@ use super::PlushieType;
 
 /// Spacing between a widget's border and its content.
 ///
+/// Wire format: a plain number for uniform padding (all four sides equal),
+/// or an object with `top`, `right`, `bottom`, `left` keys for per-side
+/// values. Missing keys default to `0.0`.
+///
 /// Construct uniformly, by axis, or per-side:
 ///
 /// ```
@@ -83,6 +87,12 @@ impl PlushieType for Padding {
     }
 }
 
+impl Default for Padding {
+    fn default() -> Self {
+        Self::all(0.0)
+    }
+}
+
 impl From<f32> for Padding {
     fn from(v: f32) -> Self {
         Self::all(v)
@@ -104,5 +114,16 @@ impl From<(f32, f32)> for Padding {
 impl From<(f32, f32, f32, f32)> for Padding {
     fn from((t, r, b, l): (f32, f32, f32, f32)) -> Self {
         Self::new(t, r, b, l)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_is_zero() {
+        let p = Padding::default();
+        assert_eq!(p, Padding::all(0.0));
     }
 }

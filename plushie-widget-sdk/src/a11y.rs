@@ -132,9 +132,18 @@ impl A11yOverrides {
     /// new struct with override values taking precedence.
     ///
     /// - `Option` fields: override wins if `Some`, falls back to base.
-    /// - `bool` fields: override replaces base value.
-    /// - `busy`: `Option<bool>`, `Some(v)` overrides the widget's
-    ///   auto-detected state, `None` falls back to the base value.
+    /// - `bool` state fields (`required`, `invalid`, `modal`,
+    ///   `read_only`): merged with OR semantics so a default `false`
+    ///   override never clears a `true` base value. When the override
+    ///   explicitly sets `true`, the result is `true` regardless of
+    ///   base. When the override is default (`false`), the base value
+    ///   is preserved.
+    /// - `busy`, `disabled`: `Option<bool>` in the core A11y struct,
+    ///   so `Some(v)` overrides the widget's auto-detected state and
+    ///   `None` falls back to the base value.
+    /// - `hidden`: handled at the interception layer (subtree
+    ///   suppression) rather than as a property merge. See the
+    ///   `operate()` and `traverse()` methods.
     fn apply_to<'a>(&'a self, base: &Accessible<'a>) -> Accessible<'a> {
         let c = &self.core;
         let role_iced = c.role.as_ref().map(iced_convert::a11y_role);
@@ -150,11 +159,11 @@ impl A11yOverrides {
             expanded: c.expanded.or(base.expanded),
             live: live_iced.or(base.live),
             level: c.level.or(base.level),
-            required: c.required,
+            required: c.required || base.required,
             busy: c.busy.unwrap_or(base.busy),
-            invalid: c.invalid,
-            modal: c.modal,
-            read_only: c.read_only,
+            invalid: c.invalid || base.invalid,
+            modal: c.modal || base.modal,
+            read_only: c.read_only || base.read_only,
             mnemonic: c.mnemonic.or(base.mnemonic),
             toggled: c.toggled.or(base.toggled),
             selected: c.selected.or(base.selected),
@@ -169,9 +178,6 @@ impl A11yOverrides {
             has_popup: has_popup_iced.or(base.has_popup),
             active_descendant: self.active_descendant.as_ref().or(base.active_descendant),
             radio_group: self.radio_group.as_deref().or(base.radio_group),
-            // `hidden` is intentionally omitted: handled at the
-            // interception layer (subtree suppression) rather than as a
-            // property merge. See the operate() and traverse() methods.
             ..base.clone()
         }
     }
@@ -809,6 +815,7 @@ mod tests {
 
     #[test]
     fn apply_to_bools_are_ored() {
+        // Override sets required=true, base has busy=true.
         let overrides = A11yOverrides::from_core(&A11y::new().required(true));
         let base = Accessible {
             busy: true,
@@ -817,6 +824,43 @@ mod tests {
         let merged = overrides.apply_to(&base);
         assert!(merged.required);
         assert!(merged.busy);
+    }
+
+    #[test]
+    fn apply_to_default_override_preserves_base_bools() {
+        // Default overrides (all bools false) must NOT clear true base values.
+        let overrides = A11yOverrides::default();
+        let base = Accessible {
+            required: true,
+            invalid: true,
+            modal: true,
+            read_only: true,
+            ..Default::default()
+        };
+        let merged = overrides.apply_to(&base);
+        assert!(merged.required, "default override must not clear base required");
+        assert!(merged.invalid, "default override must not clear base invalid");
+        assert!(merged.modal, "default override must not clear base modal");
+        assert!(merged.read_only, "default override must not clear base read_only");
+    }
+
+    #[test]
+    fn apply_to_both_true_stays_true() {
+        let overrides = A11yOverrides::from_core(
+            &A11y::new().required(true).invalid(true).modal(true).read_only(true)
+        );
+        let base = Accessible {
+            required: true,
+            invalid: true,
+            modal: true,
+            read_only: true,
+            ..Default::default()
+        };
+        let merged = overrides.apply_to(&base);
+        assert!(merged.required);
+        assert!(merged.invalid);
+        assert!(merged.modal);
+        assert!(merged.read_only);
     }
 
     #[test]

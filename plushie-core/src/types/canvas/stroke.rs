@@ -88,11 +88,14 @@ impl PlushieType for LineJoin {
 impl PlushieType for Dash {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
-        let segments = obj.get("segments")?
+        let segments: Vec<f32> = obj.get("segments")?
             .as_array()?
             .iter()
             .filter_map(|v| v.as_f64().map(|f| f as f32))
             .collect();
+        if segments.is_empty() {
+            return None;
+        }
         let offset = obj.get("offset")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0) as f32;
@@ -177,6 +180,12 @@ mod tests {
         let dash = stroke.dash.as_ref().unwrap();
         assert_eq!(dash.segments, vec![5.0, 3.0]);
         assert_eq!(dash.offset, 1.0);
+    }
+
+    #[test]
+    fn dash_empty_segments_returns_none() {
+        let val = json!({"segments": [], "offset": 0.0});
+        assert!(Dash::wire_decode(&val).is_none());
     }
 
     #[test]

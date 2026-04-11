@@ -7,6 +7,14 @@ use crate::protocol::{PropMap, PropValue};
 use super::PlushieType;
 
 /// How a widget should be sized along an axis.
+///
+/// Wire format:
+/// - `Fill`: the string `"fill"`
+/// - `Shrink`: the string `"shrink"`
+/// - `FillPortion(n)`: an object `{"fill_portion": n}`
+/// - `Fixed(px)`: a non-negative number (logical pixels)
+///
+/// A numeric string (e.g. `"200"`) is also accepted as `Fixed`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Length {
     /// Fill all available space.
@@ -17,6 +25,12 @@ pub enum Length {
     FillPortion(u16),
     /// A fixed size in logical pixels.
     Fixed(f32),
+}
+
+impl Default for Length {
+    fn default() -> Self {
+        Self::Shrink
+    }
 }
 
 impl PlushieType for Length {
@@ -80,5 +94,15 @@ impl From<i32> for Length {
 impl From<u32> for Length {
     fn from(v: u32) -> Self {
         Self::Fixed(v as f32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_is_shrink() {
+        assert_eq!(Length::default(), Length::Shrink);
     }
 }

@@ -319,9 +319,15 @@ pub struct A11y {
     pub role: Option<Role>,
     pub label: Option<String>,
     pub description: Option<String>,
+    /// Whether the widget is hidden from assistive technology.
+    ///
+    /// Wire encoding omits `false` values (the default). Decode treats
+    /// a missing key as `false`, so the round-trip is consistent.
     pub hidden: bool,
     pub expanded: Option<bool>,
     pub required: bool,
+    /// Heading level (1 through 6, corresponding to h1-h6).
+    /// Values outside this range are rejected during wire decode.
     pub level: Option<usize>,
     pub live: Option<Live>,
     pub busy: Option<bool>,

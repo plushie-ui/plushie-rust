@@ -1,15 +1,15 @@
 #![allow(dead_code)] // Used by wire mode runner; dead when only direct feature is enabled.
 
-//! Tree diffing: produce minimal patch operations between two JSON trees.
+//! Tree diffing: produce minimal patch operations between two trees.
 //!
-//! Ports the Elixir SDK's `Tree.diff` algorithm. Walks old and new trees
-//! simultaneously, emitting replace, update, insert, and remove operations.
-//! Children are matched by ID and diffed using a three-path strategy:
-//! fast (same order), medium (additions/removals only), and slow
-//! (reordering via LIS).
+//! Walks old and new TreeNode trees simultaneously, emitting replace,
+//! update, insert, and remove operations. Children are matched by ID
+//! and diffed using a three-path strategy: fast (same order), medium
+//! (additions/removals only), and slow (reordering via LIS).
 
 use std::collections::{HashMap, HashSet};
 
+use plushie_core::protocol::TreeNode;
 use serde_json::Value;
 
 /// A single patch operation produced by diffing two trees.
@@ -34,58 +34,36 @@ pub enum PatchOp {
     RemoveChild { path: Vec<usize>, index: usize },
 }
 
-/// Diff two JSON tree values and return a list of patch operations.
-///
-/// Both values should be JSON objects with `id`, `type`, `props`, and
-/// `children` fields. Returns an empty vec when the trees are identical.
-pub fn diff(old: &Value, new: &Value) -> Vec<PatchOp> {
-    // Different root IDs: replace the whole tree.
-    let old_id = old.get("id");
-    let new_id = new.get("id");
-    if old_id != new_id {
+fn node_to_value(node: &TreeNode) -> Value {
+    serde_json::to_value(node).unwrap_or_default()
+}
+
+/// Diff two TreeNode trees and return a list of patch operations.
+pub fn diff_tree(old: &TreeNode, new: &TreeNode) -> Vec<PatchOp> {
+    if old.id != new.id {
         return vec![PatchOp::ReplaceNode {
             path: vec![],
-            node: new.clone(),
+            node: node_to_value(new),
         }];
     }
-
     diff_node(old, new, &[])
 }
 
 /// Recursively diff two nodes at the given path.
-fn diff_node(old: &Value, new: &Value, path: &[usize]) -> Vec<PatchOp> {
+fn diff_node(old: &TreeNode, new: &TreeNode, path: &[usize]) -> Vec<PatchOp> {
     if old == new {
         return vec![];
     }
 
-    let old_type = old.get("type");
-    let new_type = new.get("type");
-
-    if old_type != new_type {
+    if old.type_name != new.type_name {
         return vec![PatchOp::ReplaceNode {
             path: path.to_vec(),
-            node: new.clone(),
+            node: node_to_value(new),
         }];
     }
 
-    let prop_ops = diff_props(
-        old.get("props").unwrap_or(&Value::Null),
-        new.get("props").unwrap_or(&Value::Null),
-        path,
-    );
-
-    let old_children = old
-        .get("children")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let new_children = new
-        .get("children")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-
-    let child_ops = diff_children(&old_children, &new_children, path);
+    let prop_ops = diff_props(&old.props, &new.props, path);
+    let child_ops = diff_children(&old.children, &new.children, path);
 
     let mut ops = prop_ops;
     ops.extend(child_ops);
@@ -182,22 +160,18 @@ fn id_keyed_list_equal(old: &Value, new: &Value) -> bool {
     })
 }
 
-/// Extract the string ID from a node, panicking if missing.
-fn node_id(node: &Value) -> &str {
-    node.get("id").and_then(Value::as_str).unwrap_or("")
-}
-
 /// Diff two children arrays using the three-path strategy.
-fn diff_children(old_children: &[Value], new_children: &[Value], path: &[usize]) -> Vec<PatchOp> {
-    let old_ids: Vec<&str> = old_children.iter().map(node_id).collect();
-    let new_ids: Vec<&str> = new_children.iter().map(node_id).collect();
+fn diff_children(old_children: &[TreeNode], new_children: &[TreeNode], path: &[usize]) -> Vec<PatchOp> {
+    let old_ids: Vec<&str> = old_children.iter().map(|c| c.id.as_str()).collect();
+    let new_ids: Vec<&str> = new_children.iter().map(|c| c.id.as_str()).collect();
 
     // Build index maps for O(1) lookup.
-    let old_by_id: HashMap<&str, (usize, &Value)> = old_children
+    let old_by_id: HashMap<&str, (usize, &TreeNode)> = old_children
         .iter()
         .enumerate()
-        .map(|(i, c)| (node_id(c), (i, c)))
+        .map(|(i, c)| (c.id.as_str(), (i, c)))
         .collect();
+
     // Fast path: identical ID sequences.
     if old_ids == new_ids {
         return diff_children_same_order(old_children, new_children, path);
@@ -235,8 +209,8 @@ fn diff_children(old_children: &[Value], new_children: &[Value], path: &[usize])
 
 /// Fast path: same ID order, diff each pair recursively.
 fn diff_children_same_order(
-    old_children: &[Value],
-    new_children: &[Value],
+    old_children: &[TreeNode],
+    new_children: &[TreeNode],
     path: &[usize],
 ) -> Vec<PatchOp> {
     old_children
@@ -254,8 +228,8 @@ fn diff_children_same_order(
 /// Medium path: common IDs maintain relative order. Pure inserts and
 /// removes, no moves needed.
 fn diff_children_no_reorder(
-    old_by_id: &HashMap<&str, (usize, &Value)>,
-    new_children: &[Value],
+    old_by_id: &HashMap<&str, (usize, &TreeNode)>,
+    new_children: &[TreeNode],
     old_only: &HashSet<&str>,
     path: &[usize],
 ) -> Vec<PatchOp> {
@@ -281,8 +255,7 @@ fn diff_children_no_reorder(
     let mut insert_ops = Vec::new();
 
     for (idx, child) in new_children.iter().enumerate() {
-        let child_id = node_id(child);
-        match old_by_id.get(child_id) {
+        match old_by_id.get(child.id.as_str()) {
             Some(&(old_idx, old_child)) => {
                 let adjusted = index_after_removals(old_idx, &removed_indices);
                 let mut child_path = path.to_vec();
@@ -293,7 +266,7 @@ fn diff_children_no_reorder(
                 insert_ops.push(PatchOp::InsertChild {
                     path: path.to_vec(),
                     index: idx,
-                    node: child.clone(),
+                    node: node_to_value(child),
                 });
             }
         }
@@ -309,8 +282,8 @@ fn diff_children_no_reorder(
 /// of common elements that maintain relative order. Elements in the LIS
 /// stay in place; elements not in the LIS are removed and re-inserted.
 fn diff_children_reorder(
-    old_by_id: &HashMap<&str, (usize, &Value)>,
-    new_children: &[Value],
+    old_by_id: &HashMap<&str, (usize, &TreeNode)>,
+    new_children: &[TreeNode],
     common_new: &[&str],
     old_only: &HashSet<&str>,
     path: &[usize],
@@ -362,7 +335,7 @@ fn diff_children_reorder(
     let mut update_ops = Vec::new();
     for id in &lis_ids {
         let &(old_idx, old_child) = &old_by_id[id];
-        let new_child = new_children.iter().find(|c| node_id(c) == *id).unwrap();
+        let new_child = new_children.iter().find(|c| c.id == *id).unwrap();
         let adjusted = index_after_removals(old_idx, &removed_indices);
         let mut child_path = path.to_vec();
         child_path.push(adjusted);
@@ -374,13 +347,13 @@ fn diff_children_reorder(
         .iter()
         .enumerate()
         .filter(|(_, child)| {
-            let cid = node_id(child);
+            let cid = child.id.as_str();
             !old_by_id.contains_key(cid) || moved_ids.contains(cid)
         })
         .map(|(idx, child)| PatchOp::InsertChild {
             path: path.to_vec(),
             index: idx,
-            node: child.clone(),
+            node: node_to_value(child),
         })
         .collect();
 
@@ -453,18 +426,16 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Helper: build a tree node with id, type, props, and children.
-    fn node(id: &str, type_name: &str, props: Value, children: Vec<Value>) -> Value {
-        json!({
-            "id": id,
-            "type": type_name,
-            "props": props,
-            "children": children,
-        })
+    fn node(id: &str, type_name: &str, props: Value, children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props,
+            children,
+        }
     }
 
-    /// Helper: simple node with empty props.
-    fn simple_node(id: &str, type_name: &str, children: Vec<Value>) -> Value {
+    fn simple_node(id: &str, type_name: &str, children: Vec<TreeNode>) -> TreeNode {
         node(id, type_name, json!({}), children)
     }
 
@@ -478,7 +449,7 @@ mod tests {
                 simple_node("b", "button", vec![]),
             ],
         );
-        let ops = diff(&tree, &tree);
+        let ops = diff_tree(&tree, &tree);
         assert!(ops.is_empty());
     }
 
@@ -486,13 +457,13 @@ mod tests {
     fn different_root_id_produces_replace() {
         let old = simple_node("root1", "column", vec![]);
         let new = simple_node("root2", "column", vec![]);
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
             PatchOp::ReplaceNode {
                 path: vec![],
-                node: new.clone(),
+                node: node_to_value(&new),
             }
         );
     }
@@ -501,13 +472,13 @@ mod tests {
     fn different_root_type_produces_replace() {
         let old = simple_node("root", "column", vec![]);
         let new = simple_node("root", "row", vec![]);
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
             PatchOp::ReplaceNode {
                 path: vec![],
-                node: new.clone(),
+                node: node_to_value(&new),
             }
         );
     }
@@ -516,7 +487,7 @@ mod tests {
     fn changed_prop_produces_update() {
         let old = node("root", "text", json!({"content": "hello"}), vec![]);
         let new = node("root", "text", json!({"content": "world"}), vec![]);
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
@@ -536,7 +507,7 @@ mod tests {
             json!({"content": "hello", "size": 18}),
             vec![],
         );
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
@@ -556,7 +527,7 @@ mod tests {
             vec![],
         );
         let new = node("root", "text", json!({"content": "hello"}), vec![]);
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
@@ -576,14 +547,14 @@ mod tests {
             "column",
             vec![simple_node("a", "text", vec![]), new_child.clone()],
         );
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
             PatchOp::InsertChild {
                 path: vec![],
                 index: 1,
-                node: new_child,
+                node: node_to_value(&new_child),
             }
         );
     }
@@ -599,7 +570,7 @@ mod tests {
             ],
         );
         let new = simple_node("root", "column", vec![simple_node("a", "text", vec![])]);
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
@@ -621,7 +592,6 @@ mod tests {
                 simple_node("c", "text", vec![]),
             ],
         );
-        // Reverse order: c, b, a
         let new = simple_node(
             "root",
             "column",
@@ -631,9 +601,8 @@ mod tests {
                 simple_node("a", "text", vec![]),
             ],
         );
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
 
-        // Should have remove and insert ops for the moved elements.
         let has_removes = ops.iter().any(|op| matches!(op, PatchOp::RemoveChild { .. }));
         let has_inserts = ops.iter().any(|op| matches!(op, PatchOp::InsertChild { .. }));
         assert!(has_removes, "reorder should produce remove ops");
@@ -660,7 +629,7 @@ mod tests {
                 vec![node("deep", "text", json!({"content": "new"}), vec![])],
             )],
         );
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
@@ -673,13 +642,10 @@ mod tests {
 
     #[test]
     fn lis_algorithm_correctness() {
-        // [3, 1, 4, 1, 5, 9, 2, 6] -> LIS is [1, 4, 5, 9] or [1, 2, 5, 9]
-        // or [1, 4, 5, 6] etc. Length should be 4.
         let arr = vec![3, 1, 4, 1, 5, 9, 2, 6];
         let lis = longest_increasing_subsequence(&arr);
         assert_eq!(lis.len(), 4);
 
-        // Verify the subsequence is actually increasing.
         let values: Vec<usize> = lis.iter().map(|&i| arr[i]).collect();
         for w in values.windows(2) {
             assert!(
@@ -727,13 +693,13 @@ mod tests {
             "column",
             vec![simple_node("a", "button", vec![])],
         );
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
             PatchOp::ReplaceNode {
                 path: vec![0],
-                node: simple_node("a", "button", vec![]),
+                node: node_to_value(&simple_node("a", "button", vec![])),
             }
         );
     }
@@ -750,7 +716,7 @@ mod tests {
             ],
         );
         let new = simple_node("root", "column", vec![simple_node("b", "text", vec![])]);
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
 
         let remove_ops: Vec<&PatchOp> = ops
             .iter()
@@ -758,7 +724,6 @@ mod tests {
             .collect();
         assert_eq!(remove_ops.len(), 2);
 
-        // Removes should be in reverse index order.
         if let (PatchOp::RemoveChild { index: i1, .. }, PatchOp::RemoveChild { index: i2, .. }) =
             (&remove_ops[0], &remove_ops[1])
         {
@@ -776,7 +741,7 @@ mod tests {
             "column",
             vec![simple_node("a", "text", vec![]), b.clone(), c.clone()],
         );
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
 
         let insert_ops: Vec<&PatchOp> = ops
             .iter()
@@ -787,7 +752,6 @@ mod tests {
 
     #[test]
     fn combined_prop_changes() {
-        // Change, add, and remove in one diff.
         let old = node(
             "root",
             "text",
@@ -800,7 +764,7 @@ mod tests {
             json!({"content": "world", "size": 14, "bold": true}),
             vec![],
         );
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         if let PatchOp::UpdateProps { props, .. } = &ops[0] {
             let p = props.as_object().unwrap();
@@ -818,7 +782,6 @@ mod tests {
 
     #[test]
     fn medium_path_insert_and_remove() {
-        // Remove "b", add "d" at end. No reordering of common IDs.
         let old = simple_node(
             "root",
             "column",
@@ -838,7 +801,7 @@ mod tests {
                 d.clone(),
             ],
         );
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
 
         let removes: Vec<_> = ops
             .iter()
@@ -852,11 +815,11 @@ mod tests {
         assert_eq!(inserts.len(), 1);
 
         if let PatchOp::RemoveChild { index, .. } = removes[0] {
-            assert_eq!(*index, 1); // "b" was at index 1
+            assert_eq!(*index, 1);
         }
         if let PatchOp::InsertChild { index, node, .. } = inserts[0] {
             assert_eq!(*index, 2);
-            assert_eq!(*node, d);
+            assert_eq!(*node, node_to_value(&d));
         }
     }
 
@@ -883,15 +846,13 @@ mod tests {
 
     #[test]
     fn id_keyed_list_props_are_compared_semantically() {
-        // Two props with id-keyed lists that have the same content
-        // should not produce an update.
         let shapes = json!([
             {"id": "s1", "type": "rect", "x": 0},
             {"id": "s2", "type": "circle", "r": 10},
         ]);
         let old = node("c", "canvas", json!({"shapes": shapes.clone()}), vec![]);
         let new = node("c", "canvas", json!({"shapes": shapes}), vec![]);
-        let ops = diff(&old, &new);
+        let ops = diff_tree(&old, &new);
         assert!(ops.is_empty());
     }
 }

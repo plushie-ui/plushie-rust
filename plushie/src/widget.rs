@@ -232,55 +232,46 @@ impl WidgetStateStore {
         }
     }
 
-    /// Expand all __widget__ nodes in a view tree.
-    pub fn expand_widgets(&mut self, tree: &Value) -> Value {
+    /// Expand all __widget__ nodes in a TreeNode tree.
+    pub fn expand_tree(&mut self, tree: &View) -> View {
         self.collect_expanders(tree);
         self.expand_node(tree)
     }
 
-    fn collect_expanders(&mut self, node: &Value) {
-        let type_name = node["type"].as_str().unwrap_or("");
-        let id = node["id"].as_str().unwrap_or("");
-
-        if type_name == "__widget__"
-            && let Some(expander) = take_widget_expander(id)
-        {
-            if !self.states.contains_key(id) {
-                self.states.insert(id.to_string(), expander.default_state());
+    fn collect_expanders(&mut self, node: &View) {
+        if node.type_name == "__widget__" {
+            if let Some(expander) = take_widget_expander(&node.id) {
+                if !self.states.contains_key(&node.id) {
+                    self.states.insert(node.id.clone(), expander.default_state());
+                }
+                self.expanders.insert(node.id.clone(), expander);
             }
-            self.expanders.insert(id.to_string(), expander);
         }
 
-        if let Some(children) = node["children"].as_array() {
-            for child in children {
-                self.collect_expanders(child);
-            }
+        for child in &node.children {
+            self.collect_expanders(child);
         }
     }
 
-    fn expand_node(&self, node: &Value) -> Value {
-        let type_name = node["type"].as_str().unwrap_or("");
-        let id = node["id"].as_str().unwrap_or("");
-
-        if type_name == "__widget__"
-            && let Some(expander) = self.expanders.get(id)
-        {
-            let state = self.states.get(id).expect("widget state missing");
-            let props = &node["props"];
-            let expanded = expander.expand(id, props, state.as_ref());
-            return self.expand_node(&serde_json::to_value(&expanded).unwrap());
+    fn expand_node(&self, node: &View) -> View {
+        if node.type_name == "__widget__" {
+            if let Some(expander) = self.expanders.get(&node.id) {
+                let state = self.states.get(&node.id).expect("widget state missing");
+                let expanded = expander.expand(&node.id, &node.props, state.as_ref());
+                return self.expand_node(&expanded);
+            }
         }
 
-        let children = node["children"]
-            .as_array()
-            .map(|arr| arr.iter().map(|c| self.expand_node(c)).collect::<Vec<_>>())
-            .unwrap_or_default();
+        let children = node.children.iter()
+            .map(|c| self.expand_node(c))
+            .collect();
 
-        let mut result = node.clone();
-        if let Some(obj) = result.as_object_mut() {
-            obj.insert("children".to_string(), Value::Array(children));
+        View {
+            id: node.id.clone(),
+            type_name: node.type_name.clone(),
+            props: node.props.clone(),
+            children,
         }
-        result
     }
 
     /// Handle an event through widget interception.

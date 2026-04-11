@@ -1,43 +1,40 @@
 //! Tree normalization: scope prefixing and ID validation.
 //!
-//! After `App::view()` returns a `View`, normalization walks the tree
-//! to apply scoped ID prefixes (containers with explicit IDs prefix
-//! their children) and validate ID constraints (no duplicates, no
-//! reserved characters).
-//!
-//! This mirrors the Elixir SDK's `Tree.normalize` function.
+//! After `App::view()` returns a `View` (TreeNode), normalization
+//! walks the tree to apply scoped ID prefixes (containers with explicit
+//! IDs prefix their children) and validate ID constraints (no duplicates,
+//! no reserved characters).
 
 use std::collections::HashSet;
 
-use serde_json::Value;
+use plushie_core::protocol::TreeNode;
 
 /// Normalize a view tree: apply scope prefixes and validate IDs.
 ///
-/// Returns the normalized tree as a JSON value and any validation
-/// warnings (duplicate IDs, reserved characters).
-pub fn normalize(view: &Value) -> (Value, Vec<String>) {
+/// Returns the normalized tree and any validation warnings
+/// (duplicate IDs, reserved characters).
+pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
     let mut warnings = Vec::new();
     let mut seen_ids = HashSet::new();
-    let result = normalize_node(view, &[], &mut seen_ids, &mut warnings);
+    let result = normalize_node(tree, &[], &mut seen_ids, &mut warnings);
     (result, warnings)
 }
 
 fn normalize_node(
-    node: &Value,
+    node: &TreeNode,
     scope: &[&str],
     seen_ids: &mut HashSet<String>,
     warnings: &mut Vec<String>,
-) -> Value {
-    let id = node["id"].as_str().unwrap_or("");
-    let type_name = node["type"].as_str().unwrap_or("");
+) -> TreeNode {
+    let id = &node.id;
+    let type_name = &node.type_name;
 
-    // Determine if this node creates a scope (explicit ID, not auto-generated).
     let is_auto = id.starts_with("auto:");
     let is_window = type_name == "window";
 
     // Build the scoped ID.
     let scoped_id = if scope.is_empty() || is_auto {
-        id.to_string()
+        id.clone()
     } else {
         format!("{}/{}", scope.join("/"), id)
     };
@@ -65,23 +62,16 @@ fn normalize_node(
     };
 
     // Normalize children recursively.
-    let children = node["children"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|child| normalize_node(child, &child_scope, seen_ids, warnings))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let children = node.children.iter()
+        .map(|child| normalize_node(child, &child_scope, seen_ids, warnings))
+        .collect();
 
-    // Rebuild the node with the scoped ID.
-    let mut result = node.clone();
-    if let Some(obj) = result.as_object_mut() {
-        obj.insert("id".to_string(), Value::String(scoped_id));
-        obj.insert("children".to_string(), Value::Array(children));
+    TreeNode {
+        id: scoped_id,
+        type_name: node.type_name.clone(),
+        props: node.props.clone(),
+        children,
     }
-
-    result
 }
 
 #[cfg(test)]
@@ -89,13 +79,13 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn node(id: &str, type_name: &str, children: Vec<Value>) -> Value {
-        json!({
-            "id": id,
-            "type": type_name,
-            "props": {},
-            "children": children,
-        })
+    fn node(id: &str, type_name: &str, children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props: json!({}),
+            children,
+        }
     }
 
     #[test]
@@ -106,8 +96,8 @@ mod tests {
         ]);
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
-        assert_eq!(result["children"][0]["id"], "root/a");
-        assert_eq!(result["children"][1]["id"], "root/b");
+        assert_eq!(result.children[0].id, "root/a");
+        assert_eq!(result.children[1].id, "root/b");
     }
 
     #[test]
@@ -117,8 +107,7 @@ mod tests {
         ]);
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
-        // Auto-ID container doesn't prefix children
-        assert_eq!(result["children"][0]["id"], "btn");
+        assert_eq!(result.children[0].id, "btn");
     }
 
     #[test]
@@ -130,11 +119,8 @@ mod tests {
         ]);
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
-        assert_eq!(result["children"][0]["id"], "form/section");
-        assert_eq!(
-            result["children"][0]["children"][0]["id"],
-            "form/section/field"
-        );
+        assert_eq!(result.children[0].id, "form/section");
+        assert_eq!(result.children[0].children[0].id, "form/section/field");
     }
 
     #[test]
@@ -144,8 +130,7 @@ mod tests {
         ]);
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
-        // Window nodes don't prefix children
-        assert_eq!(result["children"][0]["id"], "col");
+        assert_eq!(result.children[0].id, "col");
     }
 
     #[test]
@@ -174,7 +159,6 @@ mod tests {
             node("auto:text:1:1", "text", vec![]),
         ]);
         let (_, warnings) = normalize(&tree);
-        // Auto IDs are allowed to repeat (same call site in a loop)
         assert!(warnings.is_empty());
     }
 }

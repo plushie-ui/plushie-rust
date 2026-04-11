@@ -3206,13 +3206,27 @@ dependencies = [
 name = "plushie"
 version = "0.6.1"
 dependencies = [
+ "arboard",
  "log",
+ "notify-rust",
+ "plushie-core",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
+ "rfd",
  "rmp-serde",
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "plushie-core"
+version = "0.6.1"
+dependencies = [
+ "base64",
+ "log",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3456,6 +3470,7 @@ dependencies = [
  "getrandom 0.3.4",
  "log",
  "notify-rust",
+ "plushie-core",
  "plushie-iced",
  "plushie-iced-test",
  "plushie-renderer-lib",
@@ -3473,6 +3488,7 @@ version = "0.6.1"
 dependencies = [
  "base64",
  "log",
+ "plushie-core",
  "plushie-iced",
  "plushie-widget-sdk",
  "serde",
@@ -3491,6 +3507,7 @@ dependencies = [
  "futures",
  "js-sys",
  "log",
+ "plushie-core",
  "plushie-iced",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
@@ -3507,6 +3524,7 @@ version = "0.6.1"
 dependencies = [
  "base64",
  "log",
+ "plushie-core",
  "plushie-iced",
  "proptest",
  "qrcode",

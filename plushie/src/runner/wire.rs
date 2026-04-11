@@ -14,9 +14,8 @@ use crate::App;
 use crate::command::Command;
 #[cfg(feature = "wire")]
 use crate::event::{
-    self, AsyncEvent, EffectEvent, EffectResult, Event, EventType, SystemEvent,
-    SystemEventType, TimerEvent, WidgetCommandError, WidgetEvent, WindowEvent,
-    WindowEventType,
+    EffectEvent, EffectResult, Event, EventType, SystemEvent,
+    SystemEventType, WidgetEvent,
 };
 #[cfg(feature = "wire")]
 use crate::runtime::{normalize, tree_diff};
@@ -29,8 +28,6 @@ use super::bridge::Bridge;
 /// over stdin/stdout using the plushie wire protocol.
 #[cfg(feature = "wire")]
 pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
-    use std::time::Duration;
-
     // Build settings from the app.
     let settings = build_settings::<A>();
 
@@ -52,8 +49,9 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
     // First render: full snapshot.
     let view = A::view(&model);
-    let (mut current_tree, _) = normalize::normalize(&serde_json::to_value(&view).unwrap());
-    bridge.send_snapshot(&current_tree)?;
+    let (normalized, _) = normalize::normalize(&view);
+    let mut current_tree = normalized;
+    bridge.send_snapshot(&serde_json::to_value(&current_tree).unwrap())?;
 
     // Initial subscription sync.
     let new_subs = A::subscribe(&model);
@@ -80,12 +78,12 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
             // Re-render and diff.
             let view = A::view(&model);
-            let (new_tree, warnings) = normalize::normalize(&serde_json::to_value(&view).unwrap());
+            let (new_tree, warnings) = normalize::normalize(&view);
             for warning in &warnings {
                 log::warn!("view normalization: {warning}");
             }
 
-            let patches = tree_diff::diff(&current_tree, &new_tree);
+            let patches = tree_diff::diff_tree(&current_tree, &new_tree);
             if !patches.is_empty() {
                 let ops: Vec<Value> = patches
                     .iter()
@@ -266,7 +264,7 @@ fn execute_wire_renderer_op(bridge: &mut Bridge, op: &plushie_core::ops::Rendere
             bridge.send_effect(tag, kind, &payload)
         }
         RendererOp::Subscribe { kind, tag, max_rate, window_id } => {
-            bridge.send_subscribe(&kind, &tag, max_rate, window_id.as_deref())
+            bridge.send_subscribe(&kind, &tag, *max_rate, window_id.as_deref())
         }
         RendererOp::Unsubscribe { kind, tag } => {
             bridge.send_unsubscribe(&kind, &tag)

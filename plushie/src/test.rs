@@ -15,6 +15,7 @@
 //! assert_eq!(session.model().count, 2);
 //! ```
 
+use plushie_core::protocol::TreeNode;
 use serde_json::Value;
 
 use crate::event::{Event, EventType, WidgetEvent};
@@ -33,7 +34,7 @@ use crate::App;
 /// before events reach the app's `update`.
 pub struct TestSession<A: App> {
     model: A::Model,
-    tree: Value,
+    tree: TreeNode,
     widget_store: WidgetStateStore,
 }
 
@@ -43,7 +44,7 @@ impl<A: App> TestSession<A> {
         let (model, _cmd) = A::init();
         let mut widget_store = WidgetStateStore::new();
         let view = A::view(&model);
-        let expanded = widget_store.expand_widgets(&serde_json::to_value(&view).unwrap());
+        let expanded = widget_store.expand_tree(&view);
         let (tree, _) = normalize::normalize(&expanded);
         Self { model, tree, widget_store }
     }
@@ -144,7 +145,7 @@ impl<A: App> TestSession<A> {
 
         // Re-render and expand widgets.
         let view = A::view(&self.model);
-        let expanded = self.widget_store.expand_widgets(&serde_json::to_value(&view).unwrap());
+        let expanded = self.widget_store.expand_tree(&view);
         let (tree, _) = normalize::normalize(&expanded);
         self.tree = tree;
     }
@@ -154,28 +155,28 @@ impl<A: App> TestSession<A> {
     // -----------------------------------------------------------------------
 
     /// Find a node in the view tree by ID.
-    pub fn find(&self, id: &str) -> Option<&Value> {
+    pub fn find(&self, id: &str) -> Option<&TreeNode> {
         find_node(&self.tree, id)
     }
 
     /// Get the text content of a widget by ID.
     pub fn text_content(&self, id: &str) -> Option<String> {
         let node = self.find(id)?;
-        node["props"]["content"]
+        node.props["content"]
             .as_str()
-            .or_else(|| node["props"]["label"].as_str())
+            .or_else(|| node.props["label"].as_str())
             .map(|s| s.to_string())
     }
 
     /// Get a prop value from a widget by ID and prop name.
     pub fn prop(&self, id: &str, key: &str) -> Option<&Value> {
         let node = self.find(id)?;
-        let val = &node["props"][key];
+        let val = &node.props[key];
         if val.is_null() { None } else { Some(val) }
     }
 
-    /// Get the current normalized view tree as JSON.
-    pub fn tree(&self) -> &Value {
+    /// Get the current normalized view tree.
+    pub fn tree(&self) -> &TreeNode {
         &self.tree
     }
 
@@ -235,17 +236,14 @@ fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
     })
 }
 
-fn find_node<'a>(node: &'a Value, target_id: &str) -> Option<&'a Value> {
-    let id = node["id"].as_str().unwrap_or("");
-    let local_id = id.rsplit_once('/').map(|(_, l)| l).unwrap_or(id);
-    if local_id == target_id || id == target_id {
+fn find_node<'a>(node: &'a TreeNode, target_id: &str) -> Option<&'a TreeNode> {
+    let local_id = node.id.rsplit_once('/').map(|(_, l)| l).unwrap_or(&node.id);
+    if local_id == target_id || node.id == target_id {
         return Some(node);
     }
-    if let Some(children) = node["children"].as_array() {
-        for child in children {
-            if let Some(found) = find_node(child, target_id) {
-                return Some(found);
-            }
+    for child in &node.children {
+        if let Some(found) = find_node(child, target_id) {
+            return Some(found);
         }
     }
     None

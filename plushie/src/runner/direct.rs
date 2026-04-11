@@ -226,22 +226,15 @@ impl<A: App> DirectApp<A> {
 
     fn refresh_view(&mut self) {
         let view = A::view(&self.model);
-        let expanded = self.widget_store.expand_widgets(&serde_json::to_value(&view).unwrap());
+        let expanded = self.widget_store.expand_tree(&view);
         let (normalized, warnings) = normalize::normalize(&expanded);
         for warning in &warnings {
             log::warn!("view normalization: {warning}");
         }
 
-        match serde_json::from_value::<TreeNode>(normalized) {
-            Ok(tree) => {
-                self.renderer.registry
-                    .prepare_walk(&tree, &mut self.renderer.core.caches, &self.renderer.theme);
-                self.current_tree = Some(tree);
-            }
-            Err(e) => {
-                log::error!("failed to convert View to TreeNode: {e}");
-            }
-        }
+        self.renderer.registry
+            .prepare_walk(&normalized, &mut self.renderer.core.caches, &self.renderer.theme);
+        self.current_tree = Some(normalized);
     }
 
     fn execute_command(&mut self, cmd: Command) -> Task<Message> {

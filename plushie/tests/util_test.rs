@@ -401,3 +401,50 @@ fn default_page_size_is_25() {
     assert_eq!(result.entries.len(), 25);
     assert_eq!(result.page_size, 25);
 }
+
+#[test]
+fn search_filters_by_substring() {
+    let items = vec!["Alice Smith", "Bob Jones", "Alice Jones"];
+    let result = Query::new(&items)
+        .search("alice", |item| vec![item])
+        .page_size(100)
+        .run();
+    assert_eq!(result.entries, vec!["Alice Smith", "Alice Jones"]);
+}
+
+#[test]
+fn search_is_case_insensitive() {
+    let items = vec!["HELLO", "world", "Hello World"];
+    let result = Query::new(&items)
+        .search("hello", |item| vec![item])
+        .page_size(100)
+        .run();
+    assert_eq!(result.entries, vec!["HELLO", "Hello World"]);
+}
+
+#[test]
+fn sort_by_multiple_fields() {
+    use plushie::util::SortDir;
+    let items = vec![(2, "b"), (1, "a"), (2, "a"), (1, "b")];
+    let result = Query::new(&items)
+        .sort_by(vec![
+            (SortDir::Asc, Box::new(|a: &(i32, &str), b: &(i32, &str)| a.0.cmp(&b.0))),
+            (SortDir::Desc, Box::new(|a: &(i32, &str), b: &(i32, &str)| a.1.cmp(&b.1))),
+        ])
+        .page_size(100)
+        .run();
+    // Primary: asc by first element. Secondary: desc by second.
+    assert_eq!(result.entries, vec![(1, "b"), (1, "a"), (2, "b"), (2, "a")]);
+}
+
+#[test]
+fn group_partitions_results() {
+    let items = vec!["apple", "avocado", "banana", "blueberry"];
+    let result = Query::new(&items)
+        .group(|item| item.chars().next().unwrap().to_string())
+        .page_size(100)
+        .run();
+    let groups = result.groups.unwrap();
+    assert_eq!(groups["a"].len(), 2);
+    assert_eq!(groups["b"].len(), 2);
+}

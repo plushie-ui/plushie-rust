@@ -1,10 +1,19 @@
 #![allow(clippy::type_complexity)] // Query closures are inherently complex types
 
-//! Composable query pipeline: filter, sort, paginate.
+//! Composable query pipeline: filter, search, sort, paginate, group.
 //!
 //! Build a query with chained methods, then call `run()` to
-//! produce a `QueryResult` with the matching entries and
-//! pagination metadata.
+//! produce a `QueryResult` with the matching entries,
+//! pagination metadata, and optional grouping.
+//!
+//! Pipeline order: filter -> search -> sort -> paginate -> group.
+
+/// Sort direction for multi-field sorting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortDir {
+    Asc,
+    Desc,
+}
 
 /// The result of running a query: a page of entries with metadata.
 #[derive(Debug, Clone)]
@@ -17,25 +26,33 @@ pub struct QueryResult<T> {
     pub page: usize,
     /// The page size used.
     pub page_size: usize,
+    /// Grouped entries (if `group` was called).
+    pub groups: Option<std::collections::HashMap<String, Vec<T>>>,
 }
 
 /// A composable query over a slice of records.
 ///
-/// Chain `filter`, `sort`, `page`, and `page_size` in any order,
-/// then call `run` to produce a `QueryResult`.
+/// Chain `filter`, `search`, `sort`/`sort_by`, `page`, `page_size`,
+/// and `group` in any order, then call `run`.
 ///
 /// ```ignore
 /// let result = Query::new(&items)
 ///     .filter(|item| item.active)
-///     .sort(|a, b| a.name.cmp(&b.name))
+///     .search("alice", |item| vec![&item.name, &item.email])
+///     .sort_by(vec![
+///         (SortDir::Asc, Box::new(|a, b| a.name.cmp(&b.name))),
+///     ])
 ///     .page(0)
 ///     .page_size(10)
+///     .group(|item| item.category.clone())
 ///     .run();
 /// ```
 pub struct Query<'a, T> {
     records: &'a [T],
     filter: Option<Box<dyn Fn(&T) -> bool + 'a>>,
+    search: Option<Box<dyn Fn(&T) -> bool + 'a>>,
     sort: Option<Box<dyn Fn(&T, &T) -> std::cmp::Ordering + 'a>>,
+    group: Option<Box<dyn Fn(&T) -> String + 'a>>,
     page: usize,
     page_size: usize,
 }
@@ -47,7 +64,9 @@ impl<'a, T: Clone> Query<'a, T> {
         Self {
             records,
             filter: None,
+            search: None,
             sort: None,
+            group: None,
             page: 0,
             page_size: 25,
         }
@@ -59,9 +78,70 @@ impl<'a, T: Clone> Query<'a, T> {
         self
     }
 
+    /// Case-insensitive substring search across fields.
+    ///
+    /// `fields_fn` extracts searchable text from a record. The query
+    /// string is matched case-insensitively against each returned field.
+    ///
+    /// ```ignore
+    /// query.search("alice", |item| vec![&item.name, &item.email])
+    /// ```
+    pub fn search(
+        mut self,
+        query: &'a str,
+        fields_fn: impl Fn(&T) -> Vec<&str> + 'a,
+    ) -> Self {
+        let q = query.to_lowercase();
+        self.search = Some(Box::new(move |record: &T| {
+            fields_fn(record)
+                .iter()
+                .any(|field| field.to_lowercase().contains(&q))
+        }));
+        self
+    }
+
     /// Sort the matching records by the given comparator.
     pub fn sort(mut self, f: impl Fn(&T, &T) -> std::cmp::Ordering + 'a) -> Self {
         self.sort = Some(Box::new(f));
+        self
+    }
+
+    /// Sort by multiple criteria with direction.
+    ///
+    /// Each spec is a `(SortDir, comparator)` pair. Records are compared
+    /// by the first spec; ties are broken by subsequent specs.
+    ///
+    /// ```ignore
+    /// query.sort_by(vec![
+    ///     (SortDir::Asc, Box::new(|a, b| a.name.cmp(&b.name))),
+    ///     (SortDir::Desc, Box::new(|a, b| a.age.cmp(&b.age))),
+    /// ])
+    /// ```
+    pub fn sort_by(
+        mut self,
+        specs: Vec<(SortDir, Box<dyn Fn(&T, &T) -> std::cmp::Ordering + 'a>)>,
+    ) -> Self {
+        self.sort = Some(Box::new(move |a: &T, b: &T| {
+            for (dir, cmp_fn) in &specs {
+                let cmp = cmp_fn(a, b);
+                if cmp != std::cmp::Ordering::Equal {
+                    return match dir {
+                        SortDir::Asc => cmp,
+                        SortDir::Desc => cmp.reverse(),
+                    };
+                }
+            }
+            std::cmp::Ordering::Equal
+        }));
+        self
+    }
+
+    /// Group paginated results by a key extracted from each record.
+    ///
+    /// The `key_fn` returns a string group key for each record.
+    /// The result's `groups` field will contain a map of key to entries.
+    pub fn group(mut self, key_fn: impl Fn(&T) -> String + 'a) -> Self {
+        self.group = Some(Box::new(key_fn));
         self
     }
 
@@ -77,30 +157,49 @@ impl<'a, T: Clone> Query<'a, T> {
         self
     }
 
-    /// Execute the query: filter, sort, paginate, return results.
+    /// Execute the query: filter, search, sort, paginate, group.
     pub fn run(self) -> QueryResult<T> {
-        let mut filtered: Vec<T> = match &self.filter {
+        // Filter
+        let mut results: Vec<T> = match &self.filter {
             Some(f) => self.records.iter().filter(|r| f(r)).cloned().collect(),
             None => self.records.to_vec(),
         };
 
-        if let Some(sort_fn) = &self.sort {
-            filtered.sort_by(|a, b| sort_fn(a, b));
+        // Search (applied after filter)
+        if let Some(search_fn) = &self.search {
+            results.retain(|r| search_fn(r));
         }
 
-        let total = filtered.len();
+        // Sort
+        if let Some(sort_fn) = &self.sort {
+            results.sort_by(|a, b| sort_fn(a, b));
+        }
+
+        // Paginate
+        let total = results.len();
         let start = self.page * self.page_size;
         let entries = if start < total {
-            filtered[start..total.min(start + self.page_size)].to_vec()
+            results[start..total.min(start + self.page_size)].to_vec()
         } else {
             Vec::new()
         };
+
+        // Group (applied to the paginated entries)
+        let groups = self.group.map(|key_fn| {
+            let mut map: std::collections::HashMap<String, Vec<T>> =
+                std::collections::HashMap::new();
+            for entry in &entries {
+                map.entry(key_fn(entry)).or_default().push(entry.clone());
+            }
+            map
+        });
 
         QueryResult {
             entries,
             total,
             page: self.page,
             page_size: self.page_size,
+            groups,
         }
     }
 }

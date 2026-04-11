@@ -216,64 +216,8 @@ fn execute_wire_command(bridge: &mut Bridge, cmd: &Command) -> std::io::Result<(
                 execute_wire_command(bridge, c)?;
             }
         }
-        Command::Focus(id) => {
-            bridge.send_widget_op("focus", &serde_json::json!({"target": id}))?;
-        }
-        Command::FocusNext => {
-            bridge.send_widget_op("focus_next", &Value::Object(Default::default()))?;
-        }
-        Command::FocusPrevious => {
-            bridge.send_widget_op("focus_previous", &Value::Object(Default::default()))?;
-        }
-        Command::ScrollTo { target, x, y } => {
-            bridge.send_widget_op("scroll_to", &serde_json::json!({
-                "target": target, "offset_x": x, "offset_y": y
-            }))?;
-        }
-        Command::ScrollBy { target, x, y } => {
-            bridge.send_widget_op("scroll_by", &serde_json::json!({
-                "target": target, "offset_x": x, "offset_y": y
-            }))?;
-        }
-        Command::SnapTo { target, x, y } => {
-            bridge.send_widget_op("snap_to", &serde_json::json!({
-                "target": target, "x": x, "y": y
-            }))?;
-        }
-        Command::SnapToEnd(target) => {
-            bridge.send_widget_op("snap_to_end", &serde_json::json!({"target": target}))?;
-        }
-        Command::Window(op) => {
-            execute_wire_window_op(bridge, op)?;
-        }
-        Command::WidgetCommand { node_id, op, payload } => {
-            bridge.send_widget_command(node_id, op, payload)?;
-        }
-        Command::Announce(text) => {
-            bridge.send_widget_op("announce", &serde_json::json!({"text": text}))?;
-        }
-        Command::Effect { tag, request } => {
-            let (kind, payload) = crate::command::effect_request_to_wire(request);
-            bridge.send_effect(tag, kind, &payload)?;
-        }
-        Command::SelectAll(target) => {
-            bridge.send_widget_op("select_all", &serde_json::json!({"target": target}))?;
-        }
-        Command::MoveCursorToFront(target) => {
-            bridge.send_widget_op("move_cursor_to_front", &serde_json::json!({"target": target}))?;
-        }
-        Command::MoveCursorToEnd(target) => {
-            bridge.send_widget_op("move_cursor_to_end", &serde_json::json!({"target": target}))?;
-        }
-        Command::MoveCursorTo { target, position } => {
-            bridge.send_widget_op("move_cursor_to", &serde_json::json!({
-                "target": target, "position": position
-            }))?;
-        }
-        Command::SelectRange { target, start, end } => {
-            bridge.send_widget_op("select_range", &serde_json::json!({
-                "target": target, "start": start, "end": end
-            }))?;
+        Command::Renderer(op) => {
+            execute_wire_renderer_op(bridge, op)?;
         }
         _ => {
             log::debug!("unhandled wire command: {cmd:?}");
@@ -282,10 +226,41 @@ fn execute_wire_command(bridge: &mut Bridge, cmd: &Command) -> std::io::Result<(
     Ok(())
 }
 
+/// Serialize a RendererOp to wire messages and send via the bridge.
+#[cfg(feature = "wire")]
+fn execute_wire_renderer_op(bridge: &mut Bridge, op: &plushie_core::ops::RendererOp) -> std::io::Result<()> {
+    use plushie_core::ops::RendererOp;
+    match op {
+        RendererOp::Focus(id) => bridge.send_widget_op("focus", &serde_json::json!({"target": id})),
+        RendererOp::FocusNext => bridge.send_widget_op("focus_next", &Value::Object(Default::default())),
+        RendererOp::FocusPrevious => bridge.send_widget_op("focus_previous", &Value::Object(Default::default())),
+        RendererOp::SelectAll(target) => bridge.send_widget_op("select_all", &serde_json::json!({"target": target})),
+        RendererOp::MoveCursorToFront(target) => bridge.send_widget_op("move_cursor_to_front", &serde_json::json!({"target": target})),
+        RendererOp::MoveCursorToEnd(target) => bridge.send_widget_op("move_cursor_to_end", &serde_json::json!({"target": target})),
+        RendererOp::MoveCursorTo { target, position } => bridge.send_widget_op("move_cursor_to", &serde_json::json!({"target": target, "position": position})),
+        RendererOp::SelectRange { target, start, end } => bridge.send_widget_op("select_range", &serde_json::json!({"target": target, "start": start, "end": end})),
+        RendererOp::ScrollTo { target, x, y } => bridge.send_widget_op("scroll_to", &serde_json::json!({"target": target, "offset_x": x, "offset_y": y})),
+        RendererOp::ScrollBy { target, x, y } => bridge.send_widget_op("scroll_by", &serde_json::json!({"target": target, "offset_x": x, "offset_y": y})),
+        RendererOp::SnapTo { target, x, y } => bridge.send_widget_op("snap_to", &serde_json::json!({"target": target, "x": x, "y": y})),
+        RendererOp::SnapToEnd(target) => bridge.send_widget_op("snap_to_end", &serde_json::json!({"target": target})),
+        RendererOp::Window(op) => execute_wire_window_op(bridge, op),
+        RendererOp::WidgetCommand { node_id, op, payload } => bridge.send_widget_command(node_id, op, payload),
+        RendererOp::Announce(text) => bridge.send_widget_op("announce", &serde_json::json!({"text": text})),
+        RendererOp::Effect { tag, request } => {
+            let (kind, payload) = plushie_core::ops::effect_request_to_wire(request);
+            bridge.send_effect(tag, kind, &payload)
+        }
+        _ => {
+            log::debug!("unhandled wire renderer op: {op:?}");
+            Ok(())
+        }
+    }
+}
+
 /// Execute a window command via the bridge.
 #[cfg(feature = "wire")]
-fn execute_wire_window_op(bridge: &mut Bridge, op: &crate::command::WindowOp) -> std::io::Result<()> {
-    use crate::command::WindowOp;
+fn execute_wire_window_op(bridge: &mut Bridge, op: &plushie_core::ops::WindowOp) -> std::io::Result<()> {
+    use plushie_core::ops::WindowOp;
     match op {
         WindowOp::Close(id) => {
             bridge.send_widget_op("close_window", &serde_json::json!({"window_id": id}))?;

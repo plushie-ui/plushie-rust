@@ -20,6 +20,8 @@ use plushie_widget_sdk::render_ctx::RenderCtx;
 use plushie_widget_sdk::shared_state::SharedState;
 use plushie_widget_sdk::widget::widget_set::iced_widget_set;
 
+use plushie_core::ops::RendererOp;
+
 use crate::App;
 use crate::command::Command;
 use crate::event::{Event, EventType, WidgetEvent};
@@ -206,53 +208,7 @@ impl<A: App> DirectApp<A> {
                     .collect();
                 Task::batch(tasks)
             }
-            Command::Focus(id) => {
-                plushie_widget_sdk::iced::widget::operation::focus::<Message>(
-                    plushie_widget_sdk::iced::widget::Id::from(id),
-                )
-            }
-            Command::FocusNext => plushie_widget_sdk::iced::widget::operation::focus_next(),
-            Command::FocusPrevious => plushie_widget_sdk::iced::widget::operation::focus_previous(),
-
-            // Text operations
-            Command::SelectAll(id) => plushie_widget_sdk::iced::widget::operation::select_all(
-                plushie_widget_sdk::iced::widget::Id::from(id)),
-            Command::MoveCursorToFront(id) => plushie_widget_sdk::iced::widget::operation::move_cursor_to_front(
-                plushie_widget_sdk::iced::widget::Id::from(id)),
-            Command::MoveCursorToEnd(id) => plushie_widget_sdk::iced::widget::operation::move_cursor_to_end(
-                plushie_widget_sdk::iced::widget::Id::from(id)),
-            Command::MoveCursorTo { target, position } => plushie_widget_sdk::iced::widget::operation::move_cursor_to(
-                plushie_widget_sdk::iced::widget::Id::from(target), position),
-            Command::SelectRange { target, start, end } => plushie_widget_sdk::iced::widget::operation::select_range(
-                plushie_widget_sdk::iced::widget::Id::from(target), start, end),
-
-            // Scroll
-            Command::ScrollTo { target, x, y } => plushie_widget_sdk::iced::widget::operation::scroll_to(
-                plushie_widget_sdk::iced::widget::Id::from(target),
-                plushie_widget_sdk::iced::widget::operation::AbsoluteOffset { x, y }),
-            Command::ScrollBy { target, x, y } => plushie_widget_sdk::iced::widget::operation::scroll_by(
-                plushie_widget_sdk::iced::widget::Id::from(target),
-                plushie_widget_sdk::iced::widget::operation::AbsoluteOffset { x, y }),
-            Command::SnapTo { target, x, y } => plushie_widget_sdk::iced::widget::operation::snap_to(
-                plushie_widget_sdk::iced::widget::Id::from(target),
-                plushie_widget_sdk::iced::widget::operation::RelativeOffset { x: Some(x), y: Some(y) }),
-            Command::SnapToEnd(id) => plushie_widget_sdk::iced::widget::operation::snap_to_end(
-                plushie_widget_sdk::iced::widget::Id::from(id)),
-
-            // Accessibility
-            Command::Announce(text) => plushie_widget_sdk::iced::announce(text),
-
-            Command::Window(op) => self.execute_window_op(op),
-
-            Command::Effect { tag, request } => {
-                let (kind, payload) = crate::command::effect_request_to_wire(&request);
-                if super::effects::is_async_effect(kind) {
-                    super::effects::handle_effect_async(tag, kind.to_string(), payload)
-                } else {
-                    super::effects::handle_effect(tag, kind, &payload)
-                }
-            }
-
+            Command::Renderer(op) => self.execute_renderer_op(op),
             _ => {
                 log::debug!("unhandled command in direct runner: {cmd:?}");
                 Task::none()
@@ -260,8 +216,45 @@ impl<A: App> DirectApp<A> {
         }
     }
 
-    fn execute_window_op(&mut self, op: crate::command::WindowOp) -> Task<Message> {
-        use crate::command::WindowOp;
+    fn execute_renderer_op(&mut self, op: RendererOp) -> Task<Message> {
+        use plushie_widget_sdk::iced::widget::operation;
+        use plushie_widget_sdk::iced::widget::Id;
+
+        match op {
+            RendererOp::Focus(id) => operation::focus::<Message>(Id::from(id)),
+            RendererOp::FocusNext => operation::focus_next(),
+            RendererOp::FocusPrevious => operation::focus_previous(),
+            RendererOp::SelectAll(id) => operation::select_all(Id::from(id)),
+            RendererOp::MoveCursorToFront(id) => operation::move_cursor_to_front(Id::from(id)),
+            RendererOp::MoveCursorToEnd(id) => operation::move_cursor_to_end(Id::from(id)),
+            RendererOp::MoveCursorTo { target, position } => operation::move_cursor_to(Id::from(target), position),
+            RendererOp::SelectRange { target, start, end } => operation::select_range(Id::from(target), start, end),
+            RendererOp::ScrollTo { target, x, y } => operation::scroll_to(
+                Id::from(target), operation::AbsoluteOffset { x, y }),
+            RendererOp::ScrollBy { target, x, y } => operation::scroll_by(
+                Id::from(target), operation::AbsoluteOffset { x, y }),
+            RendererOp::SnapTo { target, x, y } => operation::snap_to(
+                Id::from(target), operation::RelativeOffset { x: Some(x), y: Some(y) }),
+            RendererOp::SnapToEnd(id) => operation::snap_to_end(Id::from(id)),
+            RendererOp::Announce(text) => plushie_widget_sdk::iced::announce(text),
+            RendererOp::Window(op) => self.execute_window_op(op),
+            RendererOp::Effect { tag, request } => {
+                let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
+                if super::effects::is_async_effect(kind) {
+                    super::effects::handle_effect_async(tag, kind.to_string(), payload)
+                } else {
+                    super::effects::handle_effect(tag, kind, &payload)
+                }
+            }
+            _ => {
+                log::debug!("unhandled renderer op in direct runner: {op:?}");
+                Task::none()
+            }
+        }
+    }
+
+    fn execute_window_op(&mut self, op: plushie_core::ops::WindowOp) -> Task<Message> {
+        use plushie_core::ops::WindowOp;
         match op {
             WindowOp::Close(_id) => {
                 plushie_widget_sdk::iced::window::oldest().and_then(plushie_widget_sdk::iced::window::close)

@@ -5,4 +5,5 @@
 //! for wire-mode apps, FFI bindings, and tooling that doesn't need
 //! the full rendering stack.
 
+pub mod ops;
 pub mod protocol;

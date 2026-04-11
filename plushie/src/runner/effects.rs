@@ -13,23 +13,32 @@ use plushie_widget_sdk::message::Message;
 #[cfg(feature = "direct")]
 use plushie_widget_sdk::iced::Task;
 
-/// Returns true for effect kinds that run asynchronously (file dialogs).
+/// Handle a typed EffectRequest. Dispatches to sync or async handler.
 #[cfg(feature = "direct")]
-pub(crate) fn is_async_effect(kind: &str) -> bool {
-    matches!(
-        kind,
-        "file_open"
-            | "file_open_multiple"
-            | "file_save"
-            | "directory_select"
-            | "directory_select_multiple"
-    )
+pub(crate) fn handle_effect_request(
+    tag: String,
+    request: plushie_core::ops::EffectRequest,
+) -> Task<Message> {
+    use plushie_core::ops::EffectRequest;
+    let is_async = matches!(&request,
+        EffectRequest::FileOpen(_)
+        | EffectRequest::FileOpenMultiple(_)
+        | EffectRequest::FileSave(_)
+        | EffectRequest::DirectorySelect(_)
+        | EffectRequest::DirectorySelectMultiple(_)
+    );
+    let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
+    if is_async {
+        handle_effect_async(tag, kind.to_string(), payload)
+    } else {
+        handle_effect(tag, kind, &payload)
+    }
 }
 
 /// Handle an effect synchronously. Returns an iced Task that delivers
 /// the result as an `EffectResult` message.
 #[cfg(feature = "direct")]
-pub(crate) fn handle_effect(tag: String, kind: &str, payload: &Value) -> Task<Message> {
+fn handle_effect(tag: String, kind: &str, payload: &Value) -> Task<Message> {
     let (status, result) = dispatch_sync(kind, payload);
     Task::done(Message::EffectResult { tag, status, result })
 }
@@ -37,7 +46,7 @@ pub(crate) fn handle_effect(tag: String, kind: &str, payload: &Value) -> Task<Me
 /// Spawn an async effect (file dialogs). Returns an iced Task that
 /// completes when the user closes the dialog.
 #[cfg(feature = "direct")]
-pub(crate) fn handle_effect_async(
+fn handle_effect_async(
     tag: String,
     kind: String,
     payload: Value,

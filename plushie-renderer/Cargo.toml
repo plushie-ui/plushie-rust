@@ -23,6 +23,7 @@ name = "plushie-renderer"
 path = "src/main.rs"
 
 [dependencies]
+plushie-core = { version = "0.6.1", path = "../plushie-core" }
 plushie-widget-sdk = { version = "0.6.1", path = "../plushie-widget-sdk" }
 plushie-renderer-lib = { version = "0.6.1", path = "../plushie-renderer-lib" }
 env_logger = "0.11"

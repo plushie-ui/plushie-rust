@@ -75,14 +75,9 @@ impl App {
 
             // -- Effects --
             RendererOp::Effect { tag, request } => {
-                let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
-                if self.effect_handler.is_async(kind) {
-                    self.effect_handler.spawn_async(
-                        tag, kind.to_string(), payload,
-                    )
-                } else if let Some(response) = self.effect_handler.handle_sync(
-                    &tag, kind, &payload,
-                ) {
+                if self.effect_handler.is_async(&request) {
+                    self.effect_handler.handle_async(tag, request)
+                } else if let Some(response) = self.effect_handler.handle_sync(&tag, &request) {
                     if let Err(e) = crate::emitters::emit_effect_response(response) {
                         log::error!("effect response write error: {e}");
                         return iced::exit();

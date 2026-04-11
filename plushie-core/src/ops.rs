@@ -394,3 +394,76 @@ fn file_dialog_opts_to_value(opts: &FileDialogOpts) -> Value {
     if let Some(ref name) = opts.default_name { payload["default_name"] = json!(name); }
     payload
 }
+
+/// Convert wire format `(kind, payload)` to an [`EffectRequest`].
+///
+/// Returns `None` for unrecognized kinds.
+pub fn effect_request_from_wire(kind: &str, payload: &Value) -> Option<EffectRequest> {
+    match kind {
+        "file_open" => Some(EffectRequest::FileOpen(file_dialog_opts_from_value(payload))),
+        "file_open_multiple" => Some(EffectRequest::FileOpenMultiple(file_dialog_opts_from_value(payload))),
+        "file_save" => Some(EffectRequest::FileSave(file_dialog_opts_from_value(payload))),
+        "directory_select" => Some(EffectRequest::DirectorySelect(file_dialog_opts_from_value(payload))),
+        "directory_select_multiple" => Some(EffectRequest::DirectorySelectMultiple(file_dialog_opts_from_value(payload))),
+        "clipboard_read" => Some(EffectRequest::ClipboardRead),
+        "clipboard_write" => {
+            let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or_default();
+            Some(EffectRequest::ClipboardWrite(text.to_string()))
+        }
+        "clipboard_read_html" => Some(EffectRequest::ClipboardReadHtml),
+        "clipboard_write_html" => {
+            let html = payload.get("html").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let alt_text = payload.get("alt_text").and_then(|v| v.as_str()).map(|s| s.to_string());
+            Some(EffectRequest::ClipboardWriteHtml { html, alt_text })
+        }
+        "clipboard_clear" => Some(EffectRequest::ClipboardClear),
+        "clipboard_read_primary" => Some(EffectRequest::ClipboardReadPrimary),
+        "clipboard_write_primary" => {
+            let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or_default();
+            Some(EffectRequest::ClipboardWritePrimary(text.to_string()))
+        }
+        "notification" => {
+            let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let body = payload.get("body").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let mut opts = NotificationOpts::default();
+            if let Some(icon) = payload.get("icon").and_then(|v| v.as_str()) {
+                opts.icon = Some(icon.to_string());
+            }
+            if let Some(ms) = payload.get("timeout").and_then(|v| v.as_u64()) {
+                opts.timeout = Some(Duration::from_millis(ms));
+            }
+            if let Some(urgency) = payload.get("urgency").and_then(|v| v.as_str()) {
+                opts.urgency = Some(urgency.to_string());
+            }
+            if let Some(sound) = payload.get("sound").and_then(|v| v.as_str()) {
+                opts.sound = Some(sound.to_string());
+            }
+            Some(EffectRequest::Notification { title, body, opts })
+        }
+        _ => None,
+    }
+}
+
+fn file_dialog_opts_from_value(payload: &Value) -> FileDialogOpts {
+    let mut filters = Vec::new();
+    if let Some(filter_arr) = payload.get("filters").and_then(|v| v.as_array()) {
+        for filter in filter_arr {
+            if let Some(pair) = filter.as_array()
+                && pair.len() >= 2
+                && let (Some(name), Some(ext)) = (pair[0].as_str(), pair[1].as_str())
+            {
+                let extensions: Vec<String> = ext
+                    .split(';')
+                    .map(|e| e.trim().trim_start_matches("*.").to_string())
+                    .collect();
+                filters.push((name.to_string(), extensions));
+            }
+        }
+    }
+    FileDialogOpts {
+        title: payload.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        directory: payload.get("directory").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        default_name: payload.get("default_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        filters,
+    }
+}

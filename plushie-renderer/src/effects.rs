@@ -517,18 +517,19 @@ impl plushie_renderer_lib::EffectHandler for NativeEffectHandler {
     fn handle_sync(
         &self,
         id: &str,
-        kind: &str,
-        payload: &serde_json::Value,
+        request: &plushie_core::ops::EffectRequest,
     ) -> Option<plushie_widget_sdk::protocol::EffectResponse> {
-        Some(handle_effect(id.to_string(), kind, payload))
+        let (kind, payload) = plushie_core::ops::effect_request_to_wire(request);
+        Some(handle_effect(id.to_string(), kind, &payload))
     }
 
-    fn spawn_async(
+    fn handle_async(
         &self,
         id: String,
-        kind: String,
-        payload: serde_json::Value,
+        request: plushie_core::ops::EffectRequest,
     ) -> iced::Task<plushie_widget_sdk::message::Message> {
+        let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
+        let kind = kind.to_string();
         iced::Task::perform(
             async move { handle_async_effect(id, &kind, &payload).await },
             |response| {
@@ -540,8 +541,15 @@ impl plushie_renderer_lib::EffectHandler for NativeEffectHandler {
         )
     }
 
-    fn is_async(&self, kind: &str) -> bool {
-        is_async_effect(kind)
+    fn is_async(&self, request: &plushie_core::ops::EffectRequest) -> bool {
+        use plushie_core::ops::EffectRequest;
+        matches!(request,
+            EffectRequest::FileOpen(_)
+            | EffectRequest::FileOpenMultiple(_)
+            | EffectRequest::FileSave(_)
+            | EffectRequest::DirectorySelect(_)
+            | EffectRequest::DirectorySelectMultiple(_)
+        )
     }
 }
 

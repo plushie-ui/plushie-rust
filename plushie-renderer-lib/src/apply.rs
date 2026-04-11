@@ -104,14 +104,17 @@ impl App {
                     kind,
                     payload,
                 } => {
-                    if self.effect_handler.is_async(&kind) {
-                        let task = self.effect_handler.spawn_async(request_id, kind, payload);
-                        self.pending_tasks.push(task);
-                    } else if let Some(response) =
-                        self.effect_handler
-                            .handle_sync(&request_id, &kind, &payload)
-                    {
-                        emit_effect_response(response)?;
+                    if let Some(request) = plushie_core::ops::effect_request_from_wire(&kind, &payload) {
+                        if self.effect_handler.is_async(&request) {
+                            let task = self.effect_handler.handle_async(request_id, request);
+                            self.pending_tasks.push(task);
+                        } else if let Some(response) =
+                            self.effect_handler.handle_sync(&request_id, &request)
+                        {
+                            emit_effect_response(response)?;
+                        }
+                    } else {
+                        log::warn!("unknown effect kind: {kind}");
                     }
                 }
                 CoreEffect::WidgetOp { op, payload } => {

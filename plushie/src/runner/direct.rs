@@ -239,12 +239,7 @@ impl<A: App> DirectApp<A> {
             RendererOp::Announce(text) => plushie_widget_sdk::iced::announce(text),
             RendererOp::Window(op) => self.execute_window_op(op),
             RendererOp::Effect { tag, request } => {
-                let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
-                if super::effects::is_async_effect(kind) {
-                    super::effects::handle_effect_async(tag, kind.to_string(), payload)
-                } else {
-                    super::effects::handle_effect(tag, kind, &payload)
-                }
+                super::effects::handle_effect_request(tag, request)
             }
             _ => {
                 log::debug!("unhandled renderer op in direct runner: {op:?}");

@@ -5,8 +5,8 @@
 //! added in a future iteration.
 
 use iced::Task;
-use serde_json::Value;
 
+use plushie_core::ops::EffectRequest;
 use plushie_renderer_lib::EffectHandler;
 use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::EffectResponse;
@@ -14,15 +14,15 @@ use plushie_widget_sdk::protocol::EffectResponse;
 pub struct WebEffectHandler;
 
 impl EffectHandler for WebEffectHandler {
-    fn handle_sync(&self, id: &str, _kind: &str, _payload: &Value) -> Option<EffectResponse> {
+    fn handle_sync(&self, id: &str, _request: &EffectRequest) -> Option<EffectResponse> {
         Some(EffectResponse::unsupported(id.to_string()))
     }
 
-    fn spawn_async(&self, _id: String, _kind: String, _payload: Value) -> Task<Message> {
+    fn handle_async(&self, _id: String, _request: EffectRequest) -> Task<Message> {
         Task::none()
     }
 
-    fn is_async(&self, _kind: &str) -> bool {
+    fn is_async(&self, _request: &EffectRequest) -> bool {
         false
     }
 }

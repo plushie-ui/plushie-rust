@@ -527,18 +527,10 @@ impl plushie_renderer_lib::EffectHandler for NativeEffectHandler {
         &self,
         id: String,
         request: plushie_core::ops::EffectRequest,
-    ) -> iced::Task<plushie_widget_sdk::message::Message> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = plushie_widget_sdk::protocol::EffectResponse> + Send>> {
         let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
         let kind = kind.to_string();
-        iced::Task::perform(
-            async move { handle_async_effect(id, &kind, &payload).await },
-            |response| {
-                if let Err(e) = plushie_renderer_lib::emitters::emit_effect_response(response) {
-                    log::error!("write error in async effect: {e}");
-                }
-                plushie_widget_sdk::message::Message::NoOp
-            },
-        )
+        Box::pin(async move { handle_async_effect(id, &kind, &payload).await })
     }
 
     fn is_async(&self, request: &plushie_core::ops::EffectRequest) -> bool {

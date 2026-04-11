@@ -76,7 +76,15 @@ impl App {
             // -- Effects --
             RendererOp::Effect { tag, request } => {
                 if self.effect_handler.is_async(&request) {
-                    self.effect_handler.handle_async(tag, request)
+                    let future = self.effect_handler.handle_async(tag, request);
+                    let sink = self.emitter.sink();
+                    Task::perform(future, move |response| {
+                        let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                        if let Err(e) = guard.emit_effect_response(response) {
+                            log::error!("effect response write error: {e}");
+                        }
+                        Message::NoOp
+                    })
                 } else if let Some(response) = self.effect_handler.handle_sync(&tag, &request) {
                     if let Err(e) = self.emitter.emit_effect_response(response) {
                         log::error!("effect response write error: {e}");

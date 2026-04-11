@@ -243,17 +243,6 @@ pub fn emit_hello(
     with_sink(|sink| sink.emit_hello(mode, backend, native_widgets, widget_set_names, transport))
 }
 
-// ---------------------------------------------------------------------------
-// effect response emitter
-// ---------------------------------------------------------------------------
-
-/// Emit an [`EffectResponse`](plushie_widget_sdk::protocol::EffectResponse) through the global sink.
-pub fn emit_effect_response(
-    response: plushie_widget_sdk::protocol::EffectResponse,
-) -> io::Result<()> {
-    with_sink(|sink| sink.emit_effect_response(response))
-}
-
 /// Emit a query_response message through the global sink.
 pub fn emit_query_response(kind: &str, tag: &str, data: serde_json::Value) -> io::Result<()> {
     with_sink(|sink| sink.emit_query_response(kind, tag, &data))

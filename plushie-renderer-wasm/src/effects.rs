@@ -4,11 +4,11 @@
 //! (Clipboard API) and file access (File System Access API) can be
 //! added in a future iteration.
 
-use iced::Task;
+use std::future::Future;
+use std::pin::Pin;
 
 use plushie_core::ops::EffectRequest;
 use plushie_renderer_lib::EffectHandler;
-use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::EffectResponse;
 
 pub struct WebEffectHandler;
@@ -18,8 +18,10 @@ impl EffectHandler for WebEffectHandler {
         Some(EffectResponse::unsupported(id.to_string()))
     }
 
-    fn handle_async(&self, _id: String, _request: EffectRequest) -> Task<Message> {
-        Task::none()
+    fn handle_async(
+        &self, id: String, _request: EffectRequest,
+    ) -> Pin<Box<dyn Future<Output = EffectResponse> + Send>> {
+        Box::pin(async move { EffectResponse::unsupported(id) })
     }
 
     fn is_async(&self, _request: &EffectRequest) -> bool {

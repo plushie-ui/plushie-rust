@@ -7,12 +7,6 @@
 #[cfg(feature = "direct")]
 use serde_json::{Value, json};
 
-#[cfg(feature = "direct")]
-use plushie_widget_sdk::message::Message;
-
-#[cfg(feature = "direct")]
-use plushie_widget_sdk::iced::Task;
-
 /// Effect handler for direct mode. Executes effects in-process using
 /// rfd (file dialogs), arboard (clipboard), and notify-rust (notifications).
 #[cfg(feature = "direct")]
@@ -39,24 +33,18 @@ impl plushie_renderer_lib::EffectHandler for DirectEffectHandler {
         &self,
         id: String,
         request: plushie_core::ops::EffectRequest,
-    ) -> Task<Message> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = plushie_widget_sdk::protocol::EffectResponse> + Send>> {
         use plushie_widget_sdk::protocol::EffectResponse;
         let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
         let kind = kind.to_string();
-        Task::perform(
-            async move { dispatch_async(&kind, &payload).await },
-            move |(status, result)| {
-                let response = match status.as_str() {
-                    "ok" => EffectResponse::ok(id.clone(), result),
-                    "cancelled" => EffectResponse::cancelled(id.clone()),
-                    _ => EffectResponse::error(id.clone(), status),
-                };
-                if let Err(e) = plushie_renderer_lib::emitters::emit_effect_response(response) {
-                    log::error!("effect response write error: {e}");
-                }
-                Message::NoOp
-            },
-        )
+        Box::pin(async move {
+            let (status, result) = dispatch_async(&kind, &payload).await;
+            match status.as_str() {
+                "ok" => EffectResponse::ok(id, result),
+                "cancelled" => EffectResponse::cancelled(id),
+                _ => EffectResponse::error(id, status),
+            }
+        })
     }
 
     fn is_async(&self, request: &plushie_core::ops::EffectRequest) -> bool {

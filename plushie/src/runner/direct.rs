@@ -47,7 +47,7 @@ struct DirectApp<A: App> {
 
 impl<A: App> DirectApp<A> {
     fn init() -> (Self, Task<Message>) {
-        let (model, _cmd) = A::init();
+        let (model, init_cmd) = A::init();
 
         let builder = plushie_widget_sdk::app::PlushieAppBuilder::<plushie_widget_sdk::iced::Renderer>::new()
             .widget_set(&iced_widget_set());
@@ -74,7 +74,11 @@ impl<A: App> DirectApp<A> {
 
         app.refresh_view();
 
-        (app, Task::none())
+        // Execute the initial command (e.g. focus a field, start
+        // async data loading) so apps work from the first frame.
+        let init_task = app.execute_command(init_cmd);
+
+        (app, init_task)
     }
 
     fn update(&mut self, msg: Message) -> Task<Message> {

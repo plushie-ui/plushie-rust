@@ -42,7 +42,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     log::info!("renderer hello: {}", hello.get("name").and_then(|v| v.as_str()).unwrap_or("unknown"));
 
     // Initialize the app.
-    let (mut model, _init_cmd) = A::init();
+    let (mut model, init_cmd) = A::init();
 
     // Track active subscriptions for diffing.
     let mut active_subs: Vec<crate::subscription::Subscription> = Vec::new();
@@ -52,6 +52,12 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     let (normalized, _) = normalize::normalize(&view);
     let mut current_tree = normalized;
     bridge.send_snapshot(&serde_json::to_value(&current_tree).unwrap())?;
+
+    // Execute the initial command (e.g. focus a field, start
+    // async work) so apps work from the first frame.
+    if let Err(e) = execute_wire_command(&mut bridge, &init_cmd) {
+        log::error!("initial command execution failed: {e}");
+    }
 
     // Initial subscription sync.
     let new_subs = A::subscribe(&model);

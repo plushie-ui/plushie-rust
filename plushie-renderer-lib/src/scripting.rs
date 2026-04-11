@@ -1301,17 +1301,17 @@ mod tests {
         root.children.push(make_text_node("btn1", "Click me"));
         root.children.push({
             let mut n = make_node("input1", "text_input");
-            n.props = json!({"placeholder": "Type here", "value": ""});
+            n.props = json!({"placeholder": "Type here", "value": ""}).into();
             n
         });
         root.children.push({
             let mut n = make_node("toggle1", "toggler");
-            n.props = json!({"is_toggled": false});
+            n.props = json!({"is_toggled": false}).into();
             n
         });
         root.children.push({
             let mut n = make_node("slider1", "slider");
-            n.props = json!({"min": 0.0, "max": 100.0, "value": 50.0});
+            n.props = json!({"min": 0.0, "max": 100.0, "value": 50.0}).into();
             n
         });
         core.apply(plushie_widget_sdk::protocol::IncomingMessage::Snapshot { tree: root });
@@ -1545,7 +1545,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: json!({"a11y": a11y}),
+            props: json!({"a11y": a11y}).into(),
             children: vec![],
         }
     }
@@ -1606,7 +1606,7 @@ mod tests {
     #[test]
     fn search_by_label_matches_label_prop() {
         let mut node = make_node("chk", "checkbox");
-        node.props = json!({"label": "Accept terms"});
+        node.props = json!({"label": "Accept terms"}).into();
         let result = search_tree(
             &node,
             0,
@@ -1641,7 +1641,7 @@ mod tests {
     #[test]
     fn search_focused_matches_focused_prop() {
         let mut node = make_node("inp", "text_input");
-        node.props = json!({"focused": true});
+        node.props = json!({"focused": true}).into();
         let result = search_tree(&node, 0, &is_focused, &node_to_value);
         assert!(result.is_some());
         assert_eq!(result.unwrap()["id"], "inp");
@@ -1658,7 +1658,7 @@ mod tests {
     #[test]
     fn search_focused_skips_unfocused() {
         let mut node = make_node("inp", "text_input");
-        node.props = json!({"focused": false});
+        node.props = json!({"focused": false}).into();
         assert!(search_tree(&node, 0, &is_focused, &node_to_value).is_none());
     }
 
@@ -1666,7 +1666,7 @@ mod tests {
     fn search_focused_finds_in_children() {
         let mut root = make_node("root", "column");
         let mut child = make_node("inp", "text_input");
-        child.props = json!({"focused": true});
+        child.props = json!({"focused": true}).into();
         root.children.push(child);
         let result = search_tree(&root, 0, &is_focused, &node_to_value);
         assert!(result.is_some());
@@ -1703,7 +1703,7 @@ mod tests {
     fn find_id_focused_returns_id() {
         let mut root = make_node("root", "column");
         let mut child = make_node("inp", "text_input");
-        child.props = json!({"focused": true});
+        child.props = json!({"focused": true}).into();
         root.children.push(child);
         assert_eq!(find_id_focused(&root, 0), Some("inp".to_string()));
     }

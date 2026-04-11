@@ -45,7 +45,7 @@ pub(crate) fn view_node(id: String, type_name: &str, props: Map<String, Value>, 
     View {
         id,
         type_name: type_name.to_string(),
-        props: Value::Object(props),
+        props: Value::Object(props).into(),
         children,
     }
 }

@@ -782,7 +782,7 @@ impl App {
                     .core
                     .tree
                     .find_window(win_id)
-                    .and_then(|n| parse_scale_factor(&n.props));
+                    .and_then(|n| parse_scale_factor(&n.props.to_value()));
                 let settings = self.window_settings_for(win_id);
                 let initial_decorations = settings.decorations;
                 let (iced_id, open_task) = window::open(settings);
@@ -810,7 +810,7 @@ impl App {
     /// Build window::Settings from a window node's props.
     pub fn window_settings_for(&self, window_id: &str) -> window::Settings {
         if let Some(node) = self.core.tree.find_window(window_id) {
-            parse_window_settings(&node.props)
+            parse_window_settings(&node.props.to_value())
         } else {
             window::Settings {
                 size: Size::new(800.0, 600.0),

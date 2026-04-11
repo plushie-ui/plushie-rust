@@ -130,7 +130,7 @@ impl A11yOverrides {
     ///
     /// Returns `None` if no `a11y` key exists or if the `a11y` object
     /// contains no meaningful overrides.
-    pub fn from_props(props: &Value) -> Option<Self> {
+    pub fn from_props(props: &plushie_core::protocol::Props) -> Option<Self> {
         Self::from_a11y_value(props.get("a11y")?)
     }
 

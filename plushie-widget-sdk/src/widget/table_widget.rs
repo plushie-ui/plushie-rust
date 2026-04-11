@@ -35,7 +35,7 @@ struct TableColumn {
     sortable: bool,
 }
 
-fn parse_table_columns(props: Props<'_>) -> Vec<TableColumn> {
+fn parse_table_columns(props: JsonProps<'_>) -> Vec<TableColumn> {
     props
         .and_then(|p| p.get("columns"))
         .and_then(|v| v.as_array())

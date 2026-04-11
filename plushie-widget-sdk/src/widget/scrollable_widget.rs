@@ -35,7 +35,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
         let direction = prop_str(props, "direction").unwrap_or_default();
 
         // Build scrollbar configuration from props
-        let build_scrollbar = |props: Props<'_>| -> scrollable::Scrollbar {
+        let build_scrollbar = |props: JsonProps<'_>| -> scrollable::Scrollbar {
             let mut sb = scrollable::Scrollbar::default();
             if let Some(w) = prop_f32(props, "scrollbar_width") {
                 sb = sb.width(w);

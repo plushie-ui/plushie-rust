@@ -28,7 +28,7 @@ pub struct TreeNode {
     ///
     /// [`Props::Typed`] in direct mode (SDK builders produce typed
     /// values), [`Props::Wire`] in wire mode (props arrive as JSON).
-    #[serde(default)]
+    #[serde(default = "empty_wire_props")]
     pub props: super::Props,
 
     /// Child nodes for container widgets.
@@ -51,6 +51,12 @@ impl TreeNode {
     pub fn prop_bool(&self, key: &str) -> Option<bool> {
         self.props.get_bool(key)
     }
+}
+
+/// Default for TreeNode.props during deserialization: an empty Wire
+/// object (not Typed, since it comes from JSON).
+fn empty_wire_props() -> super::Props {
+    super::Props::Wire(serde_json::Value::Object(serde_json::Map::new()))
 }
 
 /// A single patch operation applied incrementally to the retained tree.
@@ -99,7 +105,7 @@ mod tests {
         assert_eq!(node.type_name, "column");
         assert_eq!(node.children.len(), 1);
         assert_eq!(node.children[0].id, "c1");
-        assert_eq!(node.props["spacing"], 10);
+        assert_eq!(node.props.get_f64("spacing"), Some(10.0));
     }
 
     #[test]

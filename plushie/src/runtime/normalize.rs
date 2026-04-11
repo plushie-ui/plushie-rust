@@ -101,7 +101,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: json!({}),
+            props: json!({}).into(),
             children,
         }
     }

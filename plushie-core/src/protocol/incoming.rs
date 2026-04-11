@@ -245,7 +245,7 @@ mod tests {
                 assert_eq!(tree.children.len(), 1);
                 assert_eq!(tree.children[0].id, "c1");
                 assert_eq!(tree.children[0].type_name, "text");
-                assert_eq!(tree.props["spacing"], 10);
+                assert_eq!(tree.props.get_f64("spacing"), Some(10.0));
             }
             _ => panic!("expected Snapshot"),
         }

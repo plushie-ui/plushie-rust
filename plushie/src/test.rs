@@ -156,17 +156,15 @@ impl<A: App> TestSession<A> {
     /// Get the text content of a widget by ID.
     pub fn text_content(&self, id: &str) -> Option<String> {
         let node = self.find(id)?;
-        node.props["content"]
-            .as_str()
-            .or_else(|| node.props["label"].as_str())
+        node.props.get_str("content")
+            .or_else(|| node.props.get_str("label"))
             .map(|s| s.to_string())
     }
 
     /// Get a prop value from a widget by ID and prop name.
     pub fn prop(&self, id: &str, key: &str) -> Option<&Value> {
         let node = self.find(id)?;
-        let val = &node.props[key];
-        if val.is_null() { None } else { Some(val) }
+        node.props.get(key)
     }
 
     /// Get the current normalized view tree.

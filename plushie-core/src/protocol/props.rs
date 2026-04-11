@@ -307,25 +307,29 @@ impl Props {
         }
     }
 
-    /// Access the underlying Value for wire-mode props.
+    /// Access as a JSON object map (Wire variant only).
     ///
-    /// Returns None for Typed props. Used during migration; prefer
-    /// the typed accessors (get_str, get_f64, etc.) for new code.
-    pub fn as_value(&self) -> Option<&Value> {
-        match self { Self::Wire(v) => Some(v), Self::Typed(_) => None }
-    }
-
-    /// Access as a JSON object map.
-    ///
-    /// Returns the inner Map for Wire props, None for Typed.
-    /// Used during migration; prefer typed accessors for new code.
-    pub fn as_json_map(&self) -> Option<&serde_json::Map<String, Value>> {
+    /// Returns None for Typed props. Widget renderers should use
+    /// the typed accessors (get_str, get_f64, etc.) or the
+    /// prop_helpers module instead.
+    pub fn as_object(&self) -> Option<&serde_json::Map<String, Value>> {
         match self { Self::Wire(v) => v.as_object(), Self::Typed(_) => None }
     }
 
-    /// Mutable access to the JSON object map (Wire only).
-    pub fn as_json_map_mut(&mut self) -> Option<&mut serde_json::Map<String, Value>> {
+    /// Mutable access to the JSON object map (Wire variant only).
+    pub fn as_object_mut(&mut self) -> Option<&mut serde_json::Map<String, Value>> {
         match self { Self::Wire(v) => v.as_object_mut(), Self::Typed(_) => None }
+    }
+
+    /// Get a raw Value ref by key (Wire variant only).
+    ///
+    /// Returns None for Typed props. Prefer typed accessors for
+    /// new code.
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        match self {
+            Self::Wire(v) => v.get(key),
+            Self::Typed(_) => None,
+        }
     }
 
     /// Access the typed PropMap (Typed only).

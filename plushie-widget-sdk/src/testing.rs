@@ -33,7 +33,7 @@ pub fn node(id: &str, type_name: &str) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props: json!({}),
+        props: json!({}).into(),
         children: vec![],
     }
 }
@@ -43,7 +43,7 @@ pub fn node_with_props(id: &str, type_name: &str, props: Value) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props,
+        props: props.into(),
         children: vec![],
     }
 }
@@ -53,7 +53,7 @@ pub fn node_with_children(id: &str, type_name: &str, children: Vec<TreeNode>) ->
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props: json!({}),
+        props: json!({}).into(),
         children,
     }
 }
@@ -71,7 +71,7 @@ pub fn node_with_props_and_children(
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props,
+        props: props.into(),
         children,
     }
 }

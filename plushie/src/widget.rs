@@ -187,7 +187,7 @@ impl<W: Widget> WidgetView<W> {
         View {
             id: self.id,
             type_name: "__widget__".to_string(),
-            props: Value::Object(props),
+            props: Value::Object(props).into(),
             children: vec![],
         }
     }
@@ -291,7 +291,8 @@ impl WidgetStateStore {
         if node.type_name == "__widget__" {
             if let Some(expander) = self.expanders.get(&node.id) {
                 let state = self.states.get(&node.id).expect("widget state missing");
-                let expanded = expander.expand(&node.id, &node.props, state.as_ref());
+                let props_val = node.props.to_value();
+                let expanded = expander.expand(&node.id, &props_val, state.as_ref());
                 return self.expand_node(&expanded);
             }
         }

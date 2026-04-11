@@ -144,7 +144,7 @@ impl Tree {
 
                 if !target.props.is_object() {
                     log::error!(
-                        "update_props: target node '{}' props is not an object: {}",
+                        "update_props: target node '{}' props is not an object: {:?}",
                         target.id,
                         target.props
                     );

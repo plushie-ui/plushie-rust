@@ -22,7 +22,11 @@ use crate::theming::parse_hex_color;
 
 /// A borrowed reference to a JSON object's field map, or `None` when
 /// the node has no props (e.g. `Value::Null`).
-pub type Props<'a> = Option<&'a serde_json::Map<String, Value>>;
+///
+/// Widget renderers get this via `node.props.as_object()` for Wire
+/// mode props. The prop_helper functions accept this type for
+/// backward compatibility with existing widget code.
+pub type JsonProps<'a> = Option<&'a serde_json::Map<String, Value>>;
 
 /// Safely narrow an f64 to f32, clamping values outside f32's range
 /// instead of silently producing infinity.
@@ -39,7 +43,7 @@ pub fn f64_to_f32(v: f64) -> f32 {
 // ---------------------------------------------------------------------------
 
 /// Get a string prop value.
-pub fn prop_str(props: Props<'_>, key: &str) -> Option<String> {
+pub fn prop_str(props: JsonProps<'_>, key: &str) -> Option<String> {
     let val = props?.get(key)?;
     match val.as_str() {
         Some(s) => Some(s.to_owned()),
@@ -51,7 +55,7 @@ pub fn prop_str(props: Props<'_>, key: &str) -> Option<String> {
 }
 
 /// Get an f32 prop value. Accepts both JSON numbers and numeric strings.
-pub fn prop_f32(props: Props<'_>, key: &str) -> Option<f32> {
+pub fn prop_f32(props: JsonProps<'_>, key: &str) -> Option<f32> {
     let val = props?.get(key)?;
     match val {
         Value::Number(n) => match n.as_f64() {
@@ -76,7 +80,7 @@ pub fn prop_f32(props: Props<'_>, key: &str) -> Option<f32> {
 }
 
 /// Get an f64 prop value. Accepts both JSON numbers and numeric strings.
-pub fn prop_f64(props: Props<'_>, key: &str) -> Option<f64> {
+pub fn prop_f64(props: JsonProps<'_>, key: &str) -> Option<f64> {
     let val = props?.get(key)?;
     match val {
         Value::Number(n) => match n.as_f64() {
@@ -101,7 +105,7 @@ pub fn prop_f64(props: Props<'_>, key: &str) -> Option<f64> {
 }
 
 /// Get a u32 prop value. Accepts JSON numbers and numeric strings.
-pub fn prop_u32(props: Props<'_>, key: &str) -> Option<u32> {
+pub fn prop_u32(props: JsonProps<'_>, key: &str) -> Option<u32> {
     let val = props?.get(key)?;
     match val {
         Value::Number(n) => match n.as_u64().and_then(|v| u32::try_from(v).ok()) {
@@ -126,7 +130,7 @@ pub fn prop_u32(props: Props<'_>, key: &str) -> Option<u32> {
 }
 
 /// Get a u64 prop value. Accepts JSON numbers and numeric strings.
-pub fn prop_u64(props: Props<'_>, key: &str) -> Option<u64> {
+pub fn prop_u64(props: JsonProps<'_>, key: &str) -> Option<u64> {
     let val = props?.get(key)?;
     match val {
         Value::Number(n) => match n.as_u64() {
@@ -151,12 +155,12 @@ pub fn prop_u64(props: Props<'_>, key: &str) -> Option<u64> {
 }
 
 /// Get a usize prop value. Accepts JSON numbers and numeric strings.
-pub fn prop_usize(props: Props<'_>, key: &str) -> Option<usize> {
+pub fn prop_usize(props: JsonProps<'_>, key: &str) -> Option<usize> {
     prop_u64(props, key).and_then(|v| usize::try_from(v).ok())
 }
 
 /// Get an i32 prop value. Accepts both JSON numbers and numeric strings.
-pub fn prop_i32(props: Props<'_>, key: &str) -> Option<i32> {
+pub fn prop_i32(props: JsonProps<'_>, key: &str) -> Option<i32> {
     let val = props?.get(key)?;
     match val {
         Value::Number(n) => match n.as_i64().and_then(|v| i32::try_from(v).ok()) {
@@ -181,7 +185,7 @@ pub fn prop_i32(props: Props<'_>, key: &str) -> Option<i32> {
 }
 
 /// Get an i64 prop value. Accepts JSON numbers and numeric strings.
-pub fn prop_i64(props: Props<'_>, key: &str) -> Option<i64> {
+pub fn prop_i64(props: JsonProps<'_>, key: &str) -> Option<i64> {
     let val = props?.get(key)?;
     match val {
         Value::Number(n) => match n.as_i64() {
@@ -206,7 +210,7 @@ pub fn prop_i64(props: Props<'_>, key: &str) -> Option<i64> {
 }
 
 /// Get a boolean prop value.
-pub fn prop_bool(props: Props<'_>, key: &str) -> Option<bool> {
+pub fn prop_bool(props: JsonProps<'_>, key: &str) -> Option<bool> {
     let val = props?.get(key)?;
     match val.as_bool() {
         Some(b) => Some(b),
@@ -218,12 +222,12 @@ pub fn prop_bool(props: Props<'_>, key: &str) -> Option<bool> {
 }
 
 /// Get a boolean prop value with a default.
-pub fn prop_bool_default(props: Props<'_>, key: &str, default: bool) -> bool {
+pub fn prop_bool_default(props: JsonProps<'_>, key: &str, default: bool) -> bool {
     prop_bool(props, key).unwrap_or(default)
 }
 
 /// Get a Length prop value, returning `fallback` when absent or unparseable.
-pub fn prop_length(props: Props<'_>, key: &str, fallback: Length) -> Length {
+pub fn prop_length(props: JsonProps<'_>, key: &str, fallback: Length) -> Length {
     props
         .and_then(|p| p.get(key))
         .and_then(|v| match value_to_length(v) {
@@ -237,7 +241,7 @@ pub fn prop_length(props: Props<'_>, key: &str, fallback: Length) -> Length {
 }
 
 /// Parse a "range" prop as `[min, max]` into an inclusive `f32` range.
-pub fn prop_range_f32(props: Props<'_>) -> std::ops::RangeInclusive<f32> {
+pub fn prop_range_f32(props: JsonProps<'_>) -> std::ops::RangeInclusive<f32> {
     props
         .and_then(|p| p.get("range"))
         .and_then(|v| v.as_array())
@@ -254,7 +258,7 @@ pub fn prop_range_f32(props: Props<'_>) -> std::ops::RangeInclusive<f32> {
 }
 
 /// Parse a "range" prop as `[min, max]` into an inclusive `f64` range.
-pub fn prop_range_f64(props: Props<'_>) -> std::ops::RangeInclusive<f64> {
+pub fn prop_range_f64(props: JsonProps<'_>) -> std::ops::RangeInclusive<f64> {
     props
         .and_then(|p| p.get("range"))
         .and_then(|v| v.as_array())
@@ -273,7 +277,7 @@ pub fn prop_range_f64(props: Props<'_>) -> std::ops::RangeInclusive<f64> {
 /// Parse a color prop to `iced::Color`.
 ///
 /// Accepts hex strings: `"#RRGGBB"` or `"#RRGGBBAA"`.
-pub fn prop_color(props: Props<'_>, key: &str) -> Option<Color> {
+pub fn prop_color(props: JsonProps<'_>, key: &str) -> Option<Color> {
     let s = prop_str(props, key)?;
     match parse_hex_color(&s) {
         Some(c) => Some(c),
@@ -286,7 +290,7 @@ pub fn prop_color(props: Props<'_>, key: &str) -> Option<Color> {
 
 /// Get an array of f32 values from a prop.
 /// Non-numeric elements are silently dropped with a warning.
-pub fn prop_f32_array(props: Props<'_>, key: &str) -> Option<Vec<f32>> {
+pub fn prop_f32_array(props: JsonProps<'_>, key: &str) -> Option<Vec<f32>> {
     let val = props?.get(key)?;
     match val.as_array() {
         Some(arr) => {
@@ -314,7 +318,7 @@ pub fn prop_f32_array(props: Props<'_>, key: &str) -> Option<Vec<f32>> {
 }
 
 /// Parse a horizontal alignment prop.
-pub fn prop_horizontal_alignment(props: Props<'_>, key: &str) -> alignment::Horizontal {
+pub fn prop_horizontal_alignment(props: JsonProps<'_>, key: &str) -> alignment::Horizontal {
     props
         .and_then(|p| p.get(key))
         .and_then(|v| v.as_str())
@@ -323,7 +327,7 @@ pub fn prop_horizontal_alignment(props: Props<'_>, key: &str) -> alignment::Hori
 }
 
 /// Parse a vertical alignment prop.
-pub fn prop_vertical_alignment(props: Props<'_>, key: &str) -> alignment::Vertical {
+pub fn prop_vertical_alignment(props: JsonProps<'_>, key: &str) -> alignment::Vertical {
     props
         .and_then(|p| p.get(key))
         .and_then(|v| v.as_str())
@@ -332,7 +336,7 @@ pub fn prop_vertical_alignment(props: Props<'_>, key: &str) -> alignment::Vertic
 }
 
 /// Parse a content-fit prop.
-pub fn prop_content_fit(props: Props<'_>) -> Option<ContentFit> {
+pub fn prop_content_fit(props: JsonProps<'_>) -> Option<ContentFit> {
     let s = prop_str(props, "content_fit")?;
     match s.to_ascii_lowercase().as_str() {
         "contain" => Some(ContentFit::Contain),
@@ -405,7 +409,7 @@ pub fn value_to_vertical_alignment(s: &str) -> Option<alignment::Vertical> {
 
 /// Get an f64 prop value. Accepts JSON numbers and numeric strings.
 /// Non-numeric elements are silently dropped with a warning.
-pub fn prop_f64_array(props: Props<'_>, key: &str) -> Option<Vec<f64>> {
+pub fn prop_f64_array(props: JsonProps<'_>, key: &str) -> Option<Vec<f64>> {
     let val = props?.get(key)?;
     match val.as_array() {
         Some(arr) => {
@@ -433,7 +437,7 @@ pub fn prop_f64_array(props: Props<'_>, key: &str) -> Option<Vec<f64>> {
 }
 
 /// Get an array of string values from a prop.
-pub fn prop_str_array(props: Props<'_>, key: &str) -> Option<Vec<String>> {
+pub fn prop_str_array(props: JsonProps<'_>, key: &str) -> Option<Vec<String>> {
     let val = props?.get(key)?;
     match val.as_array() {
         Some(arr) => Some(
@@ -449,7 +453,7 @@ pub fn prop_str_array(props: Props<'_>, key: &str) -> Option<Vec<String>> {
 }
 
 /// Get a reference to a JSON object prop.
-pub fn prop_object<'a>(props: Props<'a>, key: &str) -> Option<&'a serde_json::Map<String, Value>> {
+pub fn prop_object<'a>(props: JsonProps<'a>, key: &str) -> Option<&'a serde_json::Map<String, Value>> {
     let val = props?.get(key)?;
     match val.as_object() {
         Some(obj) => Some(obj),
@@ -461,7 +465,7 @@ pub fn prop_object<'a>(props: Props<'a>, key: &str) -> Option<&'a serde_json::Ma
 }
 
 /// Get a reference to a raw JSON value prop.
-pub fn prop_value<'a>(props: Props<'a>, key: &str) -> Option<&'a Value> {
+pub fn prop_value<'a>(props: JsonProps<'a>, key: &str) -> Option<&'a Value> {
     props?.get(key)
 }
 
@@ -474,7 +478,7 @@ pub fn prop_value<'a>(props: Props<'a>, key: &str) -> Option<&'a Value> {
 ///
 /// Returns `None` if no padding props are present, preserving iced defaults.
 /// Negative values are clamped to `0.0` in the object and uniform formats.
-pub fn prop_padding(props: Props<'_>) -> Option<iced::Padding> {
+pub fn prop_padding(props: JsonProps<'_>) -> Option<iced::Padding> {
     crate::widget::parse_padding_value(props)
 }
 
@@ -492,7 +496,7 @@ pub fn prop_padding(props: Props<'_>) -> Option<iced::Padding> {
 pub fn prop_animated_f32(
     interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
     node_id: &str,
-    props: Props<'_>,
+    props: JsonProps<'_>,
     key: &str,
 ) -> Option<f32> {
     // Check interpolated cache first
@@ -516,7 +520,7 @@ pub fn prop_animated_f32(
 pub fn prop_animated_color(
     interpolated: &std::collections::HashMap<String, serde_json::Map<String, Value>>,
     node_id: &str,
-    props: Props<'_>,
+    props: JsonProps<'_>,
     key: &str,
 ) -> Option<Color> {
     if let Some(overrides) = interpolated.get(node_id)
@@ -939,7 +943,7 @@ mod tests {
 
     #[test]
     fn test_empty_props() {
-        let props: Props<'_> = None;
+        let props: JsonProps<'_> = None;
         assert!(prop_str(props, "anything").is_none());
         assert!(prop_f32(props, "anything").is_none());
         assert!(prop_bool(props, "anything").is_none());

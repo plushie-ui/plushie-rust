@@ -72,7 +72,9 @@ fn diff_node(old: &TreeNode, new: &TreeNode, path: &[usize]) -> Vec<PatchOp> {
         }];
     }
 
-    let prop_ops = diff_props(&old.props, &new.props, path);
+    let old_props_val = old.props.to_value();
+    let new_props_val = new.props.to_value();
+    let prop_ops = diff_props(&old_props_val, &new_props_val, path);
     let child_ops = diff_children(&old.children, &new.children, path);
 
     let mut ops = prop_ops;
@@ -443,7 +445,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props,
+            props: props.into(),
             children,
         }
     }

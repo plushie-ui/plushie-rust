@@ -39,7 +39,7 @@ pub fn value_to_length_opt(val: Option<&Value>) -> Option<Length> {
 /// - `"padding": 10` -- uniform padding
 /// - `"padding": {"top": 10, "right": 5, "bottom": 10, "left": 5}` -- per-side
 /// - Individual `"padding_top"` etc. keys (legacy)
-pub fn parse_padding_value(props: Props<'_>) -> Option<Padding> {
+pub fn parse_padding_value(props: JsonProps<'_>) -> Option<Padding> {
     let padding_val = props.and_then(|p| p.get("padding"));
 
     match padding_val {
@@ -827,7 +827,7 @@ pub fn alpha_gradient(gradient: iced::Gradient, alpha: f32) -> iced::Gradient {
 /// Parse line_height prop. Accepts:
 /// - A number (interpreted as relative multiplier)
 /// - An object {"relative": 1.5} or {"absolute": 20}
-pub fn parse_line_height(props: Props<'_>) -> Option<LineHeight> {
+pub fn parse_line_height(props: JsonProps<'_>) -> Option<LineHeight> {
     let val = props?.get("line_height")?;
     match val {
         Value::Number(n) => {
@@ -848,7 +848,7 @@ pub fn parse_line_height(props: Props<'_>) -> Option<LineHeight> {
 }
 
 /// Parse text_shaping prop from a string.
-pub fn parse_shaping(props: Props<'_>) -> Option<iced::widget::text::Shaping> {
+pub fn parse_shaping(props: JsonProps<'_>) -> Option<iced::widget::text::Shaping> {
     use iced::widget::text::Shaping;
     let s = prop_str(props, "shaping")?;
     match s.to_ascii_lowercase().as_str() {
@@ -860,7 +860,7 @@ pub fn parse_shaping(props: Props<'_>) -> Option<iced::widget::text::Shaping> {
 }
 
 /// Parse wrapping prop from a string.
-pub fn parse_wrapping(props: Props<'_>) -> Option<Wrapping> {
+pub fn parse_wrapping(props: JsonProps<'_>) -> Option<Wrapping> {
     let s = prop_str(props, "wrapping")?;
     match s.to_ascii_lowercase().as_str() {
         "none" => Some(Wrapping::None),
@@ -871,7 +871,7 @@ pub fn parse_wrapping(props: Props<'_>) -> Option<Wrapping> {
     }
 }
 
-pub fn parse_ellipsis(props: Props<'_>) -> Option<iced::widget::text::Ellipsis> {
+pub fn parse_ellipsis(props: JsonProps<'_>) -> Option<iced::widget::text::Ellipsis> {
     use iced::widget::text::Ellipsis;
     let s = prop_str(props, "ellipsis")?;
     match s.to_ascii_lowercase().as_str() {
@@ -898,7 +898,7 @@ pub struct MenuStyleOverrides {
 }
 
 /// Parse a `menu_style` prop into overrides for dropdown menu styling.
-pub fn parse_menu_style(props: Props<'_>) -> Option<MenuStyleOverrides> {
+pub fn parse_menu_style(props: JsonProps<'_>) -> Option<MenuStyleOverrides> {
     let obj = props?.get("menu_style")?.as_object()?;
 
     Some(MenuStyleOverrides {
@@ -999,7 +999,7 @@ pub fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font>> {
 }
 
 /// Parse a PickList Handle from props.
-pub fn parse_pick_list_handle(props: Props<'_>) -> Option<pick_list::Handle<Font>> {
+pub fn parse_pick_list_handle(props: JsonProps<'_>) -> Option<pick_list::Handle<Font>> {
     let handle_obj = props?.get("handle")?.as_object()?;
     let handle_type = handle_obj.get("type")?.as_str()?;
 
@@ -1032,7 +1032,7 @@ mod tests {
     use serde_json::json;
 
     /// Helper: build a Props from a json! value. The value must be an object.
-    fn make_props(v: &Value) -> Props<'_> {
+    fn make_props(v: &Value) -> JsonProps<'_> {
         v.as_object()
     }
 

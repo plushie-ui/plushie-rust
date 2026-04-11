@@ -4,7 +4,8 @@
 //! Content or source is the first argument; IDs are auto-generated
 //! from the call site and can be overridden with `.id()`.
 
-use serde_json::{Map, Value, json};
+use super::PropMap;
+use serde_json::{Value, json};
 
 use crate::View;
 use crate::types::*;
@@ -16,7 +17,7 @@ use crate::types::*;
 /// Builder for a static text label.
 pub struct TextBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a text widget displaying `content`.
@@ -26,7 +27,7 @@ pub struct TextBuilder {
 /// ```
 #[track_caller]
 pub fn text(content: &str) -> TextBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "content", content);
     TextBuilder { id: super::auto_id("text"), props }
 }
@@ -88,7 +89,7 @@ impl From<TextBuilder> for View {
 /// Builder for a rich text widget with individually styled spans.
 pub struct RichTextBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a rich text widget with an auto-generated ID.
@@ -96,17 +97,20 @@ pub struct RichTextBuilder {
 /// Use `.spans()` to provide styled text segments.
 #[track_caller]
 pub fn rich_text() -> RichTextBuilder {
-    RichTextBuilder { id: super::auto_id("rich_text"), props: Map::new() }
+    RichTextBuilder { id: super::auto_id("rich_text"), props: PropMap::new() }
 }
 
 /// Create a rich text widget with an explicit ID.
 pub fn rich_text_id(id: &str) -> RichTextBuilder {
-    RichTextBuilder { id: id.to_string(), props: Map::new() }
+    RichTextBuilder { id: id.to_string(), props: PropMap::new() }
 }
 
 impl RichTextBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
-    pub fn spans(mut self, spans: Vec<Value>) -> Self { super::set_prop(&mut self.props, "spans", spans); self }
+    pub fn spans(mut self, spans: Vec<Value>) -> Self {
+        let pv: Vec<super::PropValue> = spans.into_iter().map(super::PropValue::from).collect();
+        super::set_prop(&mut self.props, "spans", super::PropValue::Array(pv)); self
+    }
     pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", serde_json::to_value(&f).unwrap()); self }
     pub fn color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "color", super::color_to_value(&c.into())); self }
@@ -132,13 +136,13 @@ impl From<RichTextBuilder> for View {
 /// Builder for an invisible spacer widget.
 pub struct SpaceBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create an empty space widget for layout purposes.
 #[track_caller]
 pub fn space() -> SpaceBuilder {
-    SpaceBuilder { id: super::auto_id("space"), props: Map::new() }
+    SpaceBuilder { id: super::auto_id("space"), props: PropMap::new() }
 }
 
 impl SpaceBuilder {
@@ -162,13 +166,13 @@ impl From<SpaceBuilder> for View {
 /// Builder for a horizontal or vertical divider line.
 pub struct RuleBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a rule (divider) widget.
 #[track_caller]
 pub fn rule() -> RuleBuilder {
-    RuleBuilder { id: super::auto_id("rule"), props: Map::new() }
+    RuleBuilder { id: super::auto_id("rule"), props: PropMap::new() }
 }
 
 impl RuleBuilder {
@@ -194,7 +198,7 @@ impl From<RuleBuilder> for View {
 /// Builder for a progress bar.
 pub struct ProgressBarBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a progress bar with the given `(min, max)` range and current value.
@@ -204,7 +208,7 @@ pub struct ProgressBarBuilder {
 /// ```
 #[track_caller]
 pub fn progress_bar(range: (f32, f32), value: f32) -> ProgressBarBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "range", json!([range.0, range.1]));
     super::set_prop(&mut props, "value", value);
     ProgressBarBuilder { id: super::auto_id("progress_bar"), props }
@@ -254,7 +258,7 @@ impl From<ProgressBarBuilder> for View {
 /// Builder for a raster image.
 pub struct ImageBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create an image widget from a file path or handle name.
@@ -264,7 +268,7 @@ pub struct ImageBuilder {
 /// ```
 #[track_caller]
 pub fn image(source: &str) -> ImageBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "source", source);
     ImageBuilder { id: super::auto_id("image"), props }
 }
@@ -328,7 +332,7 @@ impl From<ImageBuilder> for View {
 /// Builder for a vector SVG image.
 pub struct SvgBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create an SVG widget from a file path.
@@ -338,7 +342,7 @@ pub struct SvgBuilder {
 /// ```
 #[track_caller]
 pub fn svg(source: &str) -> SvgBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "source", source);
     SvgBuilder { id: super::auto_id("svg"), props }
 }
@@ -373,7 +377,7 @@ impl From<SvgBuilder> for View {
 /// Builder for a rendered markdown document.
 pub struct MarkdownBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a markdown widget from raw markdown text.
@@ -383,7 +387,7 @@ pub struct MarkdownBuilder {
 /// ```
 #[track_caller]
 pub fn markdown(content: &str) -> MarkdownBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "content", content);
     MarkdownBuilder { id: super::auto_id("markdown"), props }
 }
@@ -416,7 +420,7 @@ impl From<MarkdownBuilder> for View {
 /// Builder for a QR code.
 pub struct QrCodeBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a QR code widget encoding the given data string.
@@ -426,7 +430,7 @@ pub struct QrCodeBuilder {
 /// ```
 #[track_caller]
 pub fn qr_code(data: &str) -> QrCodeBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "data", data);
     QrCodeBuilder { id: super::auto_id("qr_code"), props }
 }

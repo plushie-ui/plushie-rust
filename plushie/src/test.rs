@@ -161,7 +161,13 @@ impl<A: App> TestSession<A> {
             .map(|s| s.to_string())
     }
 
-    /// Get a prop value from a widget by ID and prop name.
+    /// Get a string prop from a widget by ID and prop name.
+    pub fn prop_str(&self, id: &str, key: &str) -> Option<&str> {
+        let node = self.find(id)?;
+        node.props.get_str(key)
+    }
+
+    /// Get a prop value from a widget by ID and prop name (Wire mode only).
     pub fn prop(&self, id: &str, key: &str) -> Option<&Value> {
         let node = self.find(id)?;
         node.props.get(key)

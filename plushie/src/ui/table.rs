@@ -1,6 +1,7 @@
 //! Table widget builder.
 
-use serde_json::{Map, Value, json};
+use super::PropMap;
+use serde_json::{Value, json};
 
 use crate::View;
 use crate::types::*;
@@ -15,7 +16,7 @@ use crate::types::*;
 /// ```
 pub struct TableBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -23,7 +24,7 @@ pub struct TableBuilder {
 pub fn table(id: &str) -> TableBuilder {
     TableBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }

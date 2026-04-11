@@ -19,7 +19,8 @@
 
 use crate::View;
 use crate::types::*;
-use serde_json::{Map, Value, json};
+use super::PropMap;
+use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
 // WindowBuilder
@@ -31,7 +32,7 @@ use serde_json::{Map, Value, json};
 /// scope for all contained widgets.
 pub struct WindowBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -39,7 +40,7 @@ pub struct WindowBuilder {
 pub fn window(id: &str) -> WindowBuilder {
     WindowBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }
@@ -190,7 +191,7 @@ impl From<WindowBuilder> for View {
 /// Builder for a vertical layout container.
 pub struct ColumnBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -199,7 +200,7 @@ pub struct ColumnBuilder {
 pub fn column() -> ColumnBuilder {
     ColumnBuilder {
         id: super::auto_id("column"),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }
@@ -310,7 +311,7 @@ impl From<ColumnBuilder> for View {
 /// Builder for a horizontal layout container.
 pub struct RowBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -319,7 +320,7 @@ pub struct RowBuilder {
 pub fn row() -> RowBuilder {
     RowBuilder {
         id: super::auto_id("row"),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }
@@ -435,7 +436,7 @@ impl From<RowBuilder> for View {
 /// Builder for a single-child container with alignment and sizing.
 pub struct ContainerBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
@@ -444,7 +445,7 @@ pub struct ContainerBuilder {
 pub fn container() -> ContainerBuilder {
     ContainerBuilder {
         id: super::auto_id("container"),
-        props: Map::new(),
+        props: PropMap::new(),
         child: None,
     }
 }
@@ -592,7 +593,7 @@ impl From<ContainerBuilder> for View {
 /// rendered above earlier ones.
 pub struct StackBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -601,7 +602,7 @@ pub struct StackBuilder {
 pub fn stack() -> StackBuilder {
     StackBuilder {
         id: super::auto_id("stack"),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }
@@ -666,7 +667,7 @@ impl From<StackBuilder> for View {
 /// Builder for a grid layout container.
 pub struct GridBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -675,7 +676,7 @@ pub struct GridBuilder {
 pub fn grid() -> GridBuilder {
     GridBuilder {
         id: super::auto_id("grid"),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }
@@ -770,7 +771,7 @@ impl From<GridBuilder> for View {
 /// Builder for an absolutely positioned single-child container.
 pub struct PinBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
@@ -779,7 +780,7 @@ pub struct PinBuilder {
 pub fn pin() -> PinBuilder {
     PinBuilder {
         id: super::auto_id("pin"),
-        props: Map::new(),
+        props: PropMap::new(),
         child: None,
     }
 }
@@ -845,7 +846,7 @@ impl From<PinBuilder> for View {
 /// position, producing minimal move operations on reorder.
 pub struct KeyedColumnBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -854,7 +855,7 @@ pub struct KeyedColumnBuilder {
 pub fn keyed_column() -> KeyedColumnBuilder {
     KeyedColumnBuilder {
         id: super::auto_id("keyed_column"),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }
@@ -941,7 +942,7 @@ impl From<KeyedColumnBuilder> for View {
 /// The constructor is named `floating()` to avoid the Rust `float` keyword.
 pub struct FloatingBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
@@ -952,7 +953,7 @@ pub struct FloatingBuilder {
 pub fn floating() -> FloatingBuilder {
     FloatingBuilder {
         id: super::auto_id("float"),
-        props: Map::new(),
+        props: PropMap::new(),
         child: None,
     }
 }
@@ -1022,7 +1023,7 @@ impl From<FloatingBuilder> for View {
 /// Builder for a responsive container that adapts to available width.
 pub struct ResponsiveBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
@@ -1031,7 +1032,7 @@ pub struct ResponsiveBuilder {
 pub fn responsive() -> ResponsiveBuilder {
     ResponsiveBuilder {
         id: super::auto_id("responsive"),
-        props: Map::new(),
+        props: PropMap::new(),
         child: None,
     }
 }
@@ -1084,7 +1085,7 @@ impl From<ResponsiveBuilder> for View {
 /// Builder for a scrollable container.
 pub struct ScrollableBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
@@ -1093,7 +1094,7 @@ pub struct ScrollableBuilder {
 pub fn scrollable() -> ScrollableBuilder {
     ScrollableBuilder {
         id: super::auto_id("scrollable"),
-        props: Map::new(),
+        props: PropMap::new(),
         child: None,
     }
 }
@@ -1203,7 +1204,7 @@ impl From<ScrollableBuilder> for View {
 /// (panes can be resized and rearranged).
 pub struct PaneGridBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -1211,7 +1212,7 @@ pub struct PaneGridBuilder {
 pub fn pane_grid(id: &str) -> PaneGridBuilder {
     PaneGridBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }

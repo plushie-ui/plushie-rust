@@ -3,7 +3,8 @@
 //! Wraps a view subtree in a `__memo__` marker node so the runtime
 //! can skip re-rendering when the cache key has not changed.
 
-use serde_json::{Map, json};
+use super::PropMap;
+use serde_json::json;
 
 use crate::View;
 
@@ -27,8 +28,8 @@ pub fn memo(key: impl Into<String>, view_fn: impl FnOnce() -> View) -> View {
     let key_str = key.into();
     let inner = view_fn();
 
-    let mut props = Map::new();
-    props.insert("__memo_key__".into(), json!(key_str));
+    let mut props = PropMap::new();
+    props.insert("__memo_key__", key_str.clone());
 
     super::view_node(
         format!("memo:{key_str}"),

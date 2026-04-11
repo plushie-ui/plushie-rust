@@ -4,7 +4,8 @@
 //! argument because interactive widgets need stable, explicit IDs
 //! for event routing.
 
-use serde_json::{Map, Value, json};
+use super::PropMap;
+use serde_json::{Value, json};
 
 use crate::View;
 use crate::types::*;
@@ -16,7 +17,7 @@ use crate::types::*;
 /// Builder for a single-line text input field.
 pub struct TextInputBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a text input with the given ID and current value.
@@ -25,7 +26,7 @@ pub struct TextInputBuilder {
 /// text_input("name", &model.name).placeholder("Enter your name")
 /// ```
 pub fn text_input(id: &str, value: &str) -> TextInputBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "value", value);
     TextInputBuilder { id: id.to_string(), props }
 }
@@ -63,7 +64,7 @@ impl From<TextInputBuilder> for View {
 /// Builder for a multi-line text editor.
 pub struct TextEditorBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a multi-line text editor with the given ID and initial content.
@@ -72,7 +73,7 @@ pub struct TextEditorBuilder {
 /// text_editor("notes", &model.notes).placeholder("Write here...")
 /// ```
 pub fn text_editor(id: &str, content: &str) -> TextEditorBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "content", content);
     TextEditorBuilder { id: id.to_string(), props }
 }
@@ -119,7 +120,7 @@ impl From<TextEditorBuilder> for View {
 /// Builder for a toggleable checkbox.
 pub struct CheckboxBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a checkbox with the given ID and checked state.
@@ -128,7 +129,7 @@ pub struct CheckboxBuilder {
 /// checkbox("agree", model.agreed).label("I agree to the terms")
 /// ```
 pub fn checkbox(id: &str, checked: bool) -> CheckboxBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "checked", checked);
     CheckboxBuilder { id: id.to_string(), props }
 }
@@ -163,7 +164,7 @@ impl From<CheckboxBuilder> for View {
 /// Builder for an on/off toggle switch.
 pub struct TogglerBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a toggler with the given ID and toggle state.
@@ -172,7 +173,7 @@ pub struct TogglerBuilder {
 /// toggler("dark_mode", model.dark_mode).label("Dark mode")
 /// ```
 pub fn toggler(id: &str, is_toggled: bool) -> TogglerBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "is_toggled", is_toggled);
     TogglerBuilder { id: id.to_string(), props }
 }
@@ -207,7 +208,7 @@ impl From<TogglerBuilder> for View {
 /// Builder for a radio button (one-of-many selection).
 pub struct RadioBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a radio button with the given ID, value, and current selection.
@@ -219,7 +220,7 @@ pub struct RadioBuilder {
 /// radio("size_small", "small", Some("medium")).label("Small").group("size")
 /// ```
 pub fn radio(id: &str, value: &str, selected: Option<&str>) -> RadioBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "value", value);
     super::set_opt(&mut props, "selected", selected.map(|s| json!(s)));
     RadioBuilder { id: id.to_string(), props }
@@ -254,7 +255,7 @@ impl From<RadioBuilder> for View {
 /// Builder for a horizontal slider.
 pub struct SliderBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a horizontal slider with the given ID, `(min, max)` range, and value.
@@ -263,7 +264,7 @@ pub struct SliderBuilder {
 /// slider("volume", (0.0, 100.0), model.volume).step(1.0)
 /// ```
 pub fn slider(id: &str, range: (f32, f32), value: f32) -> SliderBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "range", json!([range.0, range.1]));
     super::set_prop(&mut props, "value", value);
     SliderBuilder { id: id.to_string(), props }
@@ -298,7 +299,7 @@ impl From<SliderBuilder> for View {
 /// Builder for a vertical slider.
 pub struct VerticalSliderBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a vertical slider with the given ID, `(min, max)` range, and value.
@@ -307,7 +308,7 @@ pub struct VerticalSliderBuilder {
 /// vertical_slider("volume", (0.0, 100.0), model.volume).step(1.0)
 /// ```
 pub fn vertical_slider(id: &str, range: (f32, f32), value: f32) -> VerticalSliderBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "range", json!([range.0, range.1]));
     super::set_prop(&mut props, "value", value);
     VerticalSliderBuilder { id: id.to_string(), props }
@@ -340,7 +341,7 @@ impl From<VerticalSliderBuilder> for View {
 /// Builder for a dropdown selection list.
 pub struct PickListBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a pick list with the given ID, options, and current selection.
@@ -350,7 +351,7 @@ pub struct PickListBuilder {
 ///     .placeholder("Choose a color")
 /// ```
 pub fn pick_list(id: &str, options: &[&str], selected: Option<&str>) -> PickListBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "options", json!(options));
     super::set_opt(&mut props, "selected", selected.map(|s| json!(s)));
     PickListBuilder { id: id.to_string(), props }
@@ -388,7 +389,7 @@ impl From<PickListBuilder> for View {
 /// Builder for a searchable combo box (dropdown with text input).
 pub struct ComboBoxBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a combo box with the given ID, options, and current text value.
@@ -398,7 +399,7 @@ pub struct ComboBoxBuilder {
 ///     .placeholder("Search languages...")
 /// ```
 pub fn combo_box(id: &str, options: &[&str], value: &str) -> ComboBoxBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "options", json!(options));
     super::set_prop(&mut props, "selected", value);
     ComboBoxBuilder { id: id.to_string(), props }

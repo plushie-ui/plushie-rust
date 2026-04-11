@@ -17,7 +17,8 @@
 
 use crate::View;
 use crate::types::*;
-use serde_json::{Map, Value};
+use super::PropMap;
+use serde_json::Value;
 
 // ---------------------------------------------------------------------------
 // ButtonBuilder
@@ -26,12 +27,12 @@ use serde_json::{Map, Value};
 /// Builder for a clickable button.
 pub struct ButtonBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a button with the given ID and label text.
 pub fn button(id: &str, label: &str) -> ButtonBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "label", label);
     ButtonBuilder {
         id: id.to_string(),
@@ -116,7 +117,7 @@ impl From<ButtonBuilder> for View {
 /// enter, exit, move, scroll) on the child's bounds.
 pub struct PointerAreaBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
@@ -124,7 +125,7 @@ pub struct PointerAreaBuilder {
 pub fn pointer_area(id: &str) -> PointerAreaBuilder {
     PointerAreaBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         child: None,
     }
 }
@@ -239,7 +240,7 @@ impl From<PointerAreaBuilder> for View {
 /// position) without capturing pointer input.
 pub struct SensorBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
@@ -247,7 +248,7 @@ pub struct SensorBuilder {
 pub fn sensor(id: &str) -> SensorBuilder {
     SensorBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         child: None,
     }
 }
@@ -314,13 +315,13 @@ impl From<SensorBuilder> for View {
 /// Wraps a single child and shows a tooltip on hover.
 pub struct TooltipBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
 /// Create a tooltip with the given ID and tip text.
 pub fn tooltip(id: &str, tip: &str) -> TooltipBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "tip", tip);
     TooltipBuilder {
         id: id.to_string(),
@@ -397,7 +398,7 @@ impl From<TooltipBuilder> for View {
 /// Applies a different theme to its child subtree.
 pub struct ThemerBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     child: Option<View>,
 }
 
@@ -405,7 +406,7 @@ pub struct ThemerBuilder {
 pub fn themer(id: &str) -> ThemerBuilder {
     ThemerBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         child: None,
     }
 }
@@ -450,7 +451,7 @@ impl From<ThemerBuilder> for View {
 /// the parent widget.
 pub struct OverlayBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -458,7 +459,7 @@ pub struct OverlayBuilder {
 pub fn overlay(id: &str) -> OverlayBuilder {
     OverlayBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }

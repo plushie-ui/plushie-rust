@@ -31,7 +31,8 @@ pub use canvas::*;
 pub use memo::*;
 pub use table::*;
 
-use serde_json::{Map, Value, json};
+pub(crate) use plushie_core::protocol::{PropMap, PropValue};
+use serde_json::{Value, json};
 
 use crate::View;
 use crate::types::*;
@@ -41,17 +42,17 @@ use crate::types::*;
 // ---------------------------------------------------------------------------
 
 /// Create a View (TreeNode) with children.
-pub(crate) fn view_node(id: String, type_name: &str, props: Map<String, Value>, children: Vec<View>) -> View {
+pub(crate) fn view_node(id: String, type_name: &str, props: PropMap, children: Vec<View>) -> View {
     View {
         id,
         type_name: type_name.to_string(),
-        props: Value::Object(props).into(),
+        props: plushie_core::protocol::Props::Typed(props),
         children,
     }
 }
 
 /// Create a leaf View (no children).
-pub(crate) fn view_leaf(id: String, type_name: &str, props: Map<String, Value>) -> View {
+pub(crate) fn view_leaf(id: String, type_name: &str, props: PropMap) -> View {
     view_node(id, type_name, props, vec![])
 }
 
@@ -70,50 +71,64 @@ pub(crate) fn auto_id(prefix: &str) -> String {
 // Prop helpers
 // ---------------------------------------------------------------------------
 
-/// Set an optional prop on a JSON map.
-pub(crate) fn set_prop(props: &mut Map<String, Value>, key: &str, value: impl Into<Value>) {
-    props.insert(key.to_string(), value.into());
+/// Set a prop value on a PropMap.
+pub(crate) fn set_prop(props: &mut PropMap, key: &str, value: impl Into<PropValue>) {
+    props.insert(key, value.into());
 }
 
 /// Set a prop only if the value is Some.
-pub(crate) fn set_opt<T: Into<Value>>(props: &mut Map<String, Value>, key: &str, value: Option<T>) {
+pub(crate) fn set_opt<T: Into<PropValue>>(props: &mut PropMap, key: &str, value: Option<T>) {
     if let Some(v) = value {
-        props.insert(key.to_string(), v.into());
+        props.insert(key, v.into());
     }
 }
 
-/// Convert a Length to a JSON value.
-pub(crate) fn length_to_value(l: Length) -> Value {
+/// Convert a Length to a PropValue.
+pub(crate) fn length_to_value(l: Length) -> PropValue {
     match l {
-        Length::Fill => json!("fill"),
-        Length::Shrink => json!("shrink"),
-        Length::FillPortion(n) => json!({"fill_portion": n}),
-        Length::Fixed(f) => json!(f),
+        Length::Fill => PropValue::Str("fill".into()),
+        Length::Shrink => PropValue::Str("shrink".into()),
+        Length::FillPortion(n) => {
+            let mut m = PropMap::new();
+            m.insert("fill_portion", PropValue::U64(n as u64));
+            PropValue::Object(m)
+        }
+        Length::Fixed(f) => PropValue::F64(f as f64),
     }
 }
 
-/// Convert a Padding to a JSON value.
-pub(crate) fn padding_to_value(p: Padding) -> Value {
+/// Convert a Padding to a PropValue.
+pub(crate) fn padding_to_value(p: Padding) -> PropValue {
     if p.top == p.bottom && p.left == p.right && p.top == p.left {
-        json!(p.top)
+        PropValue::F64(p.top as f64)
     } else if p.top == p.bottom && p.left == p.right {
-        json!([p.top, p.left])
+        PropValue::Array(vec![
+            PropValue::F64(p.top as f64),
+            PropValue::F64(p.left as f64),
+        ])
     } else {
-        json!({"top": p.top, "right": p.right, "bottom": p.bottom, "left": p.left})
+        let mut m = PropMap::new();
+        m.insert("top", PropValue::F64(p.top as f64));
+        m.insert("right", PropValue::F64(p.right as f64));
+        m.insert("bottom", PropValue::F64(p.bottom as f64));
+        m.insert("left", PropValue::F64(p.left as f64));
+        PropValue::Object(m)
     }
 }
 
-/// Convert a Style to a JSON value.
-pub(crate) fn style_to_value(s: &Style) -> Value {
+/// Convert a Style to a PropValue.
+pub(crate) fn style_to_value(s: &Style) -> PropValue {
     match s {
-        Style::Preset(name) => json!(name),
-        Style::Custom(map) => serde_json::to_value(map).unwrap_or(Value::Null),
+        Style::Preset(name) => PropValue::Str(name.clone()),
+        Style::Custom(map) => {
+            PropValue::from(serde_json::to_value(map).unwrap_or(Value::Null))
+        }
     }
 }
 
-/// Convert a Color to a JSON value.
-pub(crate) fn color_to_value(c: &Color) -> Value {
-    json!(c.as_hex())
+/// Convert a Color to a PropValue.
+pub(crate) fn color_to_value(c: &Color) -> PropValue {
+    PropValue::Str(c.as_hex().to_string())
 }
 
 /// Convert an Align to a horizontal alignment string for the renderer.

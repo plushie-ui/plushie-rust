@@ -17,31 +17,56 @@
 //!     ]));
 //! ```
 
-use serde_json::{json, Map, Value};
+use super::PropMap;
+use serde_json::{json, Value};
 
 use crate::View;
 use crate::types::*;
 
+/// Push a transform entry to the "transforms" array in a props map.
+fn push_transform(props: &mut PropMap, kind: &str, fields: &[(&str, f32)]) {
+    use super::PropValue;
+    let mut entry = PropMap::new();
+    entry.insert("type", PropValue::Str(kind.into()));
+    for (k, v) in fields {
+        entry.insert(*k, PropValue::F64(*v as f64));
+    }
+    if let Some(PropValue::Array(arr)) = props.get_mut("transforms") {
+        arr.push(PropValue::Object(entry));
+    } else {
+        props.insert("transforms", PropValue::Array(vec![PropValue::Object(entry)]));
+    }
+}
+
 /// Merge a key/value into the bundled `"stroke"` object within a props map.
 /// Creates the stroke object if it doesn't exist yet.
-fn stroke_set(props: &mut Map<String, Value>, key: &str, val: Value) {
-    let stroke = props.entry("stroke").or_insert(json!({}));
-    if let Some(obj) = stroke.as_object_mut() {
-        obj.insert(key.to_string(), val);
+fn stroke_set(props: &mut PropMap, key: &str, val: impl Into<super::PropValue>) {
+    use super::PropValue;
+    let val = val.into();
+    if let Some(PropValue::Object(map)) = props.get_mut("stroke") {
+        map.insert(key, val);
+    } else {
+        let mut map = PropMap::new();
+        map.insert(key, val);
+        props.insert("stroke", PropValue::Object(map));
     }
 }
 
 /// Build a gradient fill value in the wire format the renderer expects.
-fn gradient_fill(x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> Value {
-    let stops_json: Vec<Value> = stops.iter()
-        .map(|(offset, color)| json!([offset, color]))
+fn gradient_fill(x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> super::PropValue {
+    use super::PropValue;
+    let stops_pv: Vec<PropValue> = stops.iter()
+        .map(|(offset, color)| PropValue::Array(vec![
+            PropValue::F64(*offset as f64),
+            PropValue::Str(color.to_string()),
+        ]))
         .collect();
-    json!({
-        "type": "linear",
-        "start": [x1, y1],
-        "end": [x2, y2],
-        "stops": stops_json
-    })
+    let mut m = PropMap::new();
+    m.insert("type", PropValue::Str("linear".into()));
+    m.insert("start", PropValue::Array(vec![PropValue::F64(x1 as f64), PropValue::F64(y1 as f64)]));
+    m.insert("end", PropValue::Array(vec![PropValue::F64(x2 as f64), PropValue::F64(y2 as f64)]));
+    m.insert("stops", PropValue::Array(stops_pv));
+    PropValue::Object(m)
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +76,7 @@ fn gradient_fill(x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> V
 /// Builder for a canvas widget (interactive drawing surface).
 pub struct CanvasBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -59,7 +84,7 @@ pub struct CanvasBuilder {
 pub fn canvas(id: &str) -> CanvasBuilder {
     CanvasBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }
@@ -108,13 +133,13 @@ impl From<CanvasBuilder> for View {
 /// Builder for a named layer inside a canvas.
 pub struct LayerBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
 /// Create a named layer inside a canvas.
 pub fn layer(name: &str) -> LayerBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "name", name);
     LayerBuilder {
         id: name.to_string(),
@@ -152,7 +177,7 @@ impl From<LayerBuilder> for View {
 /// Builder for a shape group inside a canvas.
 pub struct GroupBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
     children: Vec<View>,
 }
 
@@ -160,7 +185,7 @@ pub struct GroupBuilder {
 pub fn group(id: &str) -> GroupBuilder {
     GroupBuilder {
         id: id.to_string(),
-        props: Map::new(),
+        props: PropMap::new(),
         children: vec![],
     }
 }
@@ -192,26 +217,17 @@ impl GroupBuilder {
     pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
 
     pub fn translate(mut self, x: f32, y: f32) -> Self {
-        let transforms = self.props.entry("transforms").or_insert(json!([]));
-        if let Some(arr) = transforms.as_array_mut() {
-            arr.push(json!({"type": "translate", "x": x, "y": y}));
-        }
+        push_transform(&mut self.props, "translate", &[("x", x), ("y", y)]);
         self
     }
 
     pub fn rotate(mut self, angle: f32) -> Self {
-        let transforms = self.props.entry("transforms").or_insert(json!([]));
-        if let Some(arr) = transforms.as_array_mut() {
-            arr.push(json!({"type": "rotate", "angle": angle}));
-        }
+        push_transform(&mut self.props, "rotate", &[("angle", angle)]);
         self
     }
 
     pub fn scale_xy(mut self, x: f32, y: f32) -> Self {
-        let transforms = self.props.entry("transforms").or_insert(json!([]));
-        if let Some(arr) = transforms.as_array_mut() {
-            arr.push(json!({"type": "scale", "x": x, "y": y}));
-        }
+        push_transform(&mut self.props, "scale", &[("x", x), ("y", y)]);
         self
     }
 
@@ -264,13 +280,13 @@ impl From<GroupBuilder> for View {
 /// Builder for a rectangle shape.
 pub struct RectBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a rectangle shape at `(x, y)` with size `w` x `h`.
 #[track_caller]
 pub fn rect(x: f32, y: f32, w: f32, h: f32) -> RectBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "x", x);
     super::set_prop(&mut props, "y", y);
     super::set_prop(&mut props, "w", w);
@@ -327,13 +343,13 @@ impl From<RectBuilder> for View {
 /// Builder for a circle shape.
 pub struct CircleBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a circle shape centered at `(x, y)` with radius `r`.
 #[track_caller]
 pub fn circle(x: f32, y: f32, r: f32) -> CircleBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "x", x);
     super::set_prop(&mut props, "y", y);
     super::set_prop(&mut props, "r", r);
@@ -376,13 +392,13 @@ impl From<CircleBuilder> for View {
 /// Builder for a line shape.
 pub struct LineBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a line from `(x1, y1)` to `(x2, y2)`.
 #[track_caller]
 pub fn line(x1: f32, y1: f32, x2: f32, y2: f32) -> LineBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "x1", x1);
     super::set_prop(&mut props, "y1", y1);
     super::set_prop(&mut props, "x2", x2);
@@ -419,7 +435,7 @@ impl From<LineBuilder> for View {
 /// Builder for an SVG path shape.
 pub struct PathBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create an SVG path shape from a path data string.
@@ -429,7 +445,7 @@ pub struct PathBuilder {
 /// ```
 #[track_caller]
 pub fn path(data: &str) -> PathBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "data", data);
     PathBuilder { id: super::auto_id("path"), props }
 }
@@ -469,13 +485,13 @@ impl From<PathBuilder> for View {
 /// Builder for text rendered inside a canvas.
 pub struct CanvasTextBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create a text element inside a canvas at `(x, y)`.
 #[track_caller]
 pub fn canvas_text(x: f32, y: f32, content: &str) -> CanvasTextBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "x", x);
     super::set_prop(&mut props, "y", y);
     super::set_prop(&mut props, "content", content);
@@ -508,13 +524,13 @@ impl From<CanvasTextBuilder> for View {
 /// Builder for an image rendered inside a canvas.
 pub struct CanvasImageBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create an image element inside a canvas at `(x, y)`.
 #[track_caller]
 pub fn canvas_image(x: f32, y: f32, source: &str) -> CanvasImageBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "x", x);
     super::set_prop(&mut props, "y", y);
     super::set_prop(&mut props, "source", source);
@@ -543,13 +559,13 @@ impl From<CanvasImageBuilder> for View {
 /// Builder for an SVG element rendered inside a canvas.
 pub struct CanvasSvgBuilder {
     id: String,
-    props: Map<String, Value>,
+    props: PropMap,
 }
 
 /// Create an SVG element inside a canvas at `(x, y)`.
 #[track_caller]
 pub fn canvas_svg(x: f32, y: f32, source: &str) -> CanvasSvgBuilder {
-    let mut props = Map::new();
+    let mut props = PropMap::new();
     super::set_prop(&mut props, "x", x);
     super::set_prop(&mut props, "y", y);
     super::set_prop(&mut props, "source", source);

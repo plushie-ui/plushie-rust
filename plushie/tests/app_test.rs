@@ -415,6 +415,6 @@ fn assert_not_exists_panics_for_existing_widget() {
 #[test]
 fn prop_reads_widget_property() {
     let session = TestSession::<Form>::start();
-    let placeholder = session.prop("name", "placeholder");
-    assert_eq!(placeholder.and_then(|v| v.as_str()), Some("Your name"));
+    let placeholder = session.prop_str("name", "placeholder");
+    assert_eq!(placeholder, Some("Your name"));
 }

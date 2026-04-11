@@ -13,10 +13,7 @@ use crate::App;
 #[cfg(feature = "wire")]
 use crate::command::Command;
 #[cfg(feature = "wire")]
-use crate::event::{
-    EffectEvent, EffectResult, Event, EventType, SystemEvent,
-    SystemEventType, WidgetEvent,
-};
+use crate::event::Event;
 #[cfg(feature = "wire")]
 use crate::runtime::{normalize, tree_diff};
 #[cfg(feature = "wire")]
@@ -75,8 +72,8 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
             }
         };
 
-        // Convert wire event to SDK Event.
-        if let Some(event) = wire_event_to_sdk_event(&raw) {
+        // Convert wire event to SDK Event via the shared event bridge.
+        if let Some(event) = wire_to_sdk_event(&raw) {
             let cmd = A::update(&mut model, event);
             if let Err(e) = execute_wire_command(&mut bridge, &cmd) {
                 log::error!("command execution failed: {e}");
@@ -112,114 +109,67 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     Ok(())
 }
 
-/// Convert a wire protocol event message to an SDK Event.
+/// Convert a wire protocol JSON message to an SDK Event via the
+/// shared event bridge.
+///
+/// Constructs a SinkEvent from the raw JSON fields and feeds it
+/// through the event bridge for type-safe conversion.
 #[cfg(feature = "wire")]
-fn wire_event_to_sdk_event(msg: &Value) -> Option<Event> {
+fn wire_to_sdk_event(msg: &Value) -> Option<Event> {
+    use plushie_core::protocol::{OutgoingEvent, EffectResponse, KeyModifiers};
+    use super::event_bridge::{SinkEvent, sink_event_to_sdk};
+
     let msg_type = msg.get("type")?.as_str()?;
 
-    match msg_type {
+    let sink_event = match msg_type {
         "event" => {
-            let family = msg.get("family")?.as_str()?;
-            let id = msg.get("id").and_then(|v| v.as_str()).unwrap_or_default();
-            let window_id = msg.get("window_id").and_then(|v| v.as_str()).unwrap_or_default();
-            let value = msg.get("value").cloned().unwrap_or(Value::Null);
-            let data = msg.get("data").cloned().unwrap_or(Value::Null);
-            let tag = msg.get("tag").and_then(|v| v.as_str());
-
-            // Check if this is a subscription event (has tag, no id).
-            if let Some(tag) = tag {
-                return match family {
-                    "key_press" | "key_release" => {
-                        // TODO: parse key event data
-                        None
-                    }
-                    "animation_frame" => Some(Event::System(SystemEvent {
-                        event_type: SystemEventType::AnimationFrame,
-                        tag: Some(tag.to_string()),
-                        value: Some(value),
-                        id: None,
-                        window_id: if window_id.is_empty() { None } else { Some(window_id.to_string()) },
-                    })),
-                    "theme_changed" => Some(Event::System(SystemEvent {
-                        event_type: SystemEventType::ThemeChanged,
-                        tag: Some(tag.to_string()),
-                        value: Some(value),
-                        id: None,
-                        window_id: None,
-                    })),
-                    _ => None,
-                };
-            }
-
-            // Widget event.
-            let event_type = family_to_event_type(family);
-            let (local_id, scope) = split_scoped_id(id);
-            let primary_value = if !data.is_null() { data } else { value };
-
-            Some(Event::Widget(WidgetEvent {
-                event_type,
-                id: local_id,
-                window_id: window_id.to_string(),
-                scope,
-                value: primary_value,
-            }))
-        }
-
-        "effect_response" => {
-            let id = msg.get("id")?.as_str()?;
-            let status = msg.get("status").and_then(|v| v.as_str()).unwrap_or("error");
-            let result_value = msg.get("result").cloned().unwrap_or(Value::Null);
-
-            let result = match status {
-                "ok" => EffectResult::Ok(result_value),
-                "cancelled" => EffectResult::Cancelled,
-                _ => EffectResult::Error(result_value),
+            let event = OutgoingEvent {
+                message_type: "event",
+                session: String::new(),
+                family: msg.get("family")?.as_str()?.to_string(),
+                id: msg.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+                window_id: msg.get("window_id").and_then(|v| v.as_str()).map(String::from),
+                value: msg.get("value").cloned(),
+                tag: msg.get("tag").and_then(|v| v.as_str()).map(String::from),
+                modifiers: msg.get("modifiers").and_then(|v| serde_json::from_value::<KeyModifiers>(v.clone()).ok()),
+                data: msg.get("data").cloned(),
+                captured: msg.get("captured").and_then(|v| v.as_bool()),
+                coalesce: None,
             };
-
-            Some(Event::Effect(EffectEvent {
-                tag: id.to_string(),
-                result,
-            }))
+            SinkEvent::Event(event)
         }
-
-        "query_response" => {
-            let id = msg.get("id")?.as_str()?;
-            let result = msg.get("result").cloned().unwrap_or(Value::Null);
-
-            Some(Event::System(SystemEvent {
-                event_type: SystemEventType::TreeHash, // generic query
-                tag: Some(id.to_string()),
-                value: Some(result),
-                id: None,
-                window_id: None,
-            }))
+        "effect_response" => {
+            let response = EffectResponse {
+                message_type: "effect_response",
+                session: String::new(),
+                id: msg.get("id")?.as_str()?.to_string(),
+                status: match msg.get("status").and_then(|v| v.as_str()) {
+                    Some("ok") => "ok",
+                    Some("cancelled") => "cancelled",
+                    _ => "error",
+                },
+                result: msg.get("result").cloned(),
+                error: msg.get("error").and_then(|v| v.as_str()).map(String::from),
+            };
+            SinkEvent::EffectResponse(response)
         }
+        "query_response" | "op_query_response" => {
+            let kind = msg.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let tag = msg.get("tag")
+                .or_else(|| msg.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let data = msg.get("result")
+                .or_else(|| msg.get("data"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            SinkEvent::QueryResponse { kind, tag, data }
+        }
+        _ => return None,
+    };
 
-        _ => None,
-    }
-}
-
-/// Split a scoped ID into local ID + reversed scope.
-#[cfg(feature = "wire")]
-fn split_scoped_id(scoped: &str) -> (String, Vec<String>) {
-    let parts: Vec<&str> = scoped.split('/').collect();
-    if parts.len() <= 1 {
-        (scoped.to_string(), vec![])
-    } else {
-        let local = parts.last().unwrap().to_string();
-        let scope = parts[..parts.len() - 1]
-            .iter()
-            .rev()
-            .map(|s| s.to_string())
-            .collect();
-        (local, scope)
-    }
-}
-
-/// Convert event family string to EventType.
-#[cfg(feature = "wire")]
-fn family_to_event_type(family: &str) -> EventType {
-    crate::event::family_to_event_type(family)
+    sink_event_to_sdk(sink_event)
 }
 
 /// Execute a Command by sending messages through the bridge.

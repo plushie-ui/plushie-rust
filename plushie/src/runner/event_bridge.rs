@@ -1,9 +1,10 @@
-//! Converts renderer sink events to SDK events.
+//! Event conversion between renderer output and SDK event types.
 //!
-//! The event bridge sits between the renderer's EventSink output
-//! (OutgoingEvent, EffectResponse, QueryResponse) and the SDK's
-//! typed Event enum. This is the single conversion point used by
-//! the direct runner's QueueSink drain cycle.
+//! The event bridge converts renderer sink events (OutgoingEvent,
+//! EffectResponse, QueryResponse) and SDK-local events (async
+//! results, delayed events) into typed SDK Events. Used by both
+//! the direct runner (QueueSink drain) and the wire runner
+//! (deserialized wire protocol messages).
 
 use serde_json::Value;
 
@@ -12,7 +13,34 @@ use plushie_core::protocol::{EffectResponse, OutgoingEvent};
 use crate::event::*;
 use crate::types::KeyModifiers;
 
-use super::queue_sink::SinkEvent;
+// ---------------------------------------------------------------------------
+// SinkEvent: the union type for all events the bridge converts
+// ---------------------------------------------------------------------------
+
+/// An event to be converted to an SDK [`Event`].
+///
+/// In direct mode, these are collected in the QueueSink. In wire
+/// mode, they are constructed from deserialized wire protocol JSON.
+#[derive(Debug)]
+pub(crate) enum SinkEvent {
+    /// An OutgoingEvent from the renderer.
+    Event(OutgoingEvent),
+    /// An effect response from the renderer.
+    EffectResponse(EffectResponse),
+    /// A query response from the renderer.
+    QueryResponse {
+        kind: String,
+        tag: String,
+        data: Value,
+    },
+    /// Result of an async task (Command::Async).
+    AsyncResult {
+        tag: String,
+        result: Result<Value, Value>,
+    },
+    /// A delayed event (Command::SendAfter).
+    DelayedEvent(crate::event::Event),
+}
 
 /// Convert a SinkEvent to an SDK Event.
 pub(crate) fn sink_event_to_sdk(sink_event: SinkEvent) -> Option<Event> {

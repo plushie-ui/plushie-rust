@@ -12,6 +12,9 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "direct")]
 use plushie_widget_sdk::protocol::{EffectResponse, OutgoingEvent};
 
+// Re-export SinkEvent from event_bridge (where it's defined).
+pub(crate) use super::event_bridge::SinkEvent;
+
 /// An EventSink that collects events in-process.
 ///
 /// Events are stored in a shared queue. The DirectApp drains the
@@ -20,30 +23,6 @@ use plushie_widget_sdk::protocol::{EffectResponse, OutgoingEvent};
 #[cfg(feature = "direct")]
 pub(crate) struct QueueSink {
     queue: Arc<Mutex<Vec<SinkEvent>>>,
-}
-
-/// An event collected by the QueueSink or produced by SDK-local
-/// commands (async tasks, timers, delayed events).
-#[cfg(feature = "direct")]
-#[derive(Debug)]
-pub(crate) enum SinkEvent {
-    /// An OutgoingEvent from the renderer.
-    Event(OutgoingEvent),
-    /// An effect response from the renderer.
-    EffectResponse(EffectResponse),
-    /// A query response from the renderer.
-    QueryResponse {
-        kind: String,
-        tag: String,
-        data: serde_json::Value,
-    },
-    /// Result of an async task (Command::Async).
-    AsyncResult {
-        tag: String,
-        result: Result<serde_json::Value, serde_json::Value>,
-    },
-    /// A delayed event (Command::SendAfter).
-    DelayedEvent(crate::event::Event),
 }
 
 #[cfg(feature = "direct")]
@@ -81,7 +60,6 @@ impl plushie_renderer_lib::EventSink for QueueSink {
         &mut self, _id: &str, _name: &str, _hash: &str,
         _width: u32, _height: u32, _rgba_bytes: &[u8],
     ) -> io::Result<()> {
-        // Screenshots are not used in direct mode SDK.
         Ok(())
     }
 
@@ -89,12 +67,10 @@ impl plushie_renderer_lib::EventSink for QueueSink {
         &mut self, _mode: &str, _backend: &str, _native_widgets: &[&str],
         _widget_set_names: &[&str], _transport: &str,
     ) -> io::Result<()> {
-        // Hello is not used in direct mode SDK.
         Ok(())
     }
 
     fn write_raw(&mut self, _bytes: &[u8]) -> io::Result<()> {
-        // Raw writes (stub acks, scripting) are not used in direct mode SDK.
         Ok(())
     }
 }

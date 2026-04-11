@@ -19,6 +19,7 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
+plushie-core = { version = "0.6.1", path = "../plushie-core" }
 plushie-widget-sdk = { version = "0.6.1", path = "../plushie-widget-sdk" }
 iced = { version = "0.8", package = "plushie-iced", features = ["advanced", "canvas", "a11y"] }
 serde = "1"

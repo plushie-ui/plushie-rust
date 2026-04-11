@@ -10,6 +10,7 @@
 
 pub mod app;
 pub mod apply;
+pub mod execute;
 pub mod constants;
 pub mod emitter;
 pub mod emitters;

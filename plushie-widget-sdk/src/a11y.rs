@@ -777,47 +777,51 @@ mod tests {
     use iced::advanced::widget::Operation;
     use serde_json::json;
 
+    fn wire(v: serde_json::Value) -> plushie_core::protocol::Props {
+        plushie_core::protocol::Props::Wire(v)
+    }
+
     // -- from_props -----------------------------------------------------------
 
     #[test]
     fn from_props_none_when_no_a11y() {
-        let props = json!({"label": "Click me"});
+        let props = wire(json!({"label": "Click me"}));
         assert!(A11yOverrides::from_props(&props).is_none());
     }
 
     #[test]
     fn from_props_none_when_empty_a11y() {
-        let props = json!({"a11y": {}});
+        let props = plushie_core::protocol::Props::Wire(json!({"a11y": {}}));
         assert!(A11yOverrides::from_props(&props).is_none());
     }
 
     #[test]
     fn from_props_none_when_all_defaults() {
-        let props = json!({"a11y": {"hidden": false, "required": false}});
+        let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"hidden": false, "required": false}}));
         assert!(A11yOverrides::from_props(&props).is_none());
     }
 
     #[test]
     fn from_props_parses_label() {
-        let overrides = A11yOverrides::from_props(&json!({"a11y": {"label": "Close"}})).unwrap();
+        let overrides = A11yOverrides::from_props(&wire(json!({"a11y": {"label": "Close"}}))).unwrap();
         assert_eq!(overrides.label.as_deref(), Some("Close"));
     }
 
     #[test]
     fn from_props_parses_role() {
-        let overrides = A11yOverrides::from_props(&json!({"a11y": {"role": "heading"}})).unwrap();
+        let overrides = A11yOverrides::from_props(&wire(json!({"a11y": {"role": "heading"}}))).unwrap();
         assert_eq!(overrides.role, Some(accessible::Role::Heading));
     }
 
     #[test]
     fn from_props_parses_hidden() {
-        let overrides = A11yOverrides::from_props(&json!({"a11y": {"hidden": true}})).unwrap();
+        let overrides = A11yOverrides::from_props(&wire(json!({"a11y": {"hidden": true}}))).unwrap();
         assert!(overrides.hidden);
     }
 
     #[test]
     fn from_props_parses_all_fields() {
-        let props = json!({
+        let props = plushie_core::protocol::Props::Wire(json!({
             "a11y": {
                 "role": "alert",
                 "label": "Error message",
@@ -844,7 +848,7 @@ mod tests {
                 "size_of_set": 10,
                 "has_popup": "menu"
             }
-        });
+        }));
         let o = A11yOverrides::from_props(&props).unwrap();
         assert_eq!(o.role, Some(accessible::Role::Alert));
         assert_eq!(o.label.as_deref(), Some("Error message"));
@@ -993,7 +997,7 @@ mod tests {
     #[test]
     fn level_rejects_out_of_range() {
         for n in [0, 7, 100] {
-            let props = json!({"a11y": {"level": n}});
+            let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"level": n}}));
             // level alone doesn't trigger has_overrides (it's None for invalid)
             assert!(A11yOverrides::from_props(&props).is_none());
         }
@@ -1002,7 +1006,7 @@ mod tests {
     #[test]
     fn level_accepts_1_through_6() {
         for n in 1..=6 {
-            let props = json!({"a11y": {"level": n}});
+            let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"level": n}}));
             let o = A11yOverrides::from_props(&props).unwrap();
             assert_eq!(o.level, Some(n as usize));
         }
@@ -1012,13 +1016,13 @@ mod tests {
 
     #[test]
     fn mnemonic_takes_first_char() {
-        let o = A11yOverrides::from_props(&json!({"a11y": {"mnemonic": "Save"}})).unwrap();
+        let o = A11yOverrides::from_props(&wire(json!({"a11y": {"mnemonic": "Save"}}))).unwrap();
         assert_eq!(o.mnemonic, Some('S'));
     }
 
     #[test]
     fn mnemonic_none_when_empty_string() {
-        let props = json!({"a11y": {"mnemonic": ""}});
+        let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"mnemonic": ""}}));
         // Empty mnemonic doesn't trigger has_overrides
         assert!(A11yOverrides::from_props(&props).is_none());
     }
@@ -1168,25 +1172,25 @@ mod tests {
 
     #[test]
     fn from_props_parses_disabled() {
-        let o = A11yOverrides::from_props(&json!({"a11y": {"disabled": true}})).unwrap();
+        let o = A11yOverrides::from_props(&wire(json!({"a11y": {"disabled": true}}))).unwrap();
         assert_eq!(o.disabled, Some(true));
     }
 
     #[test]
     fn from_props_parses_disabled_false() {
-        let o = A11yOverrides::from_props(&json!({"a11y": {"disabled": false}})).unwrap();
+        let o = A11yOverrides::from_props(&wire(json!({"a11y": {"disabled": false}}))).unwrap();
         assert_eq!(o.disabled, Some(false));
     }
 
     #[test]
     fn from_props_parses_position_in_set() {
-        let o = A11yOverrides::from_props(&json!({"a11y": {"position_in_set": 3}})).unwrap();
+        let o = A11yOverrides::from_props(&wire(json!({"a11y": {"position_in_set": 3}}))).unwrap();
         assert_eq!(o.position_in_set, Some(3));
     }
 
     #[test]
     fn from_props_parses_size_of_set() {
-        let o = A11yOverrides::from_props(&json!({"a11y": {"size_of_set": 10}})).unwrap();
+        let o = A11yOverrides::from_props(&wire(json!({"a11y": {"size_of_set": 10}}))).unwrap();
         assert_eq!(o.size_of_set, Some(10));
     }
 
@@ -1200,7 +1204,7 @@ mod tests {
             ("grid", accessible::HasPopup::Grid),
         ];
         for (input, expected) in cases {
-            let o = A11yOverrides::from_props(&json!({"a11y": {"has_popup": input}})).unwrap();
+            let o = A11yOverrides::from_props(&wire(json!({"a11y": {"has_popup": input}}))).unwrap();
             assert_eq!(o.has_popup, Some(expected), "has_popup({input:?})");
         }
     }

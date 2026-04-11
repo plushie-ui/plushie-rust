@@ -632,7 +632,7 @@ mod tests {
         tree.apply_patch(vec![op]);
         assert_eq!(tree.root().unwrap().children[1].id, "c");
         assert_eq!(
-            tree.root().unwrap().children[1].props["content"],
+            tree.root().unwrap().children[1].props.to_value()["content"],
             "replaced"
         );
     }
@@ -698,8 +698,8 @@ mod tests {
             }),
         );
         tree.apply_patch(vec![op]);
-        assert_eq!(tree.root().unwrap().props["spacing"], 10);
-        assert_eq!(tree.root().unwrap().props["padding"], 20);
+        assert_eq!(tree.root().unwrap().props.to_value()["spacing"], 10);
+        assert_eq!(tree.root().unwrap().props.to_value()["padding"], 20);
     }
 
     #[test]
@@ -718,7 +718,7 @@ mod tests {
             }),
         );
         tree.apply_patch(vec![op]);
-        assert_eq!(tree.root().unwrap().props["content"], "hi");
+        assert_eq!(tree.root().unwrap().props.to_value()["content"], "hi");
         assert!(tree.root().unwrap().props.get("size").is_none());
     }
 
@@ -739,7 +739,7 @@ mod tests {
             }),
         );
         tree.apply_patch(vec![op]);
-        assert_eq!(tree.root().unwrap().children[0].props["content"], "new");
+        assert_eq!(tree.root().unwrap().children[0].props.to_value()["content"], "new");
     }
 
     #[test]
@@ -756,7 +756,7 @@ mod tests {
         );
         tree.apply_patch(vec![op]);
         // Props unchanged -- the merge was skipped
-        assert_eq!(tree.root().unwrap().props, json!("not an object"));
+        assert_eq!(tree.root().unwrap().props, plushie_core::protocol::Props::Wire(json!("not an object")));
     }
 
     #[test]
@@ -773,7 +773,7 @@ mod tests {
         );
         tree.apply_patch(vec![op]);
         // Props unchanged -- the merge was skipped
-        assert_eq!(tree.root().unwrap().props["content"], "hi");
+        assert_eq!(tree.root().unwrap().props.to_value()["content"], "hi");
     }
 
     // -----------------------------------------------------------------------
@@ -1028,7 +1028,7 @@ mod tests {
         );
         tree.apply_patch(vec![op]);
         let deep = &tree.root().unwrap().children[0].children[0].children[0];
-        assert_eq!(deep.props["content"], "updated deep");
+        assert_eq!(deep.props.to_value()["content"], "updated deep");
     }
 
     #[test]
@@ -1079,7 +1079,7 @@ mod tests {
         let op = make_patch_op("update_props", vec![], json!({}));
         tree.apply_patch(vec![op]);
         // Props unchanged -- the missing "props" field is handled gracefully
-        assert_eq!(tree.root().unwrap().props["content"], "hi");
+        assert_eq!(tree.root().unwrap().props.to_value()["content"], "hi");
     }
 
     #[test]
@@ -1159,7 +1159,7 @@ mod tests {
         let children = &tree.root().unwrap().children;
         assert_eq!(children.len(), 2);
         assert_eq!(children[0].id, "b");
-        assert_eq!(children[0].props["label"], "updated");
+        assert_eq!(children[0].props.to_value()["label"], "updated");
         assert_eq!(children[1].id, "c");
     }
 
@@ -1234,8 +1234,8 @@ mod tests {
         tree.apply_patch(ops);
 
         let children = &tree.root().unwrap().children;
-        assert_eq!(children[0].props["content"], "changed");
-        assert_eq!(children[1].props["label"], "click me");
+        assert_eq!(children[0].props.to_value()["content"], "changed");
+        assert_eq!(children[1].props.to_value()["label"], "click me");
     }
 
     // -----------------------------------------------------------------------

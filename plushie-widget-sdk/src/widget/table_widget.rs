@@ -86,7 +86,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let width = prop_length(props, "width", Length::Fill);
         let show_header = prop_bool_default(props, "header", true);
         let padding_val = parse_padding_value(props);

@@ -33,7 +33,8 @@ fn render_pick_list<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
+    let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
     let options: Vec<String> = props
         .and_then(|p| p.get("options"))
         .and_then(|v| v.as_array())

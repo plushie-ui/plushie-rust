@@ -56,7 +56,8 @@ fn tree_node_to_shape_value(node: &TreeNode) -> Value {
     map.insert("type".to_string(), Value::String(node.type_name.clone()));
 
     // Copy all props into the shape map
-    if let Some(obj) = node.props.as_object() {
+    let props_cow = node.props.as_value_cow();
+    if let Some(obj) = props_cow.as_object() {
         for (k, v) in obj {
             map.insert(k.clone(), v.clone());
         }
@@ -143,7 +144,8 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
     interactive_elements: &'a [InteractiveElement],
     pending_focus: Option<String>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
+    let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
     let width = prop_length(props, "width", Length::Fill);
     let height = prop_length(props, "height", Length::Fixed(200.0));
 

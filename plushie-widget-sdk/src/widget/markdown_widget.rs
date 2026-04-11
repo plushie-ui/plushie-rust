@@ -33,7 +33,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
         use crate::shared_state::hash_str;
 
         let key = (window_id.to_string(), node.id.clone());
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let mut content_str = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
         if content_str.len() > Self::MAX_CONTENT {
             log::warn!(
@@ -93,7 +94,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
             }
         };
 
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let mut settings = if let Some(text_size) =
             prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "text_size")
                 .or(ctx.default_text_size)

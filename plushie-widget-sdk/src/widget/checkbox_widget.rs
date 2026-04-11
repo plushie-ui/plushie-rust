@@ -34,7 +34,8 @@ fn render_checkbox<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
+    let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
     let label = prop_str(props, "label").unwrap_or_default();
     let checked = prop_bool_default(props, "checked", false);
     let spacing = prop_f32(props, "spacing");

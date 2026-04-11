@@ -22,7 +22,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ImageWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let width = prop_length(props, "width", Length::Shrink);
         let height = prop_length(props, "height", Length::Shrink);
         let content_fit = prop_content_fit(props);

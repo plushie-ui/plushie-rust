@@ -1005,7 +1005,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: "window".to_string(),
-            props: serde_json::json!({}),
+            props: serde_json::json!({}).into(),
             children: vec![],
         }
     }

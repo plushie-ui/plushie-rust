@@ -20,7 +20,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let direction = prop_str(props, "direction").unwrap_or_default();
 
         // Thickness is the cross-axis dimension:

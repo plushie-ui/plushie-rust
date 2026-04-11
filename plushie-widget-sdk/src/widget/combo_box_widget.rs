@@ -38,7 +38,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
 
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
         let key = (window_id.to_string(), node.id.clone());
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let new_options: Vec<String> = props
             .and_then(|p| p.get("options"))
             .and_then(|v| v.as_array())
@@ -75,7 +76,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
     }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
@@ -100,7 +102,8 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     ctx: RenderCtx<'a, R>,
     state: &'a combo_box::State<String>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
+    let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
     let selected: Option<String> = prop_str(props, "selected");
     let placeholder = prop_str(props, "placeholder").unwrap_or_default();
     let width = prop_length(props, "width", Length::Fill);

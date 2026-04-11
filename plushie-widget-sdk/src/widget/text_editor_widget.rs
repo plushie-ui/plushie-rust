@@ -222,7 +222,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
         use crate::shared_state::hash_str;
 
         let key = (window_id.to_string(), node.id.clone());
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let mut content_str = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
         if content_str.len() > Self::MAX_CONTENT {
             log::warn!(
@@ -286,7 +287,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
     }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
@@ -311,7 +313,8 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     ctx: RenderCtx<'a, R>,
     content: &'a text_editor::Content<R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
+    let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
     let height = prop_length(props, "height", Length::Shrink);
     let placeholder = prop_str(props, "placeholder").unwrap_or_default();
     let id = node.id.clone();

@@ -20,7 +20,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GridWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let cols = props
             .and_then(|p| p.get("columns"))
             .and_then(|v| v.as_u64())

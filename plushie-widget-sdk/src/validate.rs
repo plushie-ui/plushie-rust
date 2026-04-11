@@ -520,7 +520,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
         _ => return Vec::new(), // Unknown widget type -- skip validation
     };
 
-    let props = match node.props.as_object() {
+    let props_cow = node.props.as_value_cow();
+    let props = match props_cow.as_object() {
         Some(p) => p,
         None => return Vec::new(),
     };

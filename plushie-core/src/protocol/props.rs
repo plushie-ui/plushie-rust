@@ -307,11 +307,21 @@ impl Props {
         }
     }
 
+    /// Convert to a JSON Value for consumption by prop_helpers.
+    ///
+    /// Zero-cost for Wire (returns a reference). Allocates for Typed
+    /// (converts PropMap to JSON Map). Called once per widget render.
+    pub fn as_value_cow(&self) -> std::borrow::Cow<'_, Value> {
+        match self {
+            Self::Wire(v) => std::borrow::Cow::Borrowed(v),
+            Self::Typed(m) => std::borrow::Cow::Owned(Value::Object(m.clone().into_json_map())),
+        }
+    }
+
     /// Access as a JSON object map (Wire variant only).
     ///
-    /// Returns None for Typed props. Widget renderers should use
-    /// the typed accessors (get_str, get_f64, etc.) or the
-    /// prop_helpers module instead.
+    /// Returns None for Typed props. Prefer `as_value_cow()` for
+    /// code that needs to work with both variants.
     pub fn as_object(&self) -> Option<&serde_json::Map<String, Value>> {
         match self { Self::Wire(v) => v.as_object(), Self::Typed(_) => None }
     }
@@ -345,8 +355,15 @@ impl Props {
         }
     }
 
-    /// True for both variants (both represent prop maps).
-    pub fn is_object(&self) -> bool { true }
+    /// True if the props contain an object/map structure.
+    /// Always true for Typed (PropMap). For Wire, checks if the
+    /// underlying Value is actually a JSON object.
+    pub fn is_object(&self) -> bool {
+        match self {
+            Self::Typed(_) => true,
+            Self::Wire(v) => v.is_object(),
+        }
+    }
 }
 
 impl Default for Props {

@@ -172,14 +172,14 @@ mod tests {
         assert_eq!(n.id, "btn-1");
         assert_eq!(n.type_name, "button");
         assert!(n.children.is_empty());
-        assert_eq!(n.props, json!({}));
+        assert_eq!(n.props.to_value(), json!({}));
     }
 
     #[test]
     fn node_with_props_stores_props() {
         let n = node_with_props("txt-1", "text", json!({"content": "hello", "size": 14}));
-        assert_eq!(n.props["content"], "hello");
-        assert_eq!(n.props["size"], 14);
+        assert_eq!(n.props.to_value()["content"], "hello");
+        assert_eq!(n.props.to_value()["size"], 14);
     }
 
     #[test]

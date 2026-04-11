@@ -34,7 +34,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
         let resize_id = node.id.clone();
         let hide_id = format!("{}:hide", node.id);
 
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
 
         let mut s = sensor(child)
             .key(id)

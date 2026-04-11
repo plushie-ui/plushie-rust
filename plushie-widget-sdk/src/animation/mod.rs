@@ -284,7 +284,8 @@ impl TransitionManager {
     }
 
     fn scan_node(&mut self, node: &crate::protocol::TreeNode) {
-        if let Some(props) = node.props.as_object() {
+        let props_cow = node.props.as_value_cow();
+        if let Some(props) = props_cow.as_object() {
             for (key, value) in props {
                 // Skip internal props
                 if key.starts_with("__") || key == "exit" {

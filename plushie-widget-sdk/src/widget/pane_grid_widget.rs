@@ -35,7 +35,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
 
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
         let key = (window_id.to_string(), node.id.clone());
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let axis = match crate::prop_helpers::prop_str(props, "split_axis").as_deref() {
             Some("horizontal") => pane_grid::Axis::Horizontal,
             _ => pane_grid::Axis::Vertical,
@@ -339,7 +340,8 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     ctx: RenderCtx<'a, R>,
     state: &'a pane_grid::State<String>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
+    let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
     let spacing = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "spacing")
         .unwrap_or(2.0);
     let width = prop_length(props, "width", Length::Fill);
@@ -351,7 +353,8 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     let mut title_map: HashMap<String, String> = HashMap::new();
     for c in &node.children {
         child_map.insert(c.id.clone(), ctx.render_child(c));
-        if let Some(title) = prop_str(c.props.as_object(), "title") {
+        let c_props = c.props.as_value_cow();
+        if let Some(title) = prop_str(c_props.as_object(), "title") {
             title_map.insert(c.id.clone(), title);
         }
     }

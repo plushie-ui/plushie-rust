@@ -11,7 +11,7 @@ fn make_canvas_node(props: Value, children: Vec<TreeNode>) -> TreeNode {
     TreeNode {
         id: "test-canvas".to_string(),
         type_name: "canvas".to_string(),
-        props,
+        props: props.into(),
         children,
     }
 }
@@ -20,7 +20,7 @@ fn make_layer_node(name: &str, shape_children: Vec<TreeNode>) -> TreeNode {
     TreeNode {
         id: format!("auto:layer:{name}"),
         type_name: "__layer__".to_string(),
-        props: json!({"name": name}),
+        props: json!({"name": name}).into(),
         children: shape_children,
     }
 }
@@ -29,7 +29,7 @@ fn make_shape_node(id: &str, type_name: &str, props: Value) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props,
+        props: props.into(),
         children: vec![],
     }
 }

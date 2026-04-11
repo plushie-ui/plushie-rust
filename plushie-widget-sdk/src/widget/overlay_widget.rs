@@ -21,7 +21,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for OverlayWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = node.props.as_object();
+        let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
         let position = prop_str(props, "position").unwrap_or_else(|| "below".to_string());
         let gap = prop_f32(props, "gap").unwrap_or(0.0);
         let offset_x = prop_f32(props, "offset_x").unwrap_or(0.0);

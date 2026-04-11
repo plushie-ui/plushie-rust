@@ -32,7 +32,8 @@ fn render_radio<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = node.props.as_object();
+    let props_cow = node.props.as_value_cow();
+        let props = props_cow.as_object();
     let value = prop_str(props, "value").unwrap_or_default();
     let selected_str = prop_str(props, "selected").unwrap_or_default();
     let label = prop_str(props, "label").unwrap_or_else(|| value.clone());

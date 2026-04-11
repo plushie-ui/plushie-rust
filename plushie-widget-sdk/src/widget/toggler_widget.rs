@@ -1,12 +1,52 @@
 use iced::widget::{container, toggler};
-use iced::{Element, Length, Theme, widget};
+use iced::{Element, Theme, widget};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{
+    Font, HorizontalAlignment, Length, LineHeight, PlushieType, Shaping, Wrapping,
+};
+
+struct TogglerProps {
+    label: Option<String>,
+    is_toggled: bool,
+    disabled: bool,
+    spacing: Option<f32>,
+    width: Option<Length>,
+    size: Option<f32>,
+    text_size: Option<f32>,
+    font: Option<Font>,
+    line_height: Option<LineHeight>,
+    shaping: Option<Shaping>,
+    wrapping: Option<Wrapping>,
+    text_alignment: Option<HorizontalAlignment>,
+}
+
+impl TogglerProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            label: String::extract(p, "label"),
+            is_toggled: prop_bool_default(p, "is_toggled", false),
+            disabled: prop_bool_default(p, "disabled", false),
+            spacing: f32::extract(p, "spacing"),
+            width: Length::extract(p, "width"),
+            size: f32::extract(p, "size"),
+            text_size: f32::extract(p, "text_size"),
+            font: Font::extract(p, "font"),
+            line_height: LineHeight::extract(p, "line_height"),
+            shaping: Shaping::extract(p, "shaping"),
+            wrapping: Wrapping::extract(p, "wrapping"),
+            text_alignment: HorizontalAlignment::extract(p, "text_alignment"),
+        }
+    }
+}
 
 pub(crate) struct TogglerWidget;
 
@@ -32,58 +72,55 @@ fn render_toggler<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = &node.props;
-    let is_toggled = prop_bool_default(props, "is_toggled", false);
-    let label = prop_str(props, "label");
-    let spacing = prop_f32(props, "spacing");
-    let width = prop_length(props, "width", Length::Shrink);
+    let tp = TogglerProps::from_node(node);
     let id = node.id.clone();
 
-    let disabled = prop_bool_default(props, "disabled", false);
+    let width = tp
+        .width
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Shrink);
 
-    let mut t = toggler(is_toggled).width(width);
+    let mut t = toggler(tp.is_toggled).width(width);
 
-    if !disabled {
+    if !tp.disabled {
         t = t.on_toggle(move |v| Message::Toggle(ctx.window_id.to_string(), id.clone(), v));
     }
 
-    if let Some(l) = label {
+    if let Some(l) = tp.label {
         t = t.label(l);
     }
-    if let Some(s) = spacing {
+    if let Some(s) = tp.spacing {
         t = t.spacing(s);
     }
-    if let Some(sz) = prop_f32(props, "size") {
+    if let Some(sz) = tp.size {
         t = t.size(sz);
     }
-    if let Some(ts) = prop_f32(props, "text_size").or(ctx.default_text_size) {
+    if let Some(ts) = tp.text_size.or(ctx.default_text_size) {
         t = t.text_size(ts);
     }
-    let font = props
-        .get_value("font")
-        .as_ref().map(parse_font)
+    let font = tp
+        .font
+        .map(|f| iced_convert::font(&f))
         .or(ctx.default_font);
     if let Some(f) = font {
         t = t.font(f);
     }
-    if let Some(lh) = parse_line_height(props) {
-        t = t.line_height(lh);
+    if let Some(lh) = tp.line_height {
+        t = t.line_height(iced_convert::line_height(lh));
     }
-    if let Some(shaping) = parse_shaping(props) {
-        t = t.shaping(shaping);
+    if let Some(s) = tp.shaping {
+        t = t.shaping(iced_convert::shaping(s));
     }
-    if let Some(w) = parse_wrapping(props) {
-        t = t.wrapping(w);
+    if let Some(w) = tp.wrapping {
+        t = t.wrapping(iced_convert::wrapping(w));
     }
-    if let Some(align) = props
-        .get_str("text_alignment")
-        .and_then(value_to_horizontal_alignment)
-    {
-        t = t.alignment(align);
+    if let Some(align) = tp.text_alignment {
+        t = t.alignment(iced_convert::horizontal_alignment(align));
     }
 
     // Style: string name or style map object
-    if let Some(style_val) = props.get_value("style") {
+    if let Some(style_val) = node.props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             t = match style_name {
                 "default" => t.style(toggler::default),

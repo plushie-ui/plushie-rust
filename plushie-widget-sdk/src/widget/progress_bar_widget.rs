@@ -1,12 +1,38 @@
 use iced::widget::progress_bar;
-use iced::{Element, Length, Theme};
+use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{Length, PlushieType, Range};
+
+struct ProgressBarProps {
+    range: Option<Range>,
+    value: Option<f32>,
+    width: Option<Length>,
+    height: Option<Length>,
+    vertical: bool,
+    label: Option<String>,
+}
+
+impl ProgressBarProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            range: Range::extract(p, "range"),
+            value: f32::extract(p, "value"),
+            width: Length::extract(p, "width"),
+            height: Length::extract(p, "height"),
+            vertical: prop_bool_default(p, "vertical", false),
+            label: String::extract(p, "label"),
+        }
+    }
+}
 
 pub(crate) struct ProgressBarWidget;
 
@@ -20,25 +46,37 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = &node.props;
-        let range = prop_range_f32(props);
-        let value = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "value")
-            .unwrap_or(0.0)
-            .clamp(*range.start(), *range.end());
-        let width = prop_length(props, "width", Length::Fill);
-        let height = prop_length(props, "height", Length::Shrink);
+        let pbp = ProgressBarProps::from_node(node);
 
-        let mut pb = progress_bar(range, value).length(width).girth(height);
+        let range = pbp.range.unwrap_or(Range::new(0.0, 100.0));
+        let range_inclusive = range.min..=range.max;
+        let value =
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "value")
+                .or(pbp.value)
+                .unwrap_or(0.0)
+                .clamp(range.min, range.max);
+        let width = pbp
+            .width
+            .map(|l| iced_convert::length(&l))
+            .unwrap_or(iced::Length::Fill);
+        let height = pbp
+            .height
+            .map(|l| iced_convert::length(&l))
+            .unwrap_or(iced::Length::Shrink);
 
-        if prop_bool_default(props, "vertical", false) {
+        let mut pb = progress_bar(range_inclusive, value)
+            .length(width)
+            .girth(height);
+
+        if pbp.vertical {
             pb = pb.vertical();
         }
-        if let Some(label) = prop_str(props, "label") {
+        if let Some(label) = pbp.label {
             pb = pb.label(label);
         }
 
         // Style: string name or style map object
-        if let Some(style_val) = props.get_value("style") {
+        if let Some(style_val) = node.props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 pb = match style_name {
                     "primary" => pb.style(progress_bar::primary),

@@ -8,6 +8,27 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
+use plushie_core::types::PlushieType;
+
+struct RuleProps {
+    direction: Option<String>,
+    width: Option<f32>,
+    height: Option<f32>,
+    thickness: Option<f32>,
+}
+
+impl RuleProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            direction: String::extract(p, "direction"),
+            width: f32::extract(p, "width"),
+            height: f32::extract(p, "height"),
+            thickness: f32::extract(p, "thickness"),
+        }
+    }
+}
+
 pub(crate) struct RuleWidget;
 
 impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
@@ -20,26 +41,24 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let props = &node.props;
-        let direction = prop_str(props, "direction").unwrap_or_default();
+        let rp = RuleProps::from_node(node);
+        let is_vertical = rp.direction.as_deref() == Some("vertical");
 
         // Thickness is the cross-axis dimension:
         // horizontal rule -> height, vertical rule -> width.
         // "thickness" is a universal alias for either.
-        let thickness = if direction == "vertical" {
-            prop_f32(props, "width")
-        } else {
-            prop_f32(props, "height")
-        }
-        .or_else(|| prop_f32(props, "thickness"))
-        .unwrap_or(1.0);
+        let thickness = if is_vertical { rp.width } else { rp.height }
+            .or(rp.thickness)
+            .unwrap_or(1.0);
 
-        let mut r = if direction == "vertical" {
+        let mut r = if is_vertical {
             rule::vertical(thickness)
         } else {
             rule::horizontal(thickness)
         };
-        if let Some(style_val) = props.get_value("style") {
+
+        // Style: string name or style map object
+        if let Some(style_val) = node.props.get_value("style") {
             if let Some(style_name) = style_val.as_str() {
                 r = match style_name {
                     "default" => r.style(rule::default),

@@ -2,11 +2,49 @@ use iced::widget::container;
 use iced::{Element, Theme, widget};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{Font, Length, LineHeight, PlushieType, Shaping, Wrapping};
+
+struct RadioProps {
+    label: Option<String>,
+    value: Option<String>,
+    selected: Option<String>,
+    group: Option<String>,
+    spacing: Option<f32>,
+    size: Option<f32>,
+    width: Option<Length>,
+    font: Option<Font>,
+    text_size: Option<f32>,
+    line_height: Option<LineHeight>,
+    shaping: Option<Shaping>,
+    wrapping: Option<Wrapping>,
+}
+
+impl RadioProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            label: String::extract(p, "label"),
+            value: String::extract(p, "value"),
+            selected: String::extract(p, "selected"),
+            group: String::extract(p, "group"),
+            spacing: f32::extract(p, "spacing"),
+            size: f32::extract(p, "size"),
+            width: Length::extract(p, "width"),
+            font: Font::extract(p, "font"),
+            text_size: f32::extract(p, "text_size"),
+            line_height: LineHeight::extract(p, "line_height"),
+            shaping: Shaping::extract(p, "shaping"),
+            wrapping: Wrapping::extract(p, "wrapping"),
+        }
+    }
+}
 
 pub(crate) struct RadioWidget;
 
@@ -32,12 +70,13 @@ fn render_radio<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = &node.props;
-    let value = prop_str(props, "value").unwrap_or_default();
-    let selected_str = prop_str(props, "selected").unwrap_or_default();
-    let label = prop_str(props, "label").unwrap_or_else(|| value.clone());
+    let rp = RadioProps::from_node(node);
+
+    let value = rp.value.unwrap_or_default();
+    let selected_str = rp.selected.unwrap_or_default();
+    let label = rp.label.unwrap_or_else(|| value.clone());
     // Use "group" prop as the event ID so all radios in a group emit the same ID.
-    let event_id = prop_str(props, "group").unwrap_or_else(|| node.id.clone());
+    let event_id = rp.group.unwrap_or_else(|| node.id.clone());
 
     let is_selected = if value == selected_str {
         Some(0u8)
@@ -54,37 +93,37 @@ fn render_radio<'a, R: PlushieRenderer>(
         )
     });
 
-    if let Some(s) = prop_f32(props, "spacing") {
+    if let Some(s) = rp.spacing {
         r = r.spacing(s);
     }
-    if let Some(w) = value_to_length_opt(props.get_value("width").as_ref()) {
-        r = r.width(w);
+    if let Some(ref w) = rp.width {
+        r = r.width(iced_convert::length(w));
     }
-    if let Some(sz) = prop_f32(props, "size") {
+    if let Some(sz) = rp.size {
         r = r.size(sz);
     }
-    if let Some(ts) = prop_f32(props, "text_size").or(ctx.default_text_size) {
+    if let Some(ts) = rp.text_size.or(ctx.default_text_size) {
         r = r.text_size(ts);
     }
-    let font = props
-        .get_value("font")
-        .as_ref().map(parse_font)
+    let font = rp
+        .font
+        .map(|f| iced_convert::font(&f))
         .or(ctx.default_font);
     if let Some(f) = font {
         r = r.font(f);
     }
-    if let Some(lh) = parse_line_height(props) {
-        r = r.line_height(lh);
+    if let Some(lh) = rp.line_height {
+        r = r.line_height(iced_convert::line_height(lh));
     }
-    if let Some(shaping) = parse_shaping(props) {
-        r = r.shaping(shaping);
+    if let Some(s) = rp.shaping {
+        r = r.shaping(iced_convert::shaping(s));
     }
-    if let Some(w) = parse_wrapping(props) {
-        r = r.wrapping(w);
+    if let Some(w) = rp.wrapping {
+        r = r.wrapping(iced_convert::wrapping(w));
     }
 
     // Style: string name or style map object
-    if let Some(style_val) = props.get_value("style") {
+    if let Some(style_val) = node.props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             r = match style_name {
                 "default" => r.style(iced::widget::radio::default),

@@ -1,14 +1,52 @@
 use iced::widget::text::LineHeight;
 use iced::widget::{checkbox, container};
-use iced::{Element, Font, Length, Pixels, Theme, widget};
+use iced::{Element, Font, Pixels, Theme, widget};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{
+    Font as PlushieFont, Length, LineHeight as PlushieLineHeight, PlushieType, Shaping, Wrapping,
+};
+
+struct CheckboxProps {
+    label: Option<String>,
+    checked: bool,
+    disabled: bool,
+    spacing: Option<f32>,
+    size: Option<f32>,
+    width: Option<Length>,
+    font: Option<PlushieFont>,
+    text_size: Option<f32>,
+    line_height: Option<PlushieLineHeight>,
+    shaping: Option<Shaping>,
+    wrapping: Option<Wrapping>,
+}
+
+impl CheckboxProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let p = &node.props;
+        Self {
+            label: String::extract(p, "label"),
+            checked: prop_bool_default(p, "checked", false),
+            disabled: prop_bool_default(p, "disabled", false),
+            spacing: f32::extract(p, "spacing"),
+            size: f32::extract(p, "size"),
+            width: Length::extract(p, "width"),
+            font: PlushieFont::extract(p, "font"),
+            text_size: f32::extract(p, "text_size"),
+            line_height: PlushieLineHeight::extract(p, "line_height"),
+            shaping: Shaping::extract(p, "shaping"),
+            wrapping: Wrapping::extract(p, "wrapping"),
+        }
+    }
+}
 
 pub(crate) struct CheckboxWidget;
 
@@ -34,47 +72,50 @@ fn render_checkbox<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    let props = &node.props;
-    let label = prop_str(props, "label").unwrap_or_default();
-    let checked = prop_bool_default(props, "checked", false);
-    let spacing = prop_f32(props, "spacing");
-    let width = prop_length(props, "width", Length::Shrink);
+    let cp = CheckboxProps::from_node(node);
     let id = node.id.clone();
 
-    let disabled = prop_bool_default(props, "disabled", false);
+    let label = cp.label.unwrap_or_default();
+    let width = cp
+        .width
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Shrink);
 
-    let mut cb = checkbox(checked).label(label).width(width);
+    let mut cb = checkbox(cp.checked).label(label).width(width);
 
-    if !disabled {
+    if !cp.disabled {
         cb = cb.on_toggle(move |v| Message::Toggle(ctx.window_id.to_string(), id.clone(), v));
     }
 
-    if let Some(s) = spacing {
+    if let Some(s) = cp.spacing {
         cb = cb.spacing(s);
     }
-    if let Some(sz) = prop_f32(props, "size") {
+    if let Some(sz) = cp.size {
         cb = cb.size(sz);
     }
-    if let Some(ts) = prop_f32(props, "text_size").or(ctx.default_text_size) {
+    if let Some(ts) = cp.text_size.or(ctx.default_text_size) {
         cb = cb.text_size(ts);
     }
-    let font = props
-        .get_value("font")
-        .as_ref().map(parse_font)
+    let font = cp
+        .font
+        .map(|f| iced_convert::font(&f))
         .or(ctx.default_font);
     if let Some(f) = font {
         cb = cb.font(f);
     }
-    if let Some(lh) = parse_line_height(props) {
-        cb = cb.line_height(lh);
+    if let Some(lh) = cp.line_height {
+        cb = cb.line_height(iced_convert::line_height(lh));
     }
-    if let Some(shaping) = parse_shaping(props) {
-        cb = cb.shaping(shaping);
+    if let Some(s) = cp.shaping {
+        cb = cb.shaping(iced_convert::shaping(s));
     }
-    if let Some(w) = parse_wrapping(props) {
-        cb = cb.wrapping(w);
+    if let Some(w) = cp.wrapping {
+        cb = cb.wrapping(iced_convert::wrapping(w));
     }
-    let icon_prop = props.get_value("icon");
+
+    // Icon: complex nested object, kept as raw prop access
+    let icon_prop = node.props.get_value("icon");
     if let Some(icon_val) = icon_prop
         .as_ref()
         .and_then(|v| v.as_object())
@@ -124,8 +165,9 @@ fn render_checkbox<'a, R: PlushieRenderer>(
         };
         cb = cb.icon(icon_struct);
     }
+
     // Style: string name or style map object
-    if let Some(style_val) = props.get_value("style") {
+    if let Some(style_val) = node.props.get_value("style") {
         if let Some(style_name) = style_val.as_str() {
             cb = match style_name {
                 "primary" => cb.style(checkbox::primary),

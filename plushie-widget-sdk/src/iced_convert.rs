@@ -5,6 +5,7 @@
 //! so Rust's orphan rule prevents `From` impls. Instead we provide
 //! named conversion functions.
 
+use iced::advanced::widget::operation::accessible;
 use iced::widget::canvas;
 use iced::widget::text;
 
@@ -423,6 +424,98 @@ pub fn filter_method(f: types::FilterMethod) -> iced::widget::image::FilterMetho
     match f {
         types::FilterMethod::Nearest => iced::widget::image::FilterMethod::Nearest,
         types::FilterMethod::Linear => iced::widget::image::FilterMethod::Linear,
+    }
+}
+
+// -------------------------------------------------------------------------
+// A11y: Role
+// -------------------------------------------------------------------------
+
+pub fn a11y_role(r: &types::Role) -> accessible::Role {
+    match r {
+        types::Role::Alert => accessible::Role::Alert,
+        types::Role::AlertDialog => accessible::Role::AlertDialog,
+        types::Role::Button => accessible::Role::Button,
+        types::Role::Canvas => accessible::Role::Canvas,
+        types::Role::CheckBox => accessible::Role::CheckBox,
+        types::Role::Cell => accessible::Role::Cell,
+        types::Role::ColumnHeader => accessible::Role::ColumnHeader,
+        types::Role::ComboBox => accessible::Role::ComboBox,
+        types::Role::Dialog => accessible::Role::Dialog,
+        types::Role::Document => accessible::Role::Document,
+        types::Role::GenericContainer => accessible::Role::GenericContainer,
+        types::Role::Group => accessible::Role::Group,
+        types::Role::Heading => accessible::Role::Heading,
+        types::Role::Image => accessible::Role::Image,
+        types::Role::Label => accessible::Role::Label,
+        types::Role::Link => accessible::Role::Link,
+        types::Role::List => accessible::Role::List,
+        types::Role::ListItem => accessible::Role::ListItem,
+        types::Role::Menu => accessible::Role::Menu,
+        types::Role::MenuBar => accessible::Role::MenuBar,
+        types::Role::MenuItem => accessible::Role::MenuItem,
+        types::Role::Meter => accessible::Role::Meter,
+        types::Role::MultilineTextInput => accessible::Role::MultilineTextInput,
+        types::Role::Navigation => accessible::Role::Navigation,
+        types::Role::ProgressIndicator => accessible::Role::ProgressIndicator,
+        types::Role::RadioButton => accessible::Role::RadioButton,
+        types::Role::RadioGroup => accessible::Role::RadioGroup,
+        types::Role::Region => accessible::Role::Region,
+        types::Role::Row => accessible::Role::Row,
+        types::Role::ScrollBar => accessible::Role::ScrollBar,
+        types::Role::ScrollView => accessible::Role::ScrollView,
+        types::Role::Search => accessible::Role::Search,
+        types::Role::Separator => accessible::Role::Separator,
+        types::Role::Slider => accessible::Role::Slider,
+        types::Role::StaticText => accessible::Role::StaticText,
+        types::Role::Status => accessible::Role::Status,
+        types::Role::Switch => accessible::Role::Switch,
+        types::Role::Tab => accessible::Role::Tab,
+        types::Role::TabList => accessible::Role::TabList,
+        types::Role::TabPanel => accessible::Role::TabPanel,
+        types::Role::Table => accessible::Role::Table,
+        types::Role::TextInput => accessible::Role::TextInput,
+        types::Role::Toolbar => accessible::Role::Toolbar,
+        types::Role::Tooltip => accessible::Role::Tooltip,
+        types::Role::Tree => accessible::Role::Tree,
+        types::Role::TreeItem => accessible::Role::TreeItem,
+        types::Role::Window => accessible::Role::Window,
+    }
+}
+
+// -------------------------------------------------------------------------
+// A11y: Live
+// -------------------------------------------------------------------------
+
+pub fn a11y_live(l: &types::Live) -> accessible::Live {
+    match l {
+        types::Live::Polite => accessible::Live::Polite,
+        types::Live::Assertive => accessible::Live::Assertive,
+    }
+}
+
+// -------------------------------------------------------------------------
+// A11y: Orientation
+// -------------------------------------------------------------------------
+
+pub fn a11y_orientation(o: &types::Orientation) -> accessible::Orientation {
+    match o {
+        types::Orientation::Horizontal => accessible::Orientation::Horizontal,
+        types::Orientation::Vertical => accessible::Orientation::Vertical,
+    }
+}
+
+// -------------------------------------------------------------------------
+// A11y: HasPopup
+// -------------------------------------------------------------------------
+
+pub fn a11y_has_popup(h: &types::HasPopup) -> accessible::HasPopup {
+    match h {
+        types::HasPopup::Listbox => accessible::HasPopup::Listbox,
+        types::HasPopup::Menu => accessible::HasPopup::Menu,
+        types::HasPopup::Dialog => accessible::HasPopup::Dialog,
+        types::HasPopup::Tree => accessible::HasPopup::Tree,
+        types::HasPopup::Grid => accessible::HasPopup::Grid,
     }
 }
 

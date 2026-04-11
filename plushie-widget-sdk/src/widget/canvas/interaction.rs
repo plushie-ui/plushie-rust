@@ -2,7 +2,6 @@
 
 use iced::{Point, Rectangle, mouse};
 
-use plushie_core::types::PlushieType;
 use plushie_core::types::canvas::{
     CanvasShape, GroupShape, Transform,
 };
@@ -162,10 +161,7 @@ pub(super) fn parse_interactive_element(
         focusable: group.focusable.unwrap_or(false),
         parent_group: None,
         tooltip: group.tooltip.clone(),
-        a11y: group.a11y.as_ref().and_then(|a| {
-            let wire_val = serde_json::Value::from(a.wire_encode());
-            crate::a11y::A11yOverrides::from_a11y_value(&wire_val)
-        }),
+        a11y: group.a11y.as_ref().map(crate::a11y::A11yOverrides::from_core),
     })
 }
 
@@ -453,12 +449,9 @@ pub(crate) fn validate_interactive_elements(
         }
 
         if let Some(ref a11y) = element.a11y {
+            use iced::advanced::widget::operation::accessible as acc;
             // Switch without toggled state.
-            if matches!(
-                a11y.role,
-                Some(iced::advanced::widget::operation::accessible::Role::Switch)
-            ) && a11y.toggled.is_none()
-            {
+            if a11y.role() == Some(acc::Role::Switch) && a11y.toggled().is_none() {
                 diagnostics.push(OutgoingEvent::diagnostic(
                     canvas_id.to_string(),
                     Some(element.id.clone()),
@@ -471,11 +464,7 @@ pub(crate) fn validate_interactive_elements(
                 ));
             }
             // Radio without selected state.
-            if matches!(
-                a11y.role,
-                Some(iced::advanced::widget::operation::accessible::Role::RadioButton)
-            ) && a11y.selected.is_none()
-            {
+            if a11y.role() == Some(acc::Role::RadioButton) && a11y.selected().is_none() {
                 diagnostics.push(OutgoingEvent::diagnostic(
                     canvas_id.to_string(),
                     Some(element.id.clone()),
@@ -488,11 +477,7 @@ pub(crate) fn validate_interactive_elements(
                 ));
             }
             // Checkbox without toggled state.
-            if matches!(
-                a11y.role,
-                Some(iced::advanced::widget::operation::accessible::Role::CheckBox)
-            ) && a11y.toggled.is_none()
-            {
+            if a11y.role() == Some(acc::Role::CheckBox) && a11y.toggled().is_none() {
                 diagnostics.push(OutgoingEvent::diagnostic(
                     canvas_id.to_string(),
                     Some(element.id.clone()),
@@ -516,7 +501,7 @@ pub(crate) fn validate_interactive_elements(
             .filter(|e| {
                 e.a11y
                     .as_ref()
-                    .map(|a| a.position_in_set.is_none())
+                    .map(|a| a.position_in_set().is_none())
                     .unwrap_or(true)
             })
             .count();

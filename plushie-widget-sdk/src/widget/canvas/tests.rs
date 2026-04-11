@@ -696,7 +696,7 @@ fn parse_interactive_group_with_new_fields() {
         "type": "group",
         "id": "toggle",
         "on_click": true,
-        "focus_style": {"stroke": "#3b82f6"},
+        "focus_style": {"stroke": {"color": "#3b82f6", "width": 2.0}},
         "show_focus_ring": false,
         "focusable": true,
         "children": [

@@ -9,6 +9,7 @@
 //! [`operate`]: iced::advanced::widget::Widget::operate
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 
 use iced::advanced::Shell;
@@ -18,7 +19,9 @@ use iced::advanced::renderer;
 use iced::advanced::widget::operation::accessible::{self, Accessible};
 use iced::advanced::widget::{self, Widget};
 use iced::{Element, Event, Length, Rectangle, Size, Vector};
-use serde_json::Value;
+
+use plushie_core::types::a11y::{A11y, Role};
+use plushie_core::types::PlushieType;
 
 // ---------------------------------------------------------------------------
 // A11yOverrides: parsed from the `a11y` JSON prop
@@ -26,9 +29,11 @@ use serde_json::Value;
 
 /// Accessibility overrides parsed from the `a11y` JSON prop.
 ///
-/// When present on a node, the renderer wraps the child widget in an
-/// internal a11y override layer that intercepts iced's `operate` call
-/// to apply these overrides to the accessibility tree.
+/// Wraps a [`plushie_core::types::a11y::A11y`] internally and converts
+/// to iced accessible types on demand. When present on a node, the
+/// renderer wraps the child widget in an internal a11y override layer
+/// that intercepts iced's `operate` call to apply these overrides to
+/// the accessibility tree.
 ///
 /// Widget authors return this from [`PlushieWidget::infer_a11y`] to
 /// provide automatic accessibility annotations (e.g., using a
@@ -37,251 +42,53 @@ use serde_json::Value;
 /// [`PlushieWidget::infer_a11y`]: crate::registry::PlushieWidget::infer_a11y
 #[derive(Debug, Clone, Default)]
 pub struct A11yOverrides {
-    /// Semantic role override.
-    pub role: Option<accessible::Role>,
-    /// Human-readable name override.
-    pub label: Option<String>,
-    /// Longer description override.
-    pub description: Option<String>,
-    /// When true, the widget is hidden from the accessibility tree.
-    pub hidden: bool,
-    /// Expanded state override for collapsible sections.
-    pub expanded: Option<bool>,
-    /// Whether the widget is required (e.g. a required form field).
-    pub required: bool,
-    /// Heading level (1-6) for widgets with the heading role.
-    pub level: Option<usize>,
-    /// Live region urgency override.
-    pub live: Option<accessible::Live>,
-    /// Whether the widget is busy (loading/processing).
-    ///
-    /// Maps to WAI-ARIA `aria-busy`. When true, assistive technology
-    /// suppresses announcements for this node until busy clears,
-    /// then announces the final state as a single unit. This prevents
-    /// rapid-fire value announcements during continuous interactions
-    /// like slider drag.
-    ///
-    /// `None` means "use the widget's auto-detected state" (e.g. slider
-    /// sets busy during drag). `Some(true)` or `Some(false)` from the
-    /// host explicitly overrides the widget's state.
-    pub busy: Option<bool>,
-    /// Whether the widget's value is invalid (form validation).
-    pub invalid: bool,
-    /// Whether this dialog is modal (restricts AT navigation).
-    pub modal: bool,
-    /// Whether the widget is read-only (viewable but not editable).
-    pub read_only: bool,
-    /// Keyboard mnemonic (Alt+letter shortcut).
-    pub mnemonic: Option<char>,
-    /// Toggle state for custom checkbox/switch widgets.
-    pub toggled: Option<bool>,
-    /// Selection state for custom radio/tab widgets.
-    pub selected: Option<bool>,
-    /// Text value announced by assistive technology.
-    pub value: Option<String>,
-    /// Widget orientation (horizontal or vertical).
-    pub orientation: Option<accessible::Orientation>,
-    /// Another widget that provides this widget's label.
-    pub labelled_by: Option<widget::Id>,
-    /// Another widget that provides this widget's description.
-    pub described_by: Option<widget::Id>,
-    /// A widget that describes why the value is invalid.
-    ///
-    /// To wire up error state for form fields, the host should:
-    /// 1. Set `a11y.invalid = true` on the input widget when validation fails
-    /// 2. Render an error message as a separate text node with a stable ID
-    /// 3. Set `a11y.error_message = "<error-text-node-id>"` on the input
-    ///
-    /// This causes AT to announce the error text when the user focuses the
-    /// invalid field. The `invalid` and `error_message` fields work
-    /// together: `invalid` marks the field's state, `error_message`
-    /// provides the explanation.
-    pub error_message: Option<widget::Id>,
-    /// Whether the widget is disabled (not interactive).
-    ///
-    /// Overrides the widget-native disabled state when `Some`. Unlike
-    /// bool-OR fields (required, invalid, etc.), this replaces the base value
-    /// so the host can explicitly enable or disable a widget.
-    pub disabled: Option<bool>,
-    /// Position of this item in a set (1-based).
-    ///
-    /// Used for list items, radio buttons, tabs, and similar ordered
-    /// collections so assistive technology can announce "item 3 of 5".
-    pub position_in_set: Option<usize>,
-    /// Total number of items in the set containing this item.
-    ///
-    /// Paired with `position_in_set` to give AT full context about
-    /// the item's position within its group.
-    pub size_of_set: Option<usize>,
-    /// The type of popup this widget triggers when activated.
-    ///
-    /// Tells AT what kind of popup to expect (listbox, menu, dialog,
-    /// tree, or grid) so it can adjust navigation accordingly.
-    pub has_popup: Option<accessible::HasPopup>,
-    /// The currently active child in a composite widget (e.g. the
-    /// highlighted option in a combobox popup).
-    pub active_descendant: Option<widget::Id>,
-    /// The IDs of radio buttons in a radio group.
-    pub radio_group: Option<Vec<widget::Id>>,
+    core: A11y,
+    // Iced widget IDs derived from the core string IDs. Stored here
+    // so we can hand out references in `apply_to` / `to_accessible`.
+    labelled_by: Option<widget::Id>,
+    described_by: Option<widget::Id>,
+    error_message: Option<widget::Id>,
+    active_descendant: Option<widget::Id>,
+    radio_group: Option<Vec<widget::Id>>,
 }
 
 impl A11yOverrides {
+    /// Construct from a core `A11y` value.
+    ///
+    /// Converts string IDs to iced `widget::Id` values.
+    pub fn from_core(core: &A11y) -> Self {
+        let labelled_by = core.labelled_by.as_ref()
+            .map(|s| widget::Id::from(s.clone()));
+        let described_by = core.described_by.as_ref()
+            .map(|s| widget::Id::from(s.clone()));
+        let error_message = core.error_message.as_ref()
+            .map(|s| widget::Id::from(s.clone()));
+        let active_descendant = core.active_descendant.as_ref()
+            .map(|s| widget::Id::from(s.clone()));
+        let radio_group = core.radio_group.as_ref().map(|ids| {
+            ids.iter().map(|s| widget::Id::from(s.clone())).collect()
+        });
+
+        Self {
+            core: core.clone(),
+            labelled_by,
+            described_by,
+            error_message,
+            active_descendant,
+            radio_group,
+        }
+    }
+
     /// Parse accessibility overrides from a node's props.
     ///
     /// Returns `None` if no `a11y` key exists or if the `a11y` object
     /// contains no meaningful overrides.
     pub fn from_props(props: &plushie_core::protocol::Props) -> Option<Self> {
-        Self::from_a11y_value(props.get("a11y")?)
-    }
-
-    /// Parse accessibility overrides from an `a11y` JSON value directly.
-    ///
-    /// Like [`from_props`](Self::from_props) but takes the `a11y` value
-    /// itself, avoiding the need to wrap it in a parent object. Used by
-    /// canvas interactive shapes where the `a11y` field is nested inside
-    /// the `interactive` object.
-    pub fn from_a11y_value(a11y: &Value) -> Option<Self> {
-        let role = a11y
-            .get("role")
-            .and_then(|v| v.as_str())
-            .and_then(parse_role);
-
-        let label = a11y.get("label").and_then(|v| v.as_str()).map(String::from);
-
-        let description = a11y
-            .get("description")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
-        let hidden = a11y
-            .get("hidden")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let expanded = a11y.get("expanded").and_then(|v| v.as_bool());
-
-        let required = a11y
-            .get("required")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let level = a11y.get("level").and_then(|v| v.as_u64()).and_then(|n| {
-            let n = n as usize;
-            if (1..=6).contains(&n) { Some(n) } else { None }
-        });
-
-        let live = a11y
-            .get("live")
-            .and_then(|v| v.as_str())
-            .and_then(parse_live);
-
-        let busy = a11y.get("busy").and_then(|v| v.as_bool());
-
-        let invalid = a11y
-            .get("invalid")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let modal = a11y.get("modal").and_then(|v| v.as_bool()).unwrap_or(false);
-
-        let read_only = a11y
-            .get("read_only")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let mnemonic = a11y
-            .get("mnemonic")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.chars().next());
-
-        let toggled = a11y.get("toggled").and_then(|v| v.as_bool());
-
-        let selected = a11y.get("selected").and_then(|v| v.as_bool());
-
-        let value = a11y.get("value").and_then(|v| v.as_str()).map(String::from);
-
-        let orientation = a11y
-            .get("orientation")
-            .and_then(|v| v.as_str())
-            .and_then(parse_orientation);
-
-        let labelled_by = a11y
-            .get("labelled_by")
-            .and_then(|v| v.as_str())
-            .map(|s| widget::Id::from(s.to_owned()));
-
-        let described_by = a11y
-            .get("described_by")
-            .and_then(|v| v.as_str())
-            .map(|s| widget::Id::from(s.to_owned()));
-
-        let error_message = a11y
-            .get("error_message")
-            .and_then(|v| v.as_str())
-            .map(|s| widget::Id::from(s.to_owned()));
-
-        let disabled = a11y.get("disabled").and_then(|v| v.as_bool());
-
-        let position_in_set = a11y
-            .get("position_in_set")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as usize);
-
-        let size_of_set = a11y
-            .get("size_of_set")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as usize);
-
-        let has_popup = a11y
-            .get("has_popup")
-            .and_then(|v| v.as_str())
-            .and_then(parse_has_popup);
-
-        let active_descendant = a11y
-            .get("active_descendant")
-            .and_then(|v| v.as_str())
-            .map(|s| widget::Id::from(s.to_owned()));
-
-        let radio_group = a11y
-            .get("radio_group")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| widget::Id::from(s.to_owned())))
-                    .collect()
-            });
-
-        let result = Self {
-            role,
-            label,
-            description,
-            hidden,
-            expanded,
-            required,
-            level,
-            live,
-            busy,
-            invalid,
-            modal,
-            read_only,
-            mnemonic,
-            toggled,
-            selected,
-            value,
-            orientation,
-            labelled_by,
-            described_by,
-            error_message,
-            disabled,
-            position_in_set,
-            size_of_set,
-            has_popup,
-            active_descendant,
-            radio_group,
-        };
+        let core = A11y::extract(props, "a11y")?;
+        let result = Self::from_core(&core);
 
         // Only wrap when there's something to do.
-        if result.hidden || result.has_overrides() {
+        if result.core.hidden || result.has_overrides() {
             Some(result)
         } else {
             None
@@ -293,29 +100,30 @@ impl A11yOverrides {
     /// Excludes `hidden` which is handled separately (subtree
     /// suppression rather than property override).
     pub(crate) fn has_overrides(&self) -> bool {
-        self.role.is_some()
-            || self.label.is_some()
-            || self.description.is_some()
-            || self.expanded.is_some()
-            || self.live.is_some()
-            || self.level.is_some()
-            || self.mnemonic.is_some()
-            || self.required
-            || self.busy.is_some()
-            || self.invalid
-            || self.modal
-            || self.read_only
-            || self.toggled.is_some()
-            || self.selected.is_some()
-            || self.value.is_some()
-            || self.orientation.is_some()
+        let c = &self.core;
+        c.role.is_some()
+            || c.label.is_some()
+            || c.description.is_some()
+            || c.expanded.is_some()
+            || c.live.is_some()
+            || c.level.is_some()
+            || c.mnemonic.is_some()
+            || c.required
+            || c.busy.is_some()
+            || c.invalid
+            || c.modal
+            || c.read_only
+            || c.toggled.is_some()
+            || c.selected.is_some()
+            || c.value.is_some()
+            || c.orientation.is_some()
             || self.labelled_by.is_some()
             || self.described_by.is_some()
             || self.error_message.is_some()
-            || self.disabled.is_some()
-            || self.position_in_set.is_some()
-            || self.size_of_set.is_some()
-            || self.has_popup.is_some()
+            || c.disabled.is_some()
+            || c.position_in_set.is_some()
+            || c.size_of_set.is_some()
+            || c.has_popup.is_some()
             || self.active_descendant.is_some()
             || self.radio_group.is_some()
     }
@@ -324,41 +132,44 @@ impl A11yOverrides {
     /// new struct with override values taking precedence.
     ///
     /// - `Option` fields: override wins if `Some`, falls back to base.
-    /// - `bool` fields: OR-ed (override enables, never disables).
-    /// - `busy`: `Option<bool>` -- `Some(v)` overrides the widget's
+    /// - `bool` fields: override replaces base value.
+    /// - `busy`: `Option<bool>`, `Some(v)` overrides the widget's
     ///   auto-detected state, `None` falls back to the base value.
     fn apply_to<'a>(&'a self, base: &Accessible<'a>) -> Accessible<'a> {
-        let value_override = self.value.as_deref().map(accessible::Value::Text);
+        let c = &self.core;
+        let role_iced = c.role.as_ref().map(iced_convert::a11y_role);
+        let live_iced = c.live.as_ref().map(iced_convert::a11y_live);
+        let orientation_iced = c.orientation.as_ref().map(iced_convert::a11y_orientation);
+        let has_popup_iced = c.has_popup.as_ref().map(iced_convert::a11y_has_popup);
+        let value_override = c.value.as_deref().map(accessible::Value::Text);
 
-        // The SDK is authoritative: override values always replace base
-        // values. None means "use the widget's default" (base value).
         Accessible {
-            role: self.role.unwrap_or(base.role),
-            label: self.label.as_deref().or(base.label),
-            description: self.description.as_deref().or(base.description),
-            expanded: self.expanded.or(base.expanded),
-            live: self.live.or(base.live),
-            level: self.level.or(base.level),
-            required: self.required,
-            busy: self.busy.unwrap_or(base.busy),
-            invalid: self.invalid,
-            modal: self.modal,
-            read_only: self.read_only,
-            mnemonic: self.mnemonic.or(base.mnemonic),
-            toggled: self.toggled.or(base.toggled),
-            selected: self.selected.or(base.selected),
+            role: role_iced.unwrap_or(base.role),
+            label: c.label.as_deref().or(base.label),
+            description: c.description.as_deref().or(base.description),
+            expanded: c.expanded.or(base.expanded),
+            live: live_iced.or(base.live),
+            level: c.level.or(base.level),
+            required: c.required,
+            busy: c.busy.unwrap_or(base.busy),
+            invalid: c.invalid,
+            modal: c.modal,
+            read_only: c.read_only,
+            mnemonic: c.mnemonic.or(base.mnemonic),
+            toggled: c.toggled.or(base.toggled),
+            selected: c.selected.or(base.selected),
             value: value_override.or(base.value),
-            orientation: self.orientation.or(base.orientation),
+            orientation: orientation_iced.or(base.orientation),
             labelled_by: self.labelled_by.as_ref().or(base.labelled_by),
             described_by: self.described_by.as_ref().or(base.described_by),
             error_message: self.error_message.as_ref().or(base.error_message),
-            disabled: self.disabled.unwrap_or(base.disabled),
-            position_in_set: self.position_in_set.or(base.position_in_set),
-            size_of_set: self.size_of_set.or(base.size_of_set),
-            has_popup: self.has_popup.or(base.has_popup),
+            disabled: c.disabled.unwrap_or(base.disabled),
+            position_in_set: c.position_in_set.or(base.position_in_set),
+            size_of_set: c.size_of_set.or(base.size_of_set),
+            has_popup: has_popup_iced.or(base.has_popup),
             active_descendant: self.active_descendant.as_ref().or(base.active_descendant),
             radio_group: self.radio_group.as_deref().or(base.radio_group),
-            // `hidden` is intentionally omitted -- it's handled at the
+            // `hidden` is intentionally omitted: handled at the
             // interception layer (subtree suppression) rather than as a
             // property merge. See the operate() and traverse() methods.
             ..base.clone()
@@ -376,117 +187,63 @@ impl A11yOverrides {
 
     /// Create overrides with just a description (for placeholder auto-inference).
     pub(crate) fn with_description(description: String) -> Self {
-        Self {
-            description: Some(description),
-            ..Self::default()
-        }
+        Self::from_core(&A11y::with_description(description))
+    }
+
+    /// Create overrides with a specific role set.
+    pub(crate) fn with_role(role: Role) -> Self {
+        Self::from_core(&A11y::new().role(role))
+    }
+
+    /// Whether the widget is hidden from the accessibility tree.
+    pub(crate) fn hidden(&self) -> bool {
+        self.core.hidden
+    }
+
+    /// The semantic role, converted to iced's accessible type.
+    pub(crate) fn role(&self) -> Option<accessible::Role> {
+        self.core.role.as_ref().map(iced_convert::a11y_role)
+    }
+
+    /// The label string.
+    #[cfg(test)]
+    pub(crate) fn label(&self) -> Option<&str> {
+        self.core.label.as_deref()
+    }
+
+    /// The description string.
+    #[cfg(test)]
+    pub(crate) fn description(&self) -> Option<&str> {
+        self.core.description.as_deref()
+    }
+
+    /// The toggled state.
+    pub(crate) fn toggled(&self) -> Option<bool> {
+        self.core.toggled
+    }
+
+    /// The selected state.
+    pub(crate) fn selected(&self) -> Option<bool> {
+        self.core.selected
+    }
+
+    /// Position in a set (1-based).
+    pub(crate) fn position_in_set(&self) -> Option<usize> {
+        self.core.position_in_set
     }
 }
 
-/// Parse a role string into an [`accessible::Role`].
-///
-/// Covers all variants of the iced `Role` enum using lowercase string
-/// matching. Returns `None` for unrecognised strings.
-///
-/// **Maintenance note:** When new variants are added to iced's
-/// `accessible::Role` enum (in the plushie-iced fork), they must be
-/// manually added here with appropriate string aliases. There is no
-/// compile-time exhaustiveness check since this maps from strings.
+// ---------------------------------------------------------------------------
+// Convenience: parse a role string via the core type
+// ---------------------------------------------------------------------------
+
 /// Parse a role string into the corresponding [`accessible::Role`] enum value.
 ///
-/// Used by the `a11y` prop on all widgets and by the canvas `role` prop.
+/// Used by the canvas `role` prop where the value arrives as a raw string
+/// rather than a structured `a11y` object.
 pub(crate) fn parse_role_str(s: &str) -> Option<accessible::Role> {
-    parse_role(s)
-}
-
-fn parse_role(s: &str) -> Option<accessible::Role> {
-    // One canonical underscore form per role. Semantic aliases (different
-    // names for the same concept) are allowed where they map to plushie
-    // widget names. No spelling variants (no concatenated forms).
-    let role = match s {
-        "alert" => accessible::Role::Alert,
-        "alert_dialog" => accessible::Role::AlertDialog,
-        "button" => accessible::Role::Button,
-        "canvas" => accessible::Role::Canvas,
-        "check_box" => accessible::Role::CheckBox,
-        "combo_box" => accessible::Role::ComboBox,
-        "dialog" => accessible::Role::Dialog,
-        "document" => accessible::Role::Document,
-        "generic_container" | "container" | "generic" => accessible::Role::GenericContainer,
-        "group" => accessible::Role::Group,
-        "heading" => accessible::Role::Heading,
-        "image" => accessible::Role::Image,
-        "label" => accessible::Role::Label,
-        "link" => accessible::Role::Link,
-        "list" => accessible::Role::List,
-        "list_item" => accessible::Role::ListItem,
-        "menu" => accessible::Role::Menu,
-        "menu_bar" => accessible::Role::MenuBar,
-        "menu_item" => accessible::Role::MenuItem,
-        "meter" => accessible::Role::Meter,
-        "multiline_text_input" | "text_editor" => accessible::Role::MultilineTextInput,
-        "navigation" => accessible::Role::Navigation,
-        // "progress_bar" alias: matches plushie's widget name.
-        "progress_indicator" | "progress_bar" => accessible::Role::ProgressIndicator,
-        // "radio" alias: universally understood short form.
-        "radio_button" | "radio" => accessible::Role::RadioButton,
-        "radio_group" => accessible::Role::RadioGroup,
-        "region" => accessible::Role::Region,
-        "scroll_bar" => accessible::Role::ScrollBar,
-        "scroll_view" => accessible::Role::ScrollView,
-        "search" => accessible::Role::Search,
-        "separator" => accessible::Role::Separator,
-        "slider" => accessible::Role::Slider,
-        "static_text" => accessible::Role::StaticText,
-        "status" => accessible::Role::Status,
-        "switch" => accessible::Role::Switch,
-        "tab" => accessible::Role::Tab,
-        "tab_list" => accessible::Role::TabList,
-        "tab_panel" => accessible::Role::TabPanel,
-        "table" => accessible::Role::Table,
-        // "row"/"cell" aliases: short forms for table contexts.
-        "table_row" | "row" => accessible::Role::Row,
-        "table_cell" | "cell" => accessible::Role::Cell,
-        "column_header" => accessible::Role::ColumnHeader,
-        "text_input" => accessible::Role::TextInput,
-        "toolbar" => accessible::Role::Toolbar,
-        "tooltip" => accessible::Role::Tooltip,
-        "tree" => accessible::Role::Tree,
-        "tree_item" => accessible::Role::TreeItem,
-        "window" => accessible::Role::Window,
-        _ => return None,
-    };
-    Some(role)
-}
-
-/// Parse a live-region urgency string into [`accessible::Live`].
-fn parse_live(s: &str) -> Option<accessible::Live> {
-    match s {
-        "polite" => Some(accessible::Live::Polite),
-        "assertive" => Some(accessible::Live::Assertive),
-        _ => None,
-    }
-}
-
-/// Parse an orientation string into [`accessible::Orientation`].
-fn parse_orientation(s: &str) -> Option<accessible::Orientation> {
-    match s {
-        "horizontal" => Some(accessible::Orientation::Horizontal),
-        "vertical" => Some(accessible::Orientation::Vertical),
-        _ => None,
-    }
-}
-
-/// Parse a has-popup type string into [`accessible::HasPopup`].
-fn parse_has_popup(s: &str) -> Option<accessible::HasPopup> {
-    match s {
-        "listbox" => Some(accessible::HasPopup::Listbox),
-        "menu" => Some(accessible::HasPopup::Menu),
-        "dialog" => Some(accessible::HasPopup::Dialog),
-        "tree" => Some(accessible::HasPopup::Tree),
-        "grid" => Some(accessible::HasPopup::Grid),
-        _ => None,
-    }
+    let val = serde_json::Value::String(s.to_owned());
+    Role::wire_decode(&val).as_ref().map(iced_convert::a11y_role)
 }
 
 // ---------------------------------------------------------------------------
@@ -717,7 +474,7 @@ impl widget::Operation for A11yInterceptor<'_, '_> {
         bounds: Rectangle,
         accessible: &Accessible<'_>,
     ) {
-        if self.overrides.hidden {
+        if self.overrides.hidden() {
             return; // Drop -- hidden from AT.
         }
         let overridden = self.overrides.apply_to(accessible);
@@ -725,7 +482,7 @@ impl widget::Operation for A11yInterceptor<'_, '_> {
     }
 
     fn container(&mut self, id: Option<&widget::Id>, bounds: Rectangle) {
-        if self.overrides.hidden {
+        if self.overrides.hidden() {
             return; // Drop -- hidden from AT.
         }
         if self.overrides.has_overrides() {
@@ -741,14 +498,14 @@ impl widget::Operation for A11yInterceptor<'_, '_> {
     }
 
     fn text(&mut self, id: Option<&widget::Id>, bounds: Rectangle, text: &str) {
-        if self.overrides.hidden {
+        if self.overrides.hidden() {
             return; // Drop -- hidden from AT.
         }
         self.inner.text(id, bounds, text);
     }
 
     fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn widget::Operation)) {
-        if self.overrides.hidden {
+        if self.overrides.hidden() {
             // Propagate suppression through the entire subtree.
             self.inner.traverse(&mut |inner_op| {
                 let mut nested = A11yInterceptor {
@@ -775,6 +532,7 @@ impl widget::Operation for A11yInterceptor<'_, '_> {
 mod tests {
     use super::*;
     use iced::advanced::widget::Operation;
+    use plushie_core::types::a11y as core_a11y;
     use serde_json::json;
 
     fn wire(v: serde_json::Value) -> plushie_core::protocol::Props {
@@ -804,19 +562,19 @@ mod tests {
     #[test]
     fn from_props_parses_label() {
         let overrides = A11yOverrides::from_props(&wire(json!({"a11y": {"label": "Close"}}))).unwrap();
-        assert_eq!(overrides.label.as_deref(), Some("Close"));
+        assert_eq!(overrides.label(), Some("Close"));
     }
 
     #[test]
     fn from_props_parses_role() {
         let overrides = A11yOverrides::from_props(&wire(json!({"a11y": {"role": "heading"}}))).unwrap();
-        assert_eq!(overrides.role, Some(accessible::Role::Heading));
+        assert_eq!(overrides.role(), Some(accessible::Role::Heading));
     }
 
     #[test]
     fn from_props_parses_hidden() {
         let overrides = A11yOverrides::from_props(&wire(json!({"a11y": {"hidden": true}}))).unwrap();
-        assert!(overrides.hidden);
+        assert!(overrides.hidden());
     }
 
     #[test]
@@ -850,46 +608,48 @@ mod tests {
             }
         }));
         let o = A11yOverrides::from_props(&props).unwrap();
-        assert_eq!(o.role, Some(accessible::Role::Alert));
-        assert_eq!(o.label.as_deref(), Some("Error message"));
-        assert_eq!(o.description.as_deref(), Some("Something went wrong"));
-        assert!(!o.hidden);
-        assert_eq!(o.expanded, Some(true));
-        assert!(o.required);
-        assert_eq!(o.level, Some(2));
-        assert_eq!(o.live, Some(accessible::Live::Assertive));
-        assert_eq!(o.busy, Some(true));
-        assert!(o.invalid);
-        assert!(o.modal);
-        assert!(o.read_only);
-        assert_eq!(o.mnemonic, Some('E'));
-        assert_eq!(o.toggled, Some(true));
-        assert_eq!(o.selected, Some(false));
-        assert_eq!(o.value.as_deref(), Some("42%"));
-        assert_eq!(o.orientation, Some(accessible::Orientation::Vertical));
+        assert_eq!(o.role(), Some(accessible::Role::Alert));
+        assert_eq!(o.label(), Some("Error message"));
+        assert_eq!(o.description(), Some("Something went wrong"));
+        assert!(!o.hidden());
+        assert_eq!(o.core.expanded, Some(true));
+        assert!(o.core.required);
+        assert_eq!(o.core.level, Some(2));
+        assert_eq!(o.core.live, Some(core_a11y::Live::Assertive));
+        assert_eq!(o.core.busy, Some(true));
+        assert!(o.core.invalid);
+        assert!(o.core.modal);
+        assert!(o.core.read_only);
+        assert_eq!(o.core.mnemonic, Some('E'));
+        assert_eq!(o.toggled(), Some(true));
+        assert_eq!(o.selected(), Some(false));
+        assert_eq!(o.core.value.as_deref(), Some("42%"));
+        assert_eq!(o.core.orientation, Some(core_a11y::Orientation::Vertical));
         assert!(o.labelled_by.is_some());
         assert!(o.described_by.is_some());
         assert!(o.error_message.is_some());
-        assert_eq!(o.disabled, Some(true));
-        assert_eq!(o.position_in_set, Some(3));
-        assert_eq!(o.size_of_set, Some(10));
-        assert_eq!(o.has_popup, Some(accessible::HasPopup::Menu));
+        assert_eq!(o.core.disabled, Some(true));
+        assert_eq!(o.position_in_set(), Some(3));
+        assert_eq!(o.core.size_of_set, Some(10));
+        assert_eq!(o.core.has_popup, Some(core_a11y::HasPopup::Menu));
     }
 
     #[test]
-    fn from_a11y_value_parses_directly() {
-        let a11y = json!({"role": "button", "label": "Save", "disabled": true});
-        let result = A11yOverrides::from_a11y_value(&a11y).unwrap();
-        assert_eq!(result.role, Some(accessible::Role::Button));
-        assert_eq!(result.label.as_deref(), Some("Save"));
-        assert_eq!(result.disabled, Some(true));
+    fn from_core_converts_correctly() {
+        let core = A11y::new()
+            .role(core_a11y::Role::Button)
+            .label("Save")
+            .disabled(true);
+        let result = A11yOverrides::from_core(&core);
+        assert_eq!(result.role(), Some(accessible::Role::Button));
+        assert_eq!(result.label(), Some("Save"));
+        assert_eq!(result.core.disabled, Some(true));
     }
 
-    // -- parse helpers --------------------------------------------------------
+    // -- parse_role_str -------------------------------------------------------
 
     #[test]
-    fn parse_role_covers_all_variants() {
-        // Canonical underscore forms for every role.
+    fn parse_role_str_covers_all_variants() {
         let cases = [
             ("alert", accessible::Role::Alert),
             ("alert_dialog", accessible::Role::AlertDialog),
@@ -940,56 +700,24 @@ mod tests {
             ("window", accessible::Role::Window),
         ];
         for (input, expected) in cases {
-            assert_eq!(parse_role(input), Some(expected), "parse_role({input:?})");
+            assert_eq!(parse_role_str(input), Some(expected), "parse_role_str({input:?})");
         }
-        // Semantic aliases (different names, not spelling variants).
-        assert_eq!(parse_role("radio"), Some(accessible::Role::RadioButton));
-        assert_eq!(
-            parse_role("text_editor"),
-            Some(accessible::Role::MultilineTextInput)
-        );
-        assert_eq!(
-            parse_role("progress_bar"),
-            Some(accessible::Role::ProgressIndicator)
-        );
-        assert_eq!(parse_role("row"), Some(accessible::Role::Row));
-        assert_eq!(parse_role("cell"), Some(accessible::Role::Cell));
-        assert_eq!(
-            parse_role("container"),
-            Some(accessible::Role::GenericContainer)
-        );
-        assert_eq!(
-            parse_role("generic"),
-            Some(accessible::Role::GenericContainer)
-        );
-        // Concatenated forms are NOT accepted (one canonical form only).
-        assert_eq!(parse_role("alertdialog"), None);
-        assert_eq!(parse_role("combobox"), None);
-        assert_eq!(parse_role("listitem"), None);
-        assert_eq!(parse_role("menubar"), None);
-        assert_eq!(parse_role("scrollbar"), None);
-        assert_eq!(parse_role("columnheader"), None);
-        assert_eq!(parse_role("unknown_thing"), None);
-    }
-
-    #[test]
-    fn parse_live_mapping() {
-        assert_eq!(parse_live("polite"), Some(accessible::Live::Polite));
-        assert_eq!(parse_live("assertive"), Some(accessible::Live::Assertive));
-        assert_eq!(parse_live("off"), None);
-    }
-
-    #[test]
-    fn parse_orientation_mapping() {
-        assert_eq!(
-            parse_orientation("horizontal"),
-            Some(accessible::Orientation::Horizontal)
-        );
-        assert_eq!(
-            parse_orientation("vertical"),
-            Some(accessible::Orientation::Vertical)
-        );
-        assert_eq!(parse_orientation("diagonal"), None);
+        // Semantic aliases.
+        assert_eq!(parse_role_str("radio"), Some(accessible::Role::RadioButton));
+        assert_eq!(parse_role_str("text_editor"), Some(accessible::Role::MultilineTextInput));
+        assert_eq!(parse_role_str("progress_bar"), Some(accessible::Role::ProgressIndicator));
+        assert_eq!(parse_role_str("row"), Some(accessible::Role::Row));
+        assert_eq!(parse_role_str("cell"), Some(accessible::Role::Cell));
+        assert_eq!(parse_role_str("container"), Some(accessible::Role::GenericContainer));
+        assert_eq!(parse_role_str("generic"), Some(accessible::Role::GenericContainer));
+        // Concatenated forms are NOT accepted.
+        assert_eq!(parse_role_str("alertdialog"), None);
+        assert_eq!(parse_role_str("combobox"), None);
+        assert_eq!(parse_role_str("listitem"), None);
+        assert_eq!(parse_role_str("menubar"), None);
+        assert_eq!(parse_role_str("scrollbar"), None);
+        assert_eq!(parse_role_str("columnheader"), None);
+        assert_eq!(parse_role_str("unknown_thing"), None);
     }
 
     // -- level validation -----------------------------------------------------
@@ -998,7 +726,6 @@ mod tests {
     fn level_rejects_out_of_range() {
         for n in [0, 7, 100] {
             let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"level": n}}));
-            // level alone doesn't trigger has_overrides (it's None for invalid)
             assert!(A11yOverrides::from_props(&props).is_none());
         }
     }
@@ -1008,7 +735,7 @@ mod tests {
         for n in 1..=6 {
             let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"level": n}}));
             let o = A11yOverrides::from_props(&props).unwrap();
-            assert_eq!(o.level, Some(n as usize));
+            assert_eq!(o.core.level, Some(n as usize));
         }
     }
 
@@ -1017,13 +744,12 @@ mod tests {
     #[test]
     fn mnemonic_takes_first_char() {
         let o = A11yOverrides::from_props(&wire(json!({"a11y": {"mnemonic": "Save"}}))).unwrap();
-        assert_eq!(o.mnemonic, Some('S'));
+        assert_eq!(o.core.mnemonic, Some('S'));
     }
 
     #[test]
     fn mnemonic_none_when_empty_string() {
         let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"mnemonic": ""}}));
-        // Empty mnemonic doesn't trigger has_overrides
         assert!(A11yOverrides::from_props(&props).is_none());
     }
 
@@ -1036,32 +762,13 @@ mod tests {
 
     #[test]
     fn has_overrides_true_for_each_field() {
-        // Test representative fields from each category.
         let cases: Vec<A11yOverrides> = vec![
-            A11yOverrides {
-                role: Some(accessible::Role::Button),
-                ..Default::default()
-            },
-            A11yOverrides {
-                label: Some("x".into()),
-                ..Default::default()
-            },
-            A11yOverrides {
-                required: true,
-                ..Default::default()
-            },
-            A11yOverrides {
-                toggled: Some(true),
-                ..Default::default()
-            },
-            A11yOverrides {
-                orientation: Some(accessible::Orientation::Horizontal),
-                ..Default::default()
-            },
-            A11yOverrides {
-                labelled_by: Some(widget::Id::from("x".to_owned())),
-                ..Default::default()
-            },
+            A11yOverrides::from_core(&A11y::new().role(core_a11y::Role::Button)),
+            A11yOverrides::from_core(&A11y::new().label("x")),
+            A11yOverrides::from_core(&A11y::new().required(true)),
+            A11yOverrides::from_core(&A11y::new().toggled(true)),
+            A11yOverrides::from_core(&A11y::new().orientation(core_a11y::Orientation::Horizontal)),
+            A11yOverrides::from_core(&A11y::new().labelled_by("x")),
         ];
         for (i, o) in cases.iter().enumerate() {
             assert!(o.has_overrides(), "case {i} should have overrides");
@@ -1072,11 +779,9 @@ mod tests {
 
     #[test]
     fn apply_to_overrides_win() {
-        let overrides = A11yOverrides {
-            label: Some("Override".into()),
-            role: Some(accessible::Role::Navigation),
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(
+            &A11y::new().label("Override").role(core_a11y::Role::Navigation)
+        );
         let base = Accessible {
             role: accessible::Role::Group,
             label: Some("Original"),
@@ -1099,62 +804,52 @@ mod tests {
         let merged = overrides.apply_to(&base);
         assert_eq!(merged.role, accessible::Role::Button);
         assert_eq!(merged.label, Some("Click"));
-        assert!(merged.disabled); // Preserved from base (widget-internal).
+        assert!(merged.disabled);
     }
 
     #[test]
     fn apply_to_bools_are_ored() {
-        let overrides = A11yOverrides {
-            required: true,
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().required(true));
         let base = Accessible {
             busy: true,
             ..Default::default()
         };
         let merged = overrides.apply_to(&base);
-        assert!(merged.required); // From override.
-        assert!(merged.busy); // From base (override is None, falls through).
+        assert!(merged.required);
+        assert!(merged.busy);
     }
 
     #[test]
     fn busy_override_wins_over_base() {
-        // SDK explicitly sets busy=false, overriding widget auto-busy.
-        let overrides = A11yOverrides {
-            busy: Some(false),
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().busy(false));
         let base = Accessible {
             busy: true,
             ..Default::default()
         };
         let merged = overrides.apply_to(&base);
-        assert!(!merged.busy); // SDK override wins.
+        assert!(!merged.busy);
     }
 
     #[test]
     fn busy_none_uses_base() {
-        // SDK doesn't set busy, widget auto-detected state is used.
         let overrides = A11yOverrides::default();
         let base = Accessible {
             busy: true,
             ..Default::default()
         };
         let merged = overrides.apply_to(&base);
-        assert!(merged.busy); // Base preserved.
+        assert!(merged.busy);
     }
 
     #[test]
     fn to_accessible_uses_defaults_for_base() {
-        let overrides = A11yOverrides {
-            role: Some(accessible::Role::Navigation),
-            label: Some("Main nav".into()),
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(
+            &A11y::new().role(core_a11y::Role::Navigation).label("Main nav")
+        );
         let node = overrides.to_accessible();
         assert_eq!(node.role, accessible::Role::Navigation);
         assert_eq!(node.label, Some("Main nav"));
-        assert!(!node.disabled); // Default.
+        assert!(!node.disabled);
     }
 
     // -- with_description -----------------------------------------------------
@@ -1162,97 +857,70 @@ mod tests {
     #[test]
     fn with_description_sets_only_description() {
         let overrides = A11yOverrides::with_description("Placeholder hint".to_string());
-        assert_eq!(overrides.description.as_deref(), Some("Placeholder hint"));
-        assert!(overrides.label.is_none());
-        assert!(overrides.role.is_none());
-        assert!(!overrides.hidden);
+        assert_eq!(overrides.description(), Some("Placeholder hint"));
+        assert!(overrides.label().is_none());
+        assert!(overrides.role().is_none());
+        assert!(!overrides.hidden());
     }
 
-    // -- new fields: disabled, position_in_set, size_of_set, has_popup --------
+    // -- disabled, position_in_set, size_of_set, has_popup --------------------
 
     #[test]
     fn from_props_parses_disabled() {
         let o = A11yOverrides::from_props(&wire(json!({"a11y": {"disabled": true}}))).unwrap();
-        assert_eq!(o.disabled, Some(true));
+        assert_eq!(o.core.disabled, Some(true));
     }
 
     #[test]
     fn from_props_parses_disabled_false() {
         let o = A11yOverrides::from_props(&wire(json!({"a11y": {"disabled": false}}))).unwrap();
-        assert_eq!(o.disabled, Some(false));
+        assert_eq!(o.core.disabled, Some(false));
     }
 
     #[test]
     fn from_props_parses_position_in_set() {
         let o = A11yOverrides::from_props(&wire(json!({"a11y": {"position_in_set": 3}}))).unwrap();
-        assert_eq!(o.position_in_set, Some(3));
+        assert_eq!(o.position_in_set(), Some(3));
     }
 
     #[test]
     fn from_props_parses_size_of_set() {
         let o = A11yOverrides::from_props(&wire(json!({"a11y": {"size_of_set": 10}}))).unwrap();
-        assert_eq!(o.size_of_set, Some(10));
+        assert_eq!(o.core.size_of_set, Some(10));
     }
 
     #[test]
     fn from_props_parses_has_popup() {
         let cases = [
-            ("listbox", accessible::HasPopup::Listbox),
-            ("menu", accessible::HasPopup::Menu),
-            ("dialog", accessible::HasPopup::Dialog),
-            ("tree", accessible::HasPopup::Tree),
-            ("grid", accessible::HasPopup::Grid),
+            ("listbox", core_a11y::HasPopup::Listbox),
+            ("menu", core_a11y::HasPopup::Menu),
+            ("dialog", core_a11y::HasPopup::Dialog),
+            ("tree", core_a11y::HasPopup::Tree),
+            ("grid", core_a11y::HasPopup::Grid),
         ];
         for (input, expected) in cases {
             let o = A11yOverrides::from_props(&wire(json!({"a11y": {"has_popup": input}}))).unwrap();
-            assert_eq!(o.has_popup, Some(expected), "has_popup({input:?})");
+            assert_eq!(o.core.has_popup, Some(expected), "has_popup({input:?})");
         }
-    }
-
-    #[test]
-    fn parse_has_popup_unknown_returns_none() {
-        assert!(parse_has_popup("tooltip").is_none());
-        assert!(parse_has_popup("").is_none());
     }
 
     #[test]
     fn has_overrides_true_for_new_fields() {
         let cases: Vec<A11yOverrides> = vec![
-            A11yOverrides {
-                disabled: Some(true),
-                ..Default::default()
-            },
-            A11yOverrides {
-                position_in_set: Some(1),
-                ..Default::default()
-            },
-            A11yOverrides {
-                size_of_set: Some(5),
-                ..Default::default()
-            },
-            A11yOverrides {
-                has_popup: Some(accessible::HasPopup::Dialog),
-                ..Default::default()
-            },
+            A11yOverrides::from_core(&A11y::new().disabled(true)),
+            A11yOverrides::from_core(&A11y::new().position_in_set(1)),
+            A11yOverrides::from_core(&A11y::new().size_of_set(5)),
+            A11yOverrides::from_core(&A11y::new().has_popup(core_a11y::HasPopup::Dialog)),
         ];
         for (i, o) in cases.iter().enumerate() {
-            assert!(
-                o.has_overrides(),
-                "new field case {i} should have overrides"
-            );
+            assert!(o.has_overrides(), "new field case {i} should have overrides");
         }
     }
 
     #[test]
     fn apply_to_disabled_override_replaces_base() {
-        let overrides = A11yOverrides {
-            disabled: Some(true),
-            ..Default::default()
-        };
-        let base = Accessible {
-            disabled: false,
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().disabled(true));
+        let base = Accessible { disabled: false, ..Default::default() };
         let merged = overrides.apply_to(&base);
         assert!(merged.disabled);
     }
@@ -1260,38 +928,23 @@ mod tests {
     #[test]
     fn apply_to_disabled_none_preserves_base() {
         let overrides = A11yOverrides::default();
-        let base = Accessible {
-            disabled: true,
-            ..Default::default()
-        };
+        let base = Accessible { disabled: true, ..Default::default() };
         let merged = overrides.apply_to(&base);
         assert!(merged.disabled);
     }
 
     #[test]
     fn apply_to_disabled_can_enable() {
-        let overrides = A11yOverrides {
-            disabled: Some(false),
-            ..Default::default()
-        };
-        let base = Accessible {
-            disabled: true,
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().disabled(false));
+        let base = Accessible { disabled: true, ..Default::default() };
         let merged = overrides.apply_to(&base);
         assert!(!merged.disabled);
     }
 
     #[test]
     fn apply_to_position_in_set_override_wins() {
-        let overrides = A11yOverrides {
-            position_in_set: Some(5),
-            ..Default::default()
-        };
-        let base = Accessible {
-            position_in_set: Some(1),
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().position_in_set(5));
+        let base = Accessible { position_in_set: Some(1), ..Default::default() };
         let merged = overrides.apply_to(&base);
         assert_eq!(merged.position_in_set, Some(5));
     }
@@ -1299,20 +952,16 @@ mod tests {
     #[test]
     fn apply_to_size_of_set_falls_back_to_base() {
         let overrides = A11yOverrides::default();
-        let base = Accessible {
-            size_of_set: Some(10),
-            ..Default::default()
-        };
+        let base = Accessible { size_of_set: Some(10), ..Default::default() };
         let merged = overrides.apply_to(&base);
         assert_eq!(merged.size_of_set, Some(10));
     }
 
     #[test]
     fn apply_to_has_popup_override_wins() {
-        let overrides = A11yOverrides {
-            has_popup: Some(accessible::HasPopup::Grid),
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(
+            &A11y::new().has_popup(core_a11y::HasPopup::Grid)
+        );
         let base = Accessible {
             has_popup: Some(accessible::HasPopup::Listbox),
             ..Default::default()
@@ -1334,8 +983,6 @@ mod tests {
 
     // -- A11yInterceptor integration tests ------------------------------------
 
-    /// A recording operation that captures accessible(), container(),
-    /// and text() calls for assertion.
     struct RecordingOperation {
         accessible_calls: Vec<RecordedAccessible>,
         container_calls: Vec<bool>,
@@ -1392,8 +1039,7 @@ mod tests {
             _id: Option<&widget::Id>,
             _bounds: Rectangle,
             _state: &mut dyn widget::operation::focusable::Focusable,
-        ) {
-        }
+        ) {}
 
         fn scrollable(
             &mut self,
@@ -1402,24 +1048,21 @@ mod tests {
             _content_bounds: Rectangle,
             _translation: Vector,
             _state: &mut dyn widget::operation::scrollable::Scrollable,
-        ) {
-        }
+        ) {}
 
         fn text_input(
             &mut self,
             _id: Option<&widget::Id>,
             _bounds: Rectangle,
             _state: &mut dyn widget::operation::text_input::TextInput,
-        ) {
-        }
+        ) {}
 
         fn custom(
             &mut self,
             _id: Option<&widget::Id>,
             _bounds: Rectangle,
             _state: &mut dyn std::any::Any,
-        ) {
-        }
+        ) {}
 
         fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
             operate(self);
@@ -1432,11 +1075,9 @@ mod tests {
 
     #[test]
     fn interceptor_merges_overrides_with_base_accessible() {
-        let overrides = A11yOverrides {
-            label: Some("Override label".into()),
-            role: Some(accessible::Role::Link),
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(
+            &A11y::new().label("Override label").role(core_a11y::Role::Link)
+        );
         let base = Accessible {
             role: accessible::Role::Button,
             label: Some("Click me"),
@@ -1455,15 +1096,12 @@ mod tests {
         let call = &recording.accessible_calls[0];
         assert_eq!(call.role, accessible::Role::Link);
         assert_eq!(call.label.as_deref(), Some("Override label"));
-        assert!(call.disabled); // Preserved from base.
+        assert!(call.disabled);
     }
 
     #[test]
     fn interceptor_hidden_suppresses_accessible() {
-        let overrides = A11yOverrides {
-            hidden: true,
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().hidden(true));
         let base = Accessible {
             role: accessible::Role::Button,
             label: Some("Hidden button"),
@@ -1482,10 +1120,7 @@ mod tests {
 
     #[test]
     fn interceptor_hidden_suppresses_text() {
-        let overrides = A11yOverrides {
-            hidden: true,
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().hidden(true));
         let mut recording = RecordingOperation::new();
         {
             let mut interceptor = A11yInterceptor {
@@ -1499,11 +1134,9 @@ mod tests {
 
     #[test]
     fn interceptor_container_upgrades_when_overrides_present() {
-        let overrides = A11yOverrides {
-            role: Some(accessible::Role::Group),
-            label: Some("Nav group".into()),
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(
+            &A11y::new().role(core_a11y::Role::Group).label("Nav group")
+        );
         let mut recording = RecordingOperation::new();
         {
             let mut interceptor = A11yInterceptor {
@@ -1512,7 +1145,6 @@ mod tests {
             };
             interceptor.container(None, Rectangle::default());
         }
-        // Container was upgraded to accessible.
         assert!(recording.container_calls.is_empty());
         assert_eq!(recording.accessible_calls.len(), 1);
         let call = &recording.accessible_calls[0];
@@ -1537,10 +1169,7 @@ mod tests {
 
     #[test]
     fn interceptor_hidden_suppresses_container() {
-        let overrides = A11yOverrides {
-            hidden: true,
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().hidden(true));
         let mut recording = RecordingOperation::new();
         {
             let mut interceptor = A11yInterceptor {
@@ -1555,10 +1184,7 @@ mod tests {
 
     #[test]
     fn interceptor_traverse_propagates_hidden_to_children() {
-        let overrides = A11yOverrides {
-            hidden: true,
-            ..Default::default()
-        };
+        let overrides = A11yOverrides::from_core(&A11y::new().hidden(true));
         let mut recording = RecordingOperation::new();
         {
             let mut interceptor = A11yInterceptor {
@@ -1566,7 +1192,6 @@ mod tests {
                 overrides: &overrides,
             };
             interceptor.traverse(&mut |child_op| {
-                // The child operation should also suppress accessible calls.
                 let base = Accessible {
                     role: accessible::Role::Button,
                     label: Some("Child button"),

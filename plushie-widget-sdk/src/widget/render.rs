@@ -414,8 +414,8 @@ mod tests {
         );
         let overrides =
             infer_a11y_overrides(&node).expect("should infer overrides from placeholder");
-        assert_eq!(overrides.description.as_deref(), Some("Search..."));
-        assert!(overrides.label.is_none());
+        assert_eq!(overrides.description(), Some("Search..."));
+        assert!(overrides.label().is_none());
     }
 
     #[test]
@@ -431,7 +431,7 @@ mod tests {
         );
         let overrides = infer_a11y_overrides(&node).expect("should have explicit overrides");
         // Explicit label wins; no double-wrapping.
-        assert_eq!(overrides.label.as_deref(), Some("Explicit label"));
+        assert_eq!(overrides.label(), Some("Explicit label"));
     }
 
     #[test]
@@ -466,10 +466,10 @@ mod tests {
         let overrides =
             infer_a11y_overrides(&node).expect("should infer overrides from placeholder");
         assert_eq!(
-            overrides.description.as_deref(),
+            overrides.description(),
             Some("Select an option...")
         );
-        assert!(overrides.label.is_none());
+        assert!(overrides.label().is_none());
     }
 
     #[test]
@@ -481,8 +481,8 @@ mod tests {
         );
         let overrides =
             infer_a11y_overrides(&node).expect("should infer overrides from placeholder");
-        assert_eq!(overrides.description.as_deref(), Some("Write something..."));
-        assert!(overrides.label.is_none());
+        assert_eq!(overrides.description(), Some("Write something..."));
+        assert!(overrides.label().is_none());
     }
 
     #[test]

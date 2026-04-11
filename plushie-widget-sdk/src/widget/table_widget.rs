@@ -1,4 +1,3 @@
-use iced::advanced::widget::operation::accessible;
 use iced::widget::{button, column, container, row, rule, scrollable, text};
 use iced::{Element, Fill, Length, Theme, alignment};
 use serde_json::Value;
@@ -12,20 +11,14 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use plushie_core::types::{self as core_types, PlushieType};
 use plushie_core::types::{Color as CoreColor, HorizontalAlignment};
+use plushie_core::types::a11y::Role;
 
 /// Wrap an element with an accessibility role override.
 fn with_role<'a, R: PlushieRenderer>(
     element: Element<'a, Message, Theme, R>,
-    role: accessible::Role,
+    role: Role,
 ) -> Element<'a, Message, Theme, R> {
-    A11yOverride::wrap(
-        element,
-        A11yOverrides {
-            role: Some(role),
-            ..A11yOverrides::default()
-        },
-    )
-    .into()
+    A11yOverride::wrap(element, A11yOverrides::with_role(role)).into()
 }
 
 /// Parsed column descriptor from the "columns" prop.
@@ -209,14 +202,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
                         }
                         container(label).width(col.width).align_x(col.align).into()
                     };
-                    with_role(cell_elem, accessible::Role::ColumnHeader)
+                    with_role(cell_elem, Role::ColumnHeader)
                 })
                 .collect();
             let mut header = row(header_cells).width(Fill);
             if let Some(cs) = cell_spacing {
                 header = header.spacing(cs);
             }
-            table_rows.push(with_role(header.into(), accessible::Role::Row));
+            table_rows.push(with_role(header.into(), Role::Row));
 
             // Separator
             let show_separator = tp.separator.unwrap_or(true);
@@ -255,14 +248,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
                     }
                     let cell_elem: Element<'a, Message, Theme, R> =
                         container(cell).width(col.width).align_x(col.align).into();
-                    with_role(cell_elem, accessible::Role::Cell)
+                    with_role(cell_elem, Role::Cell)
                 })
                 .collect();
             let mut data_row_elem = row(cells).width(Fill);
             if let Some(cs) = cell_spacing {
                 data_row_elem = data_row_elem.spacing(cs);
             }
-            table_rows.push(with_role(data_row_elem.into(), accessible::Role::Row));
+            table_rows.push(with_role(data_row_elem.into(), Role::Row));
         }
 
         let mut table_col = column(table_rows).width(width);
@@ -275,7 +268,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TableWidget {
             table_col = table_col.padding(iced_convert::padding(p));
         }
 
-        with_role(scrollable(table_col).into(), accessible::Role::Table)
+        with_role(scrollable(table_col).into(), Role::Table)
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {

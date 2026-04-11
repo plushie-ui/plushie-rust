@@ -816,9 +816,7 @@ fn apply_style_overrides(
     use plushie_core::types::Color as CoreColor;
 
     let override_fill = overrides.fill.as_ref().map(|f| CanvasFill::Color(CoreColor::hex(f)));
-    let override_stroke = overrides.stroke.as_ref().and_then(|v| {
-        <canvas_types::Stroke as plushie_core::types::PlushieType>::wire_decode(v)
-    });
+    let override_stroke = overrides.stroke.clone();
     let override_opacity = overrides.opacity;
 
     match shape {

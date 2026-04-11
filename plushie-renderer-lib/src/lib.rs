@@ -33,3 +33,6 @@ pub use app::validate_scale_factor;
 
 /// Trait for platform-specific side effects. See [`effects::EffectHandler`].
 pub use effects::EffectHandler;
+
+/// Pluggable output for renderer events. See [`emitters::EventSink`].
+pub use emitters::EventSink;

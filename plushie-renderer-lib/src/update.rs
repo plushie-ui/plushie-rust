@@ -101,6 +101,10 @@ impl App {
                 Task::none()
             }
 
+            // EffectResult is produced by the SDK's direct runner, not the
+            // renderer binary. If it somehow arrives here, ignore it.
+            Message::EffectResult { .. } => Task::none(),
+
             // -- Keyboard events --
             Message::KeyPressed(data, iced_id) => self.handle_key_pressed(data, iced_id),
             Message::KeyReleased(data, iced_id) => self.handle_key_released(data, iced_id),

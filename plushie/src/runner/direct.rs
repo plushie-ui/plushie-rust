@@ -105,12 +105,25 @@ impl<A: App> DirectApp<A> {
 
         // Messages that don't produce SDK events (subscriptions,
         // internal renderer events) are handled here.
-        match &msg {
+        match msg {
+            Message::EffectResult { tag, status, result } => {
+                let effect_result = match status.as_str() {
+                    "ok" => crate::event::EffectResult::Ok(result),
+                    "cancelled" => crate::event::EffectResult::Cancelled,
+                    _ => crate::event::EffectResult::Error(result),
+                };
+                let event = Event::Effect(crate::event::EffectEvent {
+                    tag,
+                    result: effect_result,
+                });
+                let cmd = A::update(&mut self.model, event);
+                self.refresh_view();
+                return self.execute_command(cmd);
+            }
             Message::StatusChanged(..) => {}
             Message::MarkdownUrl(..) => {}
             Message::NoOp => {}
             _ => {
-                // For messages not yet handled, log at debug level.
                 log::debug!("unhandled message in direct runner: {msg:?}");
             }
         }
@@ -230,6 +243,15 @@ impl<A: App> DirectApp<A> {
             Command::Announce(text) => plushie_widget_sdk::iced::announce(text),
 
             Command::Window(op) => self.execute_window_op(op),
+
+            Command::Effect { tag, request } => {
+                let (kind, payload) = crate::command::effect_request_to_wire(&request);
+                if super::effects::is_async_effect(kind) {
+                    super::effects::handle_effect_async(tag, kind.to_string(), payload)
+                } else {
+                    super::effects::handle_effect(tag, kind, &payload)
+                }
+            }
 
             _ => {
                 log::debug!("unhandled command in direct runner: {cmd:?}");

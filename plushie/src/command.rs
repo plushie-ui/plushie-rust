@@ -562,3 +562,56 @@ pub struct WidgetCommandItem {
     /// Operation-specific data.
     pub payload: Value,
 }
+
+// ---------------------------------------------------------------------------
+// Effect serialization
+// ---------------------------------------------------------------------------
+
+/// Convert an [`EffectRequest`] to the wire format `(kind, payload)`
+/// expected by the renderer.
+pub fn effect_request_to_wire(request: &EffectRequest) -> (&'static str, Value) {
+    use serde_json::json;
+    match request {
+        EffectRequest::FileOpen(opts) => ("file_open", file_dialog_opts_to_value(opts)),
+        EffectRequest::FileOpenMultiple(opts) => ("file_open_multiple", file_dialog_opts_to_value(opts)),
+        EffectRequest::FileSave(opts) => ("file_save", file_dialog_opts_to_value(opts)),
+        EffectRequest::DirectorySelect(opts) => ("directory_select", file_dialog_opts_to_value(opts)),
+        EffectRequest::DirectorySelectMultiple(opts) => ("directory_select_multiple", file_dialog_opts_to_value(opts)),
+        EffectRequest::ClipboardRead => ("clipboard_read", json!({})),
+        EffectRequest::ClipboardWrite(text) => ("clipboard_write", json!({"text": text})),
+        EffectRequest::ClipboardReadHtml => ("clipboard_read_html", json!({})),
+        EffectRequest::ClipboardWriteHtml { html, alt_text } => {
+            let mut payload = json!({"html": html});
+            if let Some(alt) = alt_text {
+                payload["alt_text"] = json!(alt);
+            }
+            ("clipboard_write_html", payload)
+        }
+        EffectRequest::ClipboardClear => ("clipboard_clear", json!({})),
+        EffectRequest::ClipboardReadPrimary => ("clipboard_read_primary", json!({})),
+        EffectRequest::ClipboardWritePrimary(text) => ("clipboard_write_primary", json!({"text": text})),
+        EffectRequest::Notification { title, body, opts } => {
+            let mut payload = json!({"title": title, "body": body});
+            if let Some(ref icon) = opts.icon { payload["icon"] = json!(icon); }
+            if let Some(ref timeout) = opts.timeout { payload["timeout"] = json!(timeout.as_millis() as u64); }
+            if let Some(ref urgency) = opts.urgency { payload["urgency"] = json!(urgency); }
+            if let Some(ref sound) = opts.sound { payload["sound"] = json!(sound); }
+            ("notification", payload)
+        }
+    }
+}
+
+fn file_dialog_opts_to_value(opts: &FileDialogOpts) -> Value {
+    use serde_json::json;
+    let mut payload = json!({});
+    if let Some(ref title) = opts.title { payload["title"] = json!(title); }
+    if let Some(ref dir) = opts.directory { payload["directory"] = json!(dir); }
+    if !opts.filters.is_empty() {
+        let filters: Vec<Value> = opts.filters.iter()
+            .map(|(label, exts)| json!([label, exts.join(";")]))
+            .collect();
+        payload["filters"] = json!(filters);
+    }
+    if let Some(ref name) = opts.default_name { payload["default_name"] = json!(name); }
+    payload
+}

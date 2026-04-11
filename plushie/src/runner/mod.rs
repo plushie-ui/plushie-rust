@@ -10,6 +10,9 @@
 #[cfg(feature = "direct")]
 pub mod direct;
 
+#[cfg(feature = "direct")]
+mod effects;
+
 #[cfg(feature = "wire")]
 pub mod bridge;
 

@@ -698,8 +698,8 @@ impl Style {
     pub fn danger() -> Self { Self::Preset("danger".into()) }
     pub fn warning() -> Self { Self::Preset("warning".into()) }
     pub fn text() -> Self { Self::Preset("text".into()) }
-    /// Default widget appearance.
-    pub fn default() -> Self { Self::Preset("default".into()) }
+    /// Default widget appearance (renderer preset name `"default"`).
+    pub fn default_style() -> Self { Self::Preset("default".into()) }
     /// Dark variant.
     pub fn dark() -> Self { Self::Preset("dark".into()) }
     /// Subdued/weak appearance.

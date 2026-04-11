@@ -12,7 +12,7 @@ categories = ["gui", "rendering"]
 
 [features]
 default = ["direct"]
-direct = ["dep:plushie-renderer-lib"]
+direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust"]
 wire = ["dep:tokio", "dep:rmp-serde"]
 
 [dependencies]
@@ -22,6 +22,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "process", "io-util", "time"], optional = true }
 rmp-serde = { version = "1", optional = true }
+rfd = { version = "0.15", optional = true }
+arboard = { version = "3", optional = true }
+notify-rust = { version = "4", optional = true }
 log = "0.4"
 
 [lints]

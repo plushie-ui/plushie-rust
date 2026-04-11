@@ -252,6 +252,10 @@ fn execute_wire_command(bridge: &mut Bridge, cmd: &Command) -> std::io::Result<(
         Command::Announce(text) => {
             bridge.send_widget_op("announce", &serde_json::json!({"text": text}))?;
         }
+        Command::Effect { tag, request } => {
+            let (kind, payload) = crate::command::effect_request_to_wire(request);
+            bridge.send_effect(tag, kind, &payload)?;
+        }
         Command::SelectAll(target) => {
             bridge.send_widget_op("select_all", &serde_json::json!({"target": target}))?;
         }

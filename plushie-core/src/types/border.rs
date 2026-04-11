@@ -8,15 +8,28 @@ use super::color::Color;
 use super::PlushieType;
 
 /// Corner radius for a border: uniform or per-corner.
+///
+/// ## Wire format
+///
+/// A plain number for uniform radius, or an object with per-corner keys:
+///
+/// ```json
+/// 8
+/// {"top_left": 8, "top_right": 4, "bottom_right": 8, "bottom_left": 4}
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Radius {
-    /// Same radius on all four corners.
+    /// Same radius on all four corners, in logical pixels.
     Uniform(f32),
-    /// Individual radius for each corner.
+    /// Individual radius for each corner, in logical pixels.
     PerCorner {
+        /// Top-left corner radius in pixels.
         top_left: f32,
+        /// Top-right corner radius in pixels.
         top_right: f32,
+        /// Bottom-right corner radius in pixels.
         bottom_right: f32,
+        /// Bottom-left corner radius in pixels.
         bottom_left: f32,
     },
 }
@@ -68,10 +81,22 @@ impl PlushieType for Radius {
 }
 
 /// A widget border with color, width, and corner radius.
+///
+/// ## Wire format
+///
+/// ```json
+/// {"color": "#rrggbb", "width": 2.0, "radius": 8}
+/// ```
+///
+/// The `radius` value can be a number (uniform) or an object with
+/// per-corner keys (see [`Radius`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Border {
+    /// Border color. `None` means transparent.
     pub color: Option<Color>,
+    /// Border width in logical pixels.
     pub width: f32,
+    /// Corner radius (uniform or per-corner).
     pub radius: Radius,
 }
 

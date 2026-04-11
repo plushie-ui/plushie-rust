@@ -9,12 +9,20 @@ use super::PlushieType;
 
 /// A drop shadow effect.
 ///
-/// Wire format: `{color: "#000", offset: [x, y], blur_radius: N}`
+/// ## Wire format
+///
+/// ```json
+/// {"color": "#000000", "offset": [5.0, 10.0], "blur_radius": 3.0}
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct Shadow {
+    /// Shadow color.
     pub color: Color,
+    /// Horizontal offset in logical pixels (positive = right).
     pub offset_x: f32,
+    /// Vertical offset in logical pixels (positive = down).
     pub offset_y: f32,
+    /// Blur radius in logical pixels. 0.0 produces a sharp shadow.
     pub blur_radius: f32,
 }
 

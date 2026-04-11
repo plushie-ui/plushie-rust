@@ -8,10 +8,16 @@ use super::PlushieType;
 
 /// A numeric range with min and max bounds.
 ///
-/// Wire format: `[min, max]` array.
+/// ## Wire format
+///
+/// ```json
+/// [0.0, 100.0]
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Range {
+    /// Lower bound (inclusive).
     pub min: f32,
+    /// Upper bound (inclusive).
     pub max: f32,
 }
 

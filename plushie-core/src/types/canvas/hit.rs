@@ -10,11 +10,21 @@ use super::super::PlushieType;
 ///
 /// Overrides the shape's geometry for pointer hit detection,
 /// allowing larger or smaller interactive areas.
+///
+/// ## Wire format
+///
+/// ```json
+/// {"x": 0.0, "y": 0.0, "w": 200.0, "h": 100.0}
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HitRect {
+    /// Left edge x-coordinate in logical pixels.
     pub x: f32,
+    /// Top edge y-coordinate in logical pixels.
     pub y: f32,
+    /// Width of the hit area in logical pixels.
     pub w: f32,
+    /// Height of the hit area in logical pixels.
     pub h: f32,
 }
 

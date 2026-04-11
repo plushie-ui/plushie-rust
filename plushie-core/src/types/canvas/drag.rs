@@ -7,11 +7,23 @@ use crate::protocol::{PropMap, PropValue};
 use super::super::PlushieType;
 
 /// Bounding constraints for draggable canvas shapes.
+///
+/// Each bound is optional. Omitted bounds leave that axis unconstrained.
+///
+/// ## Wire format
+///
+/// ```json
+/// {"min_x": 0.0, "max_x": 100.0, "min_y": -50.0, "max_y": 50.0}
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DragBounds {
+    /// Minimum x-coordinate in logical pixels. `None` means unbounded left.
     pub min_x: Option<f32>,
+    /// Maximum x-coordinate in logical pixels. `None` means unbounded right.
     pub max_x: Option<f32>,
+    /// Minimum y-coordinate in logical pixels. `None` means unbounded up.
     pub min_y: Option<f32>,
+    /// Maximum y-coordinate in logical pixels. `None` means unbounded down.
     pub max_y: Option<f32>,
 }
 

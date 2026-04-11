@@ -7,6 +7,11 @@ use crate::protocol::PropValue;
 use super::PlushieType;
 
 /// Theme specification.
+///
+/// ## Wire format
+///
+/// A string: `"system"` for OS-detected theme, or a named theme
+/// like `"dark"`, `"light"`, `"dracula"`, etc.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Theme {
     /// A named built-in theme (e.g., "dark", "light", "dracula").

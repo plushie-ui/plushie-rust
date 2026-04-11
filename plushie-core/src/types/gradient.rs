@@ -10,17 +10,33 @@ use super::PlushieType;
 /// A single stop in a gradient.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GradientStop {
+    /// Position along the gradient axis, from 0.0 (start) to 1.0 (end).
     pub offset: f32,
+    /// Color at this stop.
     pub color: Color,
+}
+
+impl GradientStop {
+    /// Create a new gradient stop at the given offset with the given color.
+    pub fn new(offset: f32, color: impl Into<Color>) -> Self {
+        Self { offset, color: color.into() }
+    }
 }
 
 /// A linear gradient fill defined by start/end points and color stops.
 ///
-/// Wire format: `{type: "linear", start: [x, y], end: [x, y], stops: [[offset, color], ...]}`
+/// ## Wire format
+///
+/// ```json
+/// {"type": "linear", "start": [x, y], "end": [x, y], "stops": [[offset, "#hex"], ...]}
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gradient {
+    /// Start point of the gradient axis as (x, y) in logical pixels.
     pub start: (f32, f32),
+    /// End point of the gradient axis as (x, y) in logical pixels.
     pub end: (f32, f32),
+    /// Color stops along the gradient, ordered by offset (0.0 to 1.0).
     pub stops: Vec<GradientStop>,
 }
 
@@ -102,4 +118,16 @@ fn decode_point(value: &Value) -> Option<(f32, f32)> {
     let x = arr.first()?.as_f64()? as f32;
     let y = arr.get(1)?.as_f64()? as f32;
     Some((x, y))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gradient_stop_new() {
+        let stop = GradientStop::new(0.5, Color::hex("#ff0000"));
+        assert_eq!(stop.offset, 0.5);
+        assert_eq!(stop.color, Color::hex("#ff0000"));
+    }
 }

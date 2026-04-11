@@ -338,6 +338,44 @@ pub fn input_purpose(p: types::InputPurpose) -> iced::advanced::input_method::Pu
 }
 
 // -------------------------------------------------------------------------
+// Anchor
+// -------------------------------------------------------------------------
+
+pub fn anchor(a: types::Anchor) -> iced::widget::scrollable::Anchor {
+    match a {
+        types::Anchor::Start => iced::widget::scrollable::Anchor::Start,
+        types::Anchor::End => iced::widget::scrollable::Anchor::End,
+    }
+}
+
+// -------------------------------------------------------------------------
+// Direction (scrollable)
+// -------------------------------------------------------------------------
+
+/// Build a scrollable direction from a plushie-core Direction and scrollbar.
+///
+/// Direction maps to iced's `scrollable::Direction` enum, which carries the
+/// scrollbar configuration as data. `Both` reuses the same scrollbar for
+/// both axes.
+pub fn scrollable_direction(
+    d: types::Direction,
+    scrollbar: iced::widget::scrollable::Scrollbar,
+) -> iced::widget::scrollable::Direction {
+    match d {
+        types::Direction::Horizontal => {
+            iced::widget::scrollable::Direction::Horizontal(scrollbar)
+        }
+        types::Direction::Both => iced::widget::scrollable::Direction::Both {
+            vertical: scrollbar.clone(),
+            horizontal: scrollbar,
+        },
+        types::Direction::Vertical => {
+            iced::widget::scrollable::Direction::Vertical(scrollbar)
+        }
+    }
+}
+
+// -------------------------------------------------------------------------
 // Background
 // -------------------------------------------------------------------------
 
@@ -756,5 +794,38 @@ mod tests {
             input_purpose(types::InputPurpose::Email),
             Purpose::Email
         );
+    }
+
+    #[test]
+    fn anchor_mapping() {
+        assert_eq!(
+            anchor(types::Anchor::Start),
+            iced::widget::scrollable::Anchor::Start
+        );
+        assert_eq!(
+            anchor(types::Anchor::End),
+            iced::widget::scrollable::Anchor::End
+        );
+    }
+
+    #[test]
+    fn scrollable_direction_vertical() {
+        let sb = iced::widget::scrollable::Scrollbar::default();
+        let d = scrollable_direction(types::Direction::Vertical, sb);
+        assert!(matches!(d, iced::widget::scrollable::Direction::Vertical(_)));
+    }
+
+    #[test]
+    fn scrollable_direction_horizontal() {
+        let sb = iced::widget::scrollable::Scrollbar::default();
+        let d = scrollable_direction(types::Direction::Horizontal, sb);
+        assert!(matches!(d, iced::widget::scrollable::Direction::Horizontal(_)));
+    }
+
+    #[test]
+    fn scrollable_direction_both() {
+        let sb = iced::widget::scrollable::Scrollbar::default();
+        let d = scrollable_direction(types::Direction::Both, sb);
+        assert!(matches!(d, iced::widget::scrollable::Direction::Both { .. }));
     }
 }

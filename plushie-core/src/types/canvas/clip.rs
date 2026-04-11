@@ -7,11 +7,21 @@ use crate::protocol::{PropMap, PropValue};
 use super::super::PlushieType;
 
 /// A rectangular clip region for canvas groups.
+///
+/// ## Wire format
+///
+/// ```json
+/// {"x": 10.0, "y": 20.0, "w": 100.0, "h": 50.0}
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ClipRect {
+    /// Left edge x-coordinate in logical pixels.
     pub x: f32,
+    /// Top edge y-coordinate in logical pixels.
     pub y: f32,
+    /// Width of the clip region in logical pixels.
     pub w: f32,
+    /// Height of the clip region in logical pixels.
     pub h: f32,
 }
 

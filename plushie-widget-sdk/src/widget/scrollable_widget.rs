@@ -84,18 +84,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
 
         let sb = sp.build_scrollbar();
         let direction = sp.direction.unwrap_or(Direction::Vertical);
-        let mut s = match direction {
-            Direction::Horizontal => {
-                scrollable(child).direction(scrollable::Direction::Horizontal(sb))
-            }
-            Direction::Both => scrollable(child).direction(scrollable::Direction::Both {
-                vertical: sb,
-                horizontal: sp.build_scrollbar(),
-            }),
-            Direction::Vertical => {
-                scrollable(child).direction(scrollable::Direction::Vertical(sb))
-            }
-        };
+        let mut s = scrollable(child)
+            .direction(iced_convert::scrollable_direction(direction, sb));
 
         let width = sp.width.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
         let height = sp.height.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
@@ -109,8 +99,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
         }
 
         // Anchor
-        if let Some(Anchor::End) = sp.anchor {
-            s = s.anchor_y(scrollable::Anchor::End);
+        if let Some(a) = sp.anchor {
+            s = s.anchor_y(iced_convert::anchor(a));
         }
 
         // on_scroll: emit viewport data when scroll position changes

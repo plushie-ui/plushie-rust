@@ -23,9 +23,13 @@ use super::PlushieType;
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Padding {
+    /// Top padding in logical pixels.
     pub top: f32,
+    /// Right padding in logical pixels.
     pub right: f32,
+    /// Bottom padding in logical pixels.
     pub bottom: f32,
+    /// Left padding in logical pixels.
     pub left: f32,
 }
 

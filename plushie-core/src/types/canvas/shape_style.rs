@@ -8,13 +8,22 @@ use super::Stroke;
 use super::super::PlushieType;
 
 /// Style overrides applied to canvas shapes in hover/pressed/focus states.
+///
+/// At least one field must be present for a valid style. All fields are
+/// optional overrides that replace the shape's base property for that state.
+///
+/// ## Wire format
+///
+/// ```json
+/// {"fill": "#ff0000", "stroke": {"color": "#000", "width": 2}, "opacity": 0.5}
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShapeStyle {
-    /// Fill override (color hex string or gradient ref).
+    /// Fill color override as a hex string (e.g. `"#ff0000"`).
     pub fill: Option<String>,
-    /// Stroke override.
+    /// Stroke override (replaces the shape's base stroke for this state).
     pub stroke: Option<Stroke>,
-    /// Opacity override.
+    /// Opacity override, from 0.0 (transparent) to 1.0 (opaque).
     pub opacity: Option<f32>,
 }
 

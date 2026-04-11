@@ -7,12 +7,23 @@ use crate::protocol::{PropMap, PropValue};
 use super::super::{Color, PlushieType};
 
 /// Stroke style for canvas shapes.
+///
+/// ## Wire format
+///
+/// ```json
+/// {"color": "#000000", "width": 2.0, "cap": "round", "join": "bevel", "dash": {"segments": [5, 3], "offset": 0}}
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stroke {
+    /// Stroke color.
     pub color: Color,
+    /// Stroke width in logical pixels.
     pub width: f32,
+    /// Line cap style for stroke endpoints. `None` uses the renderer default (butt).
     pub cap: Option<LineCap>,
+    /// Line join style for stroke corners. `None` uses the renderer default (miter).
     pub join: Option<LineJoin>,
+    /// Dash pattern. `None` draws a solid line.
     pub dash: Option<Dash>,
 }
 
@@ -33,9 +44,17 @@ pub enum LineJoin {
 }
 
 /// Dash pattern for strokes.
+///
+/// ## Wire format
+///
+/// ```json
+/// {"segments": [5.0, 3.0], "offset": 0.0}
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dash {
+    /// Alternating dash/gap lengths in logical pixels. Must be non-empty.
     pub segments: Vec<f32>,
+    /// Starting offset into the dash pattern, in logical pixels.
     pub offset: f32,
 }
 

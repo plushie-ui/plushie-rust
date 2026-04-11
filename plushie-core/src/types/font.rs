@@ -205,11 +205,25 @@ impl PlushieType for FontStretch {
 }
 
 /// A font specification.
+///
+/// ## Wire format
+///
+/// A plain string for shorthand (`"default"`, `"monospace"`, or a family name),
+/// or an object with optional keys:
+///
+/// ```json
+/// {"family": "Fira Code", "weight": "bold", "style": "italic", "stretch": "condensed"}
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct Font {
+    /// Font family name. `None` or `"default"` uses the system sans-serif.
+    /// `"monospace"` selects the system monospace font.
     pub family: Option<String>,
+    /// Font weight (CSS 100-900 equivalent). `None` inherits the default (normal/400).
     pub weight: Option<FontWeight>,
+    /// Font style (normal, italic, oblique). `None` inherits the default (normal).
     pub style: Option<FontStyle>,
+    /// Font stretch (ultra-condensed through ultra-expanded). `None` inherits the default (normal).
     pub stretch: Option<FontStretch>,
 }
 

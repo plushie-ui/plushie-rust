@@ -7,13 +7,45 @@ use crate::protocol::{PropMap, PropValue};
 use super::super::PlushieType;
 
 /// A 2D transform applied to canvas shapes or groups.
+///
+/// ## Wire format
+///
+/// An array of transform objects, applied in order:
+///
+/// ```json
+/// [
+///   {"type": "translate", "x": 10.0, "y": 20.0},
+///   {"type": "rotate", "angle": 1.5708},
+///   {"type": "scale", "x": 2.0, "y": 0.5},
+///   {"type": "scale", "factor": 3.0}
+/// ]
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub enum Transform {
-    Translate { x: f32, y: f32 },
-    /// Rotation in radians.
-    Rotate { angle: f32 },
-    Scale { x: f32, y: f32 },
-    ScaleUniform { factor: f32 },
+    /// Translation by (x, y) in logical pixels.
+    Translate {
+        /// Horizontal offset in pixels (positive = right).
+        x: f32,
+        /// Vertical offset in pixels (positive = down).
+        y: f32,
+    },
+    /// Rotation around the origin.
+    Rotate {
+        /// Rotation angle in radians. Positive = clockwise.
+        angle: f32,
+    },
+    /// Non-uniform scale.
+    Scale {
+        /// Horizontal scale factor.
+        x: f32,
+        /// Vertical scale factor.
+        y: f32,
+    },
+    /// Uniform scale (same factor for both axes).
+    ScaleUniform {
+        /// Scale factor applied to both axes.
+        factor: f32,
+    },
 }
 
 impl PlushieType for Transform {

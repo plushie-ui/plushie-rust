@@ -10,11 +10,31 @@
 // -------------------------------------------------------------------------
 
 pub use plushie_core::types::{
-    A11y, Background, Border, Color, Font, FontStretch, FontStyle, FontWeight,
-    Gradient, GradientStop, Length, Padding, PlushieType, Radius, Shadow,
+    // Core trait
+    PlushieType,
+    // Visual
+    Color, Background, Gradient, GradientStop,
+    // Geometry
+    Length, Padding, Border, Radius, Shadow,
+    // Typography
+    Font, FontWeight, FontStyle, FontStretch,
+    // Text layout
+    Wrapping, Shaping, Ellipsis, LineHeight,
+    // Alignment
+    HorizontalAlignment, VerticalAlignment,
+    // Layout
+    Direction, Anchor, Position, ContentFit,
+    // Input
+    InputPurpose, FilterMethod, CursorStyle,
+    // Style
     Style, StyleMap,
+    // Value
+    Range,
+    // Theme
+    Theme,
+    // A11y
+    A11y, Role, Live, Orientation, HasPopup,
 };
-pub use plushie_core::types::a11y::{Live, Role};
 
 // -------------------------------------------------------------------------
 // SDK-specific: Alignment

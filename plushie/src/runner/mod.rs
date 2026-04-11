@@ -14,6 +14,9 @@ pub mod direct;
 mod effects;
 
 #[cfg(feature = "direct")]
+pub(crate) mod event_bridge;
+
+#[cfg(feature = "direct")]
 mod queue_sink;
 
 #[cfg(feature = "wire")]

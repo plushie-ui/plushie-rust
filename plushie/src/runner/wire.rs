@@ -47,10 +47,18 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     // Initialize the app.
     let (mut model, _init_cmd) = A::init();
 
+    // Track active subscriptions for diffing.
+    let mut active_subs: Vec<crate::subscription::Subscription> = Vec::new();
+
     // First render: full snapshot.
     let view = A::view(&model);
     let (mut current_tree, _) = normalize::normalize(&serde_json::to_value(&view).unwrap());
     bridge.send_snapshot(&current_tree)?;
+
+    // Initial subscription sync.
+    let new_subs = A::subscribe(&model);
+    sync_subscriptions(&mut bridge, &active_subs, &new_subs)?;
+    active_subs = new_subs;
 
     // Event loop.
     loop {
@@ -87,6 +95,13 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
             }
 
             current_tree = new_tree;
+
+            // Sync subscriptions.
+            let new_subs = A::subscribe(&model);
+            if let Err(e) = sync_subscriptions(&mut bridge, &active_subs, &new_subs) {
+                log::error!("subscription sync failed: {e}");
+            }
+            active_subs = new_subs;
         }
     }
 
@@ -250,6 +265,12 @@ fn execute_wire_renderer_op(bridge: &mut Bridge, op: &plushie_core::ops::Rendere
             let (kind, payload) = plushie_core::ops::effect_request_to_wire(request);
             bridge.send_effect(tag, kind, &payload)
         }
+        RendererOp::Subscribe { kind, tag, max_rate, window_id } => {
+            bridge.send_subscribe(&kind, &tag, max_rate, window_id.as_deref())
+        }
+        RendererOp::Unsubscribe { kind, tag } => {
+            bridge.send_unsubscribe(&kind, &tag)
+        }
         _ => {
             log::debug!("unhandled wire renderer op: {op:?}");
             Ok(())
@@ -321,4 +342,53 @@ fn build_settings<A: App>() -> Value {
     }
 
     json
+}
+
+/// Diff old and new subscription lists and send Subscribe/Unsubscribe
+/// messages for the differences.
+///
+/// Timer subscriptions (kind "every") are filtered out since they're
+/// handled SDK-side, not by the renderer.
+#[cfg(feature = "wire")]
+fn sync_subscriptions(
+    bridge: &mut Bridge,
+    old: &[crate::subscription::Subscription],
+    new: &[crate::subscription::Subscription],
+) -> std::io::Result<()> {
+    use std::collections::HashSet;
+
+    // Filter to renderer-side subscriptions only (skip timers).
+    let is_renderer_sub = |s: &&crate::subscription::Subscription| s.wire_kind() != "every";
+
+    let old_keys: HashSet<(&str, &str)> = old.iter()
+        .filter(is_renderer_sub)
+        .map(|s| s.diff_key())
+        .collect();
+    let new_keys: HashSet<(&str, &str)> = new.iter()
+        .filter(is_renderer_sub)
+        .map(|s| s.diff_key())
+        .collect();
+
+    // Unsubscribe removed subscriptions.
+    for sub in old.iter().filter(is_renderer_sub) {
+        let key = sub.diff_key();
+        if !new_keys.contains(&key) {
+            bridge.send_unsubscribe(sub.wire_kind(), &sub.tag)?;
+        }
+    }
+
+    // Subscribe new subscriptions.
+    for sub in new.iter().filter(is_renderer_sub) {
+        let key = sub.diff_key();
+        if !old_keys.contains(&key) {
+            bridge.send_subscribe(
+                sub.wire_kind(),
+                &sub.tag,
+                sub.max_rate,
+                sub.window_id.as_deref(),
+            )?;
+        }
+    }
+
+    Ok(())
 }

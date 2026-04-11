@@ -111,6 +111,22 @@ impl App {
                 iced::font::load(data).map(|_| Message::NoOp)
             }
 
+            // -- Subscriptions --
+            RendererOp::Subscribe { kind, tag, max_rate, window_id } => {
+                use plushie_widget_sdk::protocol::IncomingMessage;
+                self.core.apply(IncomingMessage::Subscribe {
+                    kind, tag, window_id, max_rate,
+                });
+                Task::none()
+            }
+            RendererOp::Unsubscribe { kind, tag } => {
+                use plushie_widget_sdk::protocol::IncomingMessage;
+                self.core.apply(IncomingMessage::Unsubscribe {
+                    kind, tag: Some(tag),
+                });
+                Task::none()
+            }
+
             // -- Testing / debugging --
             RendererOp::TreeHash { tag } => {
                 self.handle_widget_op("tree_hash", &serde_json::json!({"target": tag}))

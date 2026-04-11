@@ -147,4 +147,38 @@ impl Subscription {
         self.max_rate = Some(rate);
         self
     }
+
+    /// Wire kind string for this subscription.
+    #[cfg(feature = "wire")]
+    pub(crate) fn wire_kind(&self) -> &str {
+        match &self.kind {
+            SubscriptionKind::Every(_) => "every",
+            SubscriptionKind::OnKeyPress => "on_key_press",
+            SubscriptionKind::OnKeyRelease => "on_key_release",
+            SubscriptionKind::OnModifiersChanged => "on_modifiers_changed",
+            SubscriptionKind::OnWindowClose => "on_window_close",
+            SubscriptionKind::OnWindowEvent => "on_window_event",
+            SubscriptionKind::OnWindowOpen => "on_window_open",
+            SubscriptionKind::OnWindowResize => "on_window_resize",
+            SubscriptionKind::OnWindowFocus => "on_window_focus",
+            SubscriptionKind::OnWindowUnfocus => "on_window_unfocus",
+            SubscriptionKind::OnWindowMove => "on_window_move",
+            SubscriptionKind::OnPointerMove => "on_pointer_move",
+            SubscriptionKind::OnPointerButton => "on_pointer_button",
+            SubscriptionKind::OnPointerScroll => "on_pointer_scroll",
+            SubscriptionKind::OnPointerTouch => "on_pointer_touch",
+            SubscriptionKind::OnIme => "on_ime",
+            SubscriptionKind::OnThemeChange => "on_theme_change",
+            SubscriptionKind::OnAnimationFrame => "on_animation_frame",
+            SubscriptionKind::OnFileDrop => "on_file_drop",
+            SubscriptionKind::OnEvent => "on_event",
+        }
+    }
+
+    /// Unique key for diffing: `(kind, tag)`.
+    #[cfg(feature = "wire")]
+    pub(crate) fn diff_key(&self) -> (&str, &str) {
+        (self.wire_kind(), &self.tag)
+    }
+
 }

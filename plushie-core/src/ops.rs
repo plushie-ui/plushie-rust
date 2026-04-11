@@ -84,6 +84,17 @@ pub enum RendererOp {
     /// Load a font from raw byte data.
     LoadFont(Vec<u8>),
 
+    // -- Subscriptions --
+    /// Subscribe to a renderer event source.
+    Subscribe {
+        kind: String,
+        tag: String,
+        max_rate: Option<u32>,
+        window_id: Option<String>,
+    },
+    /// Unsubscribe from a renderer event source.
+    Unsubscribe { kind: String, tag: String },
+
     // -- Testing / debugging --
     /// Request a hash of the current widget tree.
     TreeHash { tag: String },

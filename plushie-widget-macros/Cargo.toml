@@ -1,5 +1,5 @@
 [package]
-name = "plushie-macros"
+name = "plushie-widget-macros"
 description = "Proc macros for Plushie widget authoring"
 version.workspace = true
 edition.workspace = true

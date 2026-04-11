@@ -8,7 +8,7 @@
 pub use crate::App;
 
 // Derive macro for widget authoring
-pub use crate::PlushieWidget;
+pub use crate::WidgetProps;
 
 // Widget registrar (for App::view)
 pub use crate::widget::WidgetRegistrar;

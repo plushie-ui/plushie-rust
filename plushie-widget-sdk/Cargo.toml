@@ -23,6 +23,7 @@ workspace = true
 
 [dependencies]
 plushie-core = { version = "0.6.1", path = "../plushie-core" }
+plushie-widget-macros = { version = "0.6.1", path = "../plushie-widget-macros" }
 iced = { version = "0.8", package = "plushie-iced", features = ["advanced", "image", "svg", "canvas", "markdown", "highlighter"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

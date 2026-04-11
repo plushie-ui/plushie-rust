@@ -1,5 +1,5 @@
 [workspace]
-members = ["plushie", "plushie-core", "plushie-macros", "plushie-widget-sdk", "plushie-renderer-lib", "plushie-renderer", "plushie-renderer-wasm"]
+members = ["plushie", "plushie-core", "plushie-widget-macros", "plushie-widget-sdk", "plushie-renderer-lib", "plushie-renderer", "plushie-renderer-wasm"]
 resolver = "2"
 
 [workspace.package]

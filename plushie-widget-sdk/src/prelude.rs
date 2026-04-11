@@ -18,6 +18,9 @@ pub use crate::PlushieRenderer;
 // -- PlushieWidget trait, registry, and lifecycle types --
 pub use crate::registry::{GenerationCounter, InitCtx, PlushieWidget, WidgetRegistry, WidgetSet};
 
+// -- Derive macro for widget props generation --
+pub use crate::WidgetProps;
+
 // -- Rendering context --
 pub use crate::render_ctx::RenderCtx;
 

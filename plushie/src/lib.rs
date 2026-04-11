@@ -71,7 +71,7 @@ pub mod widget;
 pub use plushie_widget_sdk as widget_sdk;
 
 // Re-export the derive macro for widget authoring.
-pub use plushie_macros::PlushieWidget;
+pub use plushie_widget_macros::WidgetProps;
 
 // ---------------------------------------------------------------------------
 // App trait

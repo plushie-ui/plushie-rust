@@ -1,14 +1,14 @@
 //! Proc macros for Plushie widget authoring.
 //!
-//! Provides `#[derive(PlushieWidget)]` which generates typed props
+//! Provides `#[derive(WidgetProps)]` which generates typed props
 //! extraction from a struct annotated with `#[widget(name = "...")]`.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use plushie_macros::PlushieWidget;
+//! use plushie_widget_macros::WidgetProps;
 //!
-//! #[derive(PlushieWidget)]
+//! #[derive(WidgetProps)]
 //! #[widget(name = "star_rating")]
 //! struct StarRating {
 //!     label: String,
@@ -31,7 +31,7 @@ use syn::{Data, DeriveInput, Fields, Lit, parse_macro_input};
 /// Derive macro for Plushie widget prop extraction.
 ///
 /// Annotate a struct with `#[widget(name = "...")]` and derive
-/// `PlushieWidget` to generate:
+/// `WidgetProps` to generate:
 ///
 /// - A `{Name}Props` struct wrapping each field in `Option<T>`,
 ///   with a `from_node()` method that extracts typed values from
@@ -43,7 +43,7 @@ use syn::{Data, DeriveInput, Fields, Lit, parse_macro_input};
 /// with `#[field(default = <expr>)]` to document the expected
 /// default (the attribute is parsed but the default is not used
 /// in the Props struct, since all fields are `Option<T>`).
-#[proc_macro_derive(PlushieWidget, attributes(widget, field))]
+#[proc_macro_derive(WidgetProps, attributes(widget, field))]
 pub fn derive_plushie_widget(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -62,14 +62,14 @@ fn derive_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             _ => {
                 return Err(syn::Error::new_spanned(
                     &input.ident,
-                    "PlushieWidget requires named fields",
+                    "WidgetProps requires named fields",
                 ));
             }
         },
         _ => {
             return Err(syn::Error::new_spanned(
                 &input.ident,
-                "PlushieWidget can only be derived for structs",
+                "WidgetProps can only be derived for structs",
             ));
         }
     };
@@ -175,7 +175,7 @@ fn extract_widget_name(input: &DeriveInput) -> syn::Result<String> {
     }
     Err(syn::Error::new_spanned(
         &input.ident,
-        "PlushieWidget requires #[widget(name = \"...\")] attribute",
+        "WidgetProps requires #[widget(name = \"...\")] attribute",
     ))
 }
 

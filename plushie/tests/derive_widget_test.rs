@@ -1,11 +1,11 @@
-//! Integration tests for the PlushieWidget derive macro.
+//! Integration tests for the WidgetProps derive macro.
 //!
 //! These tests verify that the generated Props struct and type_name
 //! method work correctly with real plushie-core types.
 
 #![allow(dead_code)] // derive test structs have fields read only via generated code
 
-use plushie::PlushieWidget;
+use plushie::WidgetProps;
 use plushie_core::protocol::{Props, TreeNode};
 use plushie_core::types::Color;
 use serde_json::json;
@@ -14,7 +14,7 @@ use serde_json::json;
 // Test widget with primitive types
 // ---------------------------------------------------------------------------
 
-#[derive(PlushieWidget)]
+#[derive(WidgetProps)]
 #[widget(name = "test_widget")]
 struct TestWidget {
     label: String,
@@ -92,7 +92,7 @@ fn props_from_node_type_mismatch() {
 // Test widget with complex types
 // ---------------------------------------------------------------------------
 
-#[derive(PlushieWidget)]
+#[derive(WidgetProps)]
 #[widget(name = "color_box")]
 struct ColorBox {
     /// The fill color.

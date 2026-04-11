@@ -28,10 +28,13 @@ pub use crate::ui::*;
 
 // Property types
 pub use crate::types::{
-    Align, Background, Border, Color, Font, FontStretch, Gradient,
+    A11y, Align, Background, Border, Color, Font, FontStretch, Gradient,
     KeyModifiers, Length, Length::*, Padding, PlushieType, Radius,
     Shadow, Style, StyleMap,
 };
+
+// A11y sub-types for typed accessibility builders
+pub use plushie_core::types::a11y::{Live, Role};
 
 // Animation
 pub use crate::animation::{Easing, Sequence, Spring, Transition};

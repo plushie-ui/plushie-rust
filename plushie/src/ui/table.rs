@@ -1,7 +1,6 @@
 //! Table widget builder.
 
-use super::PropMap;
-use serde_json::{Value, json};
+use super::{PropMap, PropValue};
 
 use crate::View;
 use crate::types::*;
@@ -41,10 +40,15 @@ impl TableBuilder {
     }
 
     pub fn columns(mut self, cols: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
-        let cols: Vec<Value> = cols.into_iter()
-            .map(|c| json!({"key": c.as_ref(), "label": c.as_ref()}))
+        let cols: Vec<PropValue> = cols.into_iter()
+            .map(|c| {
+                let mut col = PropMap::new();
+                col.insert("key", PropValue::Str(c.as_ref().to_string()));
+                col.insert("label", PropValue::Str(c.as_ref().to_string()));
+                PropValue::Object(col)
+            })
             .collect();
-        super::set_prop(&mut self.props, "columns", Value::Array(cols));
+        super::set_prop(&mut self.props, "columns", PropValue::Array(cols));
         self
     }
 
@@ -128,8 +132,8 @@ impl TableBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 

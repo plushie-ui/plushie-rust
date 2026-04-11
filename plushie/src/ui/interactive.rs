@@ -76,8 +76,8 @@ impl ButtonBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -210,8 +210,8 @@ impl PointerAreaBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -286,8 +286,8 @@ impl SensorBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -369,8 +369,8 @@ impl TooltipBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -421,8 +421,8 @@ impl ThemerBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -511,8 +511,8 @@ impl OverlayBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 

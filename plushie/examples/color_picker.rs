@@ -140,10 +140,7 @@ impl App for ColorPickerApp {
                                         .width(1.0)
                                         .radius(4.0),
                                 )
-                                .a11y(&serde_json::json!({
-                                    "role": "image",
-                                    "label": format!("Selected color: {hex}")
-                                })),
+                                .a11y(&A11y::new().role(Role::Image).label(format!("Selected color: {hex}"))),
                         )
                         .child(
                             column().spacing(4.0)
@@ -151,17 +148,12 @@ impl App for ColorPickerApp {
                                     text(&hex)
                                         .id("hex_display")
                                         .size(18.0)
-                                        .a11y(&serde_json::json!({
-                                            "live": "polite",
-                                            "busy": is_initial
-                                        })),
+                                        .a11y(&A11y::new().live(Live::Polite).busy(is_initial)),
                                 )
                                 .child(
                                     text(&hsv_label(model))
                                         .id("hsv_display")
-                                        .a11y(&serde_json::json!({
-                                            "live": "polite"
-                                        })),
+                                        .a11y(&A11y::new().live(Live::Polite)),
                                 ),
                         ),
                 ),

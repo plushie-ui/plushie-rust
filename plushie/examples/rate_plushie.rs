@@ -247,10 +247,7 @@ impl App for RatePlushie {
                             .id("heading")
                             .size(28.0)
                             .color(Color::hex(&t.text))
-                            .a11y(&serde_json::json!({
-                                "role": "heading",
-                                "level": 1
-                            })),
+                            .a11y(&A11y::new().role(Role::Heading).level(1)),
                     )
                     .child(rating_card(model, &t, widgets))
                     .child(
@@ -258,10 +255,7 @@ impl App for RatePlushie {
                             .id("reviews-heading")
                             .size(20.0)
                             .color(Color::hex(&t.text))
-                            .a11y(&serde_json::json!({
-                                "role": "heading",
-                                "level": 2
-                            })),
+                            .a11y(&A11y::new().role(Role::Heading).level(2)),
                     )
                     .child(reviews_list(&model.reviews, &t)),
             ),
@@ -295,10 +289,7 @@ fn rating_card(model: &RatePlushie, t: &AppTheme, widgets: &mut WidgetRegistrar)
                 .id("stars-error")
                 .size(12.0)
                 .color(Color::hex(&t.error_text))
-                .a11y(&serde_json::json!({
-                    "role": "alert",
-                    "live": "polite"
-                })),
+                .a11y(&A11y::new().role(Role::Alert).live(Live::Polite)),
         );
     }
     card_col = card_col.child(stars_group);
@@ -358,12 +349,11 @@ fn review_form(model: &RatePlushie, t: &AppTheme) -> View {
     let mut name_input = text_input("review-name", &model.review_name)
         .placeholder("Your name")
         .on_submit(true)
-        .a11y(&serde_json::json!({
-            "label": "Your name",
-            "required": true,
-            "invalid": name_err.is_some(),
-            "error_message": if name_err.is_some() { "review-name-error" } else { "" }
-        }));
+        .a11y(&{
+            let mut a = A11y::new().label("Your name").required(true).invalid(name_err.is_some());
+            if name_err.is_some() { a = a.error_message("review-name-error"); }
+            a
+        });
     if name_err.is_some() {
         name_input = name_input.style(error_style.clone());
     }
@@ -374,10 +364,7 @@ fn review_form(model: &RatePlushie, t: &AppTheme) -> View {
                 .id("review-name-error")
                 .size(12.0)
                 .color(Color::hex(&t.error_text))
-                .a11y(&serde_json::json!({
-                    "role": "alert",
-                    "live": "polite"
-                })),
+                .a11y(&A11y::new().role(Role::Alert).live(Live::Polite)),
         );
     }
     form = form.child(name_col);
@@ -387,12 +374,11 @@ fn review_form(model: &RatePlushie, t: &AppTheme) -> View {
     let mut comment_input = text_editor("review-comment", &model.review_comment)
         .placeholder("Write your review...")
         .height(80.0)
-        .a11y(&serde_json::json!({
-            "label": "Review text",
-            "required": true,
-            "invalid": comment_err.is_some(),
-            "error_message": if comment_err.is_some() { "review-comment-error" } else { "" }
-        }));
+        .a11y(&{
+            let mut a = A11y::new().label("Review text").required(true).invalid(comment_err.is_some());
+            if comment_err.is_some() { a = a.error_message("review-comment-error"); }
+            a
+        });
     if comment_err.is_some() {
         comment_input = comment_input.style(error_style);
     }
@@ -403,10 +389,7 @@ fn review_form(model: &RatePlushie, t: &AppTheme) -> View {
                 .id("review-comment-error")
                 .size(12.0)
                 .color(Color::hex(&t.error_text))
-                .a11y(&serde_json::json!({
-                    "role": "alert",
-                    "live": "polite"
-                })),
+                .a11y(&A11y::new().role(Role::Alert).live(Live::Polite)),
         );
     }
     form = form.child(comment_col);

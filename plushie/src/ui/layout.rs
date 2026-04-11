@@ -19,8 +19,7 @@
 
 use crate::View;
 use crate::types::*;
-use super::PropMap;
-use serde_json::json;
+use super::{PropMap, PropValue};
 
 // ---------------------------------------------------------------------------
 // WindowBuilder
@@ -62,17 +61,17 @@ impl WindowBuilder {
     }
 
     pub fn position(mut self, x: f32, y: f32) -> Self {
-        super::set_prop(&mut self.props, "position", json!([x, y]));
+        super::set_prop(&mut self.props, "position", PropValue::Array(vec![PropValue::F64(x as f64), PropValue::F64(y as f64)]));
         self
     }
 
     pub fn min_size(mut self, w: f32, h: f32) -> Self {
-        super::set_prop(&mut self.props, "min_size", json!([w, h]));
+        super::set_prop(&mut self.props, "min_size", PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]));
         self
     }
 
     pub fn max_size(mut self, w: f32, h: f32) -> Self {
-        super::set_prop(&mut self.props, "max_size", json!([w, h]));
+        super::set_prop(&mut self.props, "max_size", PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]));
         self
     }
 
@@ -149,7 +148,7 @@ impl WindowBuilder {
 
     /// Initial window size as `(width, height)` in pixels.
     pub fn size(mut self, w: f32, h: f32) -> Self {
-        super::set_prop(&mut self.props, "size", json!([w, h]));
+        super::set_prop(&mut self.props, "size", PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]));
         self
     }
 
@@ -158,8 +157,8 @@ impl WindowBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -257,8 +256,8 @@ impl ColumnBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -382,8 +381,8 @@ impl RowBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -543,8 +542,8 @@ impl ContainerBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -634,8 +633,8 @@ impl StackBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -738,8 +737,8 @@ impl GridBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -817,8 +816,8 @@ impl PinBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -907,8 +906,8 @@ impl KeyedColumnBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -997,8 +996,8 @@ impl FloatingBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -1059,8 +1058,8 @@ impl ResponsiveBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -1175,8 +1174,8 @@ impl ScrollableBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
@@ -1240,7 +1239,8 @@ impl PaneGridBuilder {
 
     /// List of pane identifiers in this grid.
     pub fn panes(mut self, pane_ids: &[&str]) -> Self {
-        super::set_prop(&mut self.props, "panes", json!(pane_ids));
+        let ids: Vec<PropValue> = pane_ids.iter().map(|s| PropValue::Str(s.to_string())).collect();
+        super::set_prop(&mut self.props, "panes", PropValue::Array(ids));
         self
     }
 
@@ -1273,8 +1273,8 @@ impl PaneGridBuilder {
         self
     }
 
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self {
-        super::set_prop(&mut self.props, "a11y", a11y.clone());
+    pub fn a11y(mut self, a11y: &A11y) -> Self {
+        super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 

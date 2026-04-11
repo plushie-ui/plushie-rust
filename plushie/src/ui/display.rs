@@ -4,8 +4,7 @@
 //! Content or source is the first argument; IDs are auto-generated
 //! from the call site and can be overridden with `.id()`.
 
-use super::PropMap;
-use serde_json::{Value, json};
+use super::{PropMap, PropValue};
 
 use crate::View;
 use crate::types::*;
@@ -47,7 +46,7 @@ impl TextBuilder {
     pub fn ellipsis(mut self, e: &str) -> Self { super::set_prop(&mut self.props, "ellipsis", e); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 
     /// Animate a property with a timed transition.
     ///
@@ -58,6 +57,8 @@ impl TextBuilder {
     /// text("value")
     ///     .transition("size", Transition::new(300, 24.0).easing(Easing::EaseOut))
     /// ```
+    // TODO: animation types should get PlushieType impls so we can use
+    // wire_encode() here instead of serde_json::to_value.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
         super::set_prop(&mut self.props, prop, serde_json::to_value(&t).unwrap_or_default());
         self
@@ -107,9 +108,8 @@ pub fn rich_text_id(id: &str) -> RichTextBuilder {
 
 impl RichTextBuilder {
     pub fn id(mut self, id: &str) -> Self { self.id = id.to_string(); self }
-    pub fn spans(mut self, spans: Vec<Value>) -> Self {
-        let pv: Vec<super::PropValue> = spans.into_iter().map(super::PropValue::from).collect();
-        super::set_prop(&mut self.props, "spans", super::PropValue::Array(pv)); self
+    pub fn spans(mut self, spans: Vec<PropValue>) -> Self {
+        super::set_prop(&mut self.props, "spans", PropValue::Array(spans)); self
     }
     pub fn size(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "size", s); self }
     pub fn font(mut self, f: Font) -> Self { super::set_prop(&mut self.props, "font", f.wire_encode()); self }
@@ -120,7 +120,7 @@ impl RichTextBuilder {
     pub fn wrapping(mut self, w: &str) -> Self { super::set_prop(&mut self.props, "wrapping", w); self }
     pub fn ellipsis(mut self, e: &str) -> Self { super::set_prop(&mut self.props, "ellipsis", e); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 }
 
 impl From<RichTextBuilder> for View {
@@ -150,7 +150,7 @@ impl SpaceBuilder {
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 }
 
 impl From<SpaceBuilder> for View {
@@ -182,7 +182,7 @@ impl RuleBuilder {
     pub fn direction(mut self, d: &str) -> Self { super::set_prop(&mut self.props, "direction", d); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 }
 
 impl From<RuleBuilder> for View {
@@ -209,7 +209,7 @@ pub struct ProgressBarBuilder {
 #[track_caller]
 pub fn progress_bar(range: (f32, f32), value: f32) -> ProgressBarBuilder {
     let mut props = PropMap::new();
-    super::set_prop(&mut props, "range", json!([range.0, range.1]));
+    super::set_prop(&mut props, "range", PropValue::Array(vec![PropValue::F64(range.0 as f64), PropValue::F64(range.1 as f64)]));
     super::set_prop(&mut props, "value", value);
     ProgressBarBuilder { id: super::auto_id("progress_bar"), props }
 }
@@ -224,7 +224,7 @@ impl ProgressBarBuilder {
     pub fn label(mut self, l: &str) -> Self { super::set_prop(&mut self.props, "label", l); self }
     pub fn style(mut self, s: impl Into<Style>) -> Self { super::set_prop(&mut self.props, "style", super::style_to_value(&s.into())); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 
     /// Animate a property with a timed transition.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
@@ -289,7 +289,12 @@ impl ImageBuilder {
     pub fn scale(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "scale", s); self }
     /// Crop to a pixel rectangle within the source image.
     pub fn crop(mut self, x: f32, y: f32, width: f32, height: f32) -> Self {
-        super::set_prop(&mut self.props, "crop", json!({"x": x, "y": y, "width": width, "height": height}));
+        let mut crop = PropMap::new();
+        crop.insert("x", PropValue::F64(x as f64));
+        crop.insert("y", PropValue::F64(y as f64));
+        crop.insert("width", PropValue::F64(width as f64));
+        crop.insert("height", PropValue::F64(height as f64));
+        super::set_prop(&mut self.props, "crop", PropValue::Object(crop));
         self
     }
     pub fn alt(mut self, alt: &str) -> Self { super::set_prop(&mut self.props, "alt", alt); self }
@@ -298,7 +303,7 @@ impl ImageBuilder {
     /// When true, hides the image from assistive technology.
     pub fn decorative(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "decorative", v); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 
     /// Animate a property with a timed transition.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
@@ -361,7 +366,7 @@ impl SvgBuilder {
     /// When true, hides the SVG from assistive technology.
     pub fn decorative(mut self, v: bool) -> Self { super::set_prop(&mut self.props, "decorative", v); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 }
 
 impl From<SvgBuilder> for View {
@@ -404,7 +409,7 @@ impl MarkdownBuilder {
     pub fn link_color(mut self, c: impl Into<Color>) -> Self { super::set_prop(&mut self.props, "link_color", super::color_to_value(&c.into())); self }
     pub fn code_theme(mut self, theme: &str) -> Self { super::set_prop(&mut self.props, "code_theme", theme); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 }
 
 impl From<MarkdownBuilder> for View {
@@ -448,7 +453,7 @@ impl QrCodeBuilder {
     /// Extended accessible description.
     pub fn description(mut self, desc: &str) -> Self { super::set_prop(&mut self.props, "description", desc); self }
     pub fn event_rate(mut self, rate: u32) -> Self { super::set_prop(&mut self.props, "event_rate", rate); self }
-    pub fn a11y(mut self, a11y: &serde_json::Value) -> Self { super::set_prop(&mut self.props, "a11y", a11y.clone()); self }
+    pub fn a11y(mut self, a11y: &A11y) -> Self { super::set_prop(&mut self.props, "a11y", a11y.wire_encode()); self }
 }
 
 impl From<QrCodeBuilder> for View {

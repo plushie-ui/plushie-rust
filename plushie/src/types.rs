@@ -10,10 +10,11 @@
 // -------------------------------------------------------------------------
 
 pub use plushie_core::types::{
-    Background, Border, Color, Font, FontStretch, FontStyle, FontWeight,
+    A11y, Background, Border, Color, Font, FontStretch, FontStyle, FontWeight,
     Gradient, GradientStop, Length, Padding, PlushieType, Radius, Shadow,
     Style, StyleMap,
 };
+pub use plushie_core::types::a11y::{Live, Role};
 
 // -------------------------------------------------------------------------
 // SDK-specific: Alignment

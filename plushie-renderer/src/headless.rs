@@ -73,6 +73,7 @@ pub(crate) enum Mode {
 /// mode, sends encoded bytes through a channel to the writer thread.
 struct WireWriter {
     inner: WriterInner,
+    codec: Codec,
 }
 
 enum WriterInner {
@@ -83,22 +84,17 @@ enum WriterInner {
 }
 
 impl WireWriter {
-    fn stdout() -> Self {
-        Self {
-            inner: WriterInner::Stdout,
-        }
+    fn stdout(codec: Codec) -> Self {
+        Self { inner: WriterInner::Stdout, codec }
     }
 
-    fn channel(tx: mpsc::SyncSender<Vec<u8>>) -> Self {
-        Self {
-            inner: WriterInner::Channel(tx),
-        }
+    fn channel(tx: mpsc::SyncSender<Vec<u8>>, codec: Codec) -> Self {
+        Self { inner: WriterInner::Channel(tx), codec }
     }
 
     /// Encode a serializable value and write it.
     fn emit<T: Serialize>(&self, value: &T) -> io::Result<()> {
-        let codec = Codec::get_global();
-        let bytes = codec.encode(value).map_err(io::Error::other)?;
+        let bytes = self.codec.encode(value).map_err(io::Error::other)?;
         self.write_bytes(&bytes)
     }
 
@@ -109,8 +105,7 @@ impl WireWriter {
         map: serde_json::Map<String, serde_json::Value>,
         binary: Option<(&str, &[u8])>,
     ) -> io::Result<()> {
-        let codec = Codec::get_global();
-        let bytes = codec
+        let bytes = self.codec
             .encode_binary_message(map, binary)
             .map_err(io::Error::other)?;
         self.write_bytes(&bytes)
@@ -1182,7 +1177,7 @@ fn run_single<R: PlushieRenderer>(
     reader: &mut impl BufRead,
     initial: crate::startup::InitialSettings,
 ) {
-    let mut session = Session::<R>::new(mode, WireWriter::stdout());
+    let mut session = Session::<R>::new(mode, WireWriter::stdout(codec));
 
     // Process the initial Settings through the session so Core.apply()
     // picks up default_event_rate, default_text_size, widget config, etc.
@@ -1284,7 +1279,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                                 )
                             }
                         });
-                        let codec = Codec::get_global();
+
                         if let Ok(bytes) = codec.encode(&error) {
                             let _ = writer_tx.send(bytes);
                         }
@@ -1294,7 +1289,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                     // Bounded channel (32) provides natural back-pressure
                     // from the reader to slow sessions.
                     let (tx, rx) = mpsc::sync_channel::<IncomingMessage>(32);
-                    let writer = WireWriter::channel(writer_tx.clone());
+                    let writer = WireWriter::channel(writer_tx.clone(), codec);
                     let sid = session_id.clone();
 
                     let closed_writer_tx = writer_tx.clone();
@@ -1326,7 +1321,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                                 "id": "",
                                 "data": { "error": msg }
                             });
-                            let codec = Codec::get_global();
+    
                             if let Ok(bytes) = codec.encode(&error) {
                                 let _ = closed_writer_tx.send(bytes);
                             }
@@ -1343,7 +1338,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                             "id": "",
                             "data": {}
                         });
-                        let codec = Codec::get_global();
+
                         if let Ok(bytes) = codec.encode(&closed) {
                             let _ = closed_writer_tx.send(bytes);
                         }

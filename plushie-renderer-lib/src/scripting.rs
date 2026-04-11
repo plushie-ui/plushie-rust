@@ -407,12 +407,12 @@ pub fn interaction_to_iced_events(
 // Wire I/O
 // ---------------------------------------------------------------------------
 
-/// Write a serialized response using the negotiated wire codec.
+/// Write a serialized response using the given codec.
 pub fn emit_wire<T: serde::Serialize>(
     emitter: &crate::emitter::EventEmitter,
+    codec: &Codec,
     value: &T,
 ) -> io::Result<()> {
-    let codec = Codec::get_global();
     let bytes = codec.encode(value).map_err(io::Error::other)?;
     emitter.write_raw(&bytes)
 }
@@ -604,12 +604,13 @@ pub fn build_query_response(
 /// Build and emit a QueryResponse to stdout.
 pub fn handle_query(
     emitter: &crate::emitter::EventEmitter,
+    codec: &Codec,
     core: &Core,
     id: String,
     target: String,
     selector: Value,
 ) -> io::Result<()> {
-    emit_wire(emitter, &build_query_response(core, id, target, selector))
+    emit_wire(emitter, codec, &build_query_response(core, id, target, selector))
 }
 
 /// Resolve a selector to a widget ID without emitting anything.
@@ -1032,13 +1033,14 @@ fn find_window_id_for_node(
 /// Build and emit an InteractResponse to stdout.
 pub fn handle_interact(
     emitter: &crate::emitter::EventEmitter,
+    codec: &Codec,
     core: &Core,
     id: String,
     action: String,
     selector: Value,
     payload: Value,
 ) -> io::Result<()> {
-    emit_wire(emitter, &build_interact_response(
+    emit_wire(emitter, codec, &build_interact_response(
         core, id, action, selector, payload,
     ))
 }
@@ -1052,10 +1054,11 @@ pub fn build_reset_response(core: &mut Core, id: String) -> ResetResponse {
 /// Reset core and emit the response to stdout.
 pub fn handle_reset(
     emitter: &crate::emitter::EventEmitter,
+    codec: &Codec,
     core: &mut Core,
     id: String,
 ) -> io::Result<()> {
-    emit_wire(emitter, &build_reset_response(core, id))
+    emit_wire(emitter, codec, &build_reset_response(core, id))
 }
 
 /// Build a TreeHashResponse without writing it anywhere.
@@ -1077,11 +1080,12 @@ pub fn build_tree_hash_response(core: &Core, id: String, name: String) -> TreeHa
 /// Build and emit a TreeHashResponse to stdout.
 pub fn handle_tree_hash(
     emitter: &crate::emitter::EventEmitter,
+    codec: &Codec,
     core: &Core,
     id: String,
     name: String,
 ) -> io::Result<()> {
-    emit_wire(emitter, &build_tree_hash_response(core, id, name))
+    emit_wire(emitter, codec, &build_tree_hash_response(core, id, name))
 }
 
 // ---------------------------------------------------------------------------
@@ -1319,6 +1323,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i1".to_string(),
             "click".to_string(),
@@ -1332,6 +1337,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i2".to_string(),
             "type_text".to_string(),
@@ -1345,6 +1351,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i3".to_string(),
             "submit".to_string(),
@@ -1358,6 +1365,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i4".to_string(),
             "toggle".to_string(),
@@ -1371,6 +1379,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i5".to_string(),
             "select".to_string(),
@@ -1384,6 +1393,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i6".to_string(),
             "slide".to_string(),
@@ -1397,6 +1407,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i7".to_string(),
             "press".to_string(),
@@ -1410,6 +1421,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i8".to_string(),
             "release".to_string(),
@@ -1423,6 +1435,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i9".to_string(),
             "move_to".to_string(),
@@ -1436,6 +1449,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i10".to_string(),
             "type_key".to_string(),
@@ -1449,6 +1463,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i11".to_string(),
             "nonexistent_action".to_string(),
@@ -1462,6 +1477,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i12".to_string(),
             "click".to_string(),
@@ -1475,6 +1491,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i13".to_string(),
             "click".to_string(),
@@ -1698,6 +1715,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i14".to_string(),
             "click".to_string(),
@@ -1711,6 +1729,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i15".to_string(),
             "click".to_string(),
@@ -1724,6 +1743,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i17".to_string(),
             "paste".to_string(),
@@ -1737,6 +1757,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i18".to_string(),
             "scroll".to_string(),
@@ -1750,6 +1771,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i19".to_string(),
             "sort".to_string(),
@@ -1763,6 +1785,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i20".to_string(),
             "pane_focus_cycle".to_string(),
@@ -1776,6 +1799,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i21".to_string(),
             "canvas_press".to_string(),
@@ -1789,6 +1813,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i22".to_string(),
             "canvas_release".to_string(),
@@ -1802,6 +1827,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i23".to_string(),
             "canvas_move".to_string(),
@@ -1815,6 +1841,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "i16".to_string(),
             "click".to_string(),
@@ -2009,6 +2036,7 @@ mod tests {
         let core = core_with_tree();
         handle_interact(
             &test_emitter(),
+            &Codec::MsgPack,
             &core,
             "bad1".to_string(),
             "slide".to_string(),

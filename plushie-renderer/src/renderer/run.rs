@@ -176,7 +176,7 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
 
     // Spawn stdin reader thread with tokio channel.
     let (tx, rx) = tokio::sync::mpsc::channel::<StdinEvent>(64);
-    spawn_stdin_reader(tx, reader);
+    spawn_stdin_reader(codec, tx, reader);
     *STDIN_RX.lock().expect("STDIN_RX lock poisoned") = Some(rx);
 
     let settings_slot: Mutex<Option<(serde_json::Value, Vec<Vec<u8>>)>> =
@@ -203,6 +203,7 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
             let effect_handler = Box::new(crate::effects::NativeEffectHandler);
             let sink = plushie_renderer_lib::emitters::sink_arc();
             let mut app = App::new(registry, effect_handler, sink);
+            app.set_codec(codec);
 
             // Extract scale_factor before applying settings to Core
             app.scale_factor = plushie_renderer_lib::app::validate_scale_factor(

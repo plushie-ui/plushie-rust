@@ -41,11 +41,11 @@ pub(crate) fn stdin_subscription() -> impl iced::futures::Stream<Item = StdinEve
 }
 
 pub(crate) fn spawn_stdin_reader(
+    codec: Codec,
     sender: tokio::sync::mpsc::Sender<StdinEvent>,
     mut reader: TransportReader,
 ) {
     thread::spawn(move || {
-        let codec = Codec::get_global();
 
         loop {
             match codec.read_message(&mut reader) {

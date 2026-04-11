@@ -289,7 +289,7 @@ impl App {
                         selector,
                     } => {
                         if let Err(e) =
-                            crate::scripting::handle_query(&self.emitter, &self.core, id, target, selector)
+                            crate::scripting::handle_query(&self.emitter, &self.codec, &self.core, id, target, selector)
                         {
                             log::error!("write error: {e}");
                             return iced::exit();
@@ -303,7 +303,7 @@ impl App {
                         payload,
                     } => {
                         if let Err(e) = crate::scripting::handle_interact(
-                            &self.emitter, &self.core, id, action, selector, payload,
+                            &self.emitter, &self.codec, &self.core, id, action, selector, payload,
                         ) {
                             log::error!("write error: {e}");
                             return iced::exit();
@@ -315,7 +315,7 @@ impl App {
                         let _ = self.emitter.flush();
 
                         // Reset core and emit the response.
-                        if let Err(e) = crate::scripting::handle_reset(&self.emitter, &mut self.core, id) {
+                        if let Err(e) = crate::scripting::handle_reset(&self.emitter, &self.codec, &mut self.core, id) {
                             log::error!("write error: {e}");
                             return iced::exit();
                         }
@@ -341,7 +341,7 @@ impl App {
                         Task::batch(close_tasks)
                     }
                     IncomingMessage::TreeHash { id, name, .. } => {
-                        if let Err(e) = crate::scripting::handle_tree_hash(&self.emitter, &self.core, id, name) {
+                        if let Err(e) = crate::scripting::handle_tree_hash(&self.emitter, &self.codec, &self.core, id, name) {
                             log::error!("write error: {e}");
                             return iced::exit();
                         }

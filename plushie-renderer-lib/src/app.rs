@@ -71,6 +71,9 @@ pub struct App {
     /// Current keyboard modifier state, updated on every ModifiersChanged
     /// event. Included on all outgoing pointer events.
     pub current_modifiers: keyboard::Modifiers,
+    /// Wire protocol codec. Used for encoding stub acks and scripting
+    /// responses. Stored here so these paths don't need the global.
+    pub codec: plushie_widget_sdk::codec::Codec,
 }
 
 impl App {
@@ -94,7 +97,14 @@ impl App {
             effect_handler,
             transition_manager: plushie_widget_sdk::animation::TransitionManager::new(),
             current_modifiers: keyboard::Modifiers::default(),
+            codec: plushie_widget_sdk::codec::Codec::MsgPack,
         }
+    }
+
+    /// Set the wire protocol codec. Called during startup after
+    /// codec negotiation. Defaults to MsgPack.
+    pub fn set_codec(&mut self, codec: plushie_widget_sdk::codec::Codec) {
+        self.codec = codec;
     }
 
     pub fn title_for_window(&self, iced_id: window::Id) -> String {

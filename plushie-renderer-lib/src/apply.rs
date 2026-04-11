@@ -94,8 +94,7 @@ impl App {
                     self.emitter.emit_effect_response(response)?;
                 }
                 CoreEffect::EmitStubAck(ack) => {
-                    let codec = plushie_widget_sdk::codec::Codec::get_global();
-                    let bytes = codec.encode(&ack).map_err(io::Error::other)?;
+                    let bytes = self.codec.encode(&ack).map_err(io::Error::other)?;
                     self.emitter.write_raw(&bytes)?;
                 }
                 CoreEffect::HandleEffect {

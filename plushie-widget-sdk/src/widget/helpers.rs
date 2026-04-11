@@ -460,7 +460,8 @@ pub struct MenuStyleOverrides {
 
 /// Parse a `menu_style` prop into overrides for dropdown menu styling.
 pub fn parse_menu_style(props: &Props) -> Option<MenuStyleOverrides> {
-    let obj = wire_map(props)?.get("menu_style")?.as_object()?;
+    let menu_val = props.get_value("menu_style")?;
+    let obj = menu_val.as_object()?;
 
     Some(MenuStyleOverrides {
         background: obj
@@ -595,7 +596,8 @@ pub fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font>> {
 
 /// Parse a PickList Handle from props.
 pub fn parse_pick_list_handle(props: &Props) -> Option<pick_list::Handle<Font>> {
-    let handle_obj = wire_map(props)?.get("handle")?.as_object()?;
+    let handle_val = props.get_value("handle")?;
+    let handle_obj = handle_val.as_object()?;
     let handle_type = handle_obj.get("type")?.as_str()?;
 
     match handle_type {
@@ -623,7 +625,6 @@ pub fn parse_pick_list_handle(props: &Props) -> Option<pick_list::Handle<Font>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iced::{Fill, Length};
     use serde_json::json;
 
     /// Helper: build a Props from a json! value. The value must be an object.

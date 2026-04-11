@@ -77,16 +77,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
         let key = (window_id.to_string(), node.id.clone());
         let props = &node.props;
-        let opts_val = props.get_value("options");
-        let new_options: Vec<String> = opts_val
-            .as_ref()
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(str::to_owned))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let new_options: Vec<String> = prop_str_array(props, "options").unwrap_or_default();
         let options_changed = self
             .options
             .get(&key)

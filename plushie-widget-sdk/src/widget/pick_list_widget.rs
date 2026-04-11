@@ -32,16 +32,7 @@ struct PickListProps {
 impl PickListProps {
     fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
-        let options = p
-            .get_value("options")
-            .as_ref()
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(str::to_owned))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let options = prop_str_array(p, "options").unwrap_or_default();
         Self {
             options,
             selected: String::extract(p, "selected"),

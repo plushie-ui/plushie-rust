@@ -9,6 +9,8 @@ use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 
+use plushie_core::types::PlushieType;
+
 pub(crate) struct ThemerWidget {
     /// Resolved themes per (window_id, node_id). Populated during prepare,
     /// borrowed during render for child context theming.
@@ -30,13 +32,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
 
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &Theme) {
         let key = (window_id.to_string(), node.id.clone());
-        let props = &node.props;
-        if let Some(resolved) = props
-            .get_value("theme")
-            .as_ref()
-            .and_then(crate::theming::resolve_theme_only)
-        {
-            self.themes.insert(key, resolved);
+        let theme_val = plushie_core::types::Theme::extract(&node.props, "theme");
+        if let Some(ref t) = theme_val {
+            let wire = serde_json::Value::from(t.wire_encode());
+            if let Some(resolved) = crate::theming::resolve_theme_only(&wire) {
+                self.themes.insert(key, resolved);
+            } else {
+                self.themes.remove(&key);
+            }
         } else {
             self.themes.remove(&key);
         }

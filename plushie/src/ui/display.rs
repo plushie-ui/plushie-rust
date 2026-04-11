@@ -57,22 +57,20 @@ impl TextBuilder {
     /// text("value")
     ///     .transition("size", Transition::new(300, 24.0).easing(Easing::EaseOut))
     /// ```
-    // TODO: animation types should get PlushieType impls so we can use
-    // wire_encode() here instead of serde_json::to_value.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&t).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, t.wire_encode());
         self
     }
 
     /// Animate a property with spring physics.
     pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&s).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, s.wire_encode());
         self
     }
 
     /// Animate a property with a sequence of steps.
     pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&seq).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, seq.wire_encode());
         self
     }
 }
@@ -228,19 +226,19 @@ impl ProgressBarBuilder {
 
     /// Animate a property with a timed transition.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&t).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, t.wire_encode());
         self
     }
 
     /// Animate a property with spring physics.
     pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&s).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, s.wire_encode());
         self
     }
 
     /// Animate a property with a sequence of steps.
     pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&seq).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, seq.wire_encode());
         self
     }
 }
@@ -307,19 +305,19 @@ impl ImageBuilder {
 
     /// Animate a property with a timed transition.
     pub fn transition(mut self, prop: &str, t: crate::animation::Transition) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&t).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, t.wire_encode());
         self
     }
 
     /// Animate a property with spring physics.
     pub fn spring(mut self, prop: &str, s: crate::animation::Spring) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&s).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, s.wire_encode());
         self
     }
 
     /// Animate a property with a sequence of steps.
     pub fn sequence(mut self, prop: &str, seq: crate::animation::Sequence) -> Self {
-        super::set_prop(&mut self.props, prop, serde_json::to_value(&seq).unwrap_or_default());
+        super::set_prop(&mut self.props, prop, seq.wire_encode());
         self
     }
 }

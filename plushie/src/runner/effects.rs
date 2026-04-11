@@ -45,7 +45,7 @@ pub(crate) fn handle_effect_async(
     Task::perform(
         async move { dispatch_async(&kind, &payload).await },
         move |(status, result)| Message::EffectResult {
-            tag: tag.clone(),
+            tag,
             status,
             result,
         },

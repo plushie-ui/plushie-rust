@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 /// accelerates. `EaseOut*` starts fast and decelerates.
 /// `EaseInOut*` does both.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Easing {
     Linear,
 

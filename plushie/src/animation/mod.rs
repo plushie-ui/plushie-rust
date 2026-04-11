@@ -61,7 +61,13 @@ impl Serialize for Transition {
         map.serialize_entry("easing", &self.easing)?;
         if self.delay > 0 { map.serialize_entry("delay", &self.delay)?; }
         if let Some(ref from) = self.from { map.serialize_entry("from", from)?; }
-        if let Some(ref repeat) = self.repeat { map.serialize_entry("repeat", repeat)?; }
+        if let Some(ref repeat) = self.repeat {
+            let wire_val: i64 = match repeat {
+                Repeat::Forever => -1,
+                Repeat::Times(n) => *n as i64,
+            };
+            map.serialize_entry("repeat", &wire_val)?;
+        }
         if self.auto_reverse { map.serialize_entry("auto_reverse", &true)?; }
         if let Some(ref tag) = self.on_complete { map.serialize_entry("on_complete", tag)?; }
         map.end()
@@ -287,6 +293,19 @@ mod tests {
         assert_eq!(json["type"], "transition");
         assert_eq!(json["to"], 24.0);
         assert_eq!(json["duration"], 300);
+        assert_eq!(json["easing"], "ease_out");
+    }
+
+    #[test]
+    fn transition_repeat_serializes_as_integer() {
+        let t = Transition::new(300, 1.0).repeat(3);
+        let json = serde_json::to_value(&t).unwrap();
+        assert_eq!(json["repeat"], 3);
+
+        let t = Transition::looping(300, 1.0);
+        let json = serde_json::to_value(&t).unwrap();
+        assert_eq!(json["repeat"], -1);
+        assert_eq!(json["auto_reverse"], true);
     }
 
     #[test]

@@ -3,11 +3,17 @@
 use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue, Props};
+use crate::PlushieEnum;
 
 use super::PlushieType;
 
 /// Font weight (CSS numeric equivalents in parentheses).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// ## Wire format
+/// Snake_case string: `"thin"`, `"extra_light"`, `"light"`, `"normal"`,
+/// `"medium"`, `"semi_bold"`, `"bold"`, `"extra_bold"`, `"black"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[plushie_type(name = "font_weight")]
 pub enum FontWeight {
     /// Weight 100.
     Thin,
@@ -29,61 +35,12 @@ pub enum FontWeight {
     Black,
 }
 
-impl PlushieType for FontWeight {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "thin" => Some(Self::Thin),
-            "extra_light" => Some(Self::ExtraLight),
-            "light" => Some(Self::Light),
-            "normal" => Some(Self::Normal),
-            "medium" => Some(Self::Medium),
-            "semi_bold" => Some(Self::SemiBold),
-            "bold" => Some(Self::Bold),
-            "extra_bold" => Some(Self::ExtraBold),
-            "black" => Some(Self::Black),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(
-            match self {
-                Self::Thin => "thin",
-                Self::ExtraLight => "extra_light",
-                Self::Light => "light",
-                Self::Normal => "normal",
-                Self::Medium => "medium",
-                Self::SemiBold => "semi_bold",
-                Self::Bold => "bold",
-                Self::ExtraBold => "extra_bold",
-                Self::Black => "black",
-            }
-            .into(),
-        )
-    }
-
-    fn extract(props: &Props, key: &str) -> Option<Self> {
-        match props.get_str(key)? {
-            "thin" => Some(Self::Thin),
-            "extra_light" => Some(Self::ExtraLight),
-            "light" => Some(Self::Light),
-            "normal" => Some(Self::Normal),
-            "medium" => Some(Self::Medium),
-            "semi_bold" => Some(Self::SemiBold),
-            "bold" => Some(Self::Bold),
-            "extra_bold" => Some(Self::ExtraBold),
-            "black" => Some(Self::Black),
-            _ => None,
-        }
-    }
-
-    fn type_name() -> &'static str {
-        "font_weight"
-    }
-}
-
 /// Font style (upright, italic, or oblique).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// ## Wire format
+/// Snake_case string: `"normal"`, `"italic"`, `"oblique"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[plushie_type(name = "font_style")]
 pub enum FontStyle {
     /// Upright (roman) style.
     Normal,
@@ -93,43 +50,14 @@ pub enum FontStyle {
     Oblique,
 }
 
-impl PlushieType for FontStyle {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "normal" => Some(Self::Normal),
-            "italic" => Some(Self::Italic),
-            "oblique" => Some(Self::Oblique),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(
-            match self {
-                Self::Normal => "normal",
-                Self::Italic => "italic",
-                Self::Oblique => "oblique",
-            }
-            .into(),
-        )
-    }
-
-    fn extract(props: &Props, key: &str) -> Option<Self> {
-        match props.get_str(key)? {
-            "normal" => Some(Self::Normal),
-            "italic" => Some(Self::Italic),
-            "oblique" => Some(Self::Oblique),
-            _ => None,
-        }
-    }
-
-    fn type_name() -> &'static str {
-        "font_style"
-    }
-}
-
 /// Font stretch (width), from ultra-condensed to ultra-expanded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// ## Wire format
+/// Snake_case string: `"ultra_condensed"`, `"extra_condensed"`, `"condensed"`,
+/// `"semi_condensed"`, `"normal"`, `"semi_expanded"`, `"expanded"`,
+/// `"extra_expanded"`, `"ultra_expanded"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[plushie_type(name = "font_stretch")]
 pub enum FontStretch {
     /// 50% of normal width.
     UltraCondensed,
@@ -149,59 +77,6 @@ pub enum FontStretch {
     ExtraExpanded,
     /// 200% of normal width.
     UltraExpanded,
-}
-
-impl PlushieType for FontStretch {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "ultra_condensed" => Some(Self::UltraCondensed),
-            "extra_condensed" => Some(Self::ExtraCondensed),
-            "condensed" => Some(Self::Condensed),
-            "semi_condensed" => Some(Self::SemiCondensed),
-            "normal" => Some(Self::Normal),
-            "semi_expanded" => Some(Self::SemiExpanded),
-            "expanded" => Some(Self::Expanded),
-            "extra_expanded" => Some(Self::ExtraExpanded),
-            "ultra_expanded" => Some(Self::UltraExpanded),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(
-            match self {
-                Self::UltraCondensed => "ultra_condensed",
-                Self::ExtraCondensed => "extra_condensed",
-                Self::Condensed => "condensed",
-                Self::SemiCondensed => "semi_condensed",
-                Self::Normal => "normal",
-                Self::SemiExpanded => "semi_expanded",
-                Self::Expanded => "expanded",
-                Self::ExtraExpanded => "extra_expanded",
-                Self::UltraExpanded => "ultra_expanded",
-            }
-            .into(),
-        )
-    }
-
-    fn extract(props: &Props, key: &str) -> Option<Self> {
-        match props.get_str(key)? {
-            "ultra_condensed" => Some(Self::UltraCondensed),
-            "extra_condensed" => Some(Self::ExtraCondensed),
-            "condensed" => Some(Self::Condensed),
-            "semi_condensed" => Some(Self::SemiCondensed),
-            "normal" => Some(Self::Normal),
-            "semi_expanded" => Some(Self::SemiExpanded),
-            "expanded" => Some(Self::Expanded),
-            "extra_expanded" => Some(Self::ExtraExpanded),
-            "ultra_expanded" => Some(Self::UltraExpanded),
-            _ => None,
-        }
-    }
-
-    fn type_name() -> &'static str {
-        "font_stretch"
-    }
 }
 
 /// A font specification.

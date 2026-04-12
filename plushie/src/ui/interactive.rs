@@ -112,16 +112,6 @@ pub fn pointer_area(id: &str) -> PointerAreaBuilder {
 }
 
 impl PointerAreaBuilder {
-    pub fn width(mut self, w: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
-        self
-    }
-
-    pub fn height(mut self, h: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
-        self
-    }
-
     pub fn on_press(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "on_press", v);
         self
@@ -234,16 +224,6 @@ pub fn sensor(id: &str) -> SensorBuilder {
 }
 
 impl SensorBuilder {
-    pub fn width(mut self, w: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
-        self
-    }
-
-    pub fn height(mut self, h: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
-        self
-    }
-
     /// Delay in milliseconds before emitting events.
     pub fn delay(mut self, ms: u32) -> Self {
         super::set_prop(&mut self.props, "delay", ms);
@@ -480,11 +460,6 @@ impl OverlayBuilder {
 
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
-        self
-    }
-
-    pub fn height(mut self, h: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 

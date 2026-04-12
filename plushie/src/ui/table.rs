@@ -34,11 +34,6 @@ impl TableBuilder {
         self
     }
 
-    pub fn height(mut self, h: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
-        self
-    }
-
     pub fn columns(mut self, cols: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
         let cols: Vec<PropValue> = cols.into_iter()
             .map(|c| {
@@ -112,18 +107,8 @@ impl TableBuilder {
         self
     }
 
-    pub fn spacing(mut self, s: impl Into<Animatable<f32>>) -> Self {
-        super::set_prop(&mut self.props, "spacing", s.into().wire_encode());
-        self
-    }
-
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into()));
-        self
-    }
-
-    pub fn style(mut self, s: impl Into<Style>) -> Self {
-        super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
 

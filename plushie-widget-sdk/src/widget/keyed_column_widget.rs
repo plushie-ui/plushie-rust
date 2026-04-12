@@ -12,13 +12,14 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, Padding, PlushieType};
+use plushie_core::types::{HorizontalAlignment, Length, Padding, PlushieType};
 
 struct KeyedColumnProps {
     padding: Option<Padding>,
     width: Option<Length>,
     height: Option<Length>,
     max_width: Option<f32>,
+    align_x: Option<HorizontalAlignment>,
 }
 
 impl KeyedColumnProps {
@@ -29,6 +30,7 @@ impl KeyedColumnProps {
             width: Length::extract(p, "width"),
             height: Length::extract(p, "height"),
             max_width: f32::extract(p, "max_width"),
+            align_x: HorizontalAlignment::extract(p, "align_x"),
         }
     }
 }
@@ -71,8 +73,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for KeyedColumnWidget {
         let width = kp.width.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
         let height = kp.height.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
 
+        let align_x = kp
+            .align_x
+            .map(iced_convert::horizontal_alignment)
+            .map(iced::Alignment::from)
+            .unwrap_or(iced::Alignment::Start);
+
         let mut kc = keyed::Column::with_children(keyed_children);
-        kc = kc.width(width).height(height);
+        kc = kc.width(width).height(height).align_items(align_x);
 
         if let Some(s) = spacing {
             kc = kc.spacing(s);

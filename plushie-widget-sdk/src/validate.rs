@@ -510,6 +510,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
         "qr_code" => &[
             ("data", Str),
             ("cell_size", Number),
+            ("total_size", Number),
             ("error_correction", Str),
             ("cell_color", Color),
             ("background", Color),

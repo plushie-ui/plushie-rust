@@ -449,16 +449,6 @@ impl ContainerBuilder {
         self
     }
 
-    pub fn center_x(mut self, v: bool) -> Self {
-        super::set_prop(&mut self.props, "center_x", v);
-        self
-    }
-
-    pub fn center_y(mut self, v: bool) -> Self {
-        super::set_prop(&mut self.props, "center_y", v);
-        self
-    }
-
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
         self
@@ -632,11 +622,6 @@ impl GridBuilder {
 
     pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
-        self
-    }
-
-    pub fn padding(mut self, p: impl Into<Padding>) -> Self {
-        super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into()));
         self
     }
 
@@ -830,11 +815,6 @@ impl KeyedColumnBuilder {
 
     pub fn max_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "max_width", w.into().wire_encode());
-        self
-    }
-
-    pub fn clip(mut self, v: bool) -> Self {
-        super::set_prop(&mut self.props, "clip", v);
         self
     }
 

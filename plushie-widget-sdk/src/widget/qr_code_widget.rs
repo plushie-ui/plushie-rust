@@ -69,6 +69,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for QrCodeProg
 struct QrCodeProps {
     data: Option<String>,
     cell_size: Option<f32>,
+    total_size: Option<f32>,
     cell_color: Option<plushie_core::types::Color>,
     background: Option<plushie_core::types::Color>,
     error_correction: Option<ErrorCorrection>,
@@ -82,6 +83,7 @@ impl QrCodeProps {
         Self {
             data: String::extract(p, "data"),
             cell_size: f32::extract(p, "cell_size"),
+            total_size: f32::extract(p, "total_size"),
             cell_color: plushie_core::types::Color::extract(p, "cell_color"),
             background: plushie_core::types::Color::extract(p, "background"),
             error_correction: ErrorCorrection::extract(p, "error_correction"),
@@ -123,11 +125,13 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         let qp = QrCodeProps::from_node(node);
         let data = qp.data.unwrap_or_default();
         let cell_size = qp.cell_size.unwrap_or(4.0);
+        let total_size = qp.total_size;
         let ec = qp.error_correction;
 
         let mut hasher = DefaultHasher::new();
         data.hash(&mut hasher);
         cell_size.to_bits().hash(&mut hasher);
+        total_size.map(|ts| ts.to_bits()).hash(&mut hasher);
         ec.hash(&mut hasher);
         let hash = hasher.finish();
 
@@ -151,7 +155,6 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
     ) -> Element<'a, Message, Theme, R> {
         let qp = QrCodeProps::from_node(node);
         let data = qp.data.unwrap_or_default();
-        let cell_size = qp.cell_size.unwrap_or(4.0).clamp(1.0, 50.0);
         let ec = qp.error_correction;
         let cell_color = qp
             .cell_color
@@ -180,6 +183,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         };
 
         let width = qr.width();
+
+        // Derive cell_size: explicit cell_size wins, then total_size, then default.
+        let cell_size = if let Some(cs) = qp.cell_size {
+            cs.clamp(1.0, 50.0)
+        } else if let Some(ts) = qp.total_size {
+            (ts / width as f32).clamp(1.0, 50.0)
+        } else {
+            4.0
+        };
+
         let modules: Vec<Vec<bool>> = (0..width)
             .map(|y| {
                 (0..width)

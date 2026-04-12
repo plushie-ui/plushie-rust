@@ -366,12 +366,24 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     state: &'a pane_grid::State<String>,
 ) -> Element<'a, Message, Theme, R> {
     let pgp = PaneGridProps::from_node(node);
-    let spacing =
-        prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "spacing")
-            .unwrap_or(2.0);
+    let spacing = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "spacing",
+    )
+    .unwrap_or(2.0);
 
-    let width = pgp.width.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Fill);
-    let height = pgp.height.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Fill);
+    let width = pgp
+        .width
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Fill);
+    let height = pgp
+        .height
+        .as_ref()
+        .map(iced_convert::length)
+        .unwrap_or(iced::Length::Fill);
 
     // Pre-render children into a map keyed by plushie ID. Also extract
     // title props from child nodes before the closure consumes the elements.

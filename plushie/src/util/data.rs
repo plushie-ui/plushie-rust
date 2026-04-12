@@ -86,11 +86,7 @@ impl<'a, T: Clone> Query<'a, T> {
     /// ```ignore
     /// query.search("alice", |item| vec![&item.name, &item.email])
     /// ```
-    pub fn search(
-        mut self,
-        query: &'a str,
-        fields_fn: impl Fn(&T) -> Vec<&str> + 'a,
-    ) -> Self {
+    pub fn search(mut self, query: &'a str, fields_fn: impl Fn(&T) -> Vec<&str> + 'a) -> Self {
         let q = query.to_lowercase();
         self.search = Some(Box::new(move |record: &T| {
             fields_fn(record)

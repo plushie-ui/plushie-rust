@@ -9,17 +9,17 @@
 use serde_json::Value;
 
 #[cfg(feature = "wire")]
+use super::bridge::Bridge;
+#[cfg(feature = "wire")]
+use super::effect_tracker::{self, EffectTracker};
+#[cfg(feature = "wire")]
 use crate::App;
 #[cfg(feature = "wire")]
 use crate::command::Command;
 #[cfg(feature = "wire")]
-use crate::event::{Event, EffectEvent, EffectResult};
+use crate::event::{EffectEvent, EffectResult, Event};
 #[cfg(feature = "wire")]
 use crate::runtime::{normalize, tree_diff};
-#[cfg(feature = "wire")]
-use super::bridge::Bridge;
-#[cfg(feature = "wire")]
-use super::effect_tracker::{self, EffectTracker};
 
 /// Run the app in wire mode.
 ///
@@ -38,7 +38,13 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
     // Read the hello message.
     let hello = bridge.receive()?;
-    log::info!("renderer hello: {}", hello.get("name").and_then(|v| v.as_str()).unwrap_or("unknown"));
+    log::info!(
+        "renderer hello: {}",
+        hello
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+    );
 
     // Initialize the app.
     let (mut model, init_cmd) = A::init();
@@ -147,8 +153,8 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 /// tag and the effect kind for typed result parsing.
 #[cfg(feature = "wire")]
 fn wire_to_sdk_event(msg: &Value, effect_tracker: &mut EffectTracker) -> Option<Event> {
-    use plushie_core::protocol::{OutgoingEvent, EffectResponse, KeyModifiers};
     use super::event_bridge::{SinkEvent, sink_event_to_sdk};
+    use plushie_core::protocol::{EffectResponse, KeyModifiers, OutgoingEvent};
 
     let msg_type = msg.get("type")?.as_str()?;
 
@@ -158,11 +164,20 @@ fn wire_to_sdk_event(msg: &Value, effect_tracker: &mut EffectTracker) -> Option<
                 message_type: "event",
                 session: String::new(),
                 family: msg.get("family")?.as_str()?.to_string(),
-                id: msg.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-                window_id: msg.get("window_id").and_then(|v| v.as_str()).map(String::from),
+                id: msg
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                window_id: msg
+                    .get("window_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
                 value: msg.get("value").cloned(),
                 tag: msg.get("tag").and_then(|v| v.as_str()).map(String::from),
-                modifiers: msg.get("modifiers").and_then(|v| serde_json::from_value::<KeyModifiers>(v.clone()).ok()),
+                modifiers: msg
+                    .get("modifiers")
+                    .and_then(|v| serde_json::from_value::<KeyModifiers>(v.clone()).ok()),
                 data: msg.get("data").cloned(),
                 captured: msg.get("captured").and_then(|v| v.as_bool()),
                 coalesce: None,
@@ -180,7 +195,8 @@ fn wire_to_sdk_event(msg: &Value, effect_tracker: &mut EffectTracker) -> Option<
 
             // Resolve via the tracker for typed result parsing.
             if let Some((tag, kind)) = effect_tracker.resolve(wire_id) {
-                let error_as_value = msg.get("error")
+                let error_as_value = msg
+                    .get("error")
                     .and_then(|v| v.as_str())
                     .map(|e| Value::String(e.to_string()));
                 let value = msg.get("result").or(error_as_value.as_ref());
@@ -201,13 +217,19 @@ fn wire_to_sdk_event(msg: &Value, effect_tracker: &mut EffectTracker) -> Option<
             SinkEvent::EffectResponse(response)
         }
         "query_response" | "op_query_response" => {
-            let kind = msg.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let tag = msg.get("tag")
+            let kind = msg
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tag = msg
+                .get("tag")
                 .or_else(|| msg.get("id"))
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let data = msg.get("result")
+            let data = msg
+                .get("result")
                 .or_else(|| msg.get("data"))
                 .cloned()
                 .unwrap_or(Value::Null);
@@ -256,34 +278,73 @@ fn execute_wire_renderer_op(
     use plushie_core::ops::RendererOp;
     match op {
         RendererOp::Focus(id) => bridge.send_widget_op("focus", &serde_json::json!({"target": id})),
-        RendererOp::FocusNext => bridge.send_widget_op("focus_next", &Value::Object(Default::default())),
-        RendererOp::FocusPrevious => bridge.send_widget_op("focus_previous", &Value::Object(Default::default())),
-        RendererOp::SelectAll(target) => bridge.send_widget_op("select_all", &serde_json::json!({"target": target})),
-        RendererOp::MoveCursorToFront(target) => bridge.send_widget_op("move_cursor_to_front", &serde_json::json!({"target": target})),
-        RendererOp::MoveCursorToEnd(target) => bridge.send_widget_op("move_cursor_to_end", &serde_json::json!({"target": target})),
-        RendererOp::MoveCursorTo { target, position } => bridge.send_widget_op("move_cursor_to", &serde_json::json!({"target": target, "position": position})),
-        RendererOp::SelectRange { target, start, end } => bridge.send_widget_op("select_range", &serde_json::json!({"target": target, "start": start, "end": end})),
-        RendererOp::ScrollTo { target, x, y } => bridge.send_widget_op("scroll_to", &serde_json::json!({"target": target, "offset_x": x, "offset_y": y})),
-        RendererOp::ScrollBy { target, x, y } => bridge.send_widget_op("scroll_by", &serde_json::json!({"target": target, "offset_x": x, "offset_y": y})),
-        RendererOp::SnapTo { target, x, y } => bridge.send_widget_op("snap_to", &serde_json::json!({"target": target, "x": x, "y": y})),
-        RendererOp::SnapToEnd(target) => bridge.send_widget_op("snap_to_end", &serde_json::json!({"target": target})),
+        RendererOp::FocusNext => {
+            bridge.send_widget_op("focus_next", &Value::Object(Default::default()))
+        }
+        RendererOp::FocusPrevious => {
+            bridge.send_widget_op("focus_previous", &Value::Object(Default::default()))
+        }
+        RendererOp::SelectAll(target) => {
+            bridge.send_widget_op("select_all", &serde_json::json!({"target": target}))
+        }
+        RendererOp::MoveCursorToFront(target) => bridge.send_widget_op(
+            "move_cursor_to_front",
+            &serde_json::json!({"target": target}),
+        ),
+        RendererOp::MoveCursorToEnd(target) => {
+            bridge.send_widget_op("move_cursor_to_end", &serde_json::json!({"target": target}))
+        }
+        RendererOp::MoveCursorTo { target, position } => bridge.send_widget_op(
+            "move_cursor_to",
+            &serde_json::json!({"target": target, "position": position}),
+        ),
+        RendererOp::SelectRange { target, start, end } => bridge.send_widget_op(
+            "select_range",
+            &serde_json::json!({"target": target, "start": start, "end": end}),
+        ),
+        RendererOp::ScrollTo { target, x, y } => bridge.send_widget_op(
+            "scroll_to",
+            &serde_json::json!({"target": target, "offset_x": x, "offset_y": y}),
+        ),
+        RendererOp::ScrollBy { target, x, y } => bridge.send_widget_op(
+            "scroll_by",
+            &serde_json::json!({"target": target, "offset_x": x, "offset_y": y}),
+        ),
+        RendererOp::SnapTo { target, x, y } => bridge.send_widget_op(
+            "snap_to",
+            &serde_json::json!({"target": target, "x": x, "y": y}),
+        ),
+        RendererOp::SnapToEnd(target) => {
+            bridge.send_widget_op("snap_to_end", &serde_json::json!({"target": target}))
+        }
         RendererOp::Window(op) => execute_wire_window_op(bridge, op),
-        RendererOp::WidgetCommand { node_id, op, payload } => bridge.send_widget_command(node_id, op, payload),
-        RendererOp::Announce(text) => bridge.send_widget_op("announce", &serde_json::json!({"text": text})),
-        RendererOp::Effect { tag, request, timeout } => {
+        RendererOp::WidgetCommand {
+            node_id,
+            op,
+            payload,
+        } => bridge.send_widget_command(node_id, op, payload),
+        RendererOp::Announce(text) => {
+            bridge.send_widget_op("announce", &serde_json::json!({"text": text}))
+        }
+        RendererOp::Effect {
+            tag,
+            request,
+            timeout,
+        } => {
             let kind = request.kind();
-            let effective_timeout = timeout
-                .unwrap_or_else(|| effect_tracker::default_timeout(kind));
+            let effective_timeout =
+                timeout.unwrap_or_else(|| effect_tracker::default_timeout(kind));
             let wire_id = effect_tracker.track(tag, kind, effective_timeout);
             let (_, payload) = plushie_core::ops::effect_request_to_wire(request);
             bridge.send_effect(&wire_id, kind, &payload)
         }
-        RendererOp::Subscribe { kind, tag, max_rate, window_id } => {
-            bridge.send_subscribe(&kind, &tag, *max_rate, window_id.as_deref())
-        }
-        RendererOp::Unsubscribe { kind, tag } => {
-            bridge.send_unsubscribe(&kind, &tag)
-        }
+        RendererOp::Subscribe {
+            kind,
+            tag,
+            max_rate,
+            window_id,
+        } => bridge.send_subscribe(&kind, &tag, *max_rate, window_id.as_deref()),
+        RendererOp::Unsubscribe { kind, tag } => bridge.send_unsubscribe(&kind, &tag),
         _ => {
             log::debug!("unhandled wire renderer op: {op:?}");
             Ok(())
@@ -293,31 +354,60 @@ fn execute_wire_renderer_op(
 
 /// Execute a window command via the bridge.
 #[cfg(feature = "wire")]
-fn execute_wire_window_op(bridge: &mut Bridge, op: &plushie_core::ops::WindowOp) -> std::io::Result<()> {
+fn execute_wire_window_op(
+    bridge: &mut Bridge,
+    op: &plushie_core::ops::WindowOp,
+) -> std::io::Result<()> {
     use plushie_core::ops::WindowOp;
     match op {
         WindowOp::Close(id) => {
             bridge.send_widget_op("close_window", &serde_json::json!({"window_id": id}))?;
         }
-        WindowOp::Resize { window_id, width, height } => {
-            bridge.send_window_op("resize", window_id, &serde_json::json!({
-                "width": width, "height": height
-            }))?;
+        WindowOp::Resize {
+            window_id,
+            width,
+            height,
+        } => {
+            bridge.send_window_op(
+                "resize",
+                window_id,
+                &serde_json::json!({
+                    "width": width, "height": height
+                }),
+            )?;
         }
         WindowOp::Move { window_id, x, y } => {
-            bridge.send_window_op("move", window_id, &serde_json::json!({
-                "x": x, "y": y
-            }))?;
+            bridge.send_window_op(
+                "move",
+                window_id,
+                &serde_json::json!({
+                    "x": x, "y": y
+                }),
+            )?;
         }
-        WindowOp::Maximize { window_id, maximized } => {
-            bridge.send_window_op("maximize", window_id, &serde_json::json!({
-                "maximized": maximized
-            }))?;
+        WindowOp::Maximize {
+            window_id,
+            maximized,
+        } => {
+            bridge.send_window_op(
+                "maximize",
+                window_id,
+                &serde_json::json!({
+                    "maximized": maximized
+                }),
+            )?;
         }
-        WindowOp::Minimize { window_id, minimized } => {
-            bridge.send_window_op("minimize", window_id, &serde_json::json!({
-                "minimized": minimized
-            }))?;
+        WindowOp::Minimize {
+            window_id,
+            minimized,
+        } => {
+            bridge.send_window_op(
+                "minimize",
+                window_id,
+                &serde_json::json!({
+                    "minimized": minimized
+                }),
+            )?;
         }
         _ => {
             log::debug!("unhandled wire window op: {op:?}");
@@ -350,8 +440,8 @@ fn build_settings<A: App>() -> Value {
         json["default_event_rate"] = serde_json::json!(rate);
     }
     if !settings.widget_config.is_empty() {
-        json["widget_config"] = serde_json::to_value(&settings.widget_config)
-            .unwrap_or(Value::Null);
+        json["widget_config"] =
+            serde_json::to_value(&settings.widget_config).unwrap_or(Value::Null);
     }
 
     json
@@ -366,7 +456,12 @@ fn apply_wire_sub_ops(
     use crate::runtime::subscriptions::SubOp;
     for op in ops {
         match op {
-            SubOp::Subscribe { kind, tag, max_rate, window_id } => {
+            SubOp::Subscribe {
+                kind,
+                tag,
+                max_rate,
+                window_id,
+            } => {
                 bridge.send_subscribe(&kind, &tag, max_rate, window_id.as_deref())?;
             }
             SubOp::Unsubscribe { kind, tag } => {

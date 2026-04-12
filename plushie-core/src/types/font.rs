@@ -2,8 +2,8 @@
 
 use serde_json::Value;
 
-use crate::protocol::{PropMap, PropValue, Props};
 use crate::PlushieEnum;
+use crate::protocol::{PropMap, PropValue};
 
 use super::PlushieType;
 
@@ -104,7 +104,12 @@ pub struct Font {
 
 impl Font {
     pub fn new() -> Self {
-        Self { family: None, weight: None, style: None, stretch: None }
+        Self {
+            family: None,
+            weight: None,
+            style: None,
+            stretch: None,
+        }
     }
 
     pub fn family(mut self, f: &str) -> Self {

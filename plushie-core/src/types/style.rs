@@ -4,11 +4,11 @@ use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
 
+use super::PlushieType;
 use super::background::Background;
 use super::border::Border;
 use super::color::Color;
 use super::shadow::Shadow;
-use super::PlushieType;
 
 /// Style preset name or custom style map.
 #[derive(Debug, Clone, PartialEq)]
@@ -117,26 +117,52 @@ impl StyleMap {
 }
 
 impl Style {
-    pub fn primary() -> Self { Self::Preset("primary".into()) }
-    pub fn secondary() -> Self { Self::Preset("secondary".into()) }
-    pub fn success() -> Self { Self::Preset("success".into()) }
-    pub fn danger() -> Self { Self::Preset("danger".into()) }
-    pub fn warning() -> Self { Self::Preset("warning".into()) }
-    pub fn text() -> Self { Self::Preset("text".into()) }
+    pub fn primary() -> Self {
+        Self::Preset("primary".into())
+    }
+    pub fn secondary() -> Self {
+        Self::Preset("secondary".into())
+    }
+    pub fn success() -> Self {
+        Self::Preset("success".into())
+    }
+    pub fn danger() -> Self {
+        Self::Preset("danger".into())
+    }
+    pub fn warning() -> Self {
+        Self::Preset("warning".into())
+    }
+    pub fn text() -> Self {
+        Self::Preset("text".into())
+    }
     /// Default widget appearance (renderer preset name `"default"`).
-    pub fn default_style() -> Self { Self::Preset("default".into()) }
+    pub fn default_style() -> Self {
+        Self::Preset("default".into())
+    }
     /// Dark variant.
-    pub fn dark() -> Self { Self::Preset("dark".into()) }
+    pub fn dark() -> Self {
+        Self::Preset("dark".into())
+    }
     /// Subdued/weak appearance.
-    pub fn weak() -> Self { Self::Preset("weak".into()) }
+    pub fn weak() -> Self {
+        Self::Preset("weak".into())
+    }
     /// Container with rounded border.
-    pub fn rounded_box() -> Self { Self::Preset("rounded_box".into()) }
+    pub fn rounded_box() -> Self {
+        Self::Preset("rounded_box".into())
+    }
     /// Container with square border.
-    pub fn bordered_box() -> Self { Self::Preset("bordered_box".into()) }
+    pub fn bordered_box() -> Self {
+        Self::Preset("bordered_box".into())
+    }
     /// Fully transparent background.
-    pub fn transparent() -> Self { Self::Preset("transparent".into()) }
+    pub fn transparent() -> Self {
+        Self::Preset("transparent".into())
+    }
     /// Start building a custom style.
-    pub fn custom() -> StyleMap { StyleMap::new() }
+    pub fn custom() -> StyleMap {
+        StyleMap::new()
+    }
 }
 
 impl From<&str> for Style {

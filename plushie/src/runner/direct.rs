@@ -22,9 +22,9 @@ use plushie_widget_sdk::widget::widget_set::iced_widget_set;
 
 use crate::App;
 use crate::command::Command;
-use crate::event::{Event, EffectEvent, EffectResult, WidgetEvent};
+use crate::event::{EffectEvent, EffectResult, Event, WidgetEvent};
 use crate::runtime;
-use crate::runtime::subscriptions::{SubscriptionManager, SubOp};
+use crate::runtime::subscriptions::{SubOp, SubscriptionManager};
 use crate::widget::{EventResult as WidgetEventResult, Interception, WidgetStateStore};
 
 use super::effect_tracker::{self, EffectTracker};
@@ -60,8 +60,9 @@ impl<A: App> DirectApp<A> {
     fn init() -> (Self, Task<Message>) {
         let (model, init_cmd) = A::init();
 
-        let builder = plushie_widget_sdk::app::PlushieAppBuilder::<plushie_widget_sdk::iced::Renderer>::new()
-            .widget_set(&iced_widget_set());
+        let builder =
+            plushie_widget_sdk::app::PlushieAppBuilder::<plushie_widget_sdk::iced::Renderer>::new()
+                .widget_set(&iced_widget_set());
         let registry = builder.build();
 
         // Create the QueueSink for in-process event collection.
@@ -108,6 +109,11 @@ impl<A: App> DirectApp<A> {
     }
 
     fn update(&mut self, msg: Message) -> Task<Message> {
+        // Handle timer ticks locally (push to event queue, drain below).
+        if let Message::TimerTick(tag) = &msg {
+            self.handle_timer_tick(tag.clone());
+        }
+
         // Delegate all messages to the renderer. It processes them
         // (transitions, widget ops, event coalescing, rate limiting)
         // and emits events through the QueueSink.
@@ -120,7 +126,10 @@ impl<A: App> DirectApp<A> {
         Task::batch([renderer_task, app_task])
     }
 
-    fn view_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> Element<'_, Message, Theme, plushie_widget_sdk::iced::Renderer> {
+    fn view_window(
+        &self,
+        _window_id: plushie_widget_sdk::iced::window::Id,
+    ) -> Element<'_, Message, Theme, plushie_widget_sdk::iced::Renderer> {
         if let Some(tree) = &self.current_tree {
             let ctx = RenderCtx {
                 caches: &self.renderer.core.caches,
@@ -182,9 +191,7 @@ impl<A: App> DirectApp<A> {
                 // Effect responses are resolved via the tracker to
                 // recover the user's tag and the effect kind for
                 // typed result parsing.
-                SinkEvent::EffectResponse(response) => {
-                    self.resolve_effect_response(response)
-                }
+                SinkEvent::EffectResponse(response) => self.resolve_effect_response(response),
                 other => super::event_bridge::sink_event_to_sdk(other),
             };
             if let Some(event) = sdk_event {
@@ -233,10 +240,14 @@ impl<A: App> DirectApp<A> {
     /// produced. Does NOT refresh the view (the caller batches that).
     fn deliver_event(&mut self, event: Event) -> Option<Task<Message>> {
         match self.widget_store.intercept_event(&event) {
-            Some(Interception { result: WidgetEventResult::Consumed, .. })
-            | Some(Interception { result: WidgetEventResult::UpdateState, .. }) => {
-                None
-            }
+            Some(Interception {
+                result: WidgetEventResult::Consumed,
+                ..
+            })
+            | Some(Interception {
+                result: WidgetEventResult::UpdateState,
+                ..
+            }) => None,
             Some(Interception {
                 result: WidgetEventResult::Emit { family, value },
                 widget_id,
@@ -253,7 +264,11 @@ impl<A: App> DirectApp<A> {
                 let cmd = A::update(&mut self.model, new_event);
                 Some(self.execute_command(cmd))
             }
-            Some(Interception { result: WidgetEventResult::Ignored, .. }) | None => {
+            Some(Interception {
+                result: WidgetEventResult::Ignored,
+                ..
+            })
+            | None => {
                 let cmd = A::update(&mut self.model, event);
                 Some(self.execute_command(cmd))
             }
@@ -270,9 +285,10 @@ impl<A: App> DirectApp<A> {
         let wire_id = &response.id;
         match self.effect_tracker.resolve(wire_id) {
             Some((tag, kind)) => {
-                let error_as_value = response.error.as_ref().map(|e| {
-                    serde_json::Value::String(e.clone())
-                });
+                let error_as_value = response
+                    .error
+                    .as_ref()
+                    .map(|e| serde_json::Value::String(e.clone()));
                 let value = response.result.as_ref().or(error_as_value.as_ref());
                 let result = EffectResult::parse(&kind, response.status, value);
                 Some(Event::Effect(EffectEvent { tag, result }))
@@ -293,8 +309,11 @@ impl<A: App> DirectApp<A> {
             log::warn!("view normalization: {warning}");
         }
 
-        self.renderer.registry
-            .prepare_walk(&tree, &mut self.renderer.core.caches, &self.renderer.theme);
+        self.renderer.registry.prepare_walk(
+            &tree,
+            &mut self.renderer.core.caches,
+            &self.renderer.theme,
+        );
         self.current_tree = Some(tree);
     }
 
@@ -303,10 +322,8 @@ impl<A: App> DirectApp<A> {
             Command::None => Task::none(),
             Command::Exit => plushie_widget_sdk::iced::exit(),
             Command::Batch(cmds) => {
-                let tasks: Vec<Task<Message>> = cmds
-                    .into_iter()
-                    .map(|c| self.execute_command(c))
-                    .collect();
+                let tasks: Vec<Task<Message>> =
+                    cmds.into_iter().map(|c| self.execute_command(c)).collect();
                 Task::batch(tasks)
             }
             Command::Renderer(plushie_core::ops::RendererOp::Effect {
@@ -321,11 +338,12 @@ impl<A: App> DirectApp<A> {
                 // Pass the wire_id as the tag to the renderer. The
                 // renderer echoes it back in the EffectResponse.id
                 // field, which we resolve via the tracker.
-                self.renderer.execute(plushie_core::ops::RendererOp::Effect {
-                    tag: wire_id,
-                    request,
-                    timeout: None,
-                })
+                self.renderer
+                    .execute(plushie_core::ops::RendererOp::Effect {
+                        tag: wire_id,
+                        request,
+                        timeout: None,
+                    })
             }
             Command::Renderer(op) => self.renderer.execute(op),
             Command::Async { tag, task } => {
@@ -333,9 +351,13 @@ impl<A: App> DirectApp<A> {
                 let tag_clone = tag.clone();
                 let future = (task)();
                 let (task, handle) = Task::perform(future, move |result| {
-                    queue.lock().unwrap().push(SinkEvent::AsyncResult { tag: tag_clone, result });
+                    queue.lock().unwrap().push(SinkEvent::AsyncResult {
+                        tag: tag_clone,
+                        result,
+                    });
                     Message::NoOp
-                }).abortable();
+                })
+                .abortable();
                 self.running_tasks.insert(tag, handle);
                 task
             }
@@ -348,7 +370,9 @@ impl<A: App> DirectApp<A> {
             Command::SendAfter { delay, event } => {
                 let queue = self.event_queue.clone();
                 Task::perform(
-                    async move { std::thread::sleep(delay); },
+                    async move {
+                        std::thread::sleep(delay);
+                    },
                     move |_| {
                         queue.lock().unwrap().push(SinkEvent::DelayedEvent(*event));
                         Message::NoOp
@@ -363,42 +387,51 @@ impl<A: App> DirectApp<A> {
     /// pushes a `TimerEvent` to the event queue, which is drained
     /// on the next `update()` cycle.
     fn subscriptions(&self) -> plushie_widget_sdk::iced::Subscription<Message> {
-        let subs: Vec<plushie_widget_sdk::iced::Subscription<Message>> = self.active_timers.iter()
+        let subs: Vec<plushie_widget_sdk::iced::Subscription<Message>> = self
+            .active_timers
+            .iter()
             .map(|(tag, duration)| {
-                let queue = self.event_queue.clone();
-                let tag = tag.clone();
                 plushie_widget_sdk::iced::time::every(*duration)
                     .with(tag.clone()) // Unique identity per tag
-                    .map(move |_| {
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64;
-                    queue.lock().unwrap().push(
-                        SinkEvent::DelayedEvent(Event::Timer(
-                            crate::event::TimerEvent { tag: tag.clone(), timestamp }
-                        ))
-                    );
-                    Message::NoOp
-                })
+                    .map(|(tag, _instant)| Message::TimerTick(tag))
             })
             .collect();
         plushie_widget_sdk::iced::Subscription::batch(subs)
     }
 
+    /// Handle a timer tick by pushing a TimerEvent to the event queue.
+    fn handle_timer_tick(&self, tag: String) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        self.event_queue
+            .lock()
+            .unwrap()
+            .push(SinkEvent::DelayedEvent(Event::Timer(
+                crate::event::TimerEvent { tag, timestamp },
+            )));
+    }
+
     /// Apply a subscription operation (subscribe, unsubscribe, or timer).
     fn apply_sub_op(&mut self, op: SubOp) -> Task<Message> {
         match op {
-            SubOp::Subscribe { kind, tag, max_rate, window_id } => {
-                self.renderer.execute(plushie_core::ops::RendererOp::Subscribe {
-                    kind, tag, max_rate, window_id,
-                })
-            }
-            SubOp::Unsubscribe { kind, tag } => {
-                self.renderer.execute(plushie_core::ops::RendererOp::Unsubscribe {
-                    kind, tag,
-                })
-            }
+            SubOp::Subscribe {
+                kind,
+                tag,
+                max_rate,
+                window_id,
+            } => self
+                .renderer
+                .execute(plushie_core::ops::RendererOp::Subscribe {
+                    kind,
+                    tag,
+                    max_rate,
+                    window_id,
+                }),
+            SubOp::Unsubscribe { kind, tag } => self
+                .renderer
+                .execute(plushie_core::ops::RendererOp::Unsubscribe { kind, tag }),
             SubOp::StartTimer { tag, interval } => {
                 // Store the interval. The iced daemon's subscription
                 // callback reads active_timers and returns iced::time::every
@@ -429,7 +462,9 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
     // Apply settings directly to renderer fields (no JSON round-trip).
     renderer.core.default_text_size = settings.default_text_size;
     renderer.core.default_event_rate = settings.default_event_rate;
-    renderer.emitter.set_default_rate(settings.default_event_rate);
+    renderer
+        .emitter
+        .set_default_rate(settings.default_event_rate);
 
     if let Some(sf) = settings.scale_factor {
         renderer.scale_factor = plushie_renderer_lib::app::validate_scale_factor(sf);
@@ -437,8 +472,8 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
 
     // Widget config: initialize native widgets if config is provided.
     if !settings.widget_config.is_empty() {
-        let config = serde_json::to_value(&settings.widget_config)
-            .unwrap_or(serde_json::Value::Null);
+        let config =
+            serde_json::to_value(&settings.widget_config).unwrap_or(serde_json::Value::Null);
         let ctx = plushie_widget_sdk::registry::InitCtx {
             config: &config,
             theme: &renderer.theme,
@@ -455,21 +490,31 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
                 renderer.theme_follows_system = true;
             }
             plushie_core::settings::Theme::Named(name) => {
-                renderer.theme = plushie_widget_sdk::theming::resolve_theme(
-                    &serde_json::Value::String(name),
-                );
+                renderer.theme =
+                    plushie_widget_sdk::theming::resolve_theme(&serde_json::Value::String(name));
             }
             plushie_core::settings::Theme::Custom(palette) => {
                 let mut map = serde_json::Map::new();
-                if let Some(bg) = palette.background { map.insert("background".into(), bg.into()); }
-                if let Some(text) = palette.text { map.insert("text".into(), text.into()); }
-                if let Some(primary) = palette.primary { map.insert("primary".into(), primary.into()); }
-                if let Some(success) = palette.success { map.insert("success".into(), success.into()); }
-                if let Some(warning) = palette.warning { map.insert("warning".into(), warning.into()); }
-                if let Some(danger) = palette.danger { map.insert("danger".into(), danger.into()); }
-                renderer.theme = plushie_widget_sdk::theming::resolve_theme(
-                    &serde_json::Value::Object(map),
-                );
+                if let Some(bg) = palette.background {
+                    map.insert("background".into(), bg.into());
+                }
+                if let Some(text) = palette.text {
+                    map.insert("text".into(), text.into());
+                }
+                if let Some(primary) = palette.primary {
+                    map.insert("primary".into(), primary.into());
+                }
+                if let Some(success) = palette.success {
+                    map.insert("success".into(), success.into());
+                }
+                if let Some(warning) = palette.warning {
+                    map.insert("warning".into(), warning.into());
+                }
+                if let Some(danger) = palette.danger {
+                    map.insert("danger".into(), danger.into());
+                }
+                renderer.theme =
+                    plushie_widget_sdk::theming::resolve_theme(&serde_json::Value::Object(map));
             }
         }
     }

@@ -82,7 +82,6 @@ pub struct PatchOp {
     pub rest: Value,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -181,7 +181,8 @@ impl App {
         let tasks: Vec<_> = entries
             .into_iter()
             .map(|entry| {
-                self.emitter.emit_direct(event_fn(entry.tag.clone()).with_captured(captured))
+                self.emitter
+                    .emit_direct(event_fn(entry.tag.clone()).with_captured(captured))
             })
             .collect();
         Task::batch(tasks)

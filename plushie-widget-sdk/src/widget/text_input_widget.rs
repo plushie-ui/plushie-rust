@@ -112,10 +112,7 @@ fn render_text_input<'a, R: PlushieRenderer>(
     if let Some(s) = size {
         ti = ti.size(s);
     }
-    let font = tp
-        .font
-        .map(|f| iced_convert::font(&f))
-        .or(ctx.default_font);
+    let font = tp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
     if let Some(f) = font {
         ti = ti.font(f);
     }

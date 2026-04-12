@@ -96,7 +96,11 @@ pub enum RendererOp {
     /// Move the cursor to a specific position in a text input.
     MoveCursorTo { target: String, position: usize },
     /// Select a range of text in a text input.
-    SelectRange { target: String, start: usize, end: usize },
+    SelectRange {
+        target: String,
+        start: usize,
+        end: usize,
+    },
 
     // -- Scroll --
     /// Scroll to an absolute position (animated).
@@ -140,7 +144,11 @@ pub enum RendererOp {
 
     // -- Native widget commands --
     /// Send a single command to a native widget.
-    WidgetCommand { node_id: String, op: String, payload: Value },
+    WidgetCommand {
+        node_id: String,
+        op: String,
+        payload: Value,
+    },
     /// Send multiple native widget commands in a batch.
     WidgetCommands(Vec<WidgetCommandItem>),
 
@@ -180,7 +188,11 @@ pub enum WindowOp {
     /// Close a window.
     Close(String),
     /// Resize a window to the given logical dimensions.
-    Resize { window_id: String, width: f32, height: f32 },
+    Resize {
+        window_id: String,
+        width: f32,
+        height: f32,
+    },
     /// Move a window to the given logical position.
     Move { window_id: String, x: f32, y: f32 },
     /// Set or unset the maximized state.
@@ -196,21 +208,38 @@ pub enum WindowOp {
     /// Bring a window to the front and give it focus.
     FocusWindow(String),
     /// Set the window stacking level.
-    SetLevel { window_id: String, level: WindowLevel },
+    SetLevel {
+        window_id: String,
+        level: WindowLevel,
+    },
     /// Begin an interactive window drag.
     DragWindow(String),
     /// Begin an interactive window resize from the given edge/direction.
-    DragResize { window_id: String, direction: String },
+    DragResize {
+        window_id: String,
+        direction: String,
+    },
     /// Request user attention (taskbar flash or similar).
-    RequestAttention { window_id: String, urgency: Option<String> },
+    RequestAttention {
+        window_id: String,
+        urgency: Option<String>,
+    },
     /// Take a screenshot of a window.
     Screenshot { window_id: String, tag: String },
     /// Set whether the window is user-resizable.
     SetResizable { window_id: String, resizable: bool },
     /// Set the minimum window size.
-    SetMinSize { window_id: String, width: f32, height: f32 },
+    SetMinSize {
+        window_id: String,
+        width: f32,
+        height: f32,
+    },
     /// Set the maximum window size.
-    SetMaxSize { window_id: String, width: f32, height: f32 },
+    SetMaxSize {
+        window_id: String,
+        width: f32,
+        height: f32,
+    },
     /// Allow mouse events to pass through the window.
     EnableMousePassthrough(String),
     /// Stop mouse events from passing through the window.
@@ -218,9 +247,18 @@ pub enum WindowOp {
     /// Show the native system menu (right-click title bar menu).
     ShowSystemMenu(String),
     /// Set the window icon from raw RGBA pixel data.
-    SetIcon { window_id: String, data: Vec<u8>, width: u32, height: u32 },
+    SetIcon {
+        window_id: String,
+        data: Vec<u8>,
+        width: u32,
+        height: u32,
+    },
     /// Set window resize increment constraints.
-    SetResizeIncrements { window_id: String, width: f32, height: f32 },
+    SetResizeIncrements {
+        window_id: String,
+        width: f32,
+        height: f32,
+    },
 }
 
 /// A query for window state.
@@ -271,11 +309,18 @@ pub enum EffectRequest {
     ClipboardRead,
     ClipboardWrite(String),
     ClipboardReadHtml,
-    ClipboardWriteHtml { html: String, alt_text: Option<String> },
+    ClipboardWriteHtml {
+        html: String,
+        alt_text: Option<String>,
+    },
     ClipboardClear,
     ClipboardReadPrimary,
     ClipboardWritePrimary(String),
-    Notification { title: String, body: String, opts: NotificationOpts },
+    Notification {
+        title: String,
+        body: String,
+        opts: NotificationOpts,
+    },
 }
 
 impl EffectRequest {
@@ -313,7 +358,9 @@ pub struct FileDialogOpts {
 }
 
 impl FileDialogOpts {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Set the dialog window title.
     pub fn title(mut self, title: &str) -> Self {
@@ -357,7 +404,9 @@ pub struct NotificationOpts {
 }
 
 impl NotificationOpts {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Set the notification icon path or name.
     pub fn icon(mut self, icon: &str) -> Self {
@@ -394,11 +443,21 @@ pub enum ImageOp {
     /// Create an image from encoded bytes (PNG, JPEG, etc.).
     Create { handle: String, data: Vec<u8> },
     /// Create an image from raw RGBA pixel data.
-    CreateRaw { handle: String, width: u32, height: u32, pixels: Vec<u8> },
+    CreateRaw {
+        handle: String,
+        width: u32,
+        height: u32,
+        pixels: Vec<u8>,
+    },
     /// Replace an existing image with new encoded bytes.
     Update { handle: String, data: Vec<u8> },
     /// Replace an existing image with new raw RGBA pixel data.
-    UpdateRaw { handle: String, width: u32, height: u32, pixels: Vec<u8> },
+    UpdateRaw {
+        handle: String,
+        width: u32,
+        height: u32,
+        pixels: Vec<u8>,
+    },
     /// Delete an image by handle.
     Delete(String),
     /// List all loaded image handles.
@@ -415,11 +474,20 @@ pub enum ImageOp {
 #[derive(Debug)]
 pub enum PaneGridOp {
     /// Split a pane along an axis, creating a new pane.
-    Split { target: String, pane: String, axis: String, new_pane: String },
+    Split {
+        target: String,
+        pane: String,
+        axis: String,
+        new_pane: String,
+    },
     /// Close a pane.
     Close { target: String, pane: String },
     /// Swap the positions of two panes.
-    Swap { target: String, a: String, b: String },
+    Swap {
+        target: String,
+        a: String,
+        b: String,
+    },
     /// Maximize a pane to fill the entire grid.
     Maximize { target: String, pane: String },
     /// Restore the pane grid from a maximized state.
@@ -450,10 +518,16 @@ pub fn effect_request_to_wire(request: &EffectRequest) -> (&'static str, Value) 
     use serde_json::json;
     match request {
         EffectRequest::FileOpen(opts) => ("file_open", file_dialog_opts_to_value(opts)),
-        EffectRequest::FileOpenMultiple(opts) => ("file_open_multiple", file_dialog_opts_to_value(opts)),
+        EffectRequest::FileOpenMultiple(opts) => {
+            ("file_open_multiple", file_dialog_opts_to_value(opts))
+        }
         EffectRequest::FileSave(opts) => ("file_save", file_dialog_opts_to_value(opts)),
-        EffectRequest::DirectorySelect(opts) => ("directory_select", file_dialog_opts_to_value(opts)),
-        EffectRequest::DirectorySelectMultiple(opts) => ("directory_select_multiple", file_dialog_opts_to_value(opts)),
+        EffectRequest::DirectorySelect(opts) => {
+            ("directory_select", file_dialog_opts_to_value(opts))
+        }
+        EffectRequest::DirectorySelectMultiple(opts) => {
+            ("directory_select_multiple", file_dialog_opts_to_value(opts))
+        }
         EffectRequest::ClipboardRead => ("clipboard_read", json!({})),
         EffectRequest::ClipboardWrite(text) => ("clipboard_write", json!({"text": text})),
         EffectRequest::ClipboardReadHtml => ("clipboard_read_html", json!({})),
@@ -466,13 +540,23 @@ pub fn effect_request_to_wire(request: &EffectRequest) -> (&'static str, Value) 
         }
         EffectRequest::ClipboardClear => ("clipboard_clear", json!({})),
         EffectRequest::ClipboardReadPrimary => ("clipboard_read_primary", json!({})),
-        EffectRequest::ClipboardWritePrimary(text) => ("clipboard_write_primary", json!({"text": text})),
+        EffectRequest::ClipboardWritePrimary(text) => {
+            ("clipboard_write_primary", json!({"text": text}))
+        }
         EffectRequest::Notification { title, body, opts } => {
             let mut payload = json!({"title": title, "body": body});
-            if let Some(ref icon) = opts.icon { payload["icon"] = json!(icon); }
-            if let Some(ref timeout) = opts.timeout { payload["timeout"] = json!(timeout.as_millis() as u64); }
-            if let Some(ref urgency) = opts.urgency { payload["urgency"] = json!(urgency); }
-            if let Some(ref sound) = opts.sound { payload["sound"] = json!(sound); }
+            if let Some(ref icon) = opts.icon {
+                payload["icon"] = json!(icon);
+            }
+            if let Some(ref timeout) = opts.timeout {
+                payload["timeout"] = json!(timeout.as_millis() as u64);
+            }
+            if let Some(ref urgency) = opts.urgency {
+                payload["urgency"] = json!(urgency);
+            }
+            if let Some(ref sound) = opts.sound {
+                payload["sound"] = json!(sound);
+            }
             ("notification", payload)
         }
     }
@@ -481,15 +565,23 @@ pub fn effect_request_to_wire(request: &EffectRequest) -> (&'static str, Value) 
 fn file_dialog_opts_to_value(opts: &FileDialogOpts) -> Value {
     use serde_json::json;
     let mut payload = json!({});
-    if let Some(ref title) = opts.title { payload["title"] = json!(title); }
-    if let Some(ref dir) = opts.directory { payload["directory"] = json!(dir); }
+    if let Some(ref title) = opts.title {
+        payload["title"] = json!(title);
+    }
+    if let Some(ref dir) = opts.directory {
+        payload["directory"] = json!(dir);
+    }
     if !opts.filters.is_empty() {
-        let filters: Vec<Value> = opts.filters.iter()
+        let filters: Vec<Value> = opts
+            .filters
+            .iter()
             .map(|(label, exts)| json!([label, exts.join(";")]))
             .collect();
         payload["filters"] = json!(filters);
     }
-    if let Some(ref name) = opts.default_name { payload["default_name"] = json!(name); }
+    if let Some(ref name) = opts.default_name {
+        payload["default_name"] = json!(name);
+    }
     payload
 }
 
@@ -498,31 +590,62 @@ fn file_dialog_opts_to_value(opts: &FileDialogOpts) -> Value {
 /// Returns `None` for unrecognized kinds.
 pub fn effect_request_from_wire(kind: &str, payload: &Value) -> Option<EffectRequest> {
     match kind {
-        "file_open" => Some(EffectRequest::FileOpen(file_dialog_opts_from_value(payload))),
-        "file_open_multiple" => Some(EffectRequest::FileOpenMultiple(file_dialog_opts_from_value(payload))),
-        "file_save" => Some(EffectRequest::FileSave(file_dialog_opts_from_value(payload))),
-        "directory_select" => Some(EffectRequest::DirectorySelect(file_dialog_opts_from_value(payload))),
-        "directory_select_multiple" => Some(EffectRequest::DirectorySelectMultiple(file_dialog_opts_from_value(payload))),
+        "file_open" => Some(EffectRequest::FileOpen(file_dialog_opts_from_value(
+            payload,
+        ))),
+        "file_open_multiple" => Some(EffectRequest::FileOpenMultiple(
+            file_dialog_opts_from_value(payload),
+        )),
+        "file_save" => Some(EffectRequest::FileSave(file_dialog_opts_from_value(
+            payload,
+        ))),
+        "directory_select" => Some(EffectRequest::DirectorySelect(file_dialog_opts_from_value(
+            payload,
+        ))),
+        "directory_select_multiple" => Some(EffectRequest::DirectorySelectMultiple(
+            file_dialog_opts_from_value(payload),
+        )),
         "clipboard_read" => Some(EffectRequest::ClipboardRead),
         "clipboard_write" => {
-            let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or_default();
+            let text = payload
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             Some(EffectRequest::ClipboardWrite(text.to_string()))
         }
         "clipboard_read_html" => Some(EffectRequest::ClipboardReadHtml),
         "clipboard_write_html" => {
-            let html = payload.get("html").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let alt_text = payload.get("alt_text").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let html = payload
+                .get("html")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let alt_text = payload
+                .get("alt_text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             Some(EffectRequest::ClipboardWriteHtml { html, alt_text })
         }
         "clipboard_clear" => Some(EffectRequest::ClipboardClear),
         "clipboard_read_primary" => Some(EffectRequest::ClipboardReadPrimary),
         "clipboard_write_primary" => {
-            let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or_default();
+            let text = payload
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             Some(EffectRequest::ClipboardWritePrimary(text.to_string()))
         }
         "notification" => {
-            let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let body = payload.get("body").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let title = payload
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let body = payload
+                .get("body")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
             let mut opts = NotificationOpts::default();
             if let Some(icon) = payload.get("icon").and_then(|v| v.as_str()) {
                 opts.icon = Some(icon.to_string());
@@ -589,9 +712,18 @@ fn file_dialog_opts_from_value(payload: &Value) -> FileDialogOpts {
         }
     }
     FileDialogOpts {
-        title: payload.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        directory: payload.get("directory").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        default_name: payload.get("default_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        title: payload
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        directory: payload
+            .get("directory")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        default_name: payload
+            .get("default_name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         filters,
     }
 }

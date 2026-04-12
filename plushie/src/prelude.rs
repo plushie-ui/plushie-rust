@@ -17,8 +17,8 @@ pub use crate::widget::WidgetRegistrar;
 pub use crate::View;
 
 // Events
-pub use crate::event::{Event, EventType, WidgetMatch};
 pub use crate::event::WidgetMatch::*;
+pub use crate::event::{Event, EventType, WidgetMatch};
 
 // Commands
 pub use crate::command::Command;
@@ -31,19 +31,15 @@ pub use crate::ui::*;
 
 // Property types
 pub use crate::types::{
-    A11y, Align, Animatable, Anchor, ArrowMode, Background, Border, Color,
-    ContentFit, CursorStyle, Direction, DragAxis, Ellipsis, ErrorCorrection,
-    FillRule, FilterMethod, Font, FontStretch, FromNode, Gradient,
-    HorizontalAlignment, InputPurpose, KeyModifiers, Length, Length::*,
-    LineCap, LineJoin, LineHeight, Padding, PlushieType, Position, Radius,
-    Shadow, Shaping, SortOrder, Style, StyleMap, Theme, UntypedProps,
-    WidgetEventEncode, WindowLevel, Wrapping,
+    A11y, Align, Anchor, Animatable, ArrowMode, Background, Border, Color, ContentFit, CursorStyle,
+    Direction, DragAxis, Ellipsis, ErrorCorrection, FillRule, FilterMethod, Font, FontStretch,
+    FromNode, Gradient, HorizontalAlignment, InputPurpose, KeyModifiers, Length, Length::*,
+    LineCap, LineHeight, LineJoin, Padding, PlushieType, Position, Radius, Shadow, Shaping,
+    SortOrder, Style, StyleMap, Theme, UntypedProps, WidgetEventEncode, WindowLevel, Wrapping,
 };
 
 // A11y sub-types for typed accessibility builders
 pub use plushie_core::types::a11y::{Live, Role};
 
 // Animation
-pub use crate::animation::{
-    AnimationStep, Easing, Repeat, Sequence, Spring, Transition,
-};
+pub use crate::animation::{AnimationStep, Easing, Repeat, Sequence, Spring, Transition};

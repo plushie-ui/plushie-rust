@@ -97,10 +97,7 @@ fn render_pick_list<'a, R: PlushieRenderer>(
     if let Some(ts) = pp.text_size.or(ctx.default_text_size) {
         pl = pl.text_size(ts);
     }
-    let font = pp
-        .font
-        .map(|f| iced_convert::font(&f))
-        .or(ctx.default_font);
+    let font = pp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
     if let Some(f) = font {
         pl = pl.font(f);
     }

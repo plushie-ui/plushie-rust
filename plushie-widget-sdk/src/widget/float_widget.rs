@@ -69,8 +69,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for FloatWidget {
             iced::widget::float(child).translate(move |_content, _viewport| Vector::new(tx, ty));
 
         if let Some(s) =
-            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "scale")
-                .or(fp.scale)
+            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "scale").or(fp.scale)
         {
             f = f.scale(s);
         }

@@ -30,10 +30,5 @@ pub fn memo(key: impl Into<String>, view_fn: impl FnOnce() -> View) -> View {
     let mut props = PropMap::new();
     props.insert("__memo_key__", key_str.clone());
 
-    super::view_node(
-        format!("memo:{key_str}"),
-        "__memo__",
-        props,
-        vec![inner],
-    )
+    super::view_node(format!("memo:{key_str}"), "__memo__", props, vec![inner])
 }

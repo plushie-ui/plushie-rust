@@ -4,7 +4,7 @@
 //! produces the correct wire format with real plushie-core types.
 
 use plushie::WidgetEvent;
-use plushie_core::protocol::{PropMap, PropValue};
+use plushie_core::protocol::PropValue;
 use plushie_core::types::WidgetEventEncode;
 
 // ---------------------------------------------------------------------------

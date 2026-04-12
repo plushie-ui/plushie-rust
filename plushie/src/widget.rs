@@ -69,9 +69,9 @@ use std::collections::HashMap;
 use plushie_core::types::FromNode;
 use serde_json::Value;
 
+use crate::View;
 use crate::event::Event;
 use crate::subscription::Subscription;
-use crate::View;
 
 // ---------------------------------------------------------------------------
 // Widget trait
@@ -101,18 +101,12 @@ pub trait Widget: Send + Sync + 'static {
     fn view(id: &str, props: &Self::Props, state: &Self::State) -> View;
 
     /// Handle an event from an internal child widget.
-    fn handle_event(
-        _event: &Event,
-        _state: &mut Self::State,
-    ) -> EventResult {
+    fn handle_event(_event: &Event, _state: &mut Self::State) -> EventResult {
         EventResult::Ignored
     }
 
     /// Active subscriptions scoped to this widget instance.
-    fn subscribe(
-        _props: &Self::Props,
-        _state: &Self::State,
-    ) -> Vec<Subscription> {
+    fn subscribe(_props: &Self::Props, _state: &Self::State) -> Vec<Subscription> {
         vec![]
     }
 }
@@ -274,6 +268,7 @@ impl<W: Widget> WidgetView<W> {
 /// The `expand` and `subscribe` methods receive the full `TreeNode`
 /// so the concrete `WidgetExpander<W>` can extract typed props via
 /// `W::Props::from_node(node)`.
+#[allow(dead_code)] // subscribe will be used when widget subscriptions are implemented
 pub(crate) trait DynWidgetExpander: Send {
     fn expand(&self, id: &str, node: &View, state: &dyn Any) -> View;
     fn handle_event(&self, event: &Event, state: &mut dyn Any) -> EventResult;
@@ -285,14 +280,16 @@ struct WidgetExpander<W: Widget>(std::marker::PhantomData<W>);
 
 impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
     fn expand(&self, id: &str, node: &View, state: &dyn Any) -> View {
-        let state = state.downcast_ref::<W::State>()
+        let state = state
+            .downcast_ref::<W::State>()
             .expect("widget state type mismatch");
         let props = W::Props::from_node(node);
         W::view(id, &props, state)
     }
 
     fn handle_event(&self, event: &Event, state: &mut dyn Any) -> EventResult {
-        let state = state.downcast_mut::<W::State>()
+        let state = state
+            .downcast_mut::<W::State>()
             .expect("widget state type mismatch");
         W::handle_event(event, state)
     }
@@ -302,7 +299,8 @@ impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
     }
 
     fn subscribe(&self, node: &View, state: &dyn Any) -> Vec<Subscription> {
-        let state = state.downcast_ref::<W::State>()
+        let state = state
+            .downcast_ref::<W::State>()
             .expect("widget state type mismatch");
         let props = W::Props::from_node(node);
         W::subscribe(&props, state)
@@ -317,13 +315,14 @@ impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
 ///
 /// Passed to `App::view()` so composite widgets can register their
 /// type-erased expanders explicitly rather than through a thread-local.
+#[derive(Default)]
 pub struct WidgetRegistrar {
     expanders: HashMap<String, Box<dyn DynWidgetExpander>>,
 }
 
 impl WidgetRegistrar {
     pub fn new() -> Self {
-        Self { expanders: HashMap::new() }
+        Self::default()
     }
 
     /// Register a widget expander for the given ID.
@@ -373,17 +372,15 @@ impl WidgetStateStore {
     }
 
     fn expand_node(&self, node: &View) -> View {
-        if node.type_name == "__widget__" {
-            if let Some(expander) = self.expanders.get(&node.id) {
-                let state = self.states.get(&node.id).expect("widget state missing");
-                let expanded = expander.expand(&node.id, node, state.as_ref());
-                return self.expand_node(&expanded);
-            }
+        if node.type_name == "__widget__"
+            && let Some(expander) = self.expanders.get(&node.id)
+        {
+            let state = self.states.get(&node.id).expect("widget state missing");
+            let expanded = expander.expand(&node.id, node, state.as_ref());
+            return self.expand_node(&expanded);
         }
 
-        let children = node.children.iter()
-            .map(|c| self.expand_node(c))
-            .collect();
+        let children = node.children.iter().map(|c| self.expand_node(c)).collect();
 
         View {
             id: node.id.clone(),

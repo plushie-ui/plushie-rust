@@ -2,9 +2,7 @@
 
 use iced::{Point, Rectangle, mouse};
 
-use plushie_core::types::canvas::{
-    CanvasShape, GroupShape, Transform,
-};
+use plushie_core::types::canvas::{CanvasShape, GroupShape, Transform};
 
 use super::types::*;
 use crate::protocol::OutgoingEvent;
@@ -161,7 +159,10 @@ pub(super) fn parse_interactive_element(
         focusable: group.focusable.unwrap_or(false),
         parent_group: None,
         tooltip: group.tooltip.clone(),
-        a11y: group.a11y.as_ref().map(crate::a11y::A11yOverrides::from_core),
+        a11y: group
+            .a11y
+            .as_ref()
+            .map(crate::a11y::A11yOverrides::from_core),
     })
 }
 
@@ -593,7 +594,9 @@ fn child_bounds(child: &CanvasShape) -> Option<(f32, f32, f32, f32)> {
 /// Compute bounding box of a path from its commands.
 /// Examines move_to, line_to, and arc endpoints. Bezier control points
 /// are included conservatively (they bound the curve).
-fn path_bounds(commands: &[plushie_core::types::canvas::PathCommand]) -> Option<(f32, f32, f32, f32)> {
+fn path_bounds(
+    commands: &[plushie_core::types::canvas::PathCommand],
+) -> Option<(f32, f32, f32, f32)> {
     use plushie_core::types::canvas::PathCommand;
 
     let mut min_x = f32::MAX;
@@ -615,7 +618,14 @@ fn path_bounds(commands: &[plushie_core::types::canvas::PathCommand]) -> Option<
             PathCommand::MoveTo { x, y } | PathCommand::LineTo { x, y } => {
                 update(*x, *y);
             }
-            PathCommand::BezierTo { cp1x, cp1y, cp2x, cp2y, x, y } => {
+            PathCommand::BezierTo {
+                cp1x,
+                cp1y,
+                cp2x,
+                cp2y,
+                x,
+                y,
+            } => {
                 update(*cp1x, *cp1y);
                 update(*cp2x, *cp2y);
                 update(*x, *y);

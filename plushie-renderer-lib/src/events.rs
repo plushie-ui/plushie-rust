@@ -6,11 +6,11 @@ use std::io;
 
 use iced::{Point, Task, window};
 
-use plushie_widget_sdk::protocol::OutgoingEventKeyExt;
 use plushie_widget_sdk::message::{
     KeyEventData, Message, serialize_modifiers, serialize_mouse_button, serialize_scroll_delta,
 };
 use plushie_widget_sdk::protocol::OutgoingEvent;
+use plushie_widget_sdk::protocol::OutgoingEventKeyExt;
 
 use crate::App;
 use crate::constants::*;
@@ -315,12 +315,14 @@ impl App {
         let wid = Some(window_id.as_str());
         // Emit for catch-all SUB_WINDOW_EVENT entries
         for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
-            self.emitter.emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
+            self.emitter
+                .emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
         }
         // Emit for specific key entries (e.g. SUB_WINDOW_MOVE)
         if let Some(key) = specific_key {
             for entry in self.core.matching_entries(key, wid) {
-                self.emitter.emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
+                self.emitter
+                    .emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
             }
         }
         Ok(())

@@ -131,10 +131,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ImageWidget {
         }
         // crop: complex object, kept as raw prop access
         let crop_val = props.get_value("crop");
-        if let Some(crop_obj) = crop_val
-            .as_ref()
-            .and_then(|v| v.as_object())
-        {
+        if let Some(crop_obj) = crop_val.as_ref().and_then(|v| v.as_object()) {
             let cx = crop_obj.get("x").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
             let cy = crop_obj.get("y").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
             let cw = crop_obj.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;

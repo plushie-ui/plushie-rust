@@ -70,7 +70,11 @@ impl Route {
     }
 
     /// Replace the current route with a new path and parameters.
-    pub fn replace_top_with_params(&mut self, path: &str, params: HashMap<String, serde_json::Value>) {
+    pub fn replace_top_with_params(
+        &mut self,
+        path: &str,
+        params: HashMap<String, serde_json::Value>,
+    ) {
         if let Some(top) = self.stack.last_mut() {
             top.path = path.to_string();
             top.params = params;
@@ -84,7 +88,11 @@ impl Route {
 
     /// Parameters of the current route.
     pub fn params(&self) -> &HashMap<String, serde_json::Value> {
-        &self.stack.last().expect("route stack is never empty").params
+        &self
+            .stack
+            .last()
+            .expect("route stack is never empty")
+            .params
     }
 
     /// Whether there is a previous route to go back to.

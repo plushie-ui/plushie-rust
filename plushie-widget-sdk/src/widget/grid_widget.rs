@@ -47,8 +47,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GridWidget {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         let gp = GridProps::from_node(node);
-        let spacing =
-            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "spacing");
+        let spacing = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "spacing",
+        );
 
         let cols = gp.columns.unwrap_or(1) as usize;
 
@@ -69,10 +73,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GridWidget {
         }
 
         // Length-typed column_width: only Fixed maps to Pixels for iced's Grid::width
-        if let Some(ref cw) = gp.column_width {
-            if let Length::Fixed(px) = *cw {
-                g = g.width(px);
-            }
+        if let Some(ref cw) = gp.column_width
+            && let Length::Fixed(px) = *cw
+        {
+            g = g.width(px);
         }
 
         // Length-typed row_height: maps to Grid::height via Sizing::EvenlyDistribute

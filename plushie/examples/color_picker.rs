@@ -8,7 +8,7 @@
 //! Run with: `cargo run -p plushie --example color_picker`
 
 use plushie::prelude::*;
-use plushie::widget::{Widget, WidgetView, EventResult};
+use plushie::widget::{EventResult, Widget, WidgetView};
 
 // ---------------------------------------------------------------------------
 // ColorPickerWidget (composite widget)
@@ -28,7 +28,9 @@ impl Widget for ColorPickerWidget {
     type Props = UntypedProps;
 
     fn view(id: &str, _props: &UntypedProps, state: &Self::State) -> View {
-        column().id(id).spacing(8.0)
+        column()
+            .id(id)
+            .spacing(8.0)
             .child(
                 slider("hue", (0.0, 360.0), state.hue as f32)
                     .step(1.0)
@@ -105,59 +107,70 @@ impl App for ColorPickerApp {
         // The widget emits "change" which maps to EventType::Other(0)
         // since "change" isn't a built-in family. Use as_widget() to
         // read the structured value.
-        if let Some(w) = event.as_widget() {
-            if w.id == "picker" {
-                if let Some(obj) = w.value.as_object() {
-                    model.hue = obj.get("hue").and_then(|v| v.as_f64()).unwrap_or(model.hue);
-                    model.saturation = obj.get("saturation").and_then(|v| v.as_f64()).unwrap_or(model.saturation);
-                    model.value = obj.get("value").and_then(|v| v.as_f64()).unwrap_or(model.value);
-                }
-            }
+        if let Some(w) = event.as_widget()
+            && w.id == "picker"
+            && let Some(obj) = w.value.as_object()
+        {
+            model.hue = obj.get("hue").and_then(|v| v.as_f64()).unwrap_or(model.hue);
+            model.saturation = obj
+                .get("saturation")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(model.saturation);
+            model.value = obj
+                .get("value")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(model.value);
         }
         Command::none()
     }
 
     fn view(model: &Self, widgets: &mut WidgetRegistrar) -> View {
         let hex = hsv_to_hex(model.hue, model.saturation, model.value);
-        let is_initial =
-            model.hue == 0.0 && model.saturation == 1.0 && model.value == 1.0;
+        let is_initial = model.hue == 0.0 && model.saturation == 1.0 && model.value == 1.0;
 
-        window("color_picker").title("Color Picker").child(
-            column().spacing(16.0).padding(20).align_x(Align::Center)
-                .child(WidgetView::<ColorPickerWidget>::new("picker").register(widgets))
-                .child(
-                    row().spacing(16.0).align_y(Align::Center)
-                        .child(
-                            container()
-                                .id("swatch")
-                                .width(48.0)
-                                .height(48.0)
-                                .background(Color::hex(&hex))
-                                .border(
-                                    Border::new()
-                                        .color("#cccccc")
-                                        .width(1.0)
-                                        .radius(4.0),
-                                )
-                                .a11y(&A11y::new().role(Role::Image).label(format!("Selected color: {hex}"))),
-                        )
-                        .child(
-                            column().spacing(4.0)
-                                .child(
-                                    text(&hex)
-                                        .id("hex_display")
-                                        .size(18.0)
-                                        .a11y(&A11y::new().live(Live::Polite).busy(is_initial)),
-                                )
-                                .child(
-                                    text(&hsv_label(model))
-                                        .id("hsv_display")
-                                        .a11y(&A11y::new().live(Live::Polite)),
-                                ),
-                        ),
-                ),
-        )
-        .into()
+        window("color_picker")
+            .title("Color Picker")
+            .child(
+                column()
+                    .spacing(16.0)
+                    .padding(20)
+                    .align_x(Align::Center)
+                    .child(WidgetView::<ColorPickerWidget>::new("picker").register(widgets))
+                    .child(
+                        row()
+                            .spacing(16.0)
+                            .align_y(Align::Center)
+                            .child(
+                                container()
+                                    .id("swatch")
+                                    .width(48.0)
+                                    .height(48.0)
+                                    .background(Color::hex(&hex))
+                                    .border(Border::new().color("#cccccc").width(1.0).radius(4.0))
+                                    .a11y(
+                                        &A11y::new()
+                                            .role(Role::Image)
+                                            .label(format!("Selected color: {hex}")),
+                                    ),
+                            )
+                            .child(
+                                column()
+                                    .spacing(4.0)
+                                    .child(
+                                        text(&hex)
+                                            .id("hex_display")
+                                            .size(18.0)
+                                            .a11y(&A11y::new().live(Live::Polite).busy(is_initial)),
+                                    )
+                                    .child(
+                                        text(&hsv_label(model))
+                                            .id("hsv_display")
+                                            .a11y(&A11y::new().live(Live::Polite)),
+                                    ),
+                            ),
+                    ),
+            )
+            .into()
     }
 }
 

@@ -109,10 +109,7 @@ fn render_radio<'a, R: PlushieRenderer>(
     if let Some(ts) = rp.text_size.or(ctx.default_text_size) {
         r = r.text_size(ts);
     }
-    let font = rp
-        .font
-        .map(|f| iced_convert::font(&f))
-        .or(ctx.default_font);
+    let font = rp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
     if let Some(f) = font {
         r = r.font(f);
     }

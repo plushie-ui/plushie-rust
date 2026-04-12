@@ -28,12 +28,16 @@ pub trait EventSink: Send {
 
     /// Emit an effect response.
     fn emit_effect_response(
-        &mut self, response: plushie_widget_sdk::protocol::EffectResponse,
+        &mut self,
+        response: plushie_widget_sdk::protocol::EffectResponse,
     ) -> io::Result<()>;
 
     /// Emit a query response (tree hash, find focused, system info).
     fn emit_query_response(
-        &mut self, kind: &str, tag: &str, data: &serde_json::Value,
+        &mut self,
+        kind: &str,
+        tag: &str,
+        data: &serde_json::Value,
     ) -> io::Result<()>;
 
     /// Emit a screenshot response with binary RGBA data.
@@ -86,13 +90,16 @@ pub fn init_sink(sink: Box<dyn EventSink>) {
 ///
 /// Panics if the sink has not been initialized.
 pub fn sink_arc() -> Arc<Mutex<Box<dyn EventSink>>> {
-    EVENT_SINK.get().expect("event sink not initialized").clone()
+    EVENT_SINK
+        .get()
+        .expect("event sink not initialized")
+        .clone()
 }
 
 fn with_sink<R>(f: impl FnOnce(&mut dyn EventSink) -> io::Result<R>) -> io::Result<R> {
-    let sink = EVENT_SINK.get().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::NotConnected, "event sink not initialized")
-    })?;
+    let sink = EVENT_SINK
+        .get()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "event sink not initialized"))?;
     let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
     f(&mut **guard)
 }
@@ -112,7 +119,10 @@ pub struct WriterSink {
 
 impl WriterSink {
     /// Create a WriterSink with an explicit codec.
-    pub fn new(writer: Box<dyn std::io::Write + Send>, codec: plushie_widget_sdk::codec::Codec) -> Self {
+    pub fn new(
+        writer: Box<dyn std::io::Write + Send>,
+        codec: plushie_widget_sdk::codec::Codec,
+    ) -> Self {
         Self { writer, codec }
     }
 }
@@ -125,7 +135,8 @@ impl EventSink for WriterSink {
     }
 
     fn emit_effect_response(
-        &mut self, response: plushie_widget_sdk::protocol::EffectResponse,
+        &mut self,
+        response: plushie_widget_sdk::protocol::EffectResponse,
     ) -> io::Result<()> {
         let bytes = self.codec.encode(&response).map_err(io::Error::other)?;
         self.writer.write_all(&bytes)?;
@@ -133,7 +144,10 @@ impl EventSink for WriterSink {
     }
 
     fn emit_query_response(
-        &mut self, kind: &str, tag: &str, data: &serde_json::Value,
+        &mut self,
+        kind: &str,
+        tag: &str,
+        data: &serde_json::Value,
     ) -> io::Result<()> {
         let msg = serde_json::json!({
             "type": "op_query_response",
@@ -171,7 +185,8 @@ impl EventSink for WriterSink {
         } else {
             Some(("rgba", rgba_bytes))
         };
-        let bytes = self.codec
+        let bytes = self
+            .codec
             .encode_binary_message(map, binary)
             .map_err(io::Error::other)?;
         self.writer.write_all(&bytes)?;

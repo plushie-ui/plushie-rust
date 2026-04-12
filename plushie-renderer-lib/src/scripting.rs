@@ -474,7 +474,7 @@ fn matches_label(node: &TreeNode, label: &str) -> bool {
         return true;
     }
     for key in &["label", "content"] {
-        if let Some(val) = node.props.get(*key)
+        if let Some(val) = node.props.get(key)
             && val.as_str() == Some(label)
         {
             return true;
@@ -486,7 +486,7 @@ fn matches_label(node: &TreeNode, label: &str) -> bool {
 /// Match against text content in `content`, `label`, `value`, and `placeholder` props.
 fn matches_text(node: &TreeNode, text: &str) -> bool {
     for key in &["content", "label", "value", "placeholder"] {
-        if let Some(val) = node.props.get(*key)
+        if let Some(val) = node.props.get(key)
             && val.as_str() == Some(text)
         {
             return true;
@@ -610,7 +610,11 @@ pub fn handle_query(
     target: String,
     selector: Value,
 ) -> io::Result<()> {
-    emit_wire(emitter, codec, &build_query_response(core, id, target, selector))
+    emit_wire(
+        emitter,
+        codec,
+        &build_query_response(core, id, target, selector),
+    )
 }
 
 /// Resolve a selector to a widget ID without emitting anything.
@@ -1040,9 +1044,11 @@ pub fn handle_interact(
     selector: Value,
     payload: Value,
 ) -> io::Result<()> {
-    emit_wire(emitter, codec, &build_interact_response(
-        core, id, action, selector, payload,
-    ))
+    emit_wire(
+        emitter,
+        codec,
+        &build_interact_response(core, id, action, selector, payload),
+    )
 }
 
 /// Reset core to a blank state and return the response.
@@ -1104,14 +1110,53 @@ mod tests {
         use std::sync::{Arc, Mutex};
         struct NullSink;
         impl crate::emitters::EventSink for NullSink {
-            fn emit_event(&mut self, _: plushie_widget_sdk::protocol::OutgoingEvent) -> std::io::Result<()> { Ok(()) }
-            fn emit_effect_response(&mut self, _: plushie_widget_sdk::protocol::EffectResponse) -> std::io::Result<()> { Ok(()) }
-            fn emit_query_response(&mut self, _: &str, _: &str, _: &serde_json::Value) -> std::io::Result<()> { Ok(()) }
-            fn emit_screenshot_response(&mut self, _: &str, _: &str, _: &str, _: u32, _: u32, _: &[u8]) -> std::io::Result<()> { Ok(()) }
-            fn emit_hello(&mut self, _: &str, _: &str, _: &[&str], _: &[&str], _: &str) -> std::io::Result<()> { Ok(()) }
-            fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> { Ok(()) }
+            fn emit_event(
+                &mut self,
+                _: plushie_widget_sdk::protocol::OutgoingEvent,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn emit_effect_response(
+                &mut self,
+                _: plushie_widget_sdk::protocol::EffectResponse,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn emit_query_response(
+                &mut self,
+                _: &str,
+                _: &str,
+                _: &serde_json::Value,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn emit_screenshot_response(
+                &mut self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: u32,
+                _: u32,
+                _: &[u8],
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn emit_hello(
+                &mut self,
+                _: &str,
+                _: &str,
+                _: &[&str],
+                _: &[&str],
+                _: &str,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> {
+                Ok(())
+            }
         }
-        let sink: Arc<Mutex<Box<dyn crate::emitters::EventSink>>> = Arc::new(Mutex::new(Box::new(NullSink)));
+        let sink: Arc<Mutex<Box<dyn crate::emitters::EventSink>>> =
+            Arc::new(Mutex::new(Box::new(NullSink)));
         crate::emitter::EventEmitter::new(sink)
     }
 

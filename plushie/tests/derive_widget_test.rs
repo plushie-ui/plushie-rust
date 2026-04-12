@@ -169,8 +169,7 @@ fn builder_typed_setters() {
 
 #[test]
 fn builder_untyped_fallback() {
-    let b = TestWidget::builder("tw3")
-        .prop("custom", "value");
+    let b = TestWidget::builder("tw3").prop("custom", "value");
 
     assert_eq!(b.0.props.get("custom").unwrap().as_str(), Some("value"));
 }

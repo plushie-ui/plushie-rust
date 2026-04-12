@@ -303,13 +303,9 @@ pub fn cursor_style(c: types::CursorStyle) -> iced::mouse::Interaction {
         types::CursorStyle::ZoomIn => iced::mouse::Interaction::ZoomIn,
         types::CursorStyle::ZoomOut => iced::mouse::Interaction::ZoomOut,
         types::CursorStyle::ContextMenu => iced::mouse::Interaction::ContextMenu,
-        types::CursorStyle::ResizingHorizontally => {
-            iced::mouse::Interaction::ResizingHorizontally
-        }
+        types::CursorStyle::ResizingHorizontally => iced::mouse::Interaction::ResizingHorizontally,
         types::CursorStyle::ResizingVertically => iced::mouse::Interaction::ResizingVertically,
-        types::CursorStyle::ResizingDiagonallyUp => {
-            iced::mouse::Interaction::ResizingDiagonallyUp
-        }
+        types::CursorStyle::ResizingDiagonallyUp => iced::mouse::Interaction::ResizingDiagonallyUp,
         types::CursorStyle::ResizingDiagonallyDown => {
             iced::mouse::Interaction::ResizingDiagonallyDown
         }
@@ -362,16 +358,12 @@ pub fn scrollable_direction(
     scrollbar: iced::widget::scrollable::Scrollbar,
 ) -> iced::widget::scrollable::Direction {
     match d {
-        types::Direction::Horizontal => {
-            iced::widget::scrollable::Direction::Horizontal(scrollbar)
-        }
+        types::Direction::Horizontal => iced::widget::scrollable::Direction::Horizontal(scrollbar),
         types::Direction::Both => iced::widget::scrollable::Direction::Both {
-            vertical: scrollbar.clone(),
+            vertical: scrollbar,
             horizontal: scrollbar,
         },
-        types::Direction::Vertical => {
-            iced::widget::scrollable::Direction::Vertical(scrollbar)
-        }
+        types::Direction::Vertical => iced::widget::scrollable::Direction::Vertical(scrollbar),
     }
 }
 
@@ -635,10 +627,7 @@ mod tests {
 
     #[test]
     fn border_conversion() {
-        let b = types::Border::new()
-            .color("#ff0000")
-            .width(2.0)
-            .radius(8.0);
+        let b = types::Border::new().color("#ff0000").width(2.0).radius(8.0);
         let ib = border(&b);
         assert_eq!(ib.width, 2.0);
         assert!((ib.color.r - 1.0).abs() < 0.01);
@@ -677,18 +666,12 @@ mod tests {
 
     #[test]
     fn shaping_mapping() {
-        assert_eq!(
-            shaping(types::Shaping::Advanced),
-            text::Shaping::Advanced
-        );
+        assert_eq!(shaping(types::Shaping::Advanced), text::Shaping::Advanced);
     }
 
     #[test]
     fn ellipsis_mapping() {
-        assert_eq!(
-            ellipsis(types::Ellipsis::Middle),
-            text::Ellipsis::Middle
-        );
+        assert_eq!(ellipsis(types::Ellipsis::Middle), text::Ellipsis::Middle);
     }
 
     #[test]
@@ -790,10 +773,7 @@ mod tests {
     #[test]
     fn input_purpose_mapping() {
         use iced::advanced::input_method::Purpose;
-        assert_eq!(
-            input_purpose(types::InputPurpose::Email),
-            Purpose::Email
-        );
+        assert_eq!(input_purpose(types::InputPurpose::Email), Purpose::Email);
     }
 
     #[test]
@@ -812,20 +792,29 @@ mod tests {
     fn scrollable_direction_vertical() {
         let sb = iced::widget::scrollable::Scrollbar::default();
         let d = scrollable_direction(types::Direction::Vertical, sb);
-        assert!(matches!(d, iced::widget::scrollable::Direction::Vertical(_)));
+        assert!(matches!(
+            d,
+            iced::widget::scrollable::Direction::Vertical(_)
+        ));
     }
 
     #[test]
     fn scrollable_direction_horizontal() {
         let sb = iced::widget::scrollable::Scrollbar::default();
         let d = scrollable_direction(types::Direction::Horizontal, sb);
-        assert!(matches!(d, iced::widget::scrollable::Direction::Horizontal(_)));
+        assert!(matches!(
+            d,
+            iced::widget::scrollable::Direction::Horizontal(_)
+        ));
     }
 
     #[test]
     fn scrollable_direction_both() {
         let sb = iced::widget::scrollable::Scrollbar::default();
         let d = scrollable_direction(types::Direction::Both, sb);
-        assert!(matches!(d, iced::widget::scrollable::Direction::Both { .. }));
+        assert!(matches!(
+            d,
+            iced::widget::scrollable::Direction::Both { .. }
+        ));
     }
 }

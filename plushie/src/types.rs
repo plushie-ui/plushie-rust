@@ -10,43 +10,70 @@
 // -------------------------------------------------------------------------
 
 pub use plushie_core::types::{
-    // Core traits
-    PlushieType, FromNode, WidgetEventEncode,
-    // Untyped props escape hatch
-    UntypedProps,
+    // A11y
+    A11y,
+    Anchor,
     // Animation
     Animatable,
+    ArrowMode,
+    Background,
+    Border,
     // Visual
-    Color, Background, Gradient, GradientStop,
-    // Geometry
-    Length, Padding, Border, Radius, Shadow,
-    // Typography
-    Font, FontWeight, FontStyle, FontStretch,
-    // Text layout
-    Wrapping, Shaping, Ellipsis, LineHeight,
-    // Alignment
-    HorizontalAlignment, VerticalAlignment,
+    Color,
+    ContentFit,
+    CursorStyle,
     // Layout
-    Direction, Anchor, ArrowMode, Position, ContentFit, SortOrder,
+    Direction,
+    Ellipsis,
+    ErrorCorrection,
+    FilterMethod,
+    // Typography
+    Font,
+    FontStretch,
+    FontStyle,
+    FontWeight,
+    FromNode,
+    Gradient,
+    GradientStop,
+    HasPopup,
+    // Alignment
+    HorizontalAlignment,
     // Input
-    InputPurpose, ErrorCorrection, FilterMethod, CursorStyle,
-    // Style
-    Style, StyleMap,
+    InputPurpose,
+    // Geometry
+    Length,
+    LineHeight,
+    Live,
+    Orientation,
+    Padding,
+    // Core traits
+    PlushieType,
+    Position,
+    Radius,
     // Value
     Range,
+    Role,
+    Shadow,
+    Shaping,
+    SortOrder,
+    // Style
+    Style,
+    StyleMap,
     // Theme
     Theme,
-    // A11y
-    A11y, Role, Live, Orientation, HasPopup,
+    // Untyped props escape hatch
+    UntypedProps,
+    VerticalAlignment,
+    WidgetEventEncode,
+    // Text layout
+    Wrapping,
 };
 
 // -------------------------------------------------------------------------
 // Re-exports from plushie-core (canvas)
 // -------------------------------------------------------------------------
 
-pub use plushie_core::types::canvas::{
-    DragAxis, FillRule, LineCap, LineJoin,
-};
+pub use plushie_core::types::canvas::{DragAxis, FillRule, LineCap, LineJoin};
 
 // -------------------------------------------------------------------------
 // SDK-specific: Alignment

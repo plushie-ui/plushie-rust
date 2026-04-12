@@ -12,10 +12,7 @@ fn command_none_is_none() {
 
 #[test]
 fn command_batch_collects_commands() {
-    let cmd = Command::batch([
-        Command::focus("email"),
-        Command::focus_next(),
-    ]);
+    let cmd = Command::batch([Command::focus("email"), Command::focus_next()]);
     match cmd {
         Command::Batch(cmds) => assert_eq!(cmds.len(), 2),
         _ => panic!("expected Batch"),
@@ -40,7 +37,10 @@ fn command_close_window_produces_window_op() {
 
 #[test]
 fn command_send_after_carries_delay_and_event() {
-    let event = Event::Timer(TimerEvent { tag: "tick".into(), timestamp: 0 });
+    let event = Event::Timer(TimerEvent {
+        tag: "tick".into(),
+        timestamp: 0,
+    });
     let cmd = Command::send_after(Duration::from_millis(500), event);
     match cmd {
         Command::SendAfter { delay, .. } => {
@@ -65,7 +65,11 @@ fn command_scroll_to_carries_coordinates() {
 #[test]
 fn command_clipboard_read() {
     match Command::clipboard_read("paste") {
-        Command::Renderer(RendererOp::Effect { tag, request: EffectRequest::ClipboardRead, .. }) => {
+        Command::Renderer(RendererOp::Effect {
+            tag,
+            request: EffectRequest::ClipboardRead,
+            ..
+        }) => {
             assert_eq!(tag, "paste");
         }
         _ => panic!("expected Renderer(Effect(ClipboardRead))"),
@@ -76,7 +80,11 @@ fn command_clipboard_read() {
 fn command_widget_command_carries_payload() {
     let cmd = Command::widget_command("gauge-1", "set_value", serde_json::json!({"value": 42}));
     match cmd {
-        Command::Renderer(RendererOp::WidgetCommand { node_id, op, payload }) => {
+        Command::Renderer(RendererOp::WidgetCommand {
+            node_id,
+            op,
+            payload,
+        }) => {
             assert_eq!(node_id, "gauge-1");
             assert_eq!(op, "set_value");
             assert_eq!(payload["value"], 42);

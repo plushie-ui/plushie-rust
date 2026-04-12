@@ -58,7 +58,15 @@ mod tests {
     fn clip_rect_decode() {
         let val = json!({"x": 10.0, "y": 20.0, "w": 100.0, "h": 50.0});
         let clip = ClipRect::wire_decode(&val).unwrap();
-        assert_eq!(clip, ClipRect { x: 10.0, y: 20.0, w: 100.0, h: 50.0 });
+        assert_eq!(
+            clip,
+            ClipRect {
+                x: 10.0,
+                y: 20.0,
+                w: 100.0,
+                h: 50.0
+            }
+        );
     }
 
     #[test]

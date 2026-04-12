@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use plushie::prelude::*;
-use plushie::widget::{Widget, WidgetView, EventResult};
+use plushie::widget::{EventResult, Widget, WidgetView};
 
 // ---------------------------------------------------------------------------
 // StarRating widget
@@ -39,20 +39,26 @@ impl Widget for StarRating {
     type Props = UntypedProps;
 
     fn view(id: &str, props: &UntypedProps, state: &Self::State) -> View {
-        let rating = props.0.get("rating")
+        let rating = props
+            .0
+            .get("rating")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0) as usize;
         let display = state.hover.unwrap_or(rating);
 
-        row().id(id).spacing(4.0).children(
-            (0..5).map(|i| {
+        row()
+            .id(id)
+            .spacing(4.0)
+            .children((0..5).map(|i| {
                 let filled = i < display;
                 let label = if filled { "\u{2605}" } else { "\u{2606}" };
-                button(&format!("star-{i}"), label)
-                    .style(if filled { Style::warning() } else { Style::text() })
-            }),
-        )
-        .into()
+                button(&format!("star-{i}"), label).style(if filled {
+                    Style::warning()
+                } else {
+                    Style::text()
+                })
+            }))
+            .into()
     }
 
     fn handle_event(event: &Event, state: &mut Self::State) -> EventResult {
@@ -100,28 +106,28 @@ impl Widget for ThemeToggle {
     type Props = UntypedProps;
 
     fn view(id: &str, props: &UntypedProps, _state: &Self::State) -> View {
-        let is_dark = props.0.get("dark")
+        let is_dark = props
+            .0
+            .get("dark")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
-        row().id(id).align_y(Align::Center)
+        row()
+            .id(id)
+            .align_y(Align::Center)
             .child(space().width(Fill))
-            .child(
-                text("Dark humor")
-                    .id("label")
-                    .color(Color::hex(
-                        if is_dark { "#9999bb" } else { "#666666" },
-                    )),
-            )
+            .child(text("Dark humor").id("label").color(Color::hex(if is_dark {
+                "#9999bb"
+            } else {
+                "#666666"
+            })))
             .child(toggler("switch", is_dark))
             .into()
     }
 
     fn handle_event(event: &Event, _state: &mut Self::State) -> EventResult {
         match event.widget_match() {
-            Some(Toggle("switch", on)) => {
-                EventResult::emit_event(ThemeToggleEvent::Toggle(on))
-            }
+            Some(Toggle("switch", on)) => EventResult::emit_event(ThemeToggleEvent::Toggle(on)),
             _ => EventResult::Ignored,
         }
     }
@@ -160,8 +166,7 @@ impl App for RatePlushie {
                         stars: 5,
                         user: "elixir_fan_42".into(),
                         time: "2d ago".into(),
-                        text: "Finally, native GUIs that don't make me want to cry."
-                            .into(),
+                        text: "Finally, native GUIs that don't make me want to cry.".into(),
                     },
                     Review {
                         stars: 5,
@@ -180,8 +185,7 @@ impl App for RatePlushie {
                         stars: 3,
                         user: "web_refugee".into(),
                         time: "1w ago".into(),
-                        text: "Where is my CSS grid? Also it works perfectly. Three stars."
-                            .into(),
+                        text: "Where is my CSS grid? Also it works perfectly. Three stars.".into(),
                     },
                     Review {
                         stars: 5,
@@ -193,8 +197,9 @@ impl App for RatePlushie {
                         stars: 1,
                         user: "electron_mass".into(),
                         time: "2w ago".into(),
-                        text: "No browser engine. No JavaScript runtime. What am I even paying for?"
-                            .into(),
+                        text:
+                            "No browser engine. No JavaScript runtime. What am I even paying for?"
+                                .into(),
                     },
                 ],
                 review_name: String::new(),
@@ -249,32 +254,34 @@ impl App for RatePlushie {
         let p: f64 = if model.dark_mode { 1.0 } else { 0.0 };
         let t = theme(p);
 
-        window("main").title("Rate Plushie").child(
-            scrollable().child(
-                column()
-                    .id("page")
-                    .spacing(24.0)
-                    .padding(Padding::new(32.0, 24.0, 32.0, 24.0))
-                    .width(Fill)
-                    .child(
-                        text("Rate Plushie")
-                            .id("heading")
-                            .size(28.0)
-                            .color(Color::hex(&t.text))
-                            .a11y(&A11y::new().role(Role::Heading).level(1)),
-                    )
-                    .child(rating_card(model, &t, widgets))
-                    .child(
-                        text("Reviews")
-                            .id("reviews-heading")
-                            .size(20.0)
-                            .color(Color::hex(&t.text))
-                            .a11y(&A11y::new().role(Role::Heading).level(2)),
-                    )
-                    .child(reviews_list(&model.reviews, &t)),
-            ),
-        )
-        .into()
+        window("main")
+            .title("Rate Plushie")
+            .child(
+                scrollable().child(
+                    column()
+                        .id("page")
+                        .spacing(24.0)
+                        .padding(Padding::new(32.0, 24.0, 32.0, 24.0))
+                        .width(Fill)
+                        .child(
+                            text("Rate Plushie")
+                                .id("heading")
+                                .size(28.0)
+                                .color(Color::hex(&t.text))
+                                .a11y(&A11y::new().role(Role::Heading).level(1)),
+                        )
+                        .child(rating_card(model, &t, widgets))
+                        .child(
+                            text("Reviews")
+                                .id("reviews-heading")
+                                .size(20.0)
+                                .color(Color::hex(&t.text))
+                                .a11y(&A11y::new().role(Role::Heading).level(2)),
+                        )
+                        .child(reviews_list(&model.reviews, &t)),
+                ),
+            )
+            .into()
     }
 }
 
@@ -322,12 +329,7 @@ fn rating_card(model: &RatePlushie, t: &AppTheme, widgets: &mut WidgetRegistrar)
         .id("rating-card")
         .padding(24)
         .width(Fill)
-        .border(
-            Border::new()
-                .color(&*t.card_border)
-                .width(1.0)
-                .radius(12.0),
-        )
+        .border(Border::new().color(&*t.card_border).width(1.0).radius(12.0))
         .background(Color::hex(&t.card_bg))
         .child(card_col)
         .into()
@@ -339,21 +341,11 @@ fn review_form(model: &RatePlushie, t: &AppTheme) -> View {
     let name_err = model.errors.get("name");
     let comment_err = model.errors.get("comment");
 
-    let error_border = Border::new()
-        .color(&*t.error_border)
-        .width(2.0)
-        .radius(4.0);
+    let error_border = Border::new().color(&*t.error_border).width(2.0).radius(4.0);
     let error_style: Style = Style::custom()
         .border(error_border)
         .background(Color::hex(&t.error_bg))
-        .focused(|s| {
-            s.border(
-                Border::new()
-                    .color(&*t.error_border)
-                    .width(2.0)
-                    .radius(4.0),
-            )
-        })
+        .focused(|s| s.border(Border::new().color(&*t.error_border).width(2.0).radius(4.0)))
         .into();
 
     let mut form = column().id("review-form").spacing(12.0).width(Fill);
@@ -364,8 +356,13 @@ fn review_form(model: &RatePlushie, t: &AppTheme) -> View {
         .placeholder("Your name")
         .on_submit(true)
         .a11y(&{
-            let mut a = A11y::new().label("Your name").required(true).invalid(name_err.is_some());
-            if name_err.is_some() { a = a.error_message("review-name-error"); }
+            let mut a = A11y::new()
+                .label("Your name")
+                .required(true)
+                .invalid(name_err.is_some());
+            if name_err.is_some() {
+                a = a.error_message("review-name-error");
+            }
             a
         });
     if name_err.is_some() {
@@ -389,8 +386,13 @@ fn review_form(model: &RatePlushie, t: &AppTheme) -> View {
         .placeholder("Write your review...")
         .height(80.0)
         .a11y(&{
-            let mut a = A11y::new().label("Review text").required(true).invalid(comment_err.is_some());
-            if comment_err.is_some() { a = a.error_message("review-comment-error"); }
+            let mut a = A11y::new()
+                .label("Review text")
+                .required(true)
+                .invalid(comment_err.is_some());
+            if comment_err.is_some() {
+                a = a.error_message("review-comment-error");
+            }
             a
         });
     if comment_err.is_some() {
@@ -430,7 +432,13 @@ fn reviews_list(reviews: &[Review], t: &AppTheme) -> View {
 
 fn review_card(review: &Review, i: usize, t: &AppTheme) -> View {
     let stars: String = (0..5)
-        .map(|j| if j < review.stars { '\u{2605}' } else { '\u{2606}' })
+        .map(|j| {
+            if j < review.stars {
+                '\u{2605}'
+            } else {
+                '\u{2606}'
+            }
+        })
         .collect();
 
     column()
@@ -443,11 +451,7 @@ fn review_card(review: &Review, i: usize, t: &AppTheme) -> View {
                 .id(&format!("rhdr-{i}"))
                 .spacing(8.0)
                 .align_y(Align::Center)
-                .child(
-                    text(&stars)
-                        .id(&format!("rstars-{i}"))
-                        .color(Color::gold()),
-                )
+                .child(text(&stars).id(&format!("rstars-{i}")).color(Color::gold()))
                 .child(
                     text(&review.user)
                         .id(&format!("rname-{i}"))

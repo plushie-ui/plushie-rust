@@ -17,9 +17,9 @@
 //! );
 //! ```
 
+use super::{PropMap, PropValue};
 use crate::View;
 use crate::types::*;
-use super::{PropMap, PropValue};
 
 // ---------------------------------------------------------------------------
 // WindowBuilder
@@ -61,17 +61,29 @@ impl WindowBuilder {
     }
 
     pub fn position(mut self, x: f32, y: f32) -> Self {
-        super::set_prop(&mut self.props, "position", PropValue::Array(vec![PropValue::F64(x as f64), PropValue::F64(y as f64)]));
+        super::set_prop(
+            &mut self.props,
+            "position",
+            PropValue::Array(vec![PropValue::F64(x as f64), PropValue::F64(y as f64)]),
+        );
         self
     }
 
     pub fn min_size(mut self, w: f32, h: f32) -> Self {
-        super::set_prop(&mut self.props, "min_size", PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]));
+        super::set_prop(
+            &mut self.props,
+            "min_size",
+            PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]),
+        );
         self
     }
 
     pub fn max_size(mut self, w: f32, h: f32) -> Self {
-        super::set_prop(&mut self.props, "max_size", PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]));
+        super::set_prop(
+            &mut self.props,
+            "max_size",
+            PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]),
+        );
         self
     }
 
@@ -148,7 +160,11 @@ impl WindowBuilder {
 
     /// Initial window size as `(width, height)` in pixels.
     pub fn size(mut self, w: f32, h: f32) -> Self {
-        super::set_prop(&mut self.props, "size", PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]));
+        super::set_prop(
+            &mut self.props,
+            "size",
+            PropValue::Array(vec![PropValue::F64(w as f64), PropValue::F64(h as f64)]),
+        );
         self
     }
 
@@ -217,7 +233,11 @@ impl ColumnBuilder {
     }
 
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
-        super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into()));
+        super::set_prop(
+            &mut self.props,
+            "padding",
+            super::padding_to_value(p.into()),
+        );
         self
     }
 
@@ -316,7 +336,11 @@ impl RowBuilder {
     }
 
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
-        super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into()));
+        super::set_prop(
+            &mut self.props,
+            "padding",
+            super::padding_to_value(p.into()),
+        );
         self
     }
 
@@ -415,7 +439,11 @@ impl ContainerBuilder {
     }
 
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
-        super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into()));
+        super::set_prop(
+            &mut self.props,
+            "padding",
+            super::padding_to_value(p.into()),
+        );
         self
     }
 
@@ -644,13 +672,21 @@ impl GridBuilder {
 
     /// Width of each column.
     pub fn column_width(mut self, w: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "column_width", super::length_to_value(w.into()));
+        super::set_prop(
+            &mut self.props,
+            "column_width",
+            super::length_to_value(w.into()),
+        );
         self
     }
 
     /// Height of each row.
     pub fn row_height(mut self, h: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "row_height", super::length_to_value(h.into()));
+        super::set_prop(
+            &mut self.props,
+            "row_height",
+            super::length_to_value(h.into()),
+        );
         self
     }
 
@@ -794,7 +830,11 @@ impl KeyedColumnBuilder {
     }
 
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
-        super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into()));
+        super::set_prop(
+            &mut self.props,
+            "padding",
+            super::padding_to_value(p.into()),
+        );
         self
     }
 
@@ -1156,7 +1196,10 @@ impl PaneGridBuilder {
 
     /// List of pane identifiers in this grid.
     pub fn panes(mut self, pane_ids: &[&str]) -> Self {
-        let ids: Vec<PropValue> = pane_ids.iter().map(|s| PropValue::Str(s.to_string())).collect();
+        let ids: Vec<PropValue> = pane_ids
+            .iter()
+            .map(|s| PropValue::Str(s.to_string()))
+            .collect();
         super::set_prop(&mut self.props, "panes", PropValue::Array(ids));
         self
     }

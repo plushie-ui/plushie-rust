@@ -33,7 +33,9 @@ impl plushie_renderer_lib::EffectHandler for DirectEffectHandler {
         &self,
         id: String,
         request: plushie_core::ops::EffectRequest,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = plushie_widget_sdk::protocol::EffectResponse> + Send>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = plushie_widget_sdk::protocol::EffectResponse> + Send>,
+    > {
         use plushie_widget_sdk::protocol::EffectResponse;
         let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
         let kind = kind.to_string();
@@ -49,12 +51,13 @@ impl plushie_renderer_lib::EffectHandler for DirectEffectHandler {
 
     fn is_async(&self, request: &plushie_core::ops::EffectRequest) -> bool {
         use plushie_core::ops::EffectRequest;
-        matches!(request,
+        matches!(
+            request,
             EffectRequest::FileOpen(_)
-            | EffectRequest::FileOpenMultiple(_)
-            | EffectRequest::FileSave(_)
-            | EffectRequest::DirectorySelect(_)
-            | EffectRequest::DirectorySelectMultiple(_)
+                | EffectRequest::FileOpenMultiple(_)
+                | EffectRequest::FileSave(_)
+                | EffectRequest::DirectorySelect(_)
+                | EffectRequest::DirectorySelectMultiple(_)
         )
     }
 }
@@ -79,7 +82,9 @@ fn dispatch_sync(kind: &str, payload: &Value) -> (String, Value) {
         "file_open_multiple" => file_dialog_sync(payload, "Open Files", DialogKind::OpenMultiple),
         "file_save" => file_dialog_sync(payload, "Save File", DialogKind::Save),
         "directory_select" => file_dialog_sync(payload, "Select Directory", DialogKind::PickFolder),
-        "directory_select_multiple" => file_dialog_sync(payload, "Select Directories", DialogKind::PickFolders),
+        "directory_select_multiple" => {
+            file_dialog_sync(payload, "Select Directories", DialogKind::PickFolders)
+        }
         _ => ("unsupported".to_string(), json!(null)),
     }
 }
@@ -92,10 +97,16 @@ fn dispatch_sync(kind: &str, payload: &Value) -> (String, Value) {
 async fn dispatch_async(kind: &str, payload: &Value) -> (String, Value) {
     match kind {
         "file_open" => file_dialog_async(payload, "Open File", DialogKind::OpenFile).await,
-        "file_open_multiple" => file_dialog_async(payload, "Open Files", DialogKind::OpenMultiple).await,
+        "file_open_multiple" => {
+            file_dialog_async(payload, "Open Files", DialogKind::OpenMultiple).await
+        }
         "file_save" => file_dialog_async(payload, "Save File", DialogKind::Save).await,
-        "directory_select" => file_dialog_async(payload, "Select Directory", DialogKind::PickFolder).await,
-        "directory_select_multiple" => file_dialog_async(payload, "Select Directories", DialogKind::PickFolders).await,
+        "directory_select" => {
+            file_dialog_async(payload, "Select Directory", DialogKind::PickFolder).await
+        }
+        "directory_select_multiple" => {
+            file_dialog_async(payload, "Select Directories", DialogKind::PickFolders).await
+        }
         _ => ("unsupported".to_string(), json!(null)),
     }
 }
@@ -105,11 +116,20 @@ async fn dispatch_async(kind: &str, payload: &Value) -> (String, Value) {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "direct")]
-enum DialogKind { OpenFile, OpenMultiple, Save, PickFolder, PickFolders }
+enum DialogKind {
+    OpenFile,
+    OpenMultiple,
+    Save,
+    PickFolder,
+    PickFolders,
+}
 
 #[cfg(feature = "direct")]
 fn apply_params(dialog: rfd::FileDialog, payload: &Value, default_title: &str) -> rfd::FileDialog {
-    let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or(default_title);
+    let title = payload
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default_title);
     let mut d = dialog.set_title(title);
     if let Some(dir) = payload.get("directory").and_then(|v| v.as_str()) {
         d = d.set_directory(dir);
@@ -123,7 +143,10 @@ fn apply_params(dialog: rfd::FileDialog, payload: &Value, default_title: &str) -
                 && pair.len() >= 2
                 && let (Some(name), Some(ext)) = (pair[0].as_str(), pair[1].as_str())
             {
-                let extensions: Vec<&str> = ext.split(';').map(|e| e.trim().trim_start_matches("*.")).collect();
+                let extensions: Vec<&str> = ext
+                    .split(';')
+                    .map(|e| e.trim().trim_start_matches("*."))
+                    .collect();
                 d = d.add_filter(name, &extensions);
             }
         }
@@ -132,8 +155,15 @@ fn apply_params(dialog: rfd::FileDialog, payload: &Value, default_title: &str) -
 }
 
 #[cfg(feature = "direct")]
-fn apply_params_async(dialog: rfd::AsyncFileDialog, payload: &Value, default_title: &str) -> rfd::AsyncFileDialog {
-    let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or(default_title);
+fn apply_params_async(
+    dialog: rfd::AsyncFileDialog,
+    payload: &Value,
+    default_title: &str,
+) -> rfd::AsyncFileDialog {
+    let title = payload
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or(default_title);
     let mut d = dialog.set_title(title);
     if let Some(dir) = payload.get("directory").and_then(|v| v.as_str()) {
         d = d.set_directory(dir);
@@ -147,7 +177,10 @@ fn apply_params_async(dialog: rfd::AsyncFileDialog, payload: &Value, default_tit
                 && pair.len() >= 2
                 && let (Some(name), Some(ext)) = (pair[0].as_str(), pair[1].as_str())
             {
-                let extensions: Vec<&str> = ext.split(';').map(|e| e.trim().trim_start_matches("*.")).collect();
+                let extensions: Vec<&str> = ext
+                    .split(';')
+                    .map(|e| e.trim().trim_start_matches("*."))
+                    .collect();
                 d = d.add_filter(name, &extensions);
             }
         }
@@ -172,7 +205,10 @@ fn file_dialog_sync(payload: &Value, title: &str, kind: DialogKind) -> (String, 
             None => ("cancelled".into(), json!(null)),
         },
         DialogKind::OpenMultiple => match d.pick_files() {
-            Some(ps) => ("ok".into(), json!({"paths": ps.iter().map(|p| path_to_string(p)).collect::<Vec<_>>()})),
+            Some(ps) => (
+                "ok".into(),
+                json!({"paths": ps.iter().map(|p| path_to_string(p)).collect::<Vec<_>>()}),
+            ),
             None => ("cancelled".into(), json!(null)),
         },
         DialogKind::Save => match d.save_file() {
@@ -184,7 +220,10 @@ fn file_dialog_sync(payload: &Value, title: &str, kind: DialogKind) -> (String, 
             None => ("cancelled".into(), json!(null)),
         },
         DialogKind::PickFolders => match d.pick_folders() {
-            Some(ps) => ("ok".into(), json!({"paths": ps.iter().map(|p| path_to_string(p)).collect::<Vec<_>>()})),
+            Some(ps) => (
+                "ok".into(),
+                json!({"paths": ps.iter().map(|p| path_to_string(p)).collect::<Vec<_>>()}),
+            ),
             None => ("cancelled".into(), json!(null)),
         },
     }
@@ -199,7 +238,10 @@ async fn file_dialog_async(payload: &Value, title: &str, kind: DialogKind) -> (S
             None => ("cancelled".into(), json!(null)),
         },
         DialogKind::OpenMultiple => match d.pick_files().await {
-            Some(hs) => ("ok".into(), json!({"paths": hs.iter().map(|h| path_to_string(h.path())).collect::<Vec<_>>()})),
+            Some(hs) => (
+                "ok".into(),
+                json!({"paths": hs.iter().map(|h| path_to_string(h.path())).collect::<Vec<_>>()}),
+            ),
             None => ("cancelled".into(), json!(null)),
         },
         DialogKind::Save => match d.save_file().await {
@@ -211,7 +253,10 @@ async fn file_dialog_async(payload: &Value, title: &str, kind: DialogKind) -> (S
             None => ("cancelled".into(), json!(null)),
         },
         DialogKind::PickFolders => match d.pick_folders().await {
-            Some(hs) => ("ok".into(), json!({"paths": hs.iter().map(|h| path_to_string(h.path())).collect::<Vec<_>>()})),
+            Some(hs) => (
+                "ok".into(),
+                json!({"paths": hs.iter().map(|h| path_to_string(h.path())).collect::<Vec<_>>()}),
+            ),
             None => ("cancelled".into(), json!(null)),
         },
     }
@@ -230,7 +275,10 @@ fn with_clipboard(f: impl FnOnce(&mut arboard::Clipboard) -> (String, Value)) ->
     let clipboard = match guard.as_mut() {
         Some(c) => c,
         None => match arboard::Clipboard::new() {
-            Ok(c) => { *guard = Some(c); guard.as_mut().unwrap() }
+            Ok(c) => {
+                *guard = Some(c);
+                guard.as_mut().unwrap()
+            }
             Err(e) => return ("error".into(), json!(format!("clipboard init failed: {e}"))),
         },
     };
@@ -253,7 +301,10 @@ fn clipboard_write(payload: &Value) -> (String, Value) {
     let text = text.to_string();
     with_clipboard(|c| match c.set_text(text) {
         Ok(()) => ("ok".into(), json!(null)),
-        Err(e) => ("error".into(), json!(format!("clipboard write failed: {e}"))),
+        Err(e) => (
+            "error".into(),
+            json!(format!("clipboard write failed: {e}")),
+        ),
     })
 }
 
@@ -261,7 +312,10 @@ fn clipboard_write(payload: &Value) -> (String, Value) {
 fn clipboard_read_html() -> (String, Value) {
     with_clipboard(|c| match c.get().html() {
         Ok(html) => ("ok".into(), json!({"html": html})),
-        Err(e) => ("error".into(), json!(format!("clipboard read html failed: {e}"))),
+        Err(e) => (
+            "error".into(),
+            json!(format!("clipboard read html failed: {e}")),
+        ),
     })
 }
 
@@ -271,10 +325,16 @@ fn clipboard_write_html(payload: &Value) -> (String, Value) {
         return ("error".into(), json!("missing required field: html"));
     };
     let html = html.to_string();
-    let alt = payload.get("alt_text").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let alt = payload
+        .get("alt_text")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     with_clipboard(|c| match c.set_html(&html, alt.as_ref()) {
         Ok(()) => ("ok".into(), json!(null)),
-        Err(e) => ("error".into(), json!(format!("clipboard write html failed: {e}"))),
+        Err(e) => (
+            "error".into(),
+            json!(format!("clipboard write html failed: {e}")),
+        ),
     })
 }
 
@@ -282,37 +342,54 @@ fn clipboard_write_html(payload: &Value) -> (String, Value) {
 fn clipboard_clear() -> (String, Value) {
     with_clipboard(|c| match c.clear() {
         Ok(()) => ("ok".into(), json!(null)),
-        Err(e) => ("error".into(), json!(format!("clipboard clear failed: {e}"))),
+        Err(e) => (
+            "error".into(),
+            json!(format!("clipboard clear failed: {e}")),
+        ),
     })
 }
 
 #[cfg(all(feature = "direct", target_os = "linux"))]
 fn clipboard_read_primary() -> (String, Value) {
     use arboard::{GetExtLinux, LinuxClipboardKind};
-    with_clipboard(|c| match c.get().clipboard(LinuxClipboardKind::Primary).text() {
-        Ok(text) => ("ok".into(), json!({"text": text})),
-        Err(e) => ("error".into(), json!(format!("primary clipboard read failed: {e}"))),
-    })
+    with_clipboard(
+        |c| match c.get().clipboard(LinuxClipboardKind::Primary).text() {
+            Ok(text) => ("ok".into(), json!({"text": text})),
+            Err(e) => (
+                "error".into(),
+                json!(format!("primary clipboard read failed: {e}")),
+            ),
+        },
+    )
 }
 
 #[cfg(all(feature = "direct", target_os = "linux"))]
 fn clipboard_write_primary(payload: &Value) -> (String, Value) {
-    use arboard::{SetExtLinux, LinuxClipboardKind};
+    use arboard::{LinuxClipboardKind, SetExtLinux};
     let Some(text) = payload.get("text").and_then(|v| v.as_str()) else {
         return ("error".into(), json!("missing required field: text"));
     };
     let text = text.to_string();
-    with_clipboard(|c| match c.set().clipboard(LinuxClipboardKind::Primary).text(text) {
-        Ok(()) => ("ok".into(), json!(null)),
-        Err(e) => ("error".into(), json!(format!("primary clipboard write failed: {e}"))),
-    })
+    with_clipboard(
+        |c| match c.set().clipboard(LinuxClipboardKind::Primary).text(text) {
+            Ok(()) => ("ok".into(), json!(null)),
+            Err(e) => (
+                "error".into(),
+                json!(format!("primary clipboard write failed: {e}")),
+            ),
+        },
+    )
 }
 
 #[cfg(all(feature = "direct", not(target_os = "linux")))]
-fn clipboard_read_primary() -> (String, Value) { clipboard_read() }
+fn clipboard_read_primary() -> (String, Value) {
+    clipboard_read()
+}
 
 #[cfg(all(feature = "direct", not(target_os = "linux")))]
-fn clipboard_write_primary(payload: &Value) -> (String, Value) { clipboard_write(payload) }
+fn clipboard_write_primary(payload: &Value) -> (String, Value) {
+    clipboard_write(payload)
+}
 
 // ---------------------------------------------------------------------------
 // Notifications (notify-rust)
@@ -320,15 +397,22 @@ fn clipboard_write_primary(payload: &Value) -> (String, Value) { clipboard_write
 
 #[cfg(feature = "direct")]
 fn notification(payload: &Value) -> (String, Value) {
-    let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("Plushie");
+    let title = payload
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Plushie");
     let body = payload.get("body").and_then(|v| v.as_str()).unwrap_or("");
 
     let mut n = notify_rust::Notification::new();
     n.summary(title).body(body);
 
-    if let Some(icon) = payload.get("icon").and_then(|v| v.as_str()) { n.icon(icon); }
+    if let Some(icon) = payload.get("icon").and_then(|v| v.as_str()) {
+        n.icon(icon);
+    }
     if let Some(ms) = payload.get("timeout").and_then(|v| v.as_u64()) {
-        n.timeout(notify_rust::Timeout::Milliseconds(ms.min(u32::MAX as u64) as u32));
+        n.timeout(notify_rust::Timeout::Milliseconds(
+            ms.min(u32::MAX as u64) as u32
+        ));
     }
     #[cfg(target_os = "linux")]
     if let Some(urgency) = payload.get("urgency").and_then(|v| v.as_str()) {
@@ -338,7 +422,9 @@ fn notification(payload: &Value) -> (String, Value) {
             _ => notify_rust::Urgency::Normal,
         });
     }
-    if let Some(sound) = payload.get("sound").and_then(|v| v.as_str()) { n.sound_name(sound); }
+    if let Some(sound) = payload.get("sound").and_then(|v| v.as_str()) {
+        n.sound_name(sound);
+    }
 
     match n.show() {
         Ok(_) => ("ok".into(), json!(null)),

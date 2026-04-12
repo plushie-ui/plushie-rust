@@ -76,16 +76,38 @@ impl<T: PlushieType> Transition<T> {
     }
 
     /// Set the target value.
-    pub fn to(mut self, v: impl Into<T>) -> Self { self.to = v.into(); self }
-    pub fn easing(mut self, e: Easing) -> Self { self.easing = e; self }
-    pub fn delay(mut self, ms: u64) -> Self { self.delay = ms; self }
-    pub fn from(mut self, v: impl Into<T>) -> Self {
-        self.from = Some(v.into()); self
+    pub fn to(mut self, v: impl Into<T>) -> Self {
+        self.to = v.into();
+        self
     }
-    pub fn repeat(mut self, n: u32) -> Self { self.repeat = Some(Repeat::Times(n)); self }
-    pub fn repeat_forever(mut self) -> Self { self.repeat = Some(Repeat::Forever); self }
-    pub fn auto_reverse(mut self, v: bool) -> Self { self.auto_reverse = v; self }
-    pub fn on_complete(mut self, tag: &str) -> Self { self.on_complete = Some(tag.into()); self }
+    pub fn easing(mut self, e: Easing) -> Self {
+        self.easing = e;
+        self
+    }
+    pub fn delay(mut self, ms: u64) -> Self {
+        self.delay = ms;
+        self
+    }
+    pub fn from(mut self, v: impl Into<T>) -> Self {
+        self.from = Some(v.into());
+        self
+    }
+    pub fn repeat(mut self, n: u32) -> Self {
+        self.repeat = Some(Repeat::Times(n));
+        self
+    }
+    pub fn repeat_forever(mut self) -> Self {
+        self.repeat = Some(Repeat::Forever);
+        self
+    }
+    pub fn auto_reverse(mut self, v: bool) -> Self {
+        self.auto_reverse = v;
+        self
+    }
+    pub fn on_complete(mut self, tag: &str) -> Self {
+        self.on_complete = Some(tag.into());
+        self
+    }
 
     /// Create a looping transition (repeat forever, auto-reverse).
     pub fn looping(duration_ms: u64, to: impl Into<T>) -> Self {
@@ -227,28 +249,57 @@ impl<T: PlushieType> Spring<T> {
     }
 
     /// Set the target value.
-    pub fn to(mut self, v: impl Into<T>) -> Self { self.to = v.into(); self }
-    pub fn stiffness(mut self, s: f64) -> Self { self.stiffness = s; self }
-    pub fn damping(mut self, d: f64) -> Self { self.damping = d; self }
-    pub fn mass(mut self, m: f64) -> Self { self.mass = m; self }
-    pub fn velocity(mut self, v: f64) -> Self { self.velocity = v; self }
-    pub fn from(mut self, v: impl Into<T>) -> Self {
-        self.from = Some(v.into()); self
+    pub fn to(mut self, v: impl Into<T>) -> Self {
+        self.to = v.into();
+        self
     }
-    pub fn on_complete(mut self, tag: &str) -> Self { self.on_complete = Some(tag.into()); self }
+    pub fn stiffness(mut self, s: f64) -> Self {
+        self.stiffness = s;
+        self
+    }
+    pub fn damping(mut self, d: f64) -> Self {
+        self.damping = d;
+        self
+    }
+    pub fn mass(mut self, m: f64) -> Self {
+        self.mass = m;
+        self
+    }
+    pub fn velocity(mut self, v: f64) -> Self {
+        self.velocity = v;
+        self
+    }
+    pub fn from(mut self, v: impl Into<T>) -> Self {
+        self.from = Some(v.into());
+        self
+    }
+    pub fn on_complete(mut self, tag: &str) -> Self {
+        self.on_complete = Some(tag.into());
+        self
+    }
 
     // Named presets matching the Elixir SDK.
 
     /// Slow, smooth, no overshoot.
-    pub fn gentle(to: impl Into<T>) -> Self { Self::new(to).stiffness(120.0).damping(14.0) }
+    pub fn gentle(to: impl Into<T>) -> Self {
+        Self::new(to).stiffness(120.0).damping(14.0)
+    }
     /// Quick with visible overshoot.
-    pub fn bouncy(to: impl Into<T>) -> Self { Self::new(to).stiffness(300.0).damping(10.0) }
+    pub fn bouncy(to: impl Into<T>) -> Self {
+        Self::new(to).stiffness(300.0).damping(10.0)
+    }
     /// Very quick, crisp stop.
-    pub fn stiff(to: impl Into<T>) -> Self { Self::new(to).stiffness(400.0).damping(30.0) }
+    pub fn stiff(to: impl Into<T>) -> Self {
+        Self::new(to).stiffness(400.0).damping(30.0)
+    }
     /// Quick, minimal overshoot.
-    pub fn snappy(to: impl Into<T>) -> Self { Self::new(to).stiffness(200.0).damping(20.0) }
+    pub fn snappy(to: impl Into<T>) -> Self {
+        Self::new(to).stiffness(200.0).damping(20.0)
+    }
     /// Slow, heavy, deliberate.
-    pub fn molasses(to: impl Into<T>) -> Self { Self::new(to).stiffness(60.0).damping(12.0) }
+    pub fn molasses(to: impl Into<T>) -> Self {
+        Self::new(to).stiffness(60.0).damping(12.0)
+    }
 }
 
 impl<T: PlushieType> PlushieType for Spring<T> {
@@ -261,14 +312,8 @@ impl<T: PlushieType> PlushieType for Spring<T> {
         let to = T::wire_decode(to_val)?;
         let stiffness = obj.get("stiffness")?.as_f64()?;
         let damping = obj.get("damping")?.as_f64()?;
-        let mass = obj
-            .get("mass")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let velocity = obj
-            .get("velocity")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+        let mass = obj.get("mass").and_then(|v| v.as_f64()).unwrap_or(1.0);
+        let velocity = obj.get("velocity").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let from = obj.get("from").and_then(T::wire_decode);
         let on_complete = obj
             .get("on_complete")
@@ -359,7 +404,10 @@ impl<T: PlushieType> PlushieType for AnimationStep<T> {
 
 impl<T: PlushieType> Sequence<T> {
     pub fn new(steps: Vec<AnimationStep<T>>) -> Self {
-        Self { steps, on_complete: None }
+        Self {
+            steps,
+            on_complete: None,
+        }
     }
 
     pub fn on_complete(mut self, tag: &str) -> Self {
@@ -403,11 +451,15 @@ impl<T: PlushieType> PlushieType for Sequence<T> {
 }
 
 impl<T: PlushieType> From<Transition<T>> for AnimationStep<T> {
-    fn from(t: Transition<T>) -> Self { AnimationStep::Transition(t) }
+    fn from(t: Transition<T>) -> Self {
+        AnimationStep::Transition(t)
+    }
 }
 
 impl<T: PlushieType> From<Spring<T>> for AnimationStep<T> {
-    fn from(s: Spring<T>) -> Self { AnimationStep::Spring(s) }
+    fn from(s: Spring<T>) -> Self {
+        AnimationStep::Spring(s)
+    }
 }
 
 #[cfg(test)]
@@ -566,10 +618,7 @@ mod tests {
             .from(Color::hex("#0000ff"))
             .easing(Easing::EaseOut);
         let encoded = t.wire_encode();
-        let decoded = Transition::<Color>::wire_decode(
-            &serde_json::Value::from(encoded),
-        )
-        .unwrap();
+        let decoded = Transition::<Color>::wire_decode(&serde_json::Value::from(encoded)).unwrap();
         assert_eq!(decoded.to.as_hex(), "#ff0000");
         assert_eq!(decoded.from.unwrap().as_hex(), "#0000ff");
         assert_eq!(decoded.duration, 300);
@@ -582,8 +631,7 @@ mod tests {
             .stiffness(200.0)
             .damping(15.0);
         let encoded = s.wire_encode();
-        let decoded =
-            Spring::<Color>::wire_decode(&serde_json::Value::from(encoded)).unwrap();
+        let decoded = Spring::<Color>::wire_decode(&serde_json::Value::from(encoded)).unwrap();
         assert_eq!(decoded.to.as_hex(), "#00ff00");
         assert_eq!(decoded.stiffness, 200.0);
     }

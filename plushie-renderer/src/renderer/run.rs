@@ -149,10 +149,7 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
     // the codec. Use a channel writer to avoid blocking the event loop.
     let writer = writer_opt.take().expect("writer consumed by headless path");
     let channel_writer = crate::output::spawn_writer_thread(writer);
-    let sink = plushie_renderer_lib::WriterSink::new(
-        Box::new(channel_writer),
-        codec,
-    );
+    let sink = plushie_renderer_lib::WriterSink::new(Box::new(channel_writer), codec);
     plushie_renderer_lib::emitters::init_sink(Box::new(sink));
 
     let ext_key_refs: Vec<&str> = ext_keys.iter().map(|s| s.as_str()).collect();

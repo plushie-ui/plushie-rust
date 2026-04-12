@@ -116,7 +116,7 @@ impl PlushieType for Easing {
 }
 
 impl Easing {
-    fn to_snake_case(&self) -> &'static str {
+    fn to_snake_case(self) -> &'static str {
         match self {
             Self::Linear => "linear",
             Self::EaseIn => "ease_in",

@@ -47,19 +47,20 @@ impl Bridge {
 
     /// Send a JSON message to the renderer's stdin.
     pub fn send(&mut self, message: &Value) -> io::Result<()> {
-        let stdin = self.child.stdin.as_mut()
+        let stdin = self
+            .child
+            .stdin
+            .as_mut()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdin closed"))?;
 
         match self.codec {
             Codec::Json => {
-                let json = serde_json::to_string(message)
-                    .map_err(io::Error::other)?;
+                let json = serde_json::to_string(message).map_err(io::Error::other)?;
                 writeln!(stdin, "{json}")?;
                 stdin.flush()?;
             }
             Codec::MsgPack => {
-                let bytes = rmp_serde::to_vec(message)
-                    .map_err(io::Error::other)?;
+                let bytes = rmp_serde::to_vec(message).map_err(io::Error::other)?;
                 let len = (bytes.len() as u32).to_be_bytes();
                 stdin.write_all(&len)?;
                 stdin.write_all(&bytes)?;
@@ -180,12 +181,7 @@ impl Bridge {
     }
 
     /// Send an effect request.
-    pub fn send_effect(
-        &mut self,
-        id: &str,
-        kind: &str,
-        payload: &Value,
-    ) -> io::Result<()> {
+    pub fn send_effect(&mut self, id: &str, kind: &str, payload: &Value) -> io::Result<()> {
         let msg = serde_json::json!({
             "type": "effect",
             "session": "",
@@ -198,7 +194,10 @@ impl Bridge {
 
     /// Read the next message from the renderer's stdout.
     pub fn receive(&mut self) -> io::Result<Value> {
-        let stdout = self.child.stdout.as_mut()
+        let stdout = self
+            .child
+            .stdout
+            .as_mut()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout closed"))?;
 
         match self.codec {
@@ -207,7 +206,10 @@ impl Bridge {
                 let mut line = String::new();
                 reader.read_line(&mut line)?;
                 if line.is_empty() {
-                    return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "renderer closed"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "renderer closed",
+                    ));
                 }
                 serde_json::from_str(&line).map_err(io::Error::other)
             }

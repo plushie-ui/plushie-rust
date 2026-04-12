@@ -36,7 +36,10 @@ pub enum PropValue {
 
 impl PropValue {
     pub fn as_str(&self) -> Option<&str> {
-        match self { Self::Str(s) => Some(s), _ => None }
+        match self {
+            Self::Str(s) => Some(s),
+            _ => None,
+        }
     }
 
     pub fn as_f64(&self) -> Option<f64> {
@@ -49,7 +52,10 @@ impl PropValue {
     }
 
     pub fn as_bool(&self) -> Option<bool> {
-        match self { Self::Bool(v) => Some(*v), _ => None }
+        match self {
+            Self::Bool(v) => Some(*v),
+            _ => None,
+        }
     }
 
     pub fn as_i64(&self) -> Option<i64> {
@@ -71,11 +77,17 @@ impl PropValue {
     }
 
     pub fn as_array(&self) -> Option<&[PropValue]> {
-        match self { Self::Array(a) => Some(a), _ => None }
+        match self {
+            Self::Array(a) => Some(a),
+            _ => None,
+        }
     }
 
     pub fn as_object(&self) -> Option<&PropMap> {
-        match self { Self::Object(m) => Some(m), _ => None }
+        match self {
+            Self::Object(m) => Some(m),
+            _ => None,
+        }
     }
 
     pub fn is_null(&self) -> bool {
@@ -85,31 +97,49 @@ impl PropValue {
 
 // From impls for ergonomic construction.
 impl From<bool> for PropValue {
-    fn from(v: bool) -> Self { Self::Bool(v) }
+    fn from(v: bool) -> Self {
+        Self::Bool(v)
+    }
 }
 impl From<f32> for PropValue {
-    fn from(v: f32) -> Self { Self::F64(v as f64) }
+    fn from(v: f32) -> Self {
+        Self::F64(v as f64)
+    }
 }
 impl From<f64> for PropValue {
-    fn from(v: f64) -> Self { Self::F64(v) }
+    fn from(v: f64) -> Self {
+        Self::F64(v)
+    }
 }
 impl From<i32> for PropValue {
-    fn from(v: i32) -> Self { Self::I64(v as i64) }
+    fn from(v: i32) -> Self {
+        Self::I64(v as i64)
+    }
 }
 impl From<i64> for PropValue {
-    fn from(v: i64) -> Self { Self::I64(v) }
+    fn from(v: i64) -> Self {
+        Self::I64(v)
+    }
 }
 impl From<u32> for PropValue {
-    fn from(v: u32) -> Self { Self::U64(v as u64) }
+    fn from(v: u32) -> Self {
+        Self::U64(v as u64)
+    }
 }
 impl From<u64> for PropValue {
-    fn from(v: u64) -> Self { Self::U64(v) }
+    fn from(v: u64) -> Self {
+        Self::U64(v)
+    }
 }
 impl From<&str> for PropValue {
-    fn from(v: &str) -> Self { Self::Str(v.to_string()) }
+    fn from(v: &str) -> Self {
+        Self::Str(v.to_string())
+    }
 }
 impl From<String> for PropValue {
-    fn from(v: String) -> Self { Self::Str(v) }
+    fn from(v: String) -> Self {
+        Self::Str(v)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -122,9 +152,13 @@ impl From<Value> for PropValue {
             Value::Null => Self::Null,
             Value::Bool(b) => Self::Bool(b),
             Value::Number(n) => {
-                if let Some(i) = n.as_i64() { Self::I64(i) }
-                else if let Some(u) = n.as_u64() { Self::U64(u) }
-                else { Self::F64(n.as_f64().unwrap_or(0.0)) }
+                if let Some(i) = n.as_i64() {
+                    Self::I64(i)
+                } else if let Some(u) = n.as_u64() {
+                    Self::U64(u)
+                } else {
+                    Self::F64(n.as_f64().unwrap_or(0.0))
+                }
             }
             Value::String(s) => Self::Str(s),
             Value::Array(arr) => Self::Array(arr.into_iter().map(PropValue::from).collect()),
@@ -161,7 +195,9 @@ pub struct PropMap(Vec<(String, PropValue)>);
 
 impl PartialEq for PropMap {
     fn eq(&self, other: &Self) -> bool {
-        if self.0.len() != other.0.len() { return false; }
+        if self.0.len() != other.0.len() {
+            return false;
+        }
         self.0.iter().all(|(k, v)| other.get(k) == Some(v))
     }
 }
@@ -208,8 +244,12 @@ impl PropMap {
         self.0.iter().any(|(k, _)| k == key)
     }
 
-    pub fn is_empty(&self) -> bool { self.0.is_empty() }
-    pub fn len(&self) -> usize { self.0.len() }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 
     /// Iterate over (key, value) pairs.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &PropValue)> {
@@ -223,12 +263,19 @@ impl PropMap {
 
     /// Convert from a serde_json Map.
     pub fn from_json_map(map: serde_json::Map<String, Value>) -> Self {
-        Self(map.into_iter().map(|(k, v)| (k, PropValue::from(v))).collect())
+        Self(
+            map.into_iter()
+                .map(|(k, v)| (k, PropValue::from(v)))
+                .collect(),
+        )
     }
 
     /// Convert to a serde_json Map.
     pub fn into_json_map(self) -> serde_json::Map<String, Value> {
-        self.0.into_iter().map(|(k, v)| (k, Value::from(v))).collect()
+        self.0
+            .into_iter()
+            .map(|(k, v)| (k, Value::from(v)))
+            .collect()
     }
 }
 
@@ -328,12 +375,18 @@ impl Props {
     /// Returns None for Typed props. Prefer `as_value_cow()` for
     /// code that needs to work with both variants.
     pub fn as_object(&self) -> Option<&serde_json::Map<String, Value>> {
-        match self { Self::Wire(v) => v.as_object(), Self::Typed(_) => None }
+        match self {
+            Self::Wire(v) => v.as_object(),
+            Self::Typed(_) => None,
+        }
     }
 
     /// Mutable access to the JSON object map (Wire variant only).
     pub fn as_object_mut(&mut self) -> Option<&mut serde_json::Map<String, Value>> {
-        match self { Self::Wire(v) => v.as_object_mut(), Self::Typed(_) => None }
+        match self {
+            Self::Wire(v) => v.as_object_mut(),
+            Self::Typed(_) => None,
+        }
     }
 
     /// Get a raw Value ref by key (Wire variant only).
@@ -361,7 +414,10 @@ impl Props {
 
     /// Access the typed PropMap (Typed only).
     pub fn as_prop_map(&self) -> Option<&PropMap> {
-        match self { Self::Typed(m) => Some(m), Self::Wire(_) => None }
+        match self {
+            Self::Typed(m) => Some(m),
+            Self::Wire(_) => None,
+        }
     }
 
     /// Convert to a serde_json::Value (for wire serialization).
@@ -404,11 +460,15 @@ impl PartialEq for Props {
 }
 
 impl From<PropMap> for Props {
-    fn from(map: PropMap) -> Self { Self::Typed(map) }
+    fn from(map: PropMap) -> Self {
+        Self::Typed(map)
+    }
 }
 
 impl From<Value> for Props {
-    fn from(v: Value) -> Self { Self::Wire(v) }
+    fn from(v: Value) -> Self {
+        Self::Wire(v)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -511,10 +571,10 @@ mod tests {
         map.insert("text", "hello");
         map.insert("num", 42.0f64);
         map.insert("flag", true);
-        map.insert("items", PropValue::Array(vec![
-            PropValue::from(1.0f64),
-            PropValue::from(2.0f64),
-        ]));
+        map.insert(
+            "items",
+            PropValue::Array(vec![PropValue::from(1.0f64), PropValue::from(2.0f64)]),
+        );
 
         let json_map = map.clone().into_json_map();
         let round_tripped = PropMap::from_json_map(json_map);

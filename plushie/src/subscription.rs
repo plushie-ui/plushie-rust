@@ -98,43 +98,81 @@ impl Subscription {
     }
 
     /// Delivers [`KeyEvent`](crate::event::KeyEvent) on key press.
-    pub fn on_key_press() -> Self { Self::renderer(SubscriptionKind::OnKeyPress) }
+    pub fn on_key_press() -> Self {
+        Self::renderer(SubscriptionKind::OnKeyPress)
+    }
     /// Delivers [`KeyEvent`](crate::event::KeyEvent) on key release.
-    pub fn on_key_release() -> Self { Self::renderer(SubscriptionKind::OnKeyRelease) }
+    pub fn on_key_release() -> Self {
+        Self::renderer(SubscriptionKind::OnKeyRelease)
+    }
     /// Delivers [`ModifiersEvent`](crate::event::ModifiersEvent) when modifier keys change.
-    pub fn on_modifiers_changed() -> Self { Self::renderer(SubscriptionKind::OnModifiersChanged) }
+    pub fn on_modifiers_changed() -> Self {
+        Self::renderer(SubscriptionKind::OnModifiersChanged)
+    }
     /// Delivers [`WindowEvent`](crate::event::WindowEvent) when a window close is requested.
-    pub fn on_window_close() -> Self { Self::renderer(SubscriptionKind::OnWindowClose) }
+    pub fn on_window_close() -> Self {
+        Self::renderer(SubscriptionKind::OnWindowClose)
+    }
     /// Delivers [`WindowEvent`](crate::event::WindowEvent) for all window lifecycle events.
-    pub fn on_window_event() -> Self { Self::renderer(SubscriptionKind::OnWindowEvent) }
+    pub fn on_window_event() -> Self {
+        Self::renderer(SubscriptionKind::OnWindowEvent)
+    }
     /// Delivers [`WindowEvent`](crate::event::WindowEvent) when a window opens.
-    pub fn on_window_open() -> Self { Self::renderer(SubscriptionKind::OnWindowOpen) }
+    pub fn on_window_open() -> Self {
+        Self::renderer(SubscriptionKind::OnWindowOpen)
+    }
     /// Delivers [`WindowEvent`](crate::event::WindowEvent) when a window is resized.
-    pub fn on_window_resize() -> Self { Self::renderer(SubscriptionKind::OnWindowResize) }
+    pub fn on_window_resize() -> Self {
+        Self::renderer(SubscriptionKind::OnWindowResize)
+    }
     /// Delivers [`WindowEvent`](crate::event::WindowEvent) when a window gains focus.
-    pub fn on_window_focus() -> Self { Self::renderer(SubscriptionKind::OnWindowFocus) }
+    pub fn on_window_focus() -> Self {
+        Self::renderer(SubscriptionKind::OnWindowFocus)
+    }
     /// Delivers [`WindowEvent`](crate::event::WindowEvent) when a window loses focus.
-    pub fn on_window_unfocus() -> Self { Self::renderer(SubscriptionKind::OnWindowUnfocus) }
+    pub fn on_window_unfocus() -> Self {
+        Self::renderer(SubscriptionKind::OnWindowUnfocus)
+    }
     /// Delivers [`WindowEvent`](crate::event::WindowEvent) when a window is moved.
-    pub fn on_window_move() -> Self { Self::renderer(SubscriptionKind::OnWindowMove) }
+    pub fn on_window_move() -> Self {
+        Self::renderer(SubscriptionKind::OnWindowMove)
+    }
     /// Delivers [`WidgetEvent`](crate::event::WidgetEvent) on pointer/mouse movement.
-    pub fn on_pointer_move() -> Self { Self::renderer(SubscriptionKind::OnPointerMove) }
+    pub fn on_pointer_move() -> Self {
+        Self::renderer(SubscriptionKind::OnPointerMove)
+    }
     /// Delivers [`WidgetEvent`](crate::event::WidgetEvent) on pointer/mouse button press or release.
-    pub fn on_pointer_button() -> Self { Self::renderer(SubscriptionKind::OnPointerButton) }
+    pub fn on_pointer_button() -> Self {
+        Self::renderer(SubscriptionKind::OnPointerButton)
+    }
     /// Delivers [`WidgetEvent`](crate::event::WidgetEvent) on pointer/mouse scroll.
-    pub fn on_pointer_scroll() -> Self { Self::renderer(SubscriptionKind::OnPointerScroll) }
+    pub fn on_pointer_scroll() -> Self {
+        Self::renderer(SubscriptionKind::OnPointerScroll)
+    }
     /// Delivers [`WidgetEvent`](crate::event::WidgetEvent) on touch input.
-    pub fn on_pointer_touch() -> Self { Self::renderer(SubscriptionKind::OnPointerTouch) }
+    pub fn on_pointer_touch() -> Self {
+        Self::renderer(SubscriptionKind::OnPointerTouch)
+    }
     /// Delivers [`ImeEvent`](crate::event::ImeEvent) for input method editor events.
-    pub fn on_ime() -> Self { Self::renderer(SubscriptionKind::OnIme) }
+    pub fn on_ime() -> Self {
+        Self::renderer(SubscriptionKind::OnIme)
+    }
     /// Delivers [`SystemEvent`](crate::event::SystemEvent) when the OS theme changes.
-    pub fn on_theme_change() -> Self { Self::renderer(SubscriptionKind::OnThemeChange) }
+    pub fn on_theme_change() -> Self {
+        Self::renderer(SubscriptionKind::OnThemeChange)
+    }
     /// Delivers [`SystemEvent`](crate::event::SystemEvent) on each animation frame.
-    pub fn on_animation_frame() -> Self { Self::renderer(SubscriptionKind::OnAnimationFrame) }
+    pub fn on_animation_frame() -> Self {
+        Self::renderer(SubscriptionKind::OnAnimationFrame)
+    }
     /// Delivers [`WindowEvent`](crate::event::WindowEvent) when files are dropped on a window.
-    pub fn on_file_drop() -> Self { Self::renderer(SubscriptionKind::OnFileDrop) }
+    pub fn on_file_drop() -> Self {
+        Self::renderer(SubscriptionKind::OnFileDrop)
+    }
     /// Delivers all renderer events (catch-all subscription).
-    pub fn on_event() -> Self { Self::renderer(SubscriptionKind::OnEvent) }
+    pub fn on_event() -> Self {
+        Self::renderer(SubscriptionKind::OnEvent)
+    }
 
     /// Scope this subscription to a specific window.
     pub fn for_window(mut self, window_id: &str) -> Self {
@@ -178,5 +216,4 @@ impl Subscription {
     pub(crate) fn diff_key(&self) -> (&str, &str) {
         (self.wire_kind(), &self.tag)
     }
-
 }

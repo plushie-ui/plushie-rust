@@ -29,7 +29,12 @@ pub(crate) struct QueueSink {
 impl QueueSink {
     pub fn new() -> (Self, Arc<Mutex<Vec<SinkEvent>>>) {
         let queue = Arc::new(Mutex::new(Vec::new()));
-        (Self { queue: queue.clone() }, queue)
+        (
+            Self {
+                queue: queue.clone(),
+            },
+            queue,
+        )
     }
 }
 
@@ -41,12 +46,18 @@ impl plushie_renderer_lib::EventSink for QueueSink {
     }
 
     fn emit_effect_response(&mut self, response: EffectResponse) -> io::Result<()> {
-        self.queue.lock().unwrap().push(SinkEvent::EffectResponse(response));
+        self.queue
+            .lock()
+            .unwrap()
+            .push(SinkEvent::EffectResponse(response));
         Ok(())
     }
 
     fn emit_query_response(
-        &mut self, kind: &str, tag: &str, data: &serde_json::Value,
+        &mut self,
+        kind: &str,
+        tag: &str,
+        data: &serde_json::Value,
     ) -> io::Result<()> {
         self.queue.lock().unwrap().push(SinkEvent::QueryResponse {
             kind: kind.to_string(),
@@ -57,15 +68,24 @@ impl plushie_renderer_lib::EventSink for QueueSink {
     }
 
     fn emit_screenshot_response(
-        &mut self, _id: &str, _name: &str, _hash: &str,
-        _width: u32, _height: u32, _rgba_bytes: &[u8],
+        &mut self,
+        _id: &str,
+        _name: &str,
+        _hash: &str,
+        _width: u32,
+        _height: u32,
+        _rgba_bytes: &[u8],
     ) -> io::Result<()> {
         Ok(())
     }
 
     fn emit_hello(
-        &mut self, _mode: &str, _backend: &str, _native_widgets: &[&str],
-        _widget_set_names: &[&str], _transport: &str,
+        &mut self,
+        _mode: &str,
+        _backend: &str,
+        _native_widgets: &[&str],
+        _widget_set_names: &[&str],
+        _transport: &str,
     ) -> io::Result<()> {
         Ok(())
     }

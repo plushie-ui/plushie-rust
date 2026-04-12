@@ -78,12 +78,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
             Some(CoreStyle::Custom(style_map)) => {
                 let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
                 r = r.style(move |theme: &iced::Theme| {
-                    let base_fn: fn(&iced::Theme) -> rule::Style =
-                        match ov.preset_base.as_deref() {
-                            Some("default") => rule::default,
-                            Some("weak") => rule::weak,
-                            _ => rule::default,
-                        };
+                    let base_fn: fn(&iced::Theme) -> rule::Style = match ov.preset_base.as_deref() {
+                        Some("default") => rule::default,
+                        Some("weak") => rule::weak,
+                        _ => rule::default,
+                    };
                     apply_rule_style(base_fn(theme), &ov.base)
                 });
             }

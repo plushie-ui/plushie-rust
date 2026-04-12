@@ -66,7 +66,9 @@ pub(crate) fn canvas_layers_from_node(
         extract_canvas_layers(node)
     } else if !node.children.is_empty() {
         // Direct shape children (flat canvas, treated as "default" layer)
-        let shapes: Vec<CanvasShape> = node.children.iter()
+        let shapes: Vec<CanvasShape> = node
+            .children
+            .iter()
             .filter_map(CanvasShape::from_node)
             .collect();
         let mut map = std::collections::BTreeMap::new();

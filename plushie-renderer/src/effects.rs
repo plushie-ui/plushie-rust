@@ -527,7 +527,9 @@ impl plushie_renderer_lib::EffectHandler for NativeEffectHandler {
         &self,
         id: String,
         request: plushie_core::ops::EffectRequest,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = plushie_widget_sdk::protocol::EffectResponse> + Send>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = plushie_widget_sdk::protocol::EffectResponse> + Send>,
+    > {
         let (kind, payload) = plushie_core::ops::effect_request_to_wire(&request);
         let kind = kind.to_string();
         Box::pin(async move { handle_async_effect(id, &kind, &payload).await })
@@ -535,12 +537,13 @@ impl plushie_renderer_lib::EffectHandler for NativeEffectHandler {
 
     fn is_async(&self, request: &plushie_core::ops::EffectRequest) -> bool {
         use plushie_core::ops::EffectRequest;
-        matches!(request,
+        matches!(
+            request,
             EffectRequest::FileOpen(_)
-            | EffectRequest::FileOpenMultiple(_)
-            | EffectRequest::FileSave(_)
-            | EffectRequest::DirectorySelect(_)
-            | EffectRequest::DirectorySelectMultiple(_)
+                | EffectRequest::FileOpenMultiple(_)
+                | EffectRequest::FileSave(_)
+                | EffectRequest::DirectorySelect(_)
+                | EffectRequest::DirectorySelectMultiple(_)
         )
     }
 }

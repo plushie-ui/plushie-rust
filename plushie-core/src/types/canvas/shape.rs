@@ -9,13 +9,14 @@ use super::clip::ClipRect;
 use super::drag::{DragAxis, DragBounds};
 use super::fill::{CanvasFill, FillRule};
 use super::hit::HitRect;
-use super::path::{decode_commands, PathCommand};
+use super::path::{PathCommand, decode_commands};
 use super::shape_style::ShapeStyle;
 use super::stroke::Stroke;
-use super::transform::{decode_transforms, Transform};
+use super::transform::{Transform, decode_transforms};
 
 /// A canvas shape node, decoded from the wire tree.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum CanvasShape {
     Rect(RectShape),
     Circle(CircleShape),
@@ -312,12 +313,15 @@ impl GroupShape {
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
 
-        let transforms = p.get_value("transforms")
+        let transforms = p
+            .get_value("transforms")
             .as_ref()
-            .map(|v| decode_transforms(v))
+            .map(decode_transforms)
             .unwrap_or_default();
 
-        let children = node.children.iter()
+        let children = node
+            .children
+            .iter()
             .filter_map(CanvasShape::from_node)
             .collect();
 
@@ -359,10 +363,14 @@ pub fn extract_canvas_layers(node: &TreeNode) -> BTreeMap<String, Vec<CanvasShap
     let mut layers = BTreeMap::new();
     for child in &node.children {
         if child.type_name == "__layer__" {
-            let name = child.props.get_str("name")
+            let name = child
+                .props
+                .get_str("name")
                 .map(String::from)
                 .unwrap_or_else(|| child.id.clone());
-            let shapes = child.children.iter()
+            let shapes = child
+                .children
+                .iter()
                 .filter_map(CanvasShape::from_node)
                 .collect();
             layers.insert(name, shapes);
@@ -390,14 +398,15 @@ fn id_from_node(node: &TreeNode) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     fn tree_node(type_name: &str, props: Value) -> TreeNode {
         serde_json::from_value(json!({
             "id": "__auto__",
             "type": type_name,
             "props": props,
-        })).unwrap()
+        }))
+        .unwrap()
     }
 
     fn tree_node_with_id(id: &str, type_name: &str, props: Value) -> TreeNode {
@@ -405,12 +414,16 @@ mod tests {
             "id": id,
             "type": type_name,
             "props": props,
-        })).unwrap()
+        }))
+        .unwrap()
     }
 
     #[test]
     fn rect_shape() {
-        let node = tree_node("rect", json!({"x": 10.0, "y": 20.0, "w": 100.0, "h": 50.0, "fill": "#ff0000"}));
+        let node = tree_node(
+            "rect",
+            json!({"x": 10.0, "y": 20.0, "w": 100.0, "h": 50.0, "fill": "#ff0000"}),
+        );
         let shape = CanvasShape::from_node(&node).unwrap();
         if let CanvasShape::Rect(r) = shape {
             assert_eq!(r.x, 10.0);
@@ -446,17 +459,23 @@ mod tests {
 
     #[test]
     fn line_shape() {
-        let node = tree_node("line", json!({"x1": 0.0, "y1": 0.0, "x2": 100.0, "y2": 100.0}));
+        let node = tree_node(
+            "line",
+            json!({"x1": 0.0, "y1": 0.0, "x2": 100.0, "y2": 100.0}),
+        );
         let shape = CanvasShape::from_node(&node).unwrap();
         assert!(matches!(shape, CanvasShape::Line(_)));
     }
 
     #[test]
     fn path_shape() {
-        let node = tree_node("path", json!({
-            "commands": [["move_to", 0, 0], ["line_to", 10, 10]],
-            "fill": "#000000"
-        }));
+        let node = tree_node(
+            "path",
+            json!({
+                "commands": [["move_to", 0, 0], ["line_to", 10, 10]],
+                "fill": "#000000"
+            }),
+        );
         let shape = CanvasShape::from_node(&node).unwrap();
         if let CanvasShape::Path(p) = shape {
             assert_eq!(p.commands.len(), 2);
@@ -469,7 +488,10 @@ mod tests {
 
     #[test]
     fn text_shape() {
-        let node = tree_node("text", json!({"x": 10.0, "y": 20.0, "content": "hello", "size": 14.0}));
+        let node = tree_node(
+            "text",
+            json!({"x": 10.0, "y": 20.0, "content": "hello", "size": 14.0}),
+        );
         let shape = CanvasShape::from_node(&node).unwrap();
         if let CanvasShape::Text(t) = shape {
             assert_eq!(t.content, "hello");
@@ -481,7 +503,10 @@ mod tests {
 
     #[test]
     fn image_shape() {
-        let node = tree_node("image", json!({"source": "/img/cat.png", "x": 0.0, "y": 0.0, "w": 64.0, "h": 64.0}));
+        let node = tree_node(
+            "image",
+            json!({"source": "/img/cat.png", "x": 0.0, "y": 0.0, "w": 64.0, "h": 64.0}),
+        );
         let shape = CanvasShape::from_node(&node).unwrap();
         if let CanvasShape::Image(i) = shape {
             assert_eq!(i.source, "/img/cat.png");
@@ -492,7 +517,10 @@ mod tests {
 
     #[test]
     fn svg_shape() {
-        let node = tree_node("svg", json!({"source": "/icons/star.svg", "x": 0.0, "y": 0.0, "w": 24.0, "h": 24.0}));
+        let node = tree_node(
+            "svg",
+            json!({"source": "/icons/star.svg", "x": 0.0, "y": 0.0, "w": 24.0, "h": 24.0}),
+        );
         let shape = CanvasShape::from_node(&node).unwrap();
         assert!(matches!(shape, CanvasShape::Svg(_)));
     }
@@ -509,7 +537,8 @@ mod tests {
                 {"id": "__a1__", "type": "rect", "props": {"w": 50.0, "h": 50.0}},
                 {"id": "__a2__", "type": "circle", "props": {"r": 10.0}}
             ]
-        })).unwrap();
+        }))
+        .unwrap();
         let shape = CanvasShape::from_node(&node).unwrap();
         if let CanvasShape::Group(g) = shape {
             assert_eq!(g.id, Some("grp".into()));
@@ -532,7 +561,8 @@ mod tests {
                 "hover_style": {"fill": "#eee", "opacity": 0.8}
             },
             "children": []
-        })).unwrap();
+        }))
+        .unwrap();
         let shape = CanvasShape::from_node(&node).unwrap();
         if let CanvasShape::Group(g) = shape {
             assert_eq!(g.on_click, Some(true));

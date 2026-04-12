@@ -1264,4 +1264,3 @@ impl ResetResponse {
         self
     }
 }
-

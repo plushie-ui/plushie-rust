@@ -9,9 +9,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{
-    Anchor, Color, Direction, Length, PlushieType,
-};
+use plushie_core::types::{Anchor, Color, Direction, Length, PlushieType};
 
 struct ScrollableProps {
     width: Option<Length>,
@@ -73,8 +71,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         let sp = ScrollableProps::from_node(node);
-        let spacing =
-            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "spacing");
+        let spacing = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "spacing",
+        );
 
         let child: Element<'a, Message, Theme, R> = node
             .children
@@ -84,11 +86,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
 
         let sb = sp.build_scrollbar();
         let direction = sp.direction.unwrap_or(Direction::Vertical);
-        let mut s = scrollable(child)
-            .direction(iced_convert::scrollable_direction(direction, sb));
+        let mut s = scrollable(child).direction(iced_convert::scrollable_direction(direction, sb));
 
-        let width = sp.width.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
-        let height = sp.height.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
+        let width = sp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
+        let height = sp
+            .height
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
         s = s.width(width).height(height);
 
         // Widget ID

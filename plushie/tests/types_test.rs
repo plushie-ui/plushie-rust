@@ -100,10 +100,7 @@ fn padding_all_is_uniform() {
 
 #[test]
 fn border_fluent_builder() {
-    let b = Border::new()
-        .color(Color::red())
-        .width(2.0)
-        .radius(8.0);
+    let b = Border::new().color(Color::red()).width(2.0).radius(8.0);
 
     assert_eq!(b.color, Some(Color::red()));
     assert_eq!(b.width, 2.0);
@@ -172,13 +169,17 @@ fn radius_decodes_from_object() {
         "top_right": 2.0,
         "bottom_right": 3.0,
         "bottom_left": 4.0,
-    })).unwrap();
-    assert_eq!(r, Radius::PerCorner {
-        top_left: 1.0,
-        top_right: 2.0,
-        bottom_right: 3.0,
-        bottom_left: 4.0,
-    });
+    }))
+    .unwrap();
+    assert_eq!(
+        r,
+        Radius::PerCorner {
+            top_left: 1.0,
+            top_right: 2.0,
+            bottom_right: 3.0,
+            bottom_left: 4.0,
+        }
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -221,7 +222,8 @@ fn shadow_decodes_from_offset_array() {
         "color": "#000000",
         "offset": [2.0, 4.0],
         "blur_radius": 8.0
-    })).unwrap();
+    }))
+    .unwrap();
     assert_eq!(s.offset_x, 2.0);
     assert_eq!(s.offset_y, 4.0);
 }
@@ -233,7 +235,8 @@ fn shadow_decodes_from_separate_offset_fields() {
         "offset_x": 1.0,
         "offset_y": 3.0,
         "blur_radius": 5.0
-    })).unwrap();
+    }))
+    .unwrap();
     assert_eq!(s.offset_x, 1.0);
     assert_eq!(s.offset_y, 3.0);
 }
@@ -282,7 +285,10 @@ fn style_map_hovered_override() {
 
     assert!(m.hovered.is_some());
     let hover = m.hovered.unwrap();
-    assert_eq!(hover.background, Some(Background::Color(Color::hex("#0000cc"))));
+    assert_eq!(
+        hover.background,
+        Some(Background::Color(Color::hex("#0000cc")))
+    );
 }
 
 #[test]
@@ -316,9 +322,7 @@ fn font_fluent_builder() {
 
 #[test]
 fn font_stretch_builder() {
-    let f = Font::new()
-        .family("Inter")
-        .stretch(FontStretch::Condensed);
+    let f = Font::new().family("Inter").stretch(FontStretch::Condensed);
 
     assert_eq!(f.stretch, Some(FontStretch::Condensed));
 }
@@ -329,10 +333,11 @@ fn font_stretch_builder() {
 
 #[test]
 fn gradient_linear_with_stops() {
-    let g = Gradient::linear((0.0, 0.0), (1.0, 1.0), vec![
-        (0.0, Color::red()),
-        (1.0, Color::blue()),
-    ]);
+    let g = Gradient::linear(
+        (0.0, 0.0),
+        (1.0, 1.0),
+        vec![(0.0, Color::red()), (1.0, Color::blue())],
+    );
 
     assert_eq!(g.start, (0.0, 0.0));
     assert_eq!(g.end, (1.0, 1.0));
@@ -370,14 +375,22 @@ fn background_from_color() {
 
 #[test]
 fn background_from_gradient() {
-    let g = Gradient::linear((0.0, 0.0), (1.0, 0.0), vec![(0.0, Color::red()), (1.0, Color::blue())]);
+    let g = Gradient::linear(
+        (0.0, 0.0),
+        (1.0, 0.0),
+        vec![(0.0, Color::red()), (1.0, Color::blue())],
+    );
     let bg: Background = g.clone().into();
     assert_eq!(bg, Background::Gradient(g));
 }
 
 #[test]
 fn style_map_gradient_background() {
-    let g = Gradient::linear((0.0, 0.0), (1.0, 0.0), vec![(0.0, Color::red()), (1.0, Color::blue())]);
+    let g = Gradient::linear(
+        (0.0, 0.0),
+        (1.0, 0.0),
+        vec![(0.0, Color::red()), (1.0, Color::blue())],
+    );
     let m = StyleMap::new().background(g.clone());
     assert_eq!(m.background, Some(Background::Gradient(g)));
 }

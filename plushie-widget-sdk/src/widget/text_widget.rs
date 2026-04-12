@@ -66,18 +66,20 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
         let tp = TextProps::from_node(node);
 
         let content = tp.content.unwrap_or_default();
-        let size = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "size")
-            .or(tp.size)
-            .or(ctx.default_text_size);
+        let size = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "size",
+        )
+        .or(tp.size)
+        .or(ctx.default_text_size);
 
         let mut t = text(content);
         if let Some(s) = size {
             t = t.size(s);
         }
-        let font = tp
-            .font
-            .map(|f| iced_convert::font(&f))
-            .or(ctx.default_font);
+        let font = tp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
         if let Some(f) = font {
             t = t.font(f);
         }

@@ -4,8 +4,8 @@ use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
 
-use super::color::Color;
 use super::PlushieType;
+use super::color::Color;
 
 /// A drop shadow effect.
 ///
@@ -83,7 +83,12 @@ impl PlushieType for Shadow {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0) as f32;
 
-        Some(Self { color, offset_x, offset_y, blur_radius })
+        Some(Self {
+            color,
+            offset_x,
+            offset_y,
+            blur_radius,
+        })
     }
 
     fn wire_encode(&self) -> PropValue {

@@ -23,10 +23,8 @@ pub use plushie_core::ops::*;
 /// The closure is called once to produce a future. The future resolves
 /// to `Ok(value)` or `Err(value)`, delivered as
 /// [`AsyncEvent`](crate::event::AsyncEvent).
-pub type AsyncTaskFn = Box<
-    dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<Value, Value>> + Send>>
-        + Send
->;
+pub type AsyncTaskFn =
+    Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<Value, Value>> + Send>> + Send>;
 
 // ---------------------------------------------------------------------------
 // Command
@@ -49,20 +47,15 @@ pub enum Command {
     Exit,
 
     // -- SDK-local (never sent to renderer) --
-
     /// Run an async task. Result delivered as
     /// [`AsyncEvent`](crate::event::AsyncEvent).
-    Async {
-        tag: String,
-        task: AsyncTaskFn,
-    },
+    Async { tag: String, task: AsyncTaskFn },
     /// Cancel a running async task or stream by tag.
     Cancel { tag: String },
     /// Deliver an event after a delay.
     SendAfter { delay: Duration, event: Box<Event> },
 
     // -- Renderer operations (typed, zero-overhead in direct mode) --
-
     /// An operation for the renderer to execute.
     Renderer(RendererOp),
 }
@@ -89,7 +82,9 @@ impl std::fmt::Debug for Command {
 
 impl Command {
     /// A no-op command.
-    pub fn none() -> Self { Self::None }
+    pub fn none() -> Self {
+        Self::None
+    }
 
     /// Execute multiple commands together.
     pub fn batch(cmds: impl IntoIterator<Item = Command>) -> Self {
@@ -97,11 +92,16 @@ impl Command {
     }
 
     /// Exit the application.
-    pub fn exit() -> Self { Self::Exit }
+    pub fn exit() -> Self {
+        Self::Exit
+    }
 
     /// Deliver an event after a delay.
     pub fn send_after(delay: Duration, event: Event) -> Self {
-        Self::SendAfter { delay, event: Box::new(event) }
+        Self::SendAfter {
+            delay,
+            event: Box::new(event),
+        }
     }
 
     /// Run an async task. The result is delivered as
@@ -131,7 +131,9 @@ impl Command {
 
     /// Cancel a running async task by tag.
     pub fn cancel(tag: &str) -> Self {
-        Self::Cancel { tag: tag.to_string() }
+        Self::Cancel {
+            tag: tag.to_string(),
+        }
     }
 
     // -- Focus --
@@ -142,17 +144,23 @@ impl Command {
     }
 
     /// Move keyboard focus to the next focusable widget.
-    pub fn focus_next() -> Self { Self::Renderer(RendererOp::FocusNext) }
+    pub fn focus_next() -> Self {
+        Self::Renderer(RendererOp::FocusNext)
+    }
 
     /// Move keyboard focus to the previous focusable widget.
-    pub fn focus_previous() -> Self { Self::Renderer(RendererOp::FocusPrevious) }
+    pub fn focus_previous() -> Self {
+        Self::Renderer(RendererOp::FocusPrevious)
+    }
 
     // -- Scroll --
 
     /// Scroll a scrollable widget to an absolute position.
     pub fn scroll_to(target: &str, x: f32, y: f32) -> Self {
         Self::Renderer(RendererOp::ScrollTo {
-            target: target.to_string(), x, y,
+            target: target.to_string(),
+            x,
+            y,
         })
     }
 
@@ -166,14 +174,18 @@ impl Command {
     /// Resize a window to the given dimensions in logical pixels.
     pub fn resize_window(id: &str, width: f32, height: f32) -> Self {
         Self::Renderer(RendererOp::Window(WindowOp::Resize {
-            window_id: id.to_string(), width, height,
+            window_id: id.to_string(),
+            width,
+            height,
         }))
     }
 
     /// Move a window to the given position in logical pixels.
     pub fn move_window(id: &str, x: f32, y: f32) -> Self {
         Self::Renderer(RendererOp::Window(WindowOp::Move {
-            window_id: id.to_string(), x, y,
+            window_id: id.to_string(),
+            x,
+            y,
         }))
     }
 

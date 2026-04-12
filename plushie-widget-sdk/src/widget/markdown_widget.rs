@@ -164,7 +164,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
             iced::widget::markdown::view(items, settings).map(Message::MarkdownUrl);
 
         if let Some(ref w) = mp.width {
-            md = iced::widget::container(md).width(iced_convert::length(w)).into();
+            md = iced::widget::container(md)
+                .width(iced_convert::length(w))
+                .into();
         }
 
         md

@@ -4,8 +4,8 @@ use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
 
-use super::Stroke;
 use super::super::PlushieType;
+use super::Stroke;
 
 /// Style overrides applied to canvas shapes in hover/pressed/focus states.
 ///
@@ -32,12 +32,19 @@ impl PlushieType for ShapeStyle {
         let obj = value.as_object()?;
         let fill = obj.get("fill").and_then(|v| v.as_str()).map(String::from);
         let stroke = obj.get("stroke").and_then(Stroke::wire_decode);
-        let opacity = obj.get("opacity").and_then(|v| v.as_f64()).map(|f| f as f32);
+        let opacity = obj
+            .get("opacity")
+            .and_then(|v| v.as_f64())
+            .map(|f| f as f32);
         // At least one field must be present to be a valid style.
         if fill.is_none() && stroke.is_none() && opacity.is_none() {
             return None;
         }
-        Some(Self { fill, stroke, opacity })
+        Some(Self {
+            fill,
+            stroke,
+            opacity,
+        })
     }
 
     fn wire_encode(&self) -> PropValue {
@@ -61,8 +68,8 @@ impl PlushieType for ShapeStyle {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::super::Color;
+    use super::*;
     use serde_json::json;
 
     #[test]

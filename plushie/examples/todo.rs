@@ -53,20 +53,23 @@ impl App for TodoApp {
                 if !model.input.trim().is_empty() {
                     let id = format!("todo_{}", model.next_id);
                     model.next_id += 1;
-                    model.todos.insert(0, TodoItem {
-                        id,
-                        text: model.input.clone(),
-                        done: false,
-                    });
+                    model.todos.insert(
+                        0,
+                        TodoItem {
+                            id,
+                            text: model.input.clone(),
+                            done: false,
+                        },
+                    );
                     model.input.clear();
                     return Command::focus("app/new_todo");
                 }
             }
             Some(Toggle("toggle", _)) => {
-                if let Some(todo_id) = event.scope().and_then(|s| s.first()) {
-                    if let Some(item) = model.todos.iter_mut().find(|i| i.id == *todo_id) {
-                        item.done = !item.done;
-                    }
+                if let Some(todo_id) = event.scope().and_then(|s| s.first())
+                    && let Some(item) = model.todos.iter_mut().find(|i| i.id == *todo_id)
+                {
+                    item.done = !item.done;
                 }
             }
             Some(Click("delete")) => {
@@ -83,41 +86,57 @@ impl App for TodoApp {
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        let filtered: Vec<&TodoItem> = model.todos.iter().filter(|t| match model.filter {
-            Filter::All => true,
-            Filter::Active => !t.done,
-            Filter::Done => t.done,
-        }).collect();
+        let filtered: Vec<&TodoItem> = model
+            .todos
+            .iter()
+            .filter(|t| match model.filter {
+                Filter::All => true,
+                Filter::Active => !t.done,
+                Filter::Done => t.done,
+            })
+            .collect();
 
-        window("main").title("Todos").child(
-            column().id("app").padding(20).spacing(12.0).width(Fill)
-                .child(text("My Todos").id("title").size(24.0))
-                .child(
-                    text_input("new_todo", &model.input)
-                        .placeholder("What needs doing?")
-                        .on_submit(true)
-                )
-                .child(row().spacing(8.0).children([
-                    button("filter_all", "All"),
-                    button("filter_active", "Active"),
-                    button("filter_done", "Done"),
-                ]))
-                .child(
-                    column().id("list").spacing(4.0).children(
-                        filtered.iter().map(|item| todo_row(item))
+        window("main")
+            .title("Todos")
+            .child(
+                column()
+                    .id("app")
+                    .padding(20)
+                    .spacing(12.0)
+                    .width(Fill)
+                    .child(text("My Todos").id("title").size(24.0))
+                    .child(
+                        text_input("new_todo", &model.input)
+                            .placeholder("What needs doing?")
+                            .on_submit(true),
                     )
-                )
-        ).into()
+                    .child(row().spacing(8.0).children([
+                        button("filter_all", "All"),
+                        button("filter_active", "Active"),
+                        button("filter_done", "Done"),
+                    ]))
+                    .child(
+                        column()
+                            .id("list")
+                            .spacing(4.0)
+                            .children(filtered.iter().map(|item| todo_row(item))),
+                    ),
+            )
+            .into()
     }
 }
 
 fn todo_row(todo: &TodoItem) -> View {
-    container().id(&todo.id).child(
-        row().spacing(8.0)
-            .child(checkbox("toggle", todo.done))
-            .child(text(&todo.text))
-            .child(button("delete", "x"))
-    ).into()
+    container()
+        .id(&todo.id)
+        .child(
+            row()
+                .spacing(8.0)
+                .child(checkbox("toggle", todo.done))
+                .child(text(&todo.text))
+                .child(button("delete", "x")),
+        )
+        .into()
 }
 
 fn main() -> plushie::Result {

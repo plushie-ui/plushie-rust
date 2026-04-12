@@ -41,16 +41,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for WindowWidget {
     ) -> Element<'a, Message, Theme, R> {
         let wp = WindowProps::from_node(node);
 
-        let width = wp
-            .width
-            .as_ref()
-            .map(iced_convert::length)
-            .unwrap_or(Fill.into());
-        let height = wp
-            .height
-            .as_ref()
-            .map(iced_convert::length)
-            .unwrap_or(Fill.into());
+        let width = wp.width.as_ref().map(iced_convert::length).unwrap_or(Fill);
+        let height = wp.height.as_ref().map(iced_convert::length).unwrap_or(Fill);
 
         let child_ctx = ctx.with_window_id(&node.id);
 

@@ -61,13 +61,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
                 let wid = window_id.clone();
                 let nid = node.id.clone();
                 let family = format!("{}:show", tag);
-                s = s.on_show(move |size| {
-                    Message::Event {
-                        window_id: wid.clone(),
-                        id: nid.clone(),
-                        family: family.clone(),
-                        data: serde_json::json!({"width": size.width, "height": size.height}),
-                    }
+                s = s.on_show(move |size| Message::Event {
+                    window_id: wid.clone(),
+                    id: nid.clone(),
+                    family: family.clone(),
+                    data: serde_json::json!({"width": size.width, "height": size.height}),
                 });
             }
             // on_resize: emit with the tag directly
@@ -75,13 +73,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
                 let wid = window_id.clone();
                 let nid = node.id.clone();
                 let family = tag.clone();
-                s = s.on_resize(move |size| {
-                    Message::Event {
-                        window_id: wid.clone(),
-                        id: nid.clone(),
-                        family: family.clone(),
-                        data: serde_json::json!({"width": size.width, "height": size.height}),
-                    }
+                s = s.on_resize(move |size| Message::Event {
+                    window_id: wid.clone(),
+                    id: nid.clone(),
+                    family: family.clone(),
+                    data: serde_json::json!({"width": size.width, "height": size.height}),
                 });
             }
             // on_hide: emit as "{tag}:hide"

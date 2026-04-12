@@ -4,8 +4,8 @@ use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
 
-use super::color::Color;
 use super::PlushieType;
+use super::color::Color;
 
 /// Corner radius for a border: uniform or per-corner.
 ///
@@ -53,9 +53,20 @@ impl PlushieType for Radius {
             Value::Object(obj) => {
                 let tl = obj.get("top_left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                 let tr = obj.get("top_right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                let br = obj.get("bottom_right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                let bl = obj.get("bottom_left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                Some(Self::PerCorner { top_left: tl, top_right: tr, bottom_right: br, bottom_left: bl })
+                let br = obj
+                    .get("bottom_right")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0) as f32;
+                let bl = obj
+                    .get("bottom_left")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0) as f32;
+                Some(Self::PerCorner {
+                    top_left: tl,
+                    top_right: tr,
+                    bottom_right: br,
+                    bottom_left: bl,
+                })
             }
             _ => None,
         }
@@ -64,7 +75,12 @@ impl PlushieType for Radius {
     fn wire_encode(&self) -> PropValue {
         match self {
             Self::Uniform(r) => PropValue::F64(*r as f64),
-            Self::PerCorner { top_left, top_right, bottom_right, bottom_left } => {
+            Self::PerCorner {
+                top_left,
+                top_right,
+                bottom_right,
+                bottom_left,
+            } => {
                 let mut m = PropMap::new();
                 m.insert("top_left", PropValue::F64(*top_left as f64));
                 m.insert("top_right", PropValue::F64(*top_right as f64));
@@ -102,7 +118,11 @@ pub struct Border {
 
 impl Border {
     pub fn new() -> Self {
-        Self { color: None, width: 0.0, radius: Radius::default() }
+        Self {
+            color: None,
+            width: 0.0,
+            radius: Radius::default(),
+        }
     }
 
     pub fn color(mut self, c: impl Into<Color>) -> Self {
@@ -141,19 +161,18 @@ impl PlushieType for Border {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
 
-        let color = obj
-            .get("color")
-            .and_then(Color::wire_decode);
-        let width = obj
-            .get("width")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0) as f32;
+        let color = obj.get("color").and_then(Color::wire_decode);
+        let width = obj.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
         let radius = obj
             .get("radius")
             .and_then(Radius::wire_decode)
             .unwrap_or_default();
 
-        Some(Self { color, width, radius })
+        Some(Self {
+            color,
+            width,
+            radius,
+        })
     }
 
     fn wire_encode(&self) -> PropValue {

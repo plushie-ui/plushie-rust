@@ -49,8 +49,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RowWidget {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         let rp = RowProps::from_node(node);
-        let spacing =
-            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "spacing");
+        let spacing = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "spacing",
+        );
         let max_width = prop_animated_f32(
             &ctx.caches.interpolated_props,
             &node.id,
@@ -61,8 +65,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RowWidget {
 
         let children = ctx.render_children(node);
 
-        let width = rp.width.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
-        let height = rp.height.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
+        let width = rp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
+        let height = rp
+            .height
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
         let align_y = rp
             .align_y
             .map(iced_convert::vertical_alignment)

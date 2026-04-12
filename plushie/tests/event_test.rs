@@ -70,13 +70,19 @@ fn as_widget_returns_some_for_widget_event() {
 
 #[test]
 fn as_widget_returns_none_for_non_widget_event() {
-    let event = Event::Timer(TimerEvent { tag: "tick".into(), timestamp: 0 });
+    let event = Event::Timer(TimerEvent {
+        tag: "tick".into(),
+        timestamp: 0,
+    });
     assert!(event.as_widget().is_none());
 }
 
 #[test]
 fn as_timer_returns_some_for_timer_event() {
-    let event = Event::Timer(TimerEvent { tag: "tick".into(), timestamp: 42 });
+    let event = Event::Timer(TimerEvent {
+        tag: "tick".into(),
+        timestamp: 42,
+    });
     let t = event.as_timer().unwrap();
     assert_eq!(t.tag, "tick");
     assert_eq!(t.timestamp, 42);
@@ -155,7 +161,10 @@ fn scope_returns_slice_for_widget_events() {
 
 #[test]
 fn scope_returns_none_for_non_widget_events() {
-    let event = Event::Timer(TimerEvent { tag: "tick".into(), timestamp: 0 });
+    let event = Event::Timer(TimerEvent {
+        tag: "tick".into(),
+        timestamp: 0,
+    });
     assert!(event.scope().is_none());
 }
 
@@ -207,7 +216,10 @@ fn widget_match_slide_carries_f64() {
 
 #[test]
 fn widget_match_handles_timer_events() {
-    let event = Event::Timer(TimerEvent { tag: "tick".into(), timestamp: 0 });
+    let event = Event::Timer(TimerEvent {
+        tag: "tick".into(),
+        timestamp: 0,
+    });
     match event.widget_match() {
         Some(WidgetMatch::Timer("tick")) => {}
         other => panic!("expected Timer(\"tick\"), got {other:?}"),
@@ -250,10 +262,7 @@ fn form_update_pattern() {
     let mut name = String::new();
     let mut agreed = false;
 
-    let events = vec![
-        input_event("name", "Alice"),
-        toggle_event("agree", true),
-    ];
+    let events = vec![input_event("name", "Alice"), toggle_event("agree", true)];
 
     for event in events {
         match event.widget_match() {
@@ -356,7 +365,8 @@ fn family_to_event_type_maps_all_known_families() {
 
     for (family, expected) in cases {
         assert_eq!(
-            family_to_event_type(family), *expected,
+            family_to_event_type(family),
+            *expected,
             "family_to_event_type({family:?}) returned wrong variant"
         );
     }
@@ -365,5 +375,8 @@ fn family_to_event_type_maps_all_known_families() {
 #[test]
 fn family_to_event_type_returns_other_for_unknown() {
     use plushie::event::family_to_event_type;
-    assert!(matches!(family_to_event_type("nonsense"), EventType::Other(_)));
+    assert!(matches!(
+        family_to_event_type("nonsense"),
+        EventType::Other(_)
+    ));
 }

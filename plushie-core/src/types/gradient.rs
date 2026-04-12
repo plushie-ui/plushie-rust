@@ -4,8 +4,8 @@ use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
 
-use super::color::Color;
 use super::PlushieType;
+use super::color::Color;
 
 /// A single stop in a gradient.
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +19,10 @@ pub struct GradientStop {
 impl GradientStop {
     /// Create a new gradient stop at the given offset with the given color.
     pub fn new(offset: f32, color: impl Into<Color>) -> Self {
-        Self { offset, color: color.into() }
+        Self {
+            offset,
+            color: color.into(),
+        }
     }
 }
 

@@ -2,8 +2,8 @@
 
 use serde_json::Value;
 
-use crate::protocol::PropValue;
 use crate::PlushieEnum;
+use crate::protocol::PropValue;
 
 use super::super::{Color, Gradient, PlushieType};
 
@@ -20,12 +20,10 @@ impl PlushieType for CanvasFill {
             // String -> Color (hex)
             Value::String(_) => Color::wire_decode(value).map(Self::Color),
             // Object with type "linear" -> Gradient
-            Value::Object(obj) => {
-                match obj.get("type").and_then(|v| v.as_str()) {
-                    Some("linear") => Gradient::wire_decode(value).map(Self::Gradient),
-                    _ => None,
-                }
-            }
+            Value::Object(obj) => match obj.get("type").and_then(|v| v.as_str()) {
+                Some("linear") => Gradient::wire_decode(value).map(Self::Gradient),
+                _ => None,
+            },
             _ => None,
         }
     }

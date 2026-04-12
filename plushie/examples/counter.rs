@@ -28,14 +28,20 @@ impl App for Counter {
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").title("Counter").child(
-            column().padding(16).spacing(8.0)
-                .child(text(&format!("Count: {}", model.count)).id("count"))
-                .child(row().spacing(8.0).children([
-                    button("inc", "+"),
-                    button("dec", "-"),
-                ]))
-        ).into()
+        window("main")
+            .title("Counter")
+            .child(
+                column()
+                    .padding(16)
+                    .spacing(8.0)
+                    .child(text(&format!("Count: {}", model.count)).id("count"))
+                    .child(
+                        row()
+                            .spacing(8.0)
+                            .children([button("inc", "+"), button("dec", "-")]),
+                    ),
+            )
+            .into()
     }
 }
 

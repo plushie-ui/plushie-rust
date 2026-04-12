@@ -15,19 +15,19 @@
 //! );
 //! ```
 
-mod layout;
+mod canvas;
 mod display;
 mod input;
 mod interactive;
-mod canvas;
+mod layout;
 mod memo;
 mod table;
 
-pub use layout::*;
+pub use canvas::*;
 pub use display::*;
 pub use input::*;
 pub use interactive::*;
-pub use canvas::*;
+pub use layout::*;
 pub use memo::*;
 pub use table::*;
 
@@ -104,28 +104,37 @@ pub(crate) fn color_to_value(c: &Color) -> PropValue {
 
 /// Convert an Align to a horizontal alignment string for the renderer.
 pub(crate) fn halign_to_value(a: Align) -> PropValue {
-    PropValue::Str(match a {
-        Align::Start => "left",
-        Align::Center => "center",
-        Align::End => "right",
-    }.into())
+    PropValue::Str(
+        match a {
+            Align::Start => "left",
+            Align::Center => "center",
+            Align::End => "right",
+        }
+        .into(),
+    )
 }
 
 /// Convert an Align to a vertical alignment string for the renderer.
 pub(crate) fn valign_to_value(a: Align) -> PropValue {
-    PropValue::Str(match a {
-        Align::Start => "top",
-        Align::Center => "center",
-        Align::End => "bottom",
-    }.into())
+    PropValue::Str(
+        match a {
+            Align::Start => "top",
+            Align::Center => "center",
+            Align::End => "bottom",
+        }
+        .into(),
+    )
 }
 
 /// Convert an Align to a cross-axis alignment string (start/center/end).
 /// Used by overlay's `align` prop which has its own parser.
 pub(crate) fn cross_align_to_value(a: Align) -> PropValue {
-    PropValue::Str(match a {
-        Align::Start => "start",
-        Align::Center => "center",
-        Align::End => "end",
-    }.into())
+    PropValue::Str(
+        match a {
+            Align::Start => "start",
+            Align::Center => "center",
+            Align::End => "end",
+        }
+        .into(),
+    )
 }

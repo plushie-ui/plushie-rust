@@ -444,12 +444,47 @@ mod tests {
     /// and coalescing logic, not actual event delivery.
     struct NullSink;
     impl EventSink for NullSink {
-        fn emit_event(&mut self, _: OutgoingEvent) -> std::io::Result<()> { Ok(()) }
-        fn emit_effect_response(&mut self, _: plushie_widget_sdk::protocol::EffectResponse) -> std::io::Result<()> { Ok(()) }
-        fn emit_query_response(&mut self, _: &str, _: &str, _: &serde_json::Value) -> std::io::Result<()> { Ok(()) }
-        fn emit_screenshot_response(&mut self, _: &str, _: &str, _: &str, _: u32, _: u32, _: &[u8]) -> std::io::Result<()> { Ok(()) }
-        fn emit_hello(&mut self, _: &str, _: &str, _: &[&str], _: &[&str], _: &str) -> std::io::Result<()> { Ok(()) }
-        fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> { Ok(()) }
+        fn emit_event(&mut self, _: OutgoingEvent) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_effect_response(
+            &mut self,
+            _: plushie_widget_sdk::protocol::EffectResponse,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_query_response(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &serde_json::Value,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_screenshot_response(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: &[u8],
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_hello(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &[&str],
+            _: &[&str],
+            _: &str,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
     }
 
     fn test_emitter() -> EventEmitter {

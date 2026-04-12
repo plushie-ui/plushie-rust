@@ -10,11 +10,11 @@
 
 pub mod app;
 pub mod apply;
-pub mod execute;
 pub mod constants;
 pub mod emitter;
 pub mod emitters;
 pub mod events;
+pub mod execute;
 pub mod scripting;
 pub mod settings;
 pub mod subscriptions;

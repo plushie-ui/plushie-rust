@@ -12,13 +12,13 @@ mod transform;
 
 pub use clip::ClipRect;
 pub use drag::{DragAxis, DragBounds};
-pub use path::{decode_commands, PathCommand};
 pub use fill::{CanvasFill, FillRule};
 pub use hit::HitRect;
+pub use path::{PathCommand, decode_commands};
 pub use shape::{
-    extract_canvas_layers, CanvasShape, CircleShape, GroupShape, ImageShape, LineShape, PathShape,
-    RectShape, SvgShape, TextShape,
+    CanvasShape, CircleShape, GroupShape, ImageShape, LineShape, PathShape, RectShape, SvgShape,
+    TextShape, extract_canvas_layers,
 };
 pub use shape_style::ShapeStyle;
 pub use stroke::{Dash, LineCap, LineJoin, Stroke};
-pub use transform::{decode_transforms, encode_transforms, Transform};
+pub use transform::{Transform, decode_transforms, encode_transforms};

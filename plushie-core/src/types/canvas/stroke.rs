@@ -2,8 +2,8 @@
 
 use serde_json::Value;
 
-use crate::protocol::{PropMap, PropValue};
 use crate::PlushieEnum;
+use crate::protocol::{PropMap, PropValue};
 
 use super::super::{Color, PlushieType};
 
@@ -64,7 +64,8 @@ pub struct Dash {
 impl PlushieType for Dash {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
-        let segments: Vec<f32> = obj.get("segments")?
+        let segments: Vec<f32> = obj
+            .get("segments")?
             .as_array()?
             .iter()
             .filter_map(|v| v.as_f64().map(|f| f as f32))
@@ -72,17 +73,21 @@ impl PlushieType for Dash {
         if segments.is_empty() {
             return None;
         }
-        let offset = obj.get("offset")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0) as f32;
+        let offset = obj.get("offset").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
         Some(Self { segments, offset })
     }
 
     fn wire_encode(&self) -> PropValue {
         let mut m = PropMap::new();
-        m.insert("segments", PropValue::Array(
-            self.segments.iter().map(|s| PropValue::F64(*s as f64)).collect(),
-        ));
+        m.insert(
+            "segments",
+            PropValue::Array(
+                self.segments
+                    .iter()
+                    .map(|s| PropValue::F64(*s as f64))
+                    .collect(),
+            ),
+        );
         m.insert("offset", PropValue::F64(self.offset as f64));
         PropValue::Object(m)
     }
@@ -96,13 +101,17 @@ impl PlushieType for Stroke {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
         let color = Color::wire_decode(obj.get("color")?)?;
-        let width = obj.get("width")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0) as f32;
+        let width = obj.get("width").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
         let cap = obj.get("cap").and_then(LineCap::wire_decode);
         let join = obj.get("join").and_then(LineJoin::wire_decode);
         let dash = obj.get("dash").and_then(Dash::wire_decode);
-        Some(Self { color, width, cap, join, dash })
+        Some(Self {
+            color,
+            width,
+            cap,
+            join,
+            dash,
+        })
     }
 
     fn wire_encode(&self) -> PropValue {

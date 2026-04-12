@@ -50,9 +50,7 @@ pub(crate) fn sink_event_to_sdk(sink_event: SinkEvent) -> Option<Event> {
         SinkEvent::QueryResponse { kind, tag, data } => {
             Some(query_response_to_sdk(&kind, &tag, data))
         }
-        SinkEvent::AsyncResult { tag, result } => {
-            Some(Event::Async(AsyncEvent { tag, result }))
-        }
+        SinkEvent::AsyncResult { tag, result } => Some(Event::Async(AsyncEvent { tag, result })),
         SinkEvent::DelayedEvent(event) => Some(event),
     }
 }
@@ -69,9 +67,7 @@ fn outgoing_to_sdk_event(event: OutgoingEvent) -> Option<Event> {
     // Widget events: split scoped id and map family to EventType.
     let (local_id, scope) = split_scoped_id(&event.id);
     let event_type = family_to_event_type(family);
-    let primary_value = event.data
-        .or(event.value)
-        .unwrap_or(Value::Null);
+    let primary_value = event.data.or(event.value).unwrap_or(Value::Null);
     let window_id = event.window_id.unwrap_or_default();
 
     Some(Event::Widget(WidgetEvent {
@@ -113,13 +109,11 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
             }))
         }
 
-        "modifiers_changed" => {
-            Some(Event::Modifiers(ModifiersEvent {
-                modifiers: extract_modifiers(event),
-                captured: event.captured.unwrap_or(false),
-                window_id,
-            }))
-        }
+        "modifiers_changed" => Some(Event::Modifiers(ModifiersEvent {
+            modifiers: extract_modifiers(event),
+            captured: event.captured.unwrap_or(false),
+            window_id,
+        })),
 
         "window_opened" => Some(window_event(WindowEventType::Opened, event)),
         "window_closed" => Some(window_event(WindowEventType::Closed, event)),
@@ -133,31 +127,29 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
         "file_dropped" => Some(window_event(WindowEventType::FileDropped, event)),
         "files_hovered_left" => Some(window_event(WindowEventType::FilesHoveredLeft, event)),
 
-        "animation_frame" => {
-            Some(Event::System(SystemEvent {
-                event_type: SystemEventType::AnimationFrame,
-                tag: Some(tag.to_string()),
-                value: event.value.clone(),
-                id: None,
-                window_id,
-            }))
-        }
+        "animation_frame" => Some(Event::System(SystemEvent {
+            event_type: SystemEventType::AnimationFrame,
+            tag: Some(tag.to_string()),
+            value: event.value.clone(),
+            id: None,
+            window_id,
+        })),
 
-        "theme_changed" => {
-            Some(Event::System(SystemEvent {
-                event_type: SystemEventType::ThemeChanged,
-                tag: Some(tag.to_string()),
-                value: event.value.clone(),
-                id: None,
-                window_id: None,
-            }))
-        }
+        "theme_changed" => Some(Event::System(SystemEvent {
+            event_type: SystemEventType::ThemeChanged,
+            tag: Some(tag.to_string()),
+            value: event.value.clone(),
+            id: None,
+            window_id: None,
+        })),
 
         "ime_opened" | "ime_preedit" | "ime_commit" | "ime_closed" => {
             let data = event.data.as_ref().unwrap_or(&Value::Null);
-            let (local_id, scope) = event.data.as_ref()
+            let (local_id, scope) = event
+                .data
+                .as_ref()
                 .and_then(|d| d["id"].as_str())
-                .map(|id| split_scoped_id(id))
+                .map(split_scoped_id)
                 .unwrap_or_default();
             Some(Event::Ime(ImeEvent {
                 event_type: match family {
@@ -166,11 +158,18 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
                     "ime_commit" => ImeEventType::Commit,
                     _ => ImeEventType::Closed,
                 },
-                id: if local_id.is_empty() { None } else { Some(local_id) },
+                id: if local_id.is_empty() {
+                    None
+                } else {
+                    Some(local_id)
+                },
                 scope,
                 text: json_str_opt(data, "text"),
                 cursor: data["cursor"].as_array().and_then(|arr| {
-                    Some((arr.first()?.as_u64()? as usize, arr.get(1)?.as_u64()? as usize))
+                    Some((
+                        arr.first()?.as_u64()? as usize,
+                        arr.get(1)?.as_u64()? as usize,
+                    ))
                 }),
                 captured: event.captured.unwrap_or(false),
                 window_id,
@@ -189,15 +188,13 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
         }
 
         // Fall through: treat as a system event with the tag.
-        _ => {
-            Some(Event::System(SystemEvent {
-                event_type: SystemEventType::SystemInfo,
-                tag: Some(tag.to_string()),
-                value: event.value.clone(),
-                id: None,
-                window_id,
-            }))
-        }
+        _ => Some(Event::System(SystemEvent {
+            event_type: SystemEventType::SystemInfo,
+            tag: Some(tag.to_string()),
+            value: event.value.clone(),
+            id: None,
+            window_id,
+        })),
     }
 }
 
@@ -215,8 +212,15 @@ pub(crate) fn effect_response_to_sdk(response: EffectResponse) -> Event {
         "cancelled" => EffectResult::Cancelled,
         "unsupported" => EffectResult::Unsupported,
         _ => {
-            let msg = response.error
-                .or_else(|| response.result.as_ref().and_then(|v| v.as_str()).map(String::from))
+            let msg = response
+                .error
+                .or_else(|| {
+                    response
+                        .result
+                        .as_ref()
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                })
                 .unwrap_or_else(|| "unknown error".to_string());
             EffectResult::Error(msg)
         }
@@ -260,9 +264,9 @@ fn window_event(event_type: WindowEventType, event: &OutgoingEvent) -> Event {
         y: data["y"].as_f64().map(|v| v as f32),
         width: data["width"].as_f64().map(|v| v as f32),
         height: data["height"].as_f64().map(|v| v as f32),
-        position: data["position"].as_array().and_then(|arr| {
-            Some((arr.first()?.as_f64()? as f32, arr.get(1)?.as_f64()? as f32))
-        }),
+        position: data["position"]
+            .as_array()
+            .and_then(|arr| Some((arr.first()?.as_f64()? as f32, arr.get(1)?.as_f64()? as f32))),
         path: json_str_opt(data, "path"),
         scale_factor: data["scale_factor"].as_f64().map(|v| v as f32),
     })
@@ -432,7 +436,11 @@ mod tests {
     fn modifiers_changed_event() {
         let mut event = make_tagged("modifiers_changed", "mods");
         event.modifiers = Some(plushie_core::protocol::KeyModifiers {
-            shift: false, ctrl: true, alt: false, logo: false, command: false,
+            shift: false,
+            ctrl: true,
+            alt: false,
+            logo: false,
+            command: false,
         });
         let sdk = outgoing_to_sdk_event(event).unwrap();
         match sdk {
@@ -579,7 +587,11 @@ mod tests {
 
     #[test]
     fn query_response_find_focused() {
-        let sdk = query_response_to_sdk("find_focused", "f1", serde_json::json!({"focused": "input1"}));
+        let sdk = query_response_to_sdk(
+            "find_focused",
+            "f1",
+            serde_json::json!({"focused": "input1"}),
+        );
         match sdk {
             Event::System(s) => {
                 assert_eq!(s.event_type, SystemEventType::FindFocused);

@@ -102,17 +102,20 @@ impl App {
                     kind,
                     payload,
                 } => {
-                    if let Some(request) = plushie_core::ops::effect_request_from_wire(&kind, &payload) {
+                    if let Some(request) =
+                        plushie_core::ops::effect_request_from_wire(&kind, &payload)
+                    {
                         if self.effect_handler.is_async(&request) {
                             let future = self.effect_handler.handle_async(request_id, request);
                             let sink = self.emitter.sink();
-                            let task = plushie_widget_sdk::iced::Task::perform(future, move |response| {
-                                let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
-                                if let Err(e) = guard.emit_effect_response(response) {
-                                    log::error!("effect response write error: {e}");
-                                }
-                                plushie_widget_sdk::message::Message::NoOp
-                            });
+                            let task =
+                                plushie_widget_sdk::iced::Task::perform(future, move |response| {
+                                    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                                    if let Err(e) = guard.emit_effect_response(response) {
+                                        log::error!("effect response write error: {e}");
+                                    }
+                                    plushie_widget_sdk::message::Message::NoOp
+                                });
                             self.pending_tasks.push(task);
                         } else if let Some(response) =
                             self.effect_handler.handle_sync(&request_id, &request)

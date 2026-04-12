@@ -14,7 +14,7 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Stdin(event) => self.handle_stdin(event),
-            Message::NoOp => Task::none(),
+            Message::NoOp | Message::TimerTick(_) => Task::none(),
             Message::FlushCoalesce => self.emitter.flush(),
 
             // Widget messages shared between daemon and headless modes.
@@ -162,10 +162,11 @@ impl App {
                     let tasks: Vec<_> = entries
                         .into_iter()
                         .map(|entry| {
-                            self.emitter.emit_direct(OutgoingEvent::window_close_requested(
-                                entry.tag.clone(),
-                                window_id.clone(),
-                            ))
+                            self.emitter
+                                .emit_direct(OutgoingEvent::window_close_requested(
+                                    entry.tag.clone(),
+                                    window_id.clone(),
+                                ))
                         })
                         .collect();
                     Task::batch(tasks)
@@ -176,7 +177,9 @@ impl App {
             Message::WindowClosed(iced_id) => {
                 if let Some(window_id) = self.windows.remove_by_iced(&iced_id) {
                     let wid = Some(window_id.as_str());
-                    let tasks: Vec<_> = self.core.matching_entries(SUB_WINDOW_EVENT, wid)
+                    let tasks: Vec<_> = self
+                        .core
+                        .matching_entries(SUB_WINDOW_EVENT, wid)
                         .into_iter()
                         .map(|entry| {
                             self.emitter.emit_direct(OutgoingEvent::window_closed(
@@ -288,9 +291,14 @@ impl App {
                         target,
                         selector,
                     } => {
-                        if let Err(e) =
-                            crate::scripting::handle_query(&self.emitter, &self.codec, &self.core, id, target, selector)
-                        {
+                        if let Err(e) = crate::scripting::handle_query(
+                            &self.emitter,
+                            &self.codec,
+                            &self.core,
+                            id,
+                            target,
+                            selector,
+                        ) {
                             log::error!("write error: {e}");
                             return iced::exit();
                         }
@@ -303,7 +311,13 @@ impl App {
                         payload,
                     } => {
                         if let Err(e) = crate::scripting::handle_interact(
-                            &self.emitter, &self.codec, &self.core, id, action, selector, payload,
+                            &self.emitter,
+                            &self.codec,
+                            &self.core,
+                            id,
+                            action,
+                            selector,
+                            payload,
                         ) {
                             log::error!("write error: {e}");
                             return iced::exit();
@@ -315,7 +329,12 @@ impl App {
                         let _ = self.emitter.flush();
 
                         // Reset core and emit the response.
-                        if let Err(e) = crate::scripting::handle_reset(&self.emitter, &self.codec, &mut self.core, id) {
+                        if let Err(e) = crate::scripting::handle_reset(
+                            &self.emitter,
+                            &self.codec,
+                            &mut self.core,
+                            id,
+                        ) {
                             log::error!("write error: {e}");
                             return iced::exit();
                         }
@@ -341,7 +360,13 @@ impl App {
                         Task::batch(close_tasks)
                     }
                     IncomingMessage::TreeHash { id, name, .. } => {
-                        if let Err(e) = crate::scripting::handle_tree_hash(&self.emitter, &self.codec, &self.core, id, name) {
+                        if let Err(e) = crate::scripting::handle_tree_hash(
+                            &self.emitter,
+                            &self.codec,
+                            &self.core,
+                            id,
+                            name,
+                        ) {
                             log::error!("write error: {e}");
                             return iced::exit();
                         }
@@ -368,7 +393,10 @@ impl App {
                                 Message::NoOp
                             })
                         } else {
-                            if let Err(e) = self.emitter.emit_screenshot_response(&id, &name, "", 0, 0, &[]) {
+                            if let Err(e) =
+                                self.emitter
+                                    .emit_screenshot_response(&id, &name, "", 0, 0, &[])
+                            {
                                 log::error!("write error: {e}");
                                 return iced::exit();
                             }

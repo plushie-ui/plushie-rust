@@ -214,24 +214,31 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                 } else {
                     None
                 }
-                .or_else(|| if is_hovered { g.hover_style.as_ref() } else { None })
-                .or_else(|| if is_focused { g.focus_style.as_ref() } else { None });
+                .or(if is_hovered {
+                    g.hover_style.as_ref()
+                } else {
+                    None
+                })
+                .or(if is_focused {
+                    g.focus_style.as_ref()
+                } else {
+                    None
+                });
 
                 let child_refs: Vec<&CanvasShape> = g.children.iter().collect();
 
-                let draw_children =
-                    |f: &mut canvas::Frame<R>,
-                     child_refs: &[&CanvasShape],
-                     img: &crate::image_registry::ImageRegistry,
-                     theme: &iced::Theme| {
-                        if let Some(overrides) = group_override {
-                            for child in child_refs {
-                                draw_canvas_shape_with_overrides(f, child, img, theme, overrides);
-                            }
-                        } else {
-                            draw_canvas_shapes(f, child_refs, img, theme);
+                let draw_children = |f: &mut canvas::Frame<R>,
+                                     child_refs: &[&CanvasShape],
+                                     img: &crate::image_registry::ImageRegistry,
+                                     theme: &iced::Theme| {
+                    if let Some(overrides) = group_override {
+                        for child in child_refs {
+                            draw_canvas_shape_with_overrides(f, child, img, theme, overrides);
                         }
-                    };
+                    } else {
+                        draw_canvas_shapes(f, child_refs, img, theme);
+                    }
+                };
 
                 draw_with_group_clip(
                     frame,

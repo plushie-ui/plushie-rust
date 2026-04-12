@@ -46,7 +46,6 @@ pub(crate) fn spawn_stdin_reader(
     mut reader: TransportReader,
 ) {
     thread::spawn(move || {
-
         loop {
             match codec.read_message(&mut reader) {
                 Ok(None) => {

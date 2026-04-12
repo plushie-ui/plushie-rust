@@ -10,9 +10,9 @@ use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
+use plushie_core::types::a11y::Role;
 use plushie_core::types::{self as core_types, PlushieType, SortOrder};
 use plushie_core::types::{Color as CoreColor, HorizontalAlignment};
-use plushie_core::types::a11y::Role;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -152,13 +152,7 @@ fn render_cell_content<'a, R: PlushieRenderer>(
         1 => ctx.render_child(&cell_node.children[0]),
         _ => {
             // Multiple children: stack vertically
-            column(
-                cell_node
-                    .children
-                    .iter()
-                    .map(|c| ctx.render_child(c)),
-            )
-            .into()
+            column(cell_node.children.iter().map(|c| ctx.render_child(c))).into()
         }
     }
 }
@@ -174,8 +168,8 @@ fn render_prop_rows<'a, R: PlushieRenderer>(
     tp: &TableProps,
     ctx: &RenderCtx<'a, R>,
 ) -> Element<'a, Message, Theme, R> {
-    use iced::widget::row;
     use iced::Fill;
+    use iced::widget::row;
 
     let rows_val = node.props.get_value("rows");
     let rows: Vec<&Value> = rows_val
@@ -191,8 +185,14 @@ fn render_prop_rows<'a, R: PlushieRenderer>(
         let header_cells: Vec<Element<'a, Message, Theme, R>> = columns
             .iter()
             .map(|col| {
-                build_header_cell(col, &tp.sort_by, tp.sort_order, tp.header_text_size,
-                    &node.id, ctx)
+                build_header_cell(
+                    col,
+                    &tp.sort_by,
+                    tp.sort_order,
+                    tp.header_text_size,
+                    &node.id,
+                    ctx,
+                )
             })
             .collect();
         table_rows.push(with_role(row(header_cells).width(Fill).into(), Role::Row));

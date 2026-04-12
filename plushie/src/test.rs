@@ -18,10 +18,10 @@
 use plushie_core::protocol::TreeNode;
 use serde_json::Value;
 
+use crate::App;
 use crate::event::{Event, EventType, WidgetEvent};
 use crate::runtime;
 use crate::widget::{EventResult, Interception, WidgetStateStore};
-use crate::App;
 
 // ---------------------------------------------------------------------------
 // TestSession
@@ -44,7 +44,11 @@ impl<A: App> TestSession<A> {
         let (model, _cmd) = A::init();
         let mut widget_store = WidgetStateStore::new();
         let (tree, _) = runtime::prepare_tree::<A>(&model, &mut widget_store);
-        Self { model, tree, widget_store }
+        Self {
+            model,
+            tree,
+            widget_store,
+        }
     }
 
     /// Access the current model state.
@@ -77,11 +81,7 @@ impl<A: App> TestSession<A> {
 
     /// Simulate a toggle on a checkbox or toggler.
     pub fn toggle(&mut self, id: &str, checked: bool) {
-        self.dispatch(widget_event(
-            EventType::Toggle,
-            id,
-            Value::Bool(checked),
-        ));
+        self.dispatch(widget_event(EventType::Toggle, id, Value::Bool(checked)));
     }
 
     /// Simulate a selection on a pick list, combo box, or radio.
@@ -104,19 +104,21 @@ impl<A: App> TestSession<A> {
 
     /// Simulate a slider value change.
     pub fn slide(&mut self, id: &str, value: f64) {
-        self.dispatch(widget_event(
-            EventType::Slide,
-            id,
-            serde_json::json!(value),
-        ));
+        self.dispatch(widget_event(EventType::Slide, id, serde_json::json!(value)));
     }
 
     /// Dispatch a raw event through the widget interception layer
     /// and then to the app's update function.
     pub fn dispatch(&mut self, event: Event) {
         match self.widget_store.intercept_event(&event) {
-            Some(Interception { result: EventResult::Consumed, .. })
-            | Some(Interception { result: EventResult::UpdateState, .. }) => {
+            Some(Interception {
+                result: EventResult::Consumed,
+                ..
+            })
+            | Some(Interception {
+                result: EventResult::UpdateState,
+                ..
+            }) => {
                 // Widget handled it; don't deliver to app.
             }
             Some(Interception {
@@ -134,7 +136,11 @@ impl<A: App> TestSession<A> {
                 });
                 let _cmd = A::update(&mut self.model, new_event);
             }
-            Some(Interception { result: EventResult::Ignored, .. }) | None => {
+            Some(Interception {
+                result: EventResult::Ignored,
+                ..
+            })
+            | None => {
                 let _cmd = A::update(&mut self.model, event);
             }
         }
@@ -156,7 +162,8 @@ impl<A: App> TestSession<A> {
     /// Get the text content of a widget by ID.
     pub fn text_content(&self, id: &str) -> Option<String> {
         let node = self.find(id)?;
-        node.props.get_str("content")
+        node.props
+            .get_str("content")
             .or_else(|| node.props.get_str("label"))
             .map(|s| s.to_string())
     }

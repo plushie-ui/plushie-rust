@@ -4,9 +4,7 @@ use iced::widget::canvas;
 use iced::{Color, Pixels, Point, Radians, Size, Vector, alignment};
 use serde_json::Value;
 
-use plushie_core::types::canvas::{
-    self as canvas_types, CanvasShape, ClipRect, Transform,
-};
+use plushie_core::types::canvas::{self as canvas_types, CanvasShape, ClipRect, Transform};
 use plushie_core::types::{Color as CoreColor, PlushieType};
 
 use super::types::MAX_SHAPES_PER_LAYER;
@@ -95,9 +93,9 @@ pub(super) fn parse_canvas_fill_themed(
                             let color = arr
                                 .get(1)
                                 .and_then(|v| {
-                                    theme
-                                        .and_then(|t| resolve_color(v, t))
-                                        .or_else(|| CoreColor::wire_decode(v).map(|c| iced_convert::color(&c)))
+                                    theme.and_then(|t| resolve_color(v, t)).or_else(|| {
+                                        CoreColor::wire_decode(v).map(|c| iced_convert::color(&c))
+                                    })
                                 })
                                 .unwrap_or(Color::TRANSPARENT);
                             linear = linear.add_stop(offset, color);
@@ -156,7 +154,11 @@ pub(super) fn parse_canvas_stroke_themed(
     };
     let color = theme
         .and_then(|t| obj.get("color").and_then(|v| resolve_color(v, t)))
-        .or_else(|| obj.get("color").and_then(CoreColor::wire_decode).map(|c| iced_convert::color(&c)))
+        .or_else(|| {
+            obj.get("color")
+                .and_then(CoreColor::wire_decode)
+                .map(|c| iced_convert::color(&c))
+        })
         .unwrap_or(Color::WHITE);
     let width = obj
         .get("width")
@@ -260,7 +262,14 @@ pub(super) fn build_path_from_commands(commands: &[canvas_types::PathCommand]) -
                 PathCommand::LineTo { x, y } => {
                     builder.line_to(Point::new(*x, *y));
                 }
-                PathCommand::BezierTo { cp1x, cp1y, cp2x, cp2y, x, y } => {
+                PathCommand::BezierTo {
+                    cp1x,
+                    cp1y,
+                    cp2x,
+                    cp2y,
+                    x,
+                    y,
+                } => {
                     builder.bezier_curve_to(
                         Point::new(*cp1x, *cp1y),
                         Point::new(*cp2x, *cp2y),
@@ -268,12 +277,15 @@ pub(super) fn build_path_from_commands(commands: &[canvas_types::PathCommand]) -
                     );
                 }
                 PathCommand::QuadraticTo { cpx, cpy, x, y } => {
-                    builder.quadratic_curve_to(
-                        Point::new(*cpx, *cpy),
-                        Point::new(*x, *y),
-                    );
+                    builder.quadratic_curve_to(Point::new(*cpx, *cpy), Point::new(*x, *y));
                 }
-                PathCommand::Arc { cx, cy, radius, start_angle, end_angle } => {
+                PathCommand::Arc {
+                    cx,
+                    cy,
+                    radius,
+                    start_angle,
+                    end_angle,
+                } => {
                     builder.arc(canvas::path::Arc {
                         center: Point::new(*cx, *cy),
                         radius: *radius,
@@ -281,14 +293,24 @@ pub(super) fn build_path_from_commands(commands: &[canvas_types::PathCommand]) -
                         end_angle: Radians(*end_angle),
                     });
                 }
-                PathCommand::ArcTo { x1, y1, x2, y2, radius } => {
-                    builder.arc_to(
-                        Point::new(*x1, *y1),
-                        Point::new(*x2, *y2),
-                        *radius,
-                    );
+                PathCommand::ArcTo {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    radius,
+                } => {
+                    builder.arc_to(Point::new(*x1, *y1), Point::new(*x2, *y2), *radius);
                 }
-                PathCommand::Ellipse { cx, cy, rx, ry, rotation, start_angle, end_angle } => {
+                PathCommand::Ellipse {
+                    cx,
+                    cy,
+                    rx,
+                    ry,
+                    rotation,
+                    start_angle,
+                    end_angle,
+                } => {
                     builder.ellipse(canvas::path::arc::Elliptical {
                         center: Point::new(*cx, *cy),
                         radii: Vector::new(*rx, *ry),
@@ -332,10 +354,10 @@ pub(super) fn draw_canvas_shapes<R: PlushieRenderer>(
 /// into solid color alpha. Gradient stops are left unchanged (the host
 /// should bake opacity into gradient stop colors if needed).
 pub(super) fn apply_opacity_to_fill(opacity: Option<f32>, mut fill: canvas::Fill) -> canvas::Fill {
-    if let Some(a) = opacity {
-        if let canvas::Style::Solid(ref mut c) = fill.style {
-            c.a *= a;
-        }
+    if let Some(a) = opacity
+        && let canvas::Style::Solid(ref mut c) = fill.style
+    {
+        c.a *= a;
     }
     fill
 }
@@ -345,10 +367,10 @@ pub(super) fn apply_opacity_to_stroke(
     opacity: Option<f32>,
     mut stroke: canvas::Stroke<'static>,
 ) -> canvas::Stroke<'static> {
-    if let Some(a) = opacity {
-        if let canvas::Style::Solid(ref mut c) = stroke.style {
-            c.a *= a;
-        }
+    if let Some(a) = opacity
+        && let canvas::Style::Solid(ref mut c) = stroke.style
+    {
+        c.a *= a;
     }
     stroke
 }
@@ -580,19 +602,20 @@ fn typed_canvas_fill(
 }
 
 /// Convert a typed Stroke to an iced canvas::Stroke with theme support.
-fn typed_canvas_stroke(
-    s: &canvas_types::Stroke,
-    theme: &iced::Theme,
-) -> canvas::Stroke<'static> {
+fn typed_canvas_stroke(s: &canvas_types::Stroke, theme: &iced::Theme) -> canvas::Stroke<'static> {
     let color = resolve_core_color(&s.color, theme);
     let mut out = canvas::Stroke::default()
         .with_color(color)
         .with_width(s.width)
         .with_line_cap(
-            s.cap.map(iced_convert::line_cap).unwrap_or(canvas::LineCap::Butt),
+            s.cap
+                .map(iced_convert::line_cap)
+                .unwrap_or(canvas::LineCap::Butt),
         )
         .with_line_join(
-            s.join.map(iced_convert::line_join).unwrap_or(canvas::LineJoin::Miter),
+            s.join
+                .map(iced_convert::line_join)
+                .unwrap_or(canvas::LineJoin::Miter),
         );
     if let Some(ref dash) = s.dash {
         let segments = intern_dash_segments(dash.segments.clone());
@@ -615,7 +638,7 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
         CanvasShape::Rect(r) => {
             let rect_path = match &r.radius {
                 Some(radius) => {
-                    let iced_radius = iced_convert::radius(radius.clone());
+                    let iced_radius = iced_convert::radius(*radius);
                     canvas::Path::rounded_rectangle(
                         Point::new(r.x, r.y),
                         Size::new(r.w, r.h),
@@ -636,10 +659,8 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
                 frame.fill_rectangle(Point::new(r.x, r.y), Size::new(r.w, r.h), color);
             }
             if let Some(ref stroke) = r.stroke {
-                let iced_stroke = apply_opacity_to_stroke(
-                    r.opacity,
-                    typed_canvas_stroke(stroke, theme),
-                );
+                let iced_stroke =
+                    apply_opacity_to_stroke(r.opacity, typed_canvas_stroke(stroke, theme));
                 frame.stroke(&rect_path, iced_stroke);
             }
         }
@@ -656,23 +677,16 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
                 frame.fill(&circle_path, color);
             }
             if let Some(ref stroke) = c.stroke {
-                let iced_stroke = apply_opacity_to_stroke(
-                    c.opacity,
-                    typed_canvas_stroke(stroke, theme),
-                );
+                let iced_stroke =
+                    apply_opacity_to_stroke(c.opacity, typed_canvas_stroke(stroke, theme));
                 frame.stroke(&circle_path, iced_stroke);
             }
         }
         CanvasShape::Line(l) => {
-            let line_path = canvas::Path::line(
-                Point::new(l.x1, l.y1),
-                Point::new(l.x2, l.y2),
-            );
+            let line_path = canvas::Path::line(Point::new(l.x1, l.y1), Point::new(l.x2, l.y2));
             if let Some(ref stroke) = l.stroke {
-                let iced_stroke = apply_opacity_to_stroke(
-                    l.opacity,
-                    typed_canvas_stroke(stroke, theme),
-                );
+                let iced_stroke =
+                    apply_opacity_to_stroke(l.opacity, typed_canvas_stroke(stroke, theme));
                 frame.stroke(&line_path, iced_stroke);
             } else {
                 // Legacy: line without explicit stroke defaults to a 1px white line
@@ -684,7 +698,9 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
             }
         }
         CanvasShape::Text(t) => {
-            let fill_color = t.fill.as_ref()
+            let fill_color = t
+                .fill
+                .as_ref()
                 .and_then(|f| match f {
                     canvas_types::CanvasFill::Color(c) => Some(resolve_core_color(c, theme)),
                     _ => None,
@@ -719,10 +735,8 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
                 frame.fill(&path, iced_fill);
             }
             if let Some(ref stroke) = p.stroke {
-                let iced_stroke = apply_opacity_to_stroke(
-                    p.opacity,
-                    typed_canvas_stroke(stroke, theme),
-                );
+                let iced_stroke =
+                    apply_opacity_to_stroke(p.opacity, typed_canvas_stroke(stroke, theme));
                 frame.stroke(&path, iced_stroke);
             }
         }
@@ -741,9 +755,7 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
             } else {
                 iced::widget::image::Handle::from_path(&img_shape.source)
             };
-            let rotation = img_shape.rotation
-                .map(|r| Radians(r))
-                .unwrap_or(Radians(0.0));
+            let rotation = img_shape.rotation.map(Radians).unwrap_or(Radians(0.0));
             let opacity = img_shape.opacity.unwrap_or(1.0);
             let img = iced::advanced::image::Image {
                 handle,
@@ -812,50 +824,81 @@ fn apply_style_overrides(
     shape: &CanvasShape,
     overrides: &plushie_core::types::canvas::ShapeStyle,
 ) -> CanvasShape {
-    use plushie_core::types::canvas::CanvasFill;
     use plushie_core::types::Color as CoreColor;
+    use plushie_core::types::canvas::CanvasFill;
 
-    let override_fill = overrides.fill.as_ref().map(|f| CanvasFill::Color(CoreColor::hex(f)));
+    let override_fill = overrides
+        .fill
+        .as_ref()
+        .map(|f| CanvasFill::Color(CoreColor::hex(f)));
     let override_stroke = overrides.stroke.clone();
     let override_opacity = overrides.opacity;
 
     match shape {
         CanvasShape::Rect(r) => {
             let mut r = r.clone();
-            if let Some(f) = override_fill { r.fill = Some(f); }
-            if let Some(s) = override_stroke { r.stroke = Some(s); }
-            if let Some(o) = override_opacity { r.opacity = Some(o); }
+            if let Some(f) = override_fill {
+                r.fill = Some(f);
+            }
+            if let Some(s) = override_stroke {
+                r.stroke = Some(s);
+            }
+            if let Some(o) = override_opacity {
+                r.opacity = Some(o);
+            }
             CanvasShape::Rect(r)
         }
         CanvasShape::Circle(c) => {
             let mut c = c.clone();
-            if let Some(f) = override_fill { c.fill = Some(f); }
-            if let Some(s) = override_stroke { c.stroke = Some(s); }
-            if let Some(o) = override_opacity { c.opacity = Some(o); }
+            if let Some(f) = override_fill {
+                c.fill = Some(f);
+            }
+            if let Some(s) = override_stroke {
+                c.stroke = Some(s);
+            }
+            if let Some(o) = override_opacity {
+                c.opacity = Some(o);
+            }
             CanvasShape::Circle(c)
         }
         CanvasShape::Line(l) => {
             let mut l = l.clone();
-            if let Some(s) = override_stroke { l.stroke = Some(s); }
-            if let Some(o) = override_opacity { l.opacity = Some(o); }
+            if let Some(s) = override_stroke {
+                l.stroke = Some(s);
+            }
+            if let Some(o) = override_opacity {
+                l.opacity = Some(o);
+            }
             CanvasShape::Line(l)
         }
         CanvasShape::Text(t) => {
             let mut t = t.clone();
-            if let Some(f) = override_fill { t.fill = Some(f); }
-            if let Some(o) = override_opacity { t.opacity = Some(o); }
+            if let Some(f) = override_fill {
+                t.fill = Some(f);
+            }
+            if let Some(o) = override_opacity {
+                t.opacity = Some(o);
+            }
             CanvasShape::Text(t)
         }
         CanvasShape::Path(p) => {
             let mut p = p.clone();
-            if let Some(f) = override_fill { p.fill = Some(f); }
-            if let Some(s) = override_stroke { p.stroke = Some(s); }
-            if let Some(o) = override_opacity { p.opacity = Some(o); }
+            if let Some(f) = override_fill {
+                p.fill = Some(f);
+            }
+            if let Some(s) = override_stroke {
+                p.stroke = Some(s);
+            }
+            if let Some(o) = override_opacity {
+                p.opacity = Some(o);
+            }
             CanvasShape::Path(p)
         }
         CanvasShape::Image(i) => {
             let mut i = i.clone();
-            if let Some(o) = override_opacity { i.opacity = Some(o); }
+            if let Some(o) = override_opacity {
+                i.opacity = Some(o);
+            }
             CanvasShape::Image(i)
         }
         // Svg and Group don't have fill/stroke/opacity overrides

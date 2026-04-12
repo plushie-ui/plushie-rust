@@ -52,11 +52,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
 
         let range = pbp.range.unwrap_or(Range::new(0.0, 100.0));
         let range_inclusive = range.min..=range.max;
-        let value =
-            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "value")
-                .or(pbp.value)
-                .unwrap_or(0.0)
-                .clamp(range.min, range.max);
+        let value = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "value",
+        )
+        .or(pbp.value)
+        .unwrap_or(0.0)
+        .clamp(range.min, range.max);
         let width = pbp
             .width
             .map(|l| iced_convert::length(&l))

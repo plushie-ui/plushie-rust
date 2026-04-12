@@ -85,11 +85,17 @@ enum WriterInner {
 
 impl WireWriter {
     fn stdout(codec: Codec) -> Self {
-        Self { inner: WriterInner::Stdout, codec }
+        Self {
+            inner: WriterInner::Stdout,
+            codec,
+        }
     }
 
     fn channel(tx: mpsc::SyncSender<Vec<u8>>, codec: Codec) -> Self {
-        Self { inner: WriterInner::Channel(tx), codec }
+        Self {
+            inner: WriterInner::Channel(tx),
+            codec,
+        }
     }
 
     /// Encode a serializable value and write it.
@@ -105,7 +111,8 @@ impl WireWriter {
         map: serde_json::Map<String, serde_json::Value>,
         binary: Option<(&str, &[u8])>,
     ) -> io::Result<()> {
-        let bytes = self.codec
+        let bytes = self
+            .codec
             .encode_binary_message(map, binary)
             .map_err(io::Error::other)?;
         self.write_bytes(&bytes)
@@ -1323,7 +1330,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                                 "id": "",
                                 "data": { "error": msg }
                             });
-    
+
                             if let Ok(bytes) = codec.encode(&error) {
                                 let _ = closed_writer_tx.send(bytes);
                             }

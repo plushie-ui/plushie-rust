@@ -15,22 +15,17 @@ use super::PlushieType;
 /// - `Fixed(px)`: a non-negative number (logical pixels)
 ///
 /// A numeric string (e.g. `"200"`) is also accepted as `Fixed`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Length {
     /// Fill all available space.
     Fill,
     /// Take only the space needed by the content.
+    #[default]
     Shrink,
     /// Fill a weighted portion of available space.
     FillPortion(u16),
     /// A fixed size in logical pixels.
     Fixed(f32),
-}
-
-impl Default for Length {
-    fn default() -> Self {
-        Self::Shrink
-    }
 }
 
 impl PlushieType for Length {

@@ -230,42 +230,17 @@ impl WidgetEvent {
         match self.event_type {
             Click => WidgetMatch::Click(&self.id),
             DoubleClick => WidgetMatch::DoubleClick(&self.id),
-            Input => WidgetMatch::Input(
-                &self.id,
-                self.value.as_str().unwrap_or_default(),
-            ),
-            Submit => WidgetMatch::Submit(
-                &self.id,
-                self.value.as_str().unwrap_or_default(),
-            ),
-            Toggle => WidgetMatch::Toggle(
-                &self.id,
-                self.value.as_bool().unwrap_or_default(),
-            ),
-            Select => WidgetMatch::Select(
-                &self.id,
-                self.value.as_str().unwrap_or_default(),
-            ),
-            Slide => WidgetMatch::Slide(
-                &self.id,
-                self.value.as_f64().unwrap_or_default(),
-            ),
-            SlideRelease => WidgetMatch::SlideRelease(
-                &self.id,
-                self.value.as_f64().unwrap_or_default(),
-            ),
-            Paste => WidgetMatch::Paste(
-                &self.id,
-                self.value.as_str().unwrap_or_default(),
-            ),
-            Press => WidgetMatch::Press(
-                &self.id,
-                self.value.as_str().unwrap_or("Left"),
-            ),
-            Release => WidgetMatch::Release(
-                &self.id,
-                self.value.as_str().unwrap_or("Left"),
-            ),
+            Input => WidgetMatch::Input(&self.id, self.value.as_str().unwrap_or_default()),
+            Submit => WidgetMatch::Submit(&self.id, self.value.as_str().unwrap_or_default()),
+            Toggle => WidgetMatch::Toggle(&self.id, self.value.as_bool().unwrap_or_default()),
+            Select => WidgetMatch::Select(&self.id, self.value.as_str().unwrap_or_default()),
+            Slide => WidgetMatch::Slide(&self.id, self.value.as_f64().unwrap_or_default()),
+            SlideRelease => {
+                WidgetMatch::SlideRelease(&self.id, self.value.as_f64().unwrap_or_default())
+            }
+            Paste => WidgetMatch::Paste(&self.id, self.value.as_str().unwrap_or_default()),
+            Press => WidgetMatch::Press(&self.id, self.value.as_str().unwrap_or("Left")),
+            Release => WidgetMatch::Release(&self.id, self.value.as_str().unwrap_or("Left")),
             Enter => WidgetMatch::Enter(&self.id),
             Exit => WidgetMatch::Exit(&self.id),
             Drag => WidgetMatch::Drag(&self.id, &self.value),
@@ -406,8 +381,12 @@ pub struct KeyEvent {
 }
 
 impl KeyEvent {
-    pub fn is_press(&self) -> bool { self.event_type == KeyEventType::Press }
-    pub fn is_release(&self) -> bool { self.event_type == KeyEventType::Release }
+    pub fn is_press(&self) -> bool {
+        self.event_type == KeyEventType::Press
+    }
+    pub fn is_release(&self) -> bool {
+        self.event_type == KeyEventType::Release
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

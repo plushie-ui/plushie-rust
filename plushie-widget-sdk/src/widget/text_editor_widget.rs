@@ -358,10 +358,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     if !placeholder.is_empty() {
         te = te.placeholder(placeholder);
     }
-    let font = tp
-        .font
-        .map(|f| iced_convert::font(&f))
-        .or(ctx.default_font);
+    let font = tp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
     if let Some(f) = font {
         te = te.font(f);
     }
@@ -390,10 +387,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
 
     // Key bindings: declarative rules parsed into a closure
     let key_bindings_val = props.get_value("key_bindings");
-    if let Some(rules) = key_bindings_val
-        .as_ref()
-        .and_then(|v| v.as_array())
-    {
+    if let Some(rules) = key_bindings_val.as_ref().and_then(|v| v.as_array()) {
         let editor_id = node.id.clone();
         let parsed_rules: Vec<KeyRule> = rules
             .iter()

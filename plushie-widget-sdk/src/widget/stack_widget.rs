@@ -41,8 +41,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for StackWidget {
     ) -> Element<'a, Message, Theme, R> {
         let sp = StackProps::from_node(node);
 
-        let width = sp.width.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
-        let height = sp.height.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
+        let width = sp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
+        let height = sp
+            .height
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
 
         let children = ctx.render_children(node);
 

@@ -100,10 +100,7 @@ fn render_checkbox<'a, R: PlushieRenderer>(
     if let Some(ts) = cp.text_size.or(ctx.default_text_size) {
         cb = cb.text_size(ts);
     }
-    let font = cp
-        .font
-        .map(|f| iced_convert::font(&f))
-        .or(ctx.default_font);
+    let font = cp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
     if let Some(f) = font {
         cb = cb.font(f);
     }
@@ -119,9 +116,7 @@ fn render_checkbox<'a, R: PlushieRenderer>(
 
     // Icon: complex nested object, kept as raw prop access
     let icon_prop = node.props.get_value("icon");
-    if let Some(icon_val) = icon_prop
-        .as_ref()
-        .and_then(|v| v.as_object())
+    if let Some(icon_val) = icon_prop.as_ref().and_then(|v| v.as_object())
         && let Some(cp_str) = icon_val.get("code_point").and_then(|v| v.as_str())
         && let Some(code_point) = cp_str.chars().next()
     {

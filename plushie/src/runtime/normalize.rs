@@ -80,7 +80,9 @@ fn normalize_node(
     };
 
     // Normalize children recursively.
-    let children = node.children.iter()
+    let children = node
+        .children
+        .iter()
         .map(|child| normalize_node(child, &child_scope, seen_ids, warnings))
         .collect();
 
@@ -108,10 +110,11 @@ mod tests {
 
     #[test]
     fn flat_tree_preserves_ids() {
-        let tree = node("root", "column", vec![
-            node("a", "text", vec![]),
-            node("b", "text", vec![]),
-        ]);
+        let tree = node(
+            "root",
+            "column",
+            vec![node("a", "text", vec![]), node("b", "text", vec![])],
+        );
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
         assert_eq!(result.children[0].id, "root/a");
@@ -120,9 +123,11 @@ mod tests {
 
     #[test]
     fn auto_ids_are_not_scoped() {
-        let tree = node("auto:col:1:1", "column", vec![
-            node("btn", "button", vec![]),
-        ]);
+        let tree = node(
+            "auto:col:1:1",
+            "column",
+            vec![node("btn", "button", vec![])],
+        );
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
         assert_eq!(result.children[0].id, "btn");
@@ -130,11 +135,15 @@ mod tests {
 
     #[test]
     fn nested_scoping() {
-        let tree = node("form", "container", vec![
-            node("section", "column", vec![
-                node("field", "text_input", vec![]),
-            ]),
-        ]);
+        let tree = node(
+            "form",
+            "container",
+            vec![node(
+                "section",
+                "column",
+                vec![node("field", "text_input", vec![])],
+            )],
+        );
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
         assert_eq!(result.children[0].id, "form/section");
@@ -143,9 +152,7 @@ mod tests {
 
     #[test]
     fn window_does_not_scope_children() {
-        let tree = node("main", "window", vec![
-            node("col", "column", vec![]),
-        ]);
+        let tree = node("main", "window", vec![node("col", "column", vec![])]);
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
         assert_eq!(result.children[0].id, "col");
@@ -153,10 +160,11 @@ mod tests {
 
     #[test]
     fn duplicate_ids_produce_warning() {
-        let tree = node("root", "column", vec![
-            node("btn", "button", vec![]),
-            node("btn", "button", vec![]),
-        ]);
+        let tree = node(
+            "root",
+            "column",
+            vec![node("btn", "button", vec![]), node("btn", "button", vec![])],
+        );
         let (_, warnings) = normalize(&tree);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("duplicate ID"));
@@ -172,10 +180,14 @@ mod tests {
 
     #[test]
     fn auto_ids_skip_duplicate_check() {
-        let tree = node("root", "column", vec![
-            node("auto:text:1:1", "text", vec![]),
-            node("auto:text:1:1", "text", vec![]),
-        ]);
+        let tree = node(
+            "root",
+            "column",
+            vec![
+                node("auto:text:1:1", "text", vec![]),
+                node("auto:text:1:1", "text", vec![]),
+            ],
+        );
         let (_, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
     }

@@ -48,6 +48,7 @@ struct PendingEffect {
     deadline: Instant,
 }
 
+#[allow(dead_code)] // Public API surface, used by apps
 impl EffectTracker {
     pub fn new() -> Self {
         Self {
@@ -81,9 +82,7 @@ impl EffectTracker {
 
     /// Resolve a response by wire ID. Returns (tag, kind) if found.
     pub fn resolve(&mut self, wire_id: &str) -> Option<(String, String)> {
-        self.pending
-            .remove(wire_id)
-            .map(|e| (e.tag, e.kind))
+        self.pending.remove(wire_id).map(|e| (e.tag, e.kind))
     }
 
     /// Check for timed-out effects. Returns (tag, kind) pairs.
@@ -107,10 +106,7 @@ impl EffectTracker {
     /// Returns (tag, kind) pairs for all flushed effects so the
     /// caller can deliver `RendererRestarted` events to the app.
     pub fn flush_all(&mut self) -> Vec<(String, String)> {
-        self.pending
-            .drain()
-            .map(|(_, e)| (e.tag, e.kind))
-            .collect()
+        self.pending.drain().map(|(_, e)| (e.tag, e.kind)).collect()
     }
 
     /// Number of in-flight effects.
@@ -135,10 +131,17 @@ impl EffectTracker {
 /// explicit timeout is provided.
 pub fn default_timeout(kind: &str) -> Duration {
     match kind {
-        "file_open" | "file_open_multiple" | "file_save" | "directory_select"
+        "file_open"
+        | "file_open_multiple"
+        | "file_save"
+        | "directory_select"
         | "directory_select_multiple" => Duration::from_secs(120),
-        "clipboard_read" | "clipboard_write" | "clipboard_read_html"
-        | "clipboard_write_html" | "clipboard_clear" | "clipboard_read_primary"
+        "clipboard_read"
+        | "clipboard_write"
+        | "clipboard_read_html"
+        | "clipboard_write_html"
+        | "clipboard_clear"
+        | "clipboard_read_primary"
         | "clipboard_write_primary" => Duration::from_secs(5),
         "notification" => Duration::from_secs(5),
         _ => Duration::from_secs(30),

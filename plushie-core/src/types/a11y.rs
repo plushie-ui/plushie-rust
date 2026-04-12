@@ -7,8 +7,8 @@
 
 use serde_json::Value;
 
-use crate::protocol::{PropMap, PropValue, Props};
 use crate::PlushieEnum;
+use crate::protocol::{PropMap, PropValue, Props};
 
 use super::PlushieType;
 
@@ -342,10 +342,16 @@ impl PlushieType for A11y {
 
         let role = obj.get("role").and_then(Role::wire_decode);
         let label = obj.get("label").and_then(|v| v.as_str()).map(String::from);
-        let description = obj.get("description").and_then(|v| v.as_str()).map(String::from);
+        let description = obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let hidden = obj.get("hidden").and_then(|v| v.as_bool()).unwrap_or(false);
         let expanded = obj.get("expanded").and_then(|v| v.as_bool());
-        let required = obj.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
+        let required = obj
+            .get("required")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let level = obj.get("level").and_then(|v| v.as_u64()).and_then(|n| {
             let n = n as usize;
@@ -354,11 +360,18 @@ impl PlushieType for A11y {
 
         let live = obj.get("live").and_then(Live::wire_decode);
         let busy = obj.get("busy").and_then(|v| v.as_bool());
-        let invalid = obj.get("invalid").and_then(|v| v.as_bool()).unwrap_or(false);
+        let invalid = obj
+            .get("invalid")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let modal = obj.get("modal").and_then(|v| v.as_bool()).unwrap_or(false);
-        let read_only = obj.get("read_only").and_then(|v| v.as_bool()).unwrap_or(false);
+        let read_only = obj
+            .get("read_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
-        let mnemonic = obj.get("mnemonic")
+        let mnemonic = obj
+            .get("mnemonic")
             .and_then(|v| v.as_str())
             .and_then(|s| s.chars().next());
 
@@ -368,19 +381,34 @@ impl PlushieType for A11y {
         let orientation = obj.get("orientation").and_then(Orientation::wire_decode);
         let disabled = obj.get("disabled").and_then(|v| v.as_bool());
 
-        let position_in_set = obj.get("position_in_set")
+        let position_in_set = obj
+            .get("position_in_set")
             .and_then(|v| v.as_u64())
             .map(|n| n as usize);
-        let size_of_set = obj.get("size_of_set")
+        let size_of_set = obj
+            .get("size_of_set")
             .and_then(|v| v.as_u64())
             .map(|n| n as usize);
 
-        let labelled_by = obj.get("labelled_by").and_then(|v| v.as_str()).map(String::from);
-        let described_by = obj.get("described_by").and_then(|v| v.as_str()).map(String::from);
-        let error_message = obj.get("error_message").and_then(|v| v.as_str()).map(String::from);
-        let active_descendant = obj.get("active_descendant").and_then(|v| v.as_str()).map(String::from);
+        let labelled_by = obj
+            .get("labelled_by")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let described_by = obj
+            .get("described_by")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let error_message = obj
+            .get("error_message")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let active_descendant = obj
+            .get("active_descendant")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
-        let radio_group = obj.get("radio_group")
+        let radio_group = obj
+            .get("radio_group")
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -389,7 +417,10 @@ impl PlushieType for A11y {
             });
 
         let has_popup = obj.get("has_popup").and_then(HasPopup::wire_decode);
-        let label_from = obj.get("label_from").and_then(|v| v.as_str()).map(String::from);
+        let label_from = obj
+            .get("label_from")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         Some(Self {
             role,
@@ -498,9 +529,7 @@ impl PlushieType for A11y {
             m.insert("active_descendant", PropValue::Str(id.clone()));
         }
         if let Some(ref ids) = self.radio_group {
-            let arr = ids.iter()
-                .map(|s| PropValue::Str(s.clone()))
-                .collect();
+            let arr = ids.iter().map(|s| PropValue::Str(s.clone())).collect();
             m.insert("radio_group", PropValue::Array(arr));
         }
         if let Some(ref popup) = self.has_popup {
@@ -549,34 +578,64 @@ mod tests {
     #[test]
     fn role_aliases() {
         assert_eq!(Role::wire_decode(&json!("radio")), Some(Role::RadioButton));
-        assert_eq!(Role::wire_decode(&json!("radio_button")), Some(Role::RadioButton));
-        assert_eq!(Role::wire_decode(&json!("container")), Some(Role::GenericContainer));
-        assert_eq!(Role::wire_decode(&json!("generic")), Some(Role::GenericContainer));
-        assert_eq!(Role::wire_decode(&json!("text_editor")), Some(Role::MultilineTextInput));
-        assert_eq!(Role::wire_decode(&json!("progress_bar")), Some(Role::ProgressIndicator));
+        assert_eq!(
+            Role::wire_decode(&json!("radio_button")),
+            Some(Role::RadioButton)
+        );
+        assert_eq!(
+            Role::wire_decode(&json!("container")),
+            Some(Role::GenericContainer)
+        );
+        assert_eq!(
+            Role::wire_decode(&json!("generic")),
+            Some(Role::GenericContainer)
+        );
+        assert_eq!(
+            Role::wire_decode(&json!("text_editor")),
+            Some(Role::MultilineTextInput)
+        );
+        assert_eq!(
+            Role::wire_decode(&json!("progress_bar")),
+            Some(Role::ProgressIndicator)
+        );
         assert_eq!(Role::wire_decode(&json!("row")), Some(Role::Row));
         assert_eq!(Role::wire_decode(&json!("cell")), Some(Role::Cell));
     }
 
     #[test]
     fn role_unknown_returns_none() {
-        assert_eq!(Role::wire_decode(&json!("widget_that_does_not_exist")), None);
+        assert_eq!(
+            Role::wire_decode(&json!("widget_that_does_not_exist")),
+            None
+        );
     }
 
     #[test]
     fn live_round_trip() {
         assert_eq!(Live::wire_decode(&json!("polite")), Some(Live::Polite));
-        assert_eq!(Live::wire_decode(&json!("assertive")), Some(Live::Assertive));
+        assert_eq!(
+            Live::wire_decode(&json!("assertive")),
+            Some(Live::Assertive)
+        );
         assert_eq!(Live::wire_decode(&json!("off")), None);
         assert_eq!(Live::Polite.wire_encode(), PropValue::Str("polite".into()));
     }
 
     #[test]
     fn orientation_round_trip() {
-        assert_eq!(Orientation::wire_decode(&json!("horizontal")), Some(Orientation::Horizontal));
-        assert_eq!(Orientation::wire_decode(&json!("vertical")), Some(Orientation::Vertical));
+        assert_eq!(
+            Orientation::wire_decode(&json!("horizontal")),
+            Some(Orientation::Horizontal)
+        );
+        assert_eq!(
+            Orientation::wire_decode(&json!("vertical")),
+            Some(Orientation::Vertical)
+        );
         assert_eq!(Orientation::wire_decode(&json!("diagonal")), None);
-        assert_eq!(Orientation::Vertical.wire_encode(), PropValue::Str("vertical".into()));
+        assert_eq!(
+            Orientation::Vertical.wire_encode(),
+            PropValue::Str("vertical".into())
+        );
     }
 
     #[test]
@@ -673,8 +732,14 @@ mod tests {
     #[test]
     fn a11y_level_clamped() {
         assert_eq!(A11y::wire_decode(&json!({"level": 0})).unwrap().level, None);
-        assert_eq!(A11y::wire_decode(&json!({"level": 1})).unwrap().level, Some(1));
-        assert_eq!(A11y::wire_decode(&json!({"level": 6})).unwrap().level, Some(6));
+        assert_eq!(
+            A11y::wire_decode(&json!({"level": 1})).unwrap().level,
+            Some(1)
+        );
+        assert_eq!(
+            A11y::wire_decode(&json!({"level": 6})).unwrap().level,
+            Some(6)
+        );
         assert_eq!(A11y::wire_decode(&json!({"level": 7})).unwrap().level, None);
     }
 

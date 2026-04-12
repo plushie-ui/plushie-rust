@@ -576,13 +576,13 @@ pub fn parse_pick_list_icon(value: &Value) -> Option<pick_list::Icon<Font>> {
     let line_height = obj
         .get("line_height")
         .and_then(CoreLineHeight::wire_decode)
-        .map(|lh| iced_convert::line_height(lh))
+        .map(iced_convert::line_height)
         .unwrap_or(iced::widget::text::LineHeight::Relative(1.2));
 
     let shaping = obj
         .get("shaping")
         .and_then(CoreShaping::wire_decode)
-        .map(|s| iced_convert::shaping(s))
+        .map(iced_convert::shaping)
         .unwrap_or(iced::widget::text::Shaping::Basic);
 
     Some(pick_list::Icon {

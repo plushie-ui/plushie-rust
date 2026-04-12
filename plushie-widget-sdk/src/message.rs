@@ -84,6 +84,8 @@ pub enum Message {
     Stdin(StdinEvent),
     /// No-op: used as return value for fire-and-forget tasks (font loads, etc.)
     NoOp,
+    /// A timer subscription ticked (tag).
+    TimerTick(String),
     /// A keyboard key was pressed (full event data, window, captured).
     KeyPressed(KeyEventData, window::Id),
     /// A keyboard key was released (full event data, window, captured).
@@ -436,7 +438,7 @@ impl Message {
                         "right",
                         "mouse",
                         None,
-                        mods.clone(),
+                        mods,
                     )),
                     "right_release" => Some(OutgoingEvent::pointer_release(
                         id.clone(),
@@ -445,7 +447,7 @@ impl Message {
                         "right",
                         "mouse",
                         None,
-                        mods.clone(),
+                        mods,
                     )),
                     "middle_press" => Some(OutgoingEvent::pointer_press(
                         id.clone(),
@@ -454,7 +456,7 @@ impl Message {
                         "middle",
                         "mouse",
                         None,
-                        mods.clone(),
+                        mods,
                     )),
                     "middle_release" => Some(OutgoingEvent::pointer_release(
                         id.clone(),
@@ -463,14 +465,14 @@ impl Message {
                         "middle",
                         "mouse",
                         None,
-                        mods.clone(),
+                        mods,
                     )),
                     "double_click" => Some(OutgoingEvent::pointer_double_click(
                         id.clone(),
                         *x,
                         *y,
                         "mouse",
-                        mods.clone(),
+                        mods,
                     )),
                     "enter" => Some(OutgoingEvent::pointer_enter(id.clone())),
                     "exit" => Some(OutgoingEvent::pointer_exit(id.clone())),
@@ -525,7 +527,7 @@ impl Message {
                         button,
                         pointer_type,
                         finger,
-                        modifiers.clone(),
+                        *modifiers,
                     )),
                     "release" => Some(OutgoingEvent::pointer_release(
                         id.clone(),
@@ -534,7 +536,7 @@ impl Message {
                         button,
                         pointer_type,
                         finger,
-                        modifiers.clone(),
+                        *modifiers,
                     )),
                     "move" => Some(OutgoingEvent::pointer_move(
                         id.clone(),
@@ -542,7 +544,7 @@ impl Message {
                         *y,
                         pointer_type,
                         finger,
-                        modifiers.clone(),
+                        *modifiers,
                     )),
                     _ => None,
                 }
@@ -565,7 +567,7 @@ impl Message {
                     *delta_x,
                     *delta_y,
                     pointer_type,
-                    modifiers.clone(),
+                    *modifiers,
                 )
                 .with_window_id(window_id.clone()),
             ),
@@ -598,7 +600,7 @@ impl Message {
                     canvas_id.clone(),
                     element_id.clone(),
                     key.clone(),
-                    modifiers.clone(),
+                    *modifiers,
                 )
                 .with_window_id(window_id.clone()),
             ),
@@ -613,7 +615,7 @@ impl Message {
                     canvas_id.clone(),
                     element_id.clone(),
                     key.clone(),
-                    modifiers.clone(),
+                    *modifiers,
                 )
                 .with_window_id(window_id.clone()),
             ),

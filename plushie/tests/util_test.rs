@@ -2,9 +2,7 @@
 
 use std::collections::HashMap;
 
-use plushie::util::{
-    Query, Route, Selection, SelectionMode, UndoStack,
-};
+use plushie::util::{Query, Route, Selection, SelectionMode, UndoStack};
 
 // ---------------------------------------------------------------------------
 // Selection
@@ -241,7 +239,10 @@ fn new_with_params_sets_initial_params() {
     params.insert("tab".to_string(), serde_json::json!("general"));
     let route = Route::new_with_params("/settings", params);
     assert_eq!(route.current(), "/settings");
-    assert_eq!(route.params().get("tab").and_then(|v| v.as_str()), Some("general"));
+    assert_eq!(
+        route.params().get("tab").and_then(|v| v.as_str()),
+        Some("general")
+    );
     assert_eq!(route.depth(), 1);
 }
 
@@ -438,8 +439,14 @@ fn sort_by_multiple_fields() {
     let items = vec![(2, "b"), (1, "a"), (2, "a"), (1, "b")];
     let result = Query::new(&items)
         .sort_by(vec![
-            (SortDir::Asc, Box::new(|a: &(i32, &str), b: &(i32, &str)| a.0.cmp(&b.0))),
-            (SortDir::Desc, Box::new(|a: &(i32, &str), b: &(i32, &str)| a.1.cmp(&b.1))),
+            (
+                SortDir::Asc,
+                Box::new(|a: &(i32, &str), b: &(i32, &str)| a.0.cmp(&b.0)),
+            ),
+            (
+                SortDir::Desc,
+                Box::new(|a: &(i32, &str), b: &(i32, &str)| a.1.cmp(b.1)),
+            ),
         ])
         .page_size(100)
         .run();

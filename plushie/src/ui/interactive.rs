@@ -15,9 +15,9 @@
 //!     .child(my_canvas_view);
 //! ```
 
+use super::PropMap;
 use crate::View;
 use crate::types::*;
-use super::PropMap;
 
 // ---------------------------------------------------------------------------
 // ButtonBuilder
@@ -62,7 +62,11 @@ impl ButtonBuilder {
     }
 
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
-        super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into()));
+        super::set_prop(
+            &mut self.props,
+            "padding",
+            super::padding_to_value(p.into()),
+        );
         self
     }
 

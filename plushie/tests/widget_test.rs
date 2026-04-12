@@ -3,10 +3,10 @@
 //! Defines a ToggleButton widget and exercises the public API
 //! without needing a running app or renderer.
 
+use plushie::WidgetEvent;
 use plushie::prelude::*;
 use plushie::widget::{EventResult, Widget};
-use plushie::WidgetEvent;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
 // Test widget: ToggleButton
@@ -24,7 +24,8 @@ impl Widget for ToggleButton {
     type Props = UntypedProps;
 
     fn view(id: &str, props: &UntypedProps, state: &ToggleState) -> View {
-        let label = props.0
+        let label = props
+            .0
             .get("label")
             .and_then(|v| v.as_str())
             .unwrap_or("Toggle");
@@ -36,10 +37,7 @@ impl Widget for ToggleButton {
         button(id, label).style(style).into()
     }
 
-    fn handle_event(
-        event: &Event,
-        state: &mut ToggleState,
-    ) -> EventResult {
+    fn handle_event(event: &Event, state: &mut ToggleState) -> EventResult {
         match event.widget_match() {
             Some(Click(_)) => {
                 state.pressed = !state.pressed;

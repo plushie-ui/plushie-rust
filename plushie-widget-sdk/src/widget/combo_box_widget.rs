@@ -158,10 +158,7 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     if let Some(sz) = cp.size.or(ctx.default_text_size) {
         cb = cb.size(sz);
     }
-    let font = cp
-        .font
-        .map(|f| iced_convert::font(&f))
-        .or(ctx.default_font);
+    let font = cp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
     if let Some(f) = font {
         cb = cb.font(f);
     }
@@ -175,7 +172,8 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         cb = cb.menu_height(mh);
     }
     // Icon: keep as raw prop access (complex iced type)
-    if let Some(icon) = node.props
+    if let Some(icon) = node
+        .props
         .get_value("icon")
         .as_ref()
         .and_then(parse_text_input_icon)

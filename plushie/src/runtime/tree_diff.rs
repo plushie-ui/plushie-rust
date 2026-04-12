@@ -157,7 +157,10 @@ fn id_keyed_list_equal(old: &Value, new: &Value) -> bool {
     }
 
     // All elements must have "id" fields.
-    let all_have_ids = old_arr.iter().chain(new_arr.iter()).all(|v| v.get("id").is_some());
+    let all_have_ids = old_arr
+        .iter()
+        .chain(new_arr.iter())
+        .all(|v| v.get("id").is_some());
     if !all_have_ids {
         return false;
     }
@@ -176,7 +179,11 @@ fn id_keyed_list_equal(old: &Value, new: &Value) -> bool {
 }
 
 /// Diff two children arrays using the three-path strategy.
-fn diff_children(old_children: &[TreeNode], new_children: &[TreeNode], path: &[usize]) -> Vec<PatchOp> {
+fn diff_children(
+    old_children: &[TreeNode],
+    new_children: &[TreeNode],
+    path: &[usize],
+) -> Vec<PatchOp> {
     let old_ids: Vec<&str> = old_children.iter().map(|c| c.id.as_str()).collect();
     let new_ids: Vec<&str> = new_children.iter().map(|c| c.id.as_str()).collect();
 
@@ -249,10 +256,7 @@ fn diff_children_no_reorder(
     path: &[usize],
 ) -> Vec<PatchOp> {
     // Collect and sort old indices for removal.
-    let mut removed_indices: Vec<usize> = old_only
-        .iter()
-        .map(|id| old_by_id[id].0)
-        .collect();
+    let mut removed_indices: Vec<usize> = old_only.iter().map(|id| old_by_id[id].0).collect();
     removed_indices.sort_unstable();
 
     // Remove ops in reverse index order.
@@ -304,10 +308,7 @@ fn diff_children_reorder(
     path: &[usize],
 ) -> Vec<PatchOp> {
     // For common IDs in new order, get their old indices.
-    let old_indices_of_common: Vec<usize> = common_new
-        .iter()
-        .map(|id| old_by_id[id].0)
-        .collect();
+    let old_indices_of_common: Vec<usize> = common_new.iter().map(|id| old_by_id[id].0).collect();
 
     // Find LIS positions (indices into common_new).
     let lis_positions = longest_increasing_subsequence(&old_indices_of_common);
@@ -330,10 +331,7 @@ fn diff_children_reorder(
 
     // All indices to remove: old-only IDs + moved IDs.
     let all_remove_ids: HashSet<&str> = old_only.union(&moved_ids).copied().collect();
-    let mut removed_indices: Vec<usize> = all_remove_ids
-        .iter()
-        .map(|id| old_by_id[id].0)
-        .collect();
+    let mut removed_indices: Vec<usize> = all_remove_ids.iter().map(|id| old_by_id[id].0).collect();
     removed_indices.sort_unstable();
 
     // Remove ops in reverse index order.
@@ -618,8 +616,12 @@ mod tests {
         );
         let ops = diff_tree(&old, &new);
 
-        let has_removes = ops.iter().any(|op| matches!(op, PatchOp::RemoveChild { .. }));
-        let has_inserts = ops.iter().any(|op| matches!(op, PatchOp::InsertChild { .. }));
+        let has_removes = ops
+            .iter()
+            .any(|op| matches!(op, PatchOp::RemoveChild { .. }));
+        let has_inserts = ops
+            .iter()
+            .any(|op| matches!(op, PatchOp::InsertChild { .. }));
         assert!(has_removes, "reorder should produce remove ops");
         assert!(has_inserts, "reorder should produce insert ops");
     }
@@ -663,11 +665,7 @@ mod tests {
 
         let values: Vec<usize> = lis.iter().map(|&i| arr[i]).collect();
         for w in values.windows(2) {
-            assert!(
-                w[0] < w[1],
-                "LIS must be strictly increasing: {:?}",
-                values
-            );
+            assert!(w[0] < w[1], "LIS must be strictly increasing: {:?}", values);
         }
     }
 
@@ -698,16 +696,8 @@ mod tests {
 
     #[test]
     fn type_change_at_child_produces_replace() {
-        let old = simple_node(
-            "root",
-            "column",
-            vec![simple_node("a", "text", vec![])],
-        );
-        let new = simple_node(
-            "root",
-            "column",
-            vec![simple_node("a", "button", vec![])],
-        );
+        let old = simple_node("root", "column", vec![simple_node("a", "text", vec![])]);
+        let new = simple_node("root", "column", vec![simple_node("a", "button", vec![])]);
         let ops = diff_tree(&old, &new);
         assert_eq!(ops.len(), 1);
         assert_eq!(

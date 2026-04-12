@@ -84,8 +84,8 @@ fn doc_prop_parsing() {
     // Free function style
     let _value: Option<f32> = prop_f32(&props, "value");
     let _label: Option<String> = prop_str(&props, "label");
-    let _color: Option<Color> = plushie_core::types::Color::extract(&props, "color")
-        .map(|c| iced_convert::color(&c));
+    let _color: Option<Color> =
+        plushie_core::types::Color::extract(&props, "color").map(|c| iced_convert::color(&c));
     let _show_label: bool = prop_bool_default(&props, "show_label", true);
     let _width: Option<plushie_core::types::Length> =
         plushie_core::types::Length::extract(&props, "width");
@@ -94,8 +94,8 @@ fn doc_prop_parsing() {
     let node = node_with_props("n1", "test", props.to_value());
     let _value: Option<f32> = node.prop_f32("value");
     let _label: Option<&str> = node.prop_str("label");
-    let _color: Option<Color> = plushie_core::types::Color::extract(&node.props, "color")
-        .map(|c| iced_convert::color(&c));
+    let _color: Option<Color> =
+        plushie_core::types::Color::extract(&node.props, "color").map(|c| iced_convert::color(&c));
 }
 
 // ============================================================================

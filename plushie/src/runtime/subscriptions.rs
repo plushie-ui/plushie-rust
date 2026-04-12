@@ -24,10 +24,7 @@ pub enum SubOp {
         window_id: Option<String>,
     },
     /// Tell the renderer to stop receiving this event kind.
-    Unsubscribe {
-        kind: String,
-        tag: String,
-    },
+    Unsubscribe { kind: String, tag: String },
     /// Start an SDK-side timer (SubscriptionKind::Every).
     StartTimer {
         tag: String,
@@ -35,9 +32,7 @@ pub enum SubOp {
         interval: std::time::Duration,
     },
     /// Stop an SDK-side timer.
-    StopTimer {
-        tag: String,
-    },
+    StopTimer { tag: String },
 }
 
 impl SubscriptionManager {
@@ -60,12 +55,10 @@ impl SubscriptionManager {
         let mut ops = Vec::new();
 
         // Build lookup maps keyed by (wire_kind, tag).
-        let old_map: HashMap<(&str, &str), &Subscription> = self.active.iter()
-            .map(|s| (s.diff_key(), s))
-            .collect();
-        let new_map: HashMap<(&str, &str), &Subscription> = new.iter()
-            .map(|s| (s.diff_key(), s))
-            .collect();
+        let old_map: HashMap<(&str, &str), &Subscription> =
+            self.active.iter().map(|s| (s.diff_key(), s)).collect();
+        let new_map: HashMap<(&str, &str), &Subscription> =
+            new.iter().map(|s| (s.diff_key(), s)).collect();
 
         // Removed or changed subscriptions.
         for sub in &self.active {
@@ -74,7 +67,9 @@ impl SubscriptionManager {
                 None => {
                     // Removed entirely.
                     if matches!(sub.kind, SubscriptionKind::Every(_)) {
-                        ops.push(SubOp::StopTimer { tag: sub.tag.clone() });
+                        ops.push(SubOp::StopTimer {
+                            tag: sub.tag.clone(),
+                        });
                     } else {
                         ops.push(SubOp::Unsubscribe {
                             kind: sub.wire_kind().to_string(),
@@ -84,8 +79,8 @@ impl SubscriptionManager {
                 }
                 Some(new_sub) => {
                     // Present in both. Check if parameters changed.
-                    let params_changed = sub.max_rate != new_sub.max_rate
-                        || sub.window_id != new_sub.window_id;
+                    let params_changed =
+                        sub.max_rate != new_sub.max_rate || sub.window_id != new_sub.window_id;
 
                     // For timers, also check if the interval changed.
                     let interval_changed = match (&sub.kind, &new_sub.kind) {
@@ -95,7 +90,9 @@ impl SubscriptionManager {
 
                     if interval_changed {
                         // Timer interval changed: stop old, start new.
-                        ops.push(SubOp::StopTimer { tag: sub.tag.clone() });
+                        ops.push(SubOp::StopTimer {
+                            tag: sub.tag.clone(),
+                        });
                         if let SubscriptionKind::Every(interval) = new_sub.kind {
                             ops.push(SubOp::StartTimer {
                                 tag: new_sub.tag.clone(),

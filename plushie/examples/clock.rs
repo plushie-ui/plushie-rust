@@ -34,13 +34,17 @@ impl App for Clock {
     type Model = Self;
 
     fn init() -> (Self, Command) {
-        (Clock { time: Self::current_time() }, Command::none())
+        (
+            Clock {
+                time: Self::current_time(),
+            },
+            Command::none(),
+        )
     }
 
     fn update(model: &mut Self, event: Event) -> Command {
-        match event.widget_match() {
-            Some(Timer("tick")) => model.time = Self::current_time(),
-            _ => {}
+        if let Some(Timer("tick")) = event.widget_match() {
+            model.time = Self::current_time();
         }
         Command::none()
     }
@@ -50,16 +54,23 @@ impl App for Clock {
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").title("Clock").child(
-            column().spacing(16.0).padding(24).width(Fill).align_x(Align::Center)
-                .child(text(&model.time).id("clock_display").size(48.0))
-                .child(
-                    text("Updates every second")
-                        .id("subtitle")
-                        .size(12.0)
-                        .color(Color::hex("#888888")),
-                ),
-        ).into()
+        window("main")
+            .title("Clock")
+            .child(
+                column()
+                    .spacing(16.0)
+                    .padding(24)
+                    .width(Fill)
+                    .align_x(Align::Center)
+                    .child(text(&model.time).id("clock_display").size(48.0))
+                    .child(
+                        text("Updates every second")
+                            .id("subtitle")
+                            .size(12.0)
+                            .color(Color::hex("#888888")),
+                    ),
+            )
+            .into()
     }
 }
 

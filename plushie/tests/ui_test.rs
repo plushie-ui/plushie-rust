@@ -3,9 +3,9 @@
 //! Each test constructs a view using the builder API and verifies
 //! the resulting View contains the correct type, props, and children.
 
+use plushie::View;
 use plushie::prelude::*;
 use plushie::types::Direction;
-use plushie::View;
 use serde_json::Value;
 
 /// Extract the JSON value from a View for inspection.
@@ -47,9 +47,7 @@ fn window_has_type_and_id() {
 
 #[test]
 fn window_with_title_and_child() {
-    let v = view_json(
-        window("main").title("My App").child(text("Hello"))
-    );
+    let v = view_json(window("main").title("My App").child(text("Hello")));
     assert_eq!(get_prop(&v, "title").as_str(), Some("My App"));
     assert_eq!(child_count(&v), 1);
     assert_eq!(get_type(child_at(&v, 0)), "text");
@@ -71,11 +69,9 @@ fn column_explicit_id() {
 #[test]
 fn column_with_spacing_and_children() {
     let v = view_json(
-        column().spacing(8.0).children([
-            text("A"),
-            text("B"),
-            text("C"),
-        ])
+        column()
+            .spacing(8.0)
+            .children([text("A"), text("B"), text("C")]),
     );
     assert_eq!(get_prop(&v, "spacing"), &serde_json::json!(8.0));
     assert_eq!(child_count(&v), 3);
@@ -90,9 +86,7 @@ fn row_auto_id() {
 
 #[test]
 fn container_with_padding_and_child() {
-    let v = view_json(
-        container().padding(16).child(text("content"))
-    );
+    let v = view_json(container().padding(16).child(text("content")));
     assert_eq!(get_type(&v), "container");
     assert_eq!(get_prop(&v, "padding"), &serde_json::json!(16.0));
     assert_eq!(child_count(&v), 1);
@@ -100,9 +94,7 @@ fn container_with_padding_and_child() {
 
 #[test]
 fn stack_with_children() {
-    let v = view_json(
-        stack().children([text("back"), text("front")])
-    );
+    let v = view_json(stack().children([text("back"), text("front")]));
     assert_eq!(get_type(&v), "stack");
     assert_eq!(child_count(&v), 2);
 }
@@ -141,9 +133,7 @@ fn text_with_explicit_id() {
 
 #[test]
 fn text_with_size_and_color() {
-    let v = view_json(
-        text("Error").size(24.0).color(Color::red())
-    );
+    let v = view_json(text("Error").size(24.0).color(Color::red()));
     assert_eq!(get_prop(&v, "size"), &serde_json::json!(24.0));
     assert_eq!(get_prop(&v, "color").as_str(), Some("#ff0000"));
 }
@@ -196,9 +186,7 @@ fn button_with_style() {
 
 #[test]
 fn text_input_with_placeholder() {
-    let v = view_json(
-        text_input("email", "user@example.com").placeholder("Enter email")
-    );
+    let v = view_json(text_input("email", "user@example.com").placeholder("Enter email"));
     assert_eq!(get_type(&v), "text_input");
     assert_eq!(get_id(&v), "email");
     assert_eq!(get_prop(&v, "value").as_str(), Some("user@example.com"));
@@ -236,9 +224,7 @@ fn pick_list_with_options() {
 
 #[test]
 fn tooltip_with_tip_and_child() {
-    let v = view_json(
-        tooltip("tip", "Click to save").child(button("save", "Save"))
-    );
+    let v = view_json(tooltip("tip", "Click to save").child(button("save", "Save")));
     assert_eq!(get_type(&v), "tooltip");
     assert_eq!(get_prop(&v, "tip").as_str(), Some("Click to save"));
     assert_eq!(child_count(&v), 1);
@@ -247,7 +233,9 @@ fn tooltip_with_tip_and_child() {
 #[test]
 fn pointer_area_with_child() {
     let v = view_json(
-        pointer_area("area").on_press("click").child(text("hover me"))
+        pointer_area("area")
+            .on_press("click")
+            .child(text("hover me")),
     );
     assert_eq!(get_type(&v), "pointer_area");
     assert_eq!(get_prop(&v, "on_press"), &serde_json::json!("click"));
@@ -261,13 +249,15 @@ fn pointer_area_with_child() {
 fn nested_layout_produces_tree() {
     let v = view_json(
         window("main").title("App").child(
-            column().spacing(8.0).padding(16)
+            column()
+                .spacing(8.0)
+                .padding(16)
                 .child(text("Title").size(24.0))
                 .child(row().spacing(4.0).children([
                     button("ok", "OK").style(Style::primary()),
                     button("cancel", "Cancel"),
-                ]))
-        )
+                ])),
+        ),
     );
 
     assert_eq!(get_type(&v), "window");
@@ -288,20 +278,15 @@ fn nested_layout_produces_tree() {
 
 #[test]
 fn dynamic_list_with_iterator() {
-    let items = vec!["Alice", "Bob", "Carol"];
-    let v = view_json(
-        column().children(
-            items.iter().map(|name| text(*name))
-        )
-    );
+    let items = ["Alice", "Bob", "Carol"];
+    let v = view_json(column().children(items.iter().map(|name| text(name))));
     assert_eq!(child_count(&v), 3);
 }
 
 #[test]
 fn conditional_child_with_option() {
     let show_error = true;
-    let mut col = column()
-        .child(text("Status: OK"));
+    let mut col = column().child(text("Status: OK"));
     if show_error {
         col = col.child(text("Error details here"));
     }
@@ -319,9 +304,10 @@ fn table_with_columns_and_rows() {
         table("users")
             .column("name", |c| c.label("Name").sortable(true))
             .column("email", |c| c.label("Email"))
-            .row("u1", |r| r
-                .cell("name", text("Alice"))
-                .cell("email", text("alice@example.com")))
+            .row("u1", |r| {
+                r.cell("name", text("Alice"))
+                    .cell("email", text("alice@example.com"))
+            }),
     );
     assert_eq!(get_type(&v), "table");
     assert_eq!(get_id(&v), "users");
@@ -351,10 +337,7 @@ fn table_with_columns_and_rows() {
 
 #[test]
 fn table_columns_shorthand() {
-    let v = view_json(
-        table("t")
-            .columns(&[("a", "Alpha"), ("b", "Beta")])
-    );
+    let v = view_json(table("t").columns(&[("a", "Alpha"), ("b", "Beta")]));
     let cols = get_prop(&v, "columns").as_array().unwrap();
     assert_eq!(cols.len(), 2);
     assert_eq!(cols[0]["key"], "a");
@@ -368,7 +351,7 @@ fn table_data_row_shorthand() {
     let v = view_json(
         table("t")
             .columns(&[("name", "Name")])
-            .data_row("r1", &[("name", "Alice")])
+            .data_row("r1", &[("name", "Alice")]),
     );
     assert_eq!(child_count(&v), 1);
     let row = child_at(&v, 0);
@@ -387,7 +370,7 @@ fn table_sort_props() {
     let v = view_json(
         table("t")
             .sort_by("name")
-            .sort_order(SortOrder::Desc)
+            .sort_order(SortOrder::Desc),
     );
     assert_eq!(get_prop(&v, "sort_by"), "name");
     assert_eq!(get_prop(&v, "sort_order"), "desc");
@@ -395,13 +378,12 @@ fn table_sort_props() {
 
 #[test]
 fn table_column_with_width_and_align() {
-    let v = view_json(
-        table("t")
-            .column("x", |c| c.label("X")
-                .width(Length::Fixed(200.0))
-                .min_width(100.0)
-                .align(HorizontalAlignment::Center))
-    );
+    let v = view_json(table("t").column("x", |c| {
+        c.label("X")
+            .width(Length::Fixed(200.0))
+            .min_width(100.0)
+            .align(HorizontalAlignment::Center)
+    }));
     let cols = get_prop(&v, "columns").as_array().unwrap();
     assert_eq!(cols[0]["min_width"], 100.0);
     assert_eq!(cols[0]["align"], "center");

@@ -465,10 +465,7 @@ mod tests {
         );
         let overrides =
             infer_a11y_overrides(&node).expect("should infer overrides from placeholder");
-        assert_eq!(
-            overrides.description(),
-            Some("Select an option...")
-        );
+        assert_eq!(overrides.description(), Some("Select an option..."));
         assert!(overrides.label().is_none());
     }
 

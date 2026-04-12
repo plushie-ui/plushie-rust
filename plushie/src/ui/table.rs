@@ -40,7 +40,7 @@ use crate::types::*;
 /// Created via [`TableBuilder::column`]. Columns define the structure
 /// (key, label, width, alignment) and become part of the `columns` prop
 /// on the wire.
-pub struct ColumnBuilder {
+pub struct TableColumnSpec {
     key: String,
     label: Option<String>,
     width: Option<Length>,
@@ -49,7 +49,7 @@ pub struct ColumnBuilder {
     align: Option<HorizontalAlignment>,
 }
 
-impl ColumnBuilder {
+impl TableColumnSpec {
     fn new(key: &str) -> Self {
         Self {
             key: key.to_string(),
@@ -96,9 +96,7 @@ impl ColumnBuilder {
         m.insert("key", PropValue::Str(self.key.clone()));
         m.insert(
             "label",
-            PropValue::Str(
-                self.label.as_deref().unwrap_or(&self.key).to_string(),
-            ),
+            PropValue::Str(self.label.as_deref().unwrap_or(&self.key).to_string()),
         );
         if let Some(ref w) = self.width {
             m.insert("width", w.wire_encode());
@@ -124,12 +122,12 @@ impl ColumnBuilder {
 ///
 /// Each cell maps a column key to widget content. Cells become
 /// `table_cell` children on the wire with a `column` prop.
-pub struct RowBuilder {
+pub struct TableRowBuilder {
     id: String,
     cells: Vec<(String, View)>,
 }
 
-impl RowBuilder {
+impl TableRowBuilder {
     fn new(id: &str) -> Self {
         Self {
             id: id.to_string(),
@@ -169,7 +167,7 @@ impl RowBuilder {
 pub struct TableBuilder {
     id: String,
     props: PropMap,
-    column_specs: Vec<ColumnBuilder>,
+    column_specs: Vec<TableColumnSpec>,
     children: Vec<View>,
 }
 
@@ -192,8 +190,8 @@ impl TableBuilder {
     /// ```ignore
     /// .column("name", |c| c.label("Name").sortable(true).width(Length::Fill))
     /// ```
-    pub fn column(mut self, key: &str, f: impl FnOnce(ColumnBuilder) -> ColumnBuilder) -> Self {
-        self.column_specs.push(f(ColumnBuilder::new(key)));
+    pub fn column(mut self, key: &str, f: impl FnOnce(TableColumnSpec) -> TableColumnSpec) -> Self {
+        self.column_specs.push(f(TableColumnSpec::new(key)));
         self
     }
 
@@ -202,7 +200,7 @@ impl TableBuilder {
     pub fn columns(mut self, cols: &[(&str, &str)]) -> Self {
         for &(key, label) in cols {
             self.column_specs
-                .push(ColumnBuilder::new(key).label(label));
+                .push(TableColumnSpec::new(key).label(label));
         }
         self
     }
@@ -214,8 +212,8 @@ impl TableBuilder {
     ///     .cell("name", text("Alice"))
     ///     .cell("email", text("alice@example.com")))
     /// ```
-    pub fn row(mut self, id: &str, f: impl FnOnce(RowBuilder) -> RowBuilder) -> Self {
-        self.children.push(f(RowBuilder::new(id)).into_view());
+    pub fn row(mut self, id: &str, f: impl FnOnce(TableRowBuilder) -> TableRowBuilder) -> Self {
+        self.children.push(f(TableRowBuilder::new(id)).into_view());
         self
     }
 
@@ -228,15 +226,11 @@ impl TableBuilder {
             .map(|&(col_key, value)| {
                 let mut cell_props = PropMap::new();
                 cell_props.insert("column", PropValue::Str(col_key.to_string()));
-                let text_view = super::view_leaf(
-                    format!("{id}/{col_key}/text"),
-                    "text",
-                    {
-                        let mut p = PropMap::new();
-                        p.insert("content", PropValue::Str(value.to_string()));
-                        p
-                    },
-                );
+                let text_view = super::view_leaf(format!("{id}/{col_key}/text"), "text", {
+                    let mut p = PropMap::new();
+                    p.insert("content", PropValue::Str(value.to_string()));
+                    p
+                });
                 super::view_node(
                     col_key.to_string(),
                     "table_cell",
@@ -301,7 +295,11 @@ impl TableBuilder {
 
     /// Cell internal padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
-        super::set_prop(&mut self.props, "padding", super::padding_to_value(p.into()));
+        super::set_prop(
+            &mut self.props,
+            "padding",
+            super::padding_to_value(p.into()),
+        );
         self
     }
 
@@ -334,8 +332,7 @@ impl From<TableBuilder> for View {
     fn from(mut b: TableBuilder) -> View {
         // Encode column specs into the columns prop
         if !b.column_specs.is_empty() {
-            let cols: Vec<PropValue> =
-                b.column_specs.iter().map(|c| c.to_prop_value()).collect();
+            let cols: Vec<PropValue> = b.column_specs.iter().map(|c| c.to_prop_value()).collect();
             b.props.insert("columns", PropValue::Array(cols));
         }
 

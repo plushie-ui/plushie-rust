@@ -76,15 +76,15 @@ impl App for Notes {
             }
 
             Some(Click(id)) if id.starts_with("note:") => {
-                if let Ok(note_id) = id[5..].parse::<usize>() {
-                    if let Some(note) = model.notes.iter().find(|n| n.id == note_id) {
-                        model.editing_id = Some(note_id);
-                        model.undo = UndoStack::new(NoteContent {
-                            title: note.title.clone(),
-                            body: note.body.clone(),
-                        });
-                        model.route.push("/edit");
-                    }
+                if let Ok(note_id) = id[5..].parse::<usize>()
+                    && let Some(note) = model.notes.iter().find(|n| n.id == note_id)
+                {
+                    model.editing_id = Some(note_id);
+                    model.undo = UndoStack::new(NoteContent {
+                        title: note.title.clone(),
+                        body: note.body.clone(),
+                    });
+                    model.route.push("/edit");
                 }
             }
 
@@ -96,13 +96,19 @@ impl App for Notes {
 
             Some(Click("delete_selected")) => {
                 let selected = model.selection.selected().clone();
-                model.notes.retain(|n| !selected.contains(&n.id.to_string()));
+                model
+                    .notes
+                    .retain(|n| !selected.contains(&n.id.to_string()));
                 model.selection.clear();
                 update_selection_order(model);
             }
 
-            Some(Click("undo")) => { model.undo.undo(); }
-            Some(Click("redo")) => { model.undo.redo(); }
+            Some(Click("undo")) => {
+                model.undo.undo();
+            }
+            Some(Click("redo")) => {
+                model.undo.redo();
+            }
 
             Some(Input("search", query)) => {
                 model.search_query = query.to_string();
@@ -112,7 +118,10 @@ impl App for Notes {
                 let title = value.to_string();
                 model.undo.apply(
                     UndoCommand::new(
-                        move |c: &NoteContent| NoteContent { title: title.clone(), body: c.body.clone() },
+                        move |c: &NoteContent| NoteContent {
+                            title: title.clone(),
+                            body: c.body.clone(),
+                        },
                         |c: &NoteContent| c.clone(),
                     )
                     .label("edit title")
@@ -124,7 +133,10 @@ impl App for Notes {
                 let body = value.to_string();
                 model.undo.apply(
                     UndoCommand::new(
-                        move |c: &NoteContent| NoteContent { title: c.title.clone(), body: body.clone() },
+                        move |c: &NoteContent| NoteContent {
+                            title: c.title.clone(),
+                            body: body.clone(),
+                        },
                         |c: &NoteContent| c.clone(),
                     )
                     .label("edit body")
@@ -165,48 +177,73 @@ fn view_list(model: &Notes) -> View {
     let mut note_list = column().spacing(4.0).width(Fill);
     for note in &result.entries {
         let id_str = note.id.to_string();
-        let label = if note.title.is_empty() { "(untitled)" } else { &note.title };
+        let label = if note.title.is_empty() {
+            "(untitled)"
+        } else {
+            &note.title
+        };
         note_list = note_list.child(
-            row().id(&id_str).spacing(8.0).width(Fill)
+            row()
+                .id(&id_str)
+                .spacing(8.0)
+                .width(Fill)
                 .child(
-                    checkbox(&format!("note_select:{}", note.id),
-                        model.selection.is_selected(&id_str))
-                        .label(label),
+                    checkbox(
+                        &format!("note_select:{}", note.id),
+                        model.selection.is_selected(&id_str),
+                    )
+                    .label(label),
                 )
                 .child(button(&format!("note:{}", note.id), "Edit")),
         );
     }
 
-    window("main").title("Notes").child(
-        column().padding(16).spacing(12.0).width(Fill)
-            .child(text("Notes").id("heading").size(24.0))
-            .child(text_input("search", &model.search_query)
-                .placeholder("Search notes..."))
-            .child(
-                scrollable().id("notes_list").height(Fill).child(note_list),
-            )
-            .child(row().spacing(8.0)
-                .child(button("new_note", "New Note"))
-                .child(button("delete_selected", "Delete Selected"))),
-    ).into()
+    window("main")
+        .title("Notes")
+        .child(
+            column()
+                .padding(16)
+                .spacing(12.0)
+                .width(Fill)
+                .child(text("Notes").id("heading").size(24.0))
+                .child(text_input("search", &model.search_query).placeholder("Search notes..."))
+                .child(scrollable().id("notes_list").height(Fill).child(note_list))
+                .child(
+                    row()
+                        .spacing(8.0)
+                        .child(button("new_note", "New Note"))
+                        .child(button("delete_selected", "Delete Selected")),
+                ),
+        )
+        .into()
 }
 
 fn view_edit(model: &Notes) -> View {
     let current = model.undo.current();
 
-    window("main").title("Edit Note").child(
-        column().padding(16).spacing(12.0).width(Fill)
-            .child(row().spacing(8.0)
-                .child(button("back", "Back"))
-                .child(button("undo", "Undo"))
-                .child(button("redo", "Redo")))
-            .child(text_input("title", &current.title)
-                .placeholder("Note title"))
-            .child(text_editor("body", &current.body)
-                .placeholder("Write your note...")
+    window("main")
+        .title("Edit Note")
+        .child(
+            column()
+                .padding(16)
+                .spacing(12.0)
                 .width(Fill)
-                .height(Fill)),
-    ).into()
+                .child(
+                    row()
+                        .spacing(8.0)
+                        .child(button("back", "Back"))
+                        .child(button("undo", "Undo"))
+                        .child(button("redo", "Redo")),
+                )
+                .child(text_input("title", &current.title).placeholder("Note title"))
+                .child(
+                    text_editor("body", &current.body)
+                        .placeholder("Write your note...")
+                        .width(Fill)
+                        .height(Fill),
+                ),
+        )
+        .into()
 }
 
 fn save_current_edit(model: &mut Notes) {

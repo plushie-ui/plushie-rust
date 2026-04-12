@@ -240,9 +240,7 @@ impl TransformMatrix {
     }
 
     /// Build a matrix from typed [`Transform`] values.
-    pub fn from_typed_transforms(
-        transforms: &[plushie_core::types::canvas::Transform],
-    ) -> Self {
+    pub fn from_typed_transforms(transforms: &[plushie_core::types::canvas::Transform]) -> Self {
         use plushie_core::types::canvas::Transform;
 
         let mut m = Self::identity();
@@ -281,6 +279,7 @@ pub(crate) enum ArrowMode {
 }
 
 impl ArrowMode {
+    #[cfg(test)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "wrap" => Self::Wrap,

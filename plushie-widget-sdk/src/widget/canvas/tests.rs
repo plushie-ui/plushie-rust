@@ -11,8 +11,16 @@ use serde_json::json;
 /// into a TreeNode ({"id":"g","type":"group","props":{"on_click":true},...}).
 fn flat_shape_to_tree_node(val: &Value) -> TreeNode {
     let obj = val.as_object().expect("expected JSON object");
-    let type_name = obj.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let id = obj.get("id").and_then(|v| v.as_str()).unwrap_or("__auto__").to_string();
+    let type_name = obj
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let id = obj
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("__auto__")
+        .to_string();
 
     // Everything except type, id, children goes into props.
     let mut props = serde_json::Map::new();
@@ -23,7 +31,8 @@ fn flat_shape_to_tree_node(val: &Value) -> TreeNode {
         props.insert(k.clone(), v.clone());
     }
 
-    let children: Vec<TreeNode> = obj.get("children")
+    let children: Vec<TreeNode> = obj
+        .get("children")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().map(flat_shape_to_tree_node).collect())
         .unwrap_or_default();
@@ -44,10 +53,13 @@ fn group_from_json(val: &Value) -> GroupShape {
 
 /// Helper: convert a flat JSON shape array to Vec<CanvasShape> via TreeNodes.
 fn shapes_from_json(shapes: &[Value]) -> Vec<CanvasShape> {
-    shapes.iter().filter_map(|v| {
-        let node = flat_shape_to_tree_node(v);
-        CanvasShape::from_node(&node)
-    }).collect()
+    shapes
+        .iter()
+        .filter_map(|v| {
+            let node = flat_shape_to_tree_node(v);
+            CanvasShape::from_node(&node)
+        })
+        .collect()
 }
 
 /// Helper: collect interactive elements from flat JSON shape values.
@@ -131,7 +143,10 @@ fn canvas_layers_from_layer_children() {
     let bg = result.get("background").unwrap();
     assert_eq!(bg.len(), 1);
     // Shape should be a Rect variant.
-    assert!(matches!(&bg[0], plushie_core::types::canvas::CanvasShape::Rect(_)));
+    assert!(matches!(
+        &bg[0],
+        plushie_core::types::canvas::CanvasShape::Rect(_)
+    ));
 }
 
 #[test]
@@ -355,7 +370,8 @@ fn text_align_y_defaults_to_top() {
 
 #[test]
 fn opacity_applied_to_fill() {
-    let fill = shapes::apply_opacity_to_fill(Some(0.5), parse_canvas_fill(&json!("#ff0000"), &json!({})));
+    let fill =
+        shapes::apply_opacity_to_fill(Some(0.5), parse_canvas_fill(&json!("#ff0000"), &json!({})));
     match fill.style {
         canvas::Style::Solid(c) => {
             assert!(
@@ -396,7 +412,8 @@ fn opacity_applied_to_color() {
 
 #[test]
 fn no_opacity_leaves_alpha_unchanged() {
-    let fill = shapes::apply_opacity_to_fill(None, parse_canvas_fill(&json!("#ff0000"), &json!({})));
+    let fill =
+        shapes::apply_opacity_to_fill(None, parse_canvas_fill(&json!("#ff0000"), &json!({})));
     match fill.style {
         canvas::Style::Solid(c) => {
             assert!(
@@ -496,7 +513,8 @@ fn parse_interactive_group_basic() {
             {"type": "rect", "x": 10, "y": 20, "w": 30, "h": 40, "fill": "#ff0000"}
         ]
     });
-    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     assert_eq!(result.id, "bar-1");
     assert!(result.on_click);
     assert!(result.on_hover);
@@ -517,7 +535,8 @@ fn parse_interactive_group_with_drag() {
             {"type": "circle", "x": 50, "y": 50, "r": 20}
         ]
     });
-    let result = interaction::parse_interactive_element(&group_from_json(&shape), "layer1").unwrap();
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "layer1").unwrap();
     assert_eq!(result.id, "dot-1");
     assert!(result.draggable);
     assert_eq!(result.drag_axis, DragAxis::X);
@@ -536,7 +555,8 @@ fn parse_interactive_group_with_hit_rect() {
             {"type": "path", "commands": [["move_to", 0, 0], ["line_to", 100, 100]]}
         ]
     });
-    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     assert_eq!(result.id, "path-group");
     assert!(matches!(result.hit_region, HitRegion::Rect { .. }));
 }
@@ -596,7 +616,8 @@ fn compute_hit_region_group_with_rect_children() {
             {"type": "rect", "x": 10, "y": 50, "w": 80, "h": 20}
         ]
     });
-    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     // Bounding box of children in local space: x=0..100, y=0..70.
     match result.hit_region {
         HitRegion::Rect { x, y, w, h } => {
@@ -619,7 +640,8 @@ fn compute_hit_region_group_with_mixed_children() {
             {"type": "circle", "x": 80, "y": 15, "r": 10}
         ]
     });
-    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     // Rect: 0..50, 0..30; Circle: 70..90, 5..25
     // Union in local space: 0..90, 0..30
     match result.hit_region {
@@ -658,7 +680,8 @@ fn parse_interactive_group() {
             {"type": "text", "x": 30, "y": 25, "content": "Save", "fill": "#ccc"}
         ]
     });
-    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     assert_eq!(result.id, "btn");
     assert!(result.on_click);
     assert!(result.on_hover);
@@ -703,7 +726,8 @@ fn parse_interactive_group_with_new_fields() {
             {"type": "rect", "x": 0, "y": 0, "w": 60, "h": 30}
         ]
     });
-    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     assert_eq!(result.id, "toggle");
     assert!(result.has_focus_style);
     assert!(!result.show_focus_ring);
@@ -871,7 +895,8 @@ fn hit_rect_on_group_is_local_coordinates() {
             {"type": "rect", "x": 0, "y": 0, "w": 10, "h": 10}
         ]
     });
-    let result = interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
     match result.hit_region {
         HitRegion::Rect { x, y, w, h } => {
             // Local coordinates, no offset.

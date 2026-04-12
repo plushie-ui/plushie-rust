@@ -61,7 +61,15 @@ mod tests {
     fn hit_rect_decode() {
         let val = json!({"x": 5.0, "y": 10.0, "w": 200.0, "h": 100.0});
         let rect = HitRect::wire_decode(&val).unwrap();
-        assert_eq!(rect, HitRect { x: 5.0, y: 10.0, w: 200.0, h: 100.0 });
+        assert_eq!(
+            rect,
+            HitRect {
+                x: 5.0,
+                y: 10.0,
+                w: 200.0,
+                h: 100.0
+            }
+        );
     }
 
     #[test]

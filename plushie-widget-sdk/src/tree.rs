@@ -739,7 +739,10 @@ mod tests {
             }),
         );
         tree.apply_patch(vec![op]);
-        assert_eq!(tree.root().unwrap().children[0].props.to_value()["content"], "new");
+        assert_eq!(
+            tree.root().unwrap().children[0].props.to_value()["content"],
+            "new"
+        );
     }
 
     #[test]
@@ -756,7 +759,10 @@ mod tests {
         );
         tree.apply_patch(vec![op]);
         // Props unchanged -- the merge was skipped
-        assert_eq!(tree.root().unwrap().props, plushie_core::protocol::Props::Wire(json!("not an object")));
+        assert_eq!(
+            tree.root().unwrap().props,
+            plushie_core::protocol::Props::Wire(json!("not an object"))
+        );
     }
 
     #[test]

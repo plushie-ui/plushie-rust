@@ -65,9 +65,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
 
         // Spans: keep as raw prop access (complex array of objects)
         let spans_val = node.props.get_value("spans");
-        let spans_value = spans_val
-            .as_ref()
-            .and_then(|v| v.as_array());
+        let spans_value = spans_val.as_ref().and_then(|v| v.as_array());
 
         let span_list: Vec<iced::widget::text::Span<'a, String, Font>> = spans_value
             .map(|arr| {
@@ -139,15 +137,17 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
         let mut rt = rich_text(span_list).width(width).height(height);
 
         // size: animated prop, keep as raw access for transition support
-        if let Some(sz) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "size")
-            .or(ctx.default_text_size)
+        if let Some(sz) = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "size",
+        )
+        .or(ctx.default_text_size)
         {
             rt = rt.size(sz);
         }
-        let font = rp
-            .font
-            .map(|f| iced_convert::font(&f))
-            .or(ctx.default_font);
+        let font = rp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
         if let Some(f) = font {
             rt = rt.font(f);
         }

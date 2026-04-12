@@ -31,14 +31,19 @@ impl App for Counter {
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").title("Counter")
-            .child(column().spacing(8.0).padding(16)
-                .child(text(&format!("{}", model.count)).id("display"))
-                .child(row().spacing(4.0).children([
-                    button("inc", "+"),
-                    button("dec", "-"),
-                    button("reset", "Reset"),
-                ])))
+        window("main")
+            .title("Counter")
+            .child(
+                column()
+                    .spacing(8.0)
+                    .padding(16)
+                    .child(text(&format!("{}", model.count)).id("display"))
+                    .child(row().spacing(4.0).children([
+                        button("inc", "+"),
+                        button("dec", "-"),
+                        button("reset", "Reset"),
+                    ])),
+            )
             .into()
     }
 }
@@ -114,11 +119,14 @@ impl App for Form {
     type Model = Self;
 
     fn init() -> (Self, Command) {
-        (Form {
-            name: String::new(),
-            agreed: false,
-            volume: 50.0,
-        }, Command::none())
+        (
+            Form {
+                name: String::new(),
+                agreed: false,
+                volume: 50.0,
+            },
+            Command::none(),
+        )
     }
 
     fn update(model: &mut Self, event: Event) -> Command {
@@ -135,13 +143,17 @@ impl App for Form {
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").child(column().spacing(8.0)
-            .child(text_input("name", &model.name).placeholder("Your name"))
-            .child(checkbox("agree", model.agreed).label("I agree"))
-            .child(slider("volume", (0.0, 100.0), model.volume as f32))
-            .child(text(&format!("Name: {}", model.name)).id("name_display"))
-            .child(text(&format!("Agreed: {}", model.agreed)).id("agreed_display"))
-        ).into()
+        window("main")
+            .child(
+                column()
+                    .spacing(8.0)
+                    .child(text_input("name", &model.name).placeholder("Your name"))
+                    .child(checkbox("agree", model.agreed).label("I agree"))
+                    .child(slider("volume", (0.0, 100.0), model.volume as f32))
+                    .child(text(&format!("Name: {}", model.name)).id("name_display"))
+                    .child(text(&format!("Agreed: {}", model.agreed)).id("agreed_display")),
+            )
+            .into()
     }
 }
 
@@ -196,14 +208,25 @@ impl App for TodoApp {
     type Model = Self;
 
     fn init() -> (Self, Command) {
-        (TodoApp {
-            items: vec![
-                TodoItem { id: "1".into(), text: "Buy milk".into(), done: false },
-                TodoItem { id: "2".into(), text: "Write tests".into(), done: true },
-            ],
-            next_id: 3,
-            input: String::new(),
-        }, Command::none())
+        (
+            TodoApp {
+                items: vec![
+                    TodoItem {
+                        id: "1".into(),
+                        text: "Buy milk".into(),
+                        done: false,
+                    },
+                    TodoItem {
+                        id: "2".into(),
+                        text: "Write tests".into(),
+                        done: true,
+                    },
+                ],
+                next_id: 3,
+                input: String::new(),
+            },
+            Command::none(),
+        )
     }
 
     fn update(model: &mut Self, event: Event) -> Command {
@@ -222,10 +245,10 @@ impl App for TodoApp {
                 model.input.clear();
             }
             Some(Toggle("done", _)) => {
-                if let Some(item_id) = event.scope().and_then(|s| s.first()) {
-                    if let Some(item) = model.items.iter_mut().find(|i| i.id == *item_id) {
-                        item.done = !item.done;
-                    }
+                if let Some(item_id) = event.scope().and_then(|s| s.first())
+                    && let Some(item) = model.items.iter_mut().find(|i| i.id == *item_id)
+                {
+                    item.done = !item.done;
                 }
             }
             Some(Click("delete")) => {
@@ -239,17 +262,27 @@ impl App for TodoApp {
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").title("Todos").child(
-            column().spacing(8.0).padding(16)
-                .child(text_input("new_todo", &model.input).placeholder("Add todo..."))
-                .child(column().id("list").spacing(4.0).children(
-                    model.items.iter().map(|item| {
-                        row().id(&item.id).spacing(8.0)
-                            .child(checkbox("done", item.done).label(&item.text))
-                            .child(button("delete", "X"))
-                    })
-                ))
-        ).into()
+        window("main")
+            .title("Todos")
+            .child(
+                column()
+                    .spacing(8.0)
+                    .padding(16)
+                    .child(text_input("new_todo", &model.input).placeholder("Add todo..."))
+                    .child(
+                        column()
+                            .id("list")
+                            .spacing(4.0)
+                            .children(model.items.iter().map(|item| {
+                                row()
+                                    .id(&item.id)
+                                    .spacing(8.0)
+                                    .child(checkbox("done", item.done).label(&item.text))
+                                    .child(button("delete", "X"))
+                            })),
+                    ),
+            )
+            .into()
     }
 }
 
@@ -286,7 +319,12 @@ impl App for CommandApp {
     type Model = Self;
 
     fn init() -> (Self, Command) {
-        (CommandApp { last_action: String::new() }, Command::none())
+        (
+            CommandApp {
+                last_action: String::new(),
+            },
+            Command::none(),
+        )
     }
 
     fn update(model: &mut Self, event: Event) -> Command {
@@ -304,10 +342,13 @@ impl App for CommandApp {
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").child(column()
-            .child(button("focus_email", "Focus Email"))
-            .child(button("quit", "Quit"))
-        ).into()
+        window("main")
+            .child(
+                column()
+                    .child(button("focus_email", "Focus Email"))
+                    .child(button("quit", "Quit")),
+            )
+            .into()
     }
 }
 
@@ -332,16 +373,19 @@ impl App for MixedEventApp {
     type Model = Self;
 
     fn init() -> (Self, Command) {
-        (MixedEventApp {
-            clicks: 0,
-            inputs: vec![],
-            selections: vec![],
-        }, Command::none())
+        (
+            MixedEventApp {
+                clicks: 0,
+                inputs: vec![],
+                selections: vec![],
+            },
+            Command::none(),
+        )
     }
 
     fn update(model: &mut Self, event: Event) -> Command {
-        match &event {
-            Event::Widget(w) => match (w.event_type, w.id.as_str()) {
+        if let Event::Widget(w) = &event {
+            match (w.event_type, w.id.as_str()) {
                 (EventType::Click, _) => model.clicks += 1,
                 (EventType::Input, _) => {
                     if let Some(text) = w.value_string() {
@@ -354,18 +398,20 @@ impl App for MixedEventApp {
                     }
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
         Command::none()
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").child(column()
-            .child(button("btn", "Click"))
-            .child(text_input("inp", ""))
-            .child(pick_list("sel", &["A", "B", "C"], None))
-        ).into()
+        window("main")
+            .child(
+                column()
+                    .child(button("btn", "Click"))
+                    .child(text_input("inp", ""))
+                    .child(pick_list("sel", &["A", "B", "C"], None)),
+            )
+            .into()
     }
 }
 

@@ -19,7 +19,9 @@ impl EffectHandler for WebEffectHandler {
     }
 
     fn handle_async(
-        &self, id: String, _request: EffectRequest,
+        &self,
+        id: String,
+        _request: EffectRequest,
     ) -> Pin<Box<dyn Future<Output = EffectResponse> + Send>> {
         Box::pin(async move { EffectResponse::unsupported(id) })
     }

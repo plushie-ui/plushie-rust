@@ -48,8 +48,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for KeyedColumnWidget {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         let kp = KeyedColumnProps::from_node(node);
-        let spacing =
-            prop_animated_f32(&ctx.caches.interpolated_props, &node.id, &node.props, "spacing");
+        let spacing = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "spacing",
+        );
         let max_width = prop_animated_f32(
             &ctx.caches.interpolated_props,
             &node.id,
@@ -70,8 +74,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for KeyedColumnWidget {
             })
             .collect();
 
-        let width = kp.width.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
-        let height = kp.height.as_ref().map(iced_convert::length).unwrap_or(iced::Length::Shrink);
+        let width = kp
+            .width
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
+        let height = kp
+            .height
+            .as_ref()
+            .map(iced_convert::length)
+            .unwrap_or(iced::Length::Shrink);
 
         let align_x = kp
             .align_x

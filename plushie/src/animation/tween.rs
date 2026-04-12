@@ -59,11 +59,26 @@ impl Tween {
         }
     }
 
-    pub fn easing(mut self, e: Easing) -> Self { self.easing = e; self }
-    pub fn delay(mut self, ms: u64) -> Self { self.delay_ms = ms; self }
-    pub fn repeat(mut self, n: u32) -> Self { self.repeat = Some(Repeat::Times(n)); self }
-    pub fn repeat_forever(mut self) -> Self { self.repeat = Some(Repeat::Forever); self }
-    pub fn auto_reverse(mut self, v: bool) -> Self { self.auto_reverse = v; self }
+    pub fn easing(mut self, e: Easing) -> Self {
+        self.easing = e;
+        self
+    }
+    pub fn delay(mut self, ms: u64) -> Self {
+        self.delay_ms = ms;
+        self
+    }
+    pub fn repeat(mut self, n: u32) -> Self {
+        self.repeat = Some(Repeat::Times(n));
+        self
+    }
+    pub fn repeat_forever(mut self) -> Self {
+        self.repeat = Some(Repeat::Forever);
+        self
+    }
+    pub fn auto_reverse(mut self, v: bool) -> Self {
+        self.auto_reverse = v;
+        self
+    }
 
     /// Create a looping tween (repeat forever, auto-reverse).
     pub fn looping(from: f64, to: f64, duration_ms: u64) -> Self {
@@ -88,8 +103,12 @@ impl Tween {
 
     /// Advance the tween to the given timestamp.
     pub fn advance(&mut self, timestamp: u64) {
-        let Some(started) = self.started_at else { return };
-        if self.finished { return; }
+        let Some(started) = self.started_at else {
+            return;
+        };
+        if self.finished {
+            return;
+        }
 
         let elapsed = timestamp.saturating_sub(started);
         if elapsed < self.delay_ms {
@@ -200,63 +219,87 @@ fn apply_easing(t: f64, easing: &Easing) -> f64 {
         Easing::EaseInQuad => t * t,
         Easing::EaseOutQuad => 1.0 - (1.0 - t) * (1.0 - t),
         Easing::EaseInOutQuad => {
-            if t < 0.5 { 2.0 * t * t }
-            else { 1.0 - (-2.0 * t + 2.0).powi(2) / 2.0 }
+            if t < 0.5 {
+                2.0 * t * t
+            } else {
+                1.0 - (-2.0 * t + 2.0).powi(2) / 2.0
+            }
         }
 
         // Cubic
         Easing::EaseInCubic => t * t * t,
         Easing::EaseOutCubic => 1.0 - (1.0 - t).powi(3),
         Easing::EaseInOutCubic => {
-            if t < 0.5 { 4.0 * t * t * t }
-            else { 1.0 - (-2.0 * t + 2.0).powi(3) / 2.0 }
+            if t < 0.5 {
+                4.0 * t * t * t
+            } else {
+                1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+            }
         }
 
         // Quartic
         Easing::EaseInQuart => t * t * t * t,
         Easing::EaseOutQuart => 1.0 - (1.0 - t).powi(4),
         Easing::EaseInOutQuart => {
-            if t < 0.5 { 8.0 * t * t * t * t }
-            else { 1.0 - (-2.0 * t + 2.0).powi(4) / 2.0 }
+            if t < 0.5 {
+                8.0 * t * t * t * t
+            } else {
+                1.0 - (-2.0 * t + 2.0).powi(4) / 2.0
+            }
         }
 
         // Quintic
         Easing::EaseInQuint => t * t * t * t * t,
         Easing::EaseOutQuint => 1.0 - (1.0 - t).powi(5),
         Easing::EaseInOutQuint => {
-            if t < 0.5 { 16.0 * t * t * t * t * t }
-            else { 1.0 - (-2.0 * t + 2.0).powi(5) / 2.0 }
+            if t < 0.5 {
+                16.0 * t * t * t * t * t
+            } else {
+                1.0 - (-2.0 * t + 2.0).powi(5) / 2.0
+            }
         }
 
         // Exponential
         Easing::EaseInExpo => {
-            if t == 0.0 { 0.0 }
-            else { 2.0_f64.powf(10.0 * t - 10.0) }
+            if t == 0.0 {
+                0.0
+            } else {
+                2.0_f64.powf(10.0 * t - 10.0)
+            }
         }
         Easing::EaseOutExpo => {
-            if t == 1.0 { 1.0 }
-            else { 1.0 - 2.0_f64.powf(-10.0 * t) }
+            if t == 1.0 {
+                1.0
+            } else {
+                1.0 - 2.0_f64.powf(-10.0 * t)
+            }
         }
         Easing::EaseInOutExpo => {
-            if t == 0.0 { 0.0 }
-            else if t == 1.0 { 1.0 }
-            else if t < 0.5 { 2.0_f64.powf(20.0 * t - 10.0) / 2.0 }
-            else { (2.0 - 2.0_f64.powf(-20.0 * t + 10.0)) / 2.0 }
+            if t == 0.0 {
+                0.0
+            } else if t == 1.0 {
+                1.0
+            } else if t < 0.5 {
+                2.0_f64.powf(20.0 * t - 10.0) / 2.0
+            } else {
+                (2.0 - 2.0_f64.powf(-20.0 * t + 10.0)) / 2.0
+            }
         }
 
         // Circular
         Easing::EaseInCirc => 1.0 - (1.0 - t * t).sqrt(),
         Easing::EaseOutCirc => (1.0 - (t - 1.0) * (t - 1.0)).sqrt(),
         Easing::EaseInOutCirc => {
-            if t < 0.5 { (1.0 - (1.0 - (2.0 * t).powi(2)).sqrt()) / 2.0 }
-            else { (1.0 + (1.0 - (-2.0 * t + 2.0).powi(2)).sqrt()) / 2.0 }
+            if t < 0.5 {
+                (1.0 - (1.0 - (2.0 * t).powi(2)).sqrt()) / 2.0
+            } else {
+                (1.0 + (1.0 - (-2.0 * t + 2.0).powi(2)).sqrt()) / 2.0
+            }
         }
 
         // Back (overshoot)
         Easing::EaseInBack => C3 * t * t * t - C1 * t * t,
-        Easing::EaseOutBack => {
-            1.0 + C3 * (t - 1.0).powi(3) + C1 * (t - 1.0).powi(2)
-        }
+        Easing::EaseOutBack => 1.0 + C3 * (t - 1.0).powi(3) + C1 * (t - 1.0).powi(2),
         Easing::EaseInOutBack => {
             if t < 0.5 {
                 (2.0 * t).powi(2) * ((C2 + 1.0) * 2.0 * t - C2) / 2.0
@@ -267,19 +310,29 @@ fn apply_easing(t: f64, easing: &Easing) -> f64 {
 
         // Elastic (oscillating overshoot)
         Easing::EaseInElastic => {
-            if t == 0.0 { 0.0 }
-            else if t == 1.0 { 1.0 }
-            else { -(2.0_f64.powf(10.0 * t - 10.0) * ((10.0 * t - 10.75) * C4).sin()) }
+            if t == 0.0 {
+                0.0
+            } else if t == 1.0 {
+                1.0
+            } else {
+                -(2.0_f64.powf(10.0 * t - 10.0) * ((10.0 * t - 10.75) * C4).sin())
+            }
         }
         Easing::EaseOutElastic => {
-            if t == 0.0 { 0.0 }
-            else if t == 1.0 { 1.0 }
-            else { 2.0_f64.powf(-10.0 * t) * ((10.0 * t - 0.75) * C4).sin() + 1.0 }
+            if t == 0.0 {
+                0.0
+            } else if t == 1.0 {
+                1.0
+            } else {
+                2.0_f64.powf(-10.0 * t) * ((10.0 * t - 0.75) * C4).sin() + 1.0
+            }
         }
         Easing::EaseInOutElastic => {
-            if t == 0.0 { 0.0 }
-            else if t == 1.0 { 1.0 }
-            else if t < 0.5 {
+            if t == 0.0 {
+                0.0
+            } else if t == 1.0 {
+                1.0
+            } else if t < 0.5 {
                 -(2.0_f64.powf(20.0 * t - 10.0) * ((20.0 * t - 11.125) * C5).sin()) / 2.0
             } else {
                 2.0_f64.powf(-20.0 * t + 10.0) * ((20.0 * t - 11.125) * C5).sin() / 2.0 + 1.0
@@ -322,8 +375,12 @@ fn ease_out_bounce(t: f64, n1: f64, d1: f64) -> f64 {
 
 /// Evaluate a cubic bezier easing curve using Newton-Raphson iteration.
 fn cubic_bezier(t: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
-    if t <= 0.0 { return 0.0; }
-    if t >= 1.0 { return 1.0; }
+    if t <= 0.0 {
+        return 0.0;
+    }
+    if t >= 1.0 {
+        return 1.0;
+    }
 
     // Solve for the bezier parameter `s` where bezier_x(s) == t
     let s = newton_raphson_solve(t, x1, x2, t, 8);
@@ -340,9 +397,7 @@ fn bezier_eval(s: f64, p1: f64, p2: f64) -> f64 {
 
 /// Derivative of the bezier polynomial for one axis.
 fn bezier_derivative(s: f64, p1: f64, p2: f64) -> f64 {
-    3.0 * (1.0 - s) * (1.0 - s) * p1
-        + 6.0 * (1.0 - s) * s * (p2 - p1)
-        + 3.0 * s * s * (1.0 - p2)
+    3.0 * (1.0 - s) * (1.0 - s) * p1 + 6.0 * (1.0 - s) * s * (p2 - p1) + 3.0 * s * s * (1.0 - p2)
 }
 
 fn newton_raphson_solve(target_x: f64, x1: f64, x2: f64, mut guess: f64, max_iter: u32) -> f64 {
@@ -381,14 +436,30 @@ mod tests {
     fn all_easings_reach_endpoints() {
         let easings = [
             Easing::Linear,
-            Easing::EaseIn, Easing::EaseOut, Easing::EaseInOut,
-            Easing::EaseInQuad, Easing::EaseOutQuad, Easing::EaseInOutQuad,
-            Easing::EaseInCubic, Easing::EaseOutCubic, Easing::EaseInOutCubic,
-            Easing::EaseInQuart, Easing::EaseOutQuart, Easing::EaseInOutQuart,
-            Easing::EaseInQuint, Easing::EaseOutQuint, Easing::EaseInOutQuint,
-            Easing::EaseInExpo, Easing::EaseOutExpo, Easing::EaseInOutExpo,
-            Easing::EaseInCirc, Easing::EaseOutCirc, Easing::EaseInOutCirc,
-            Easing::EaseInBounce, Easing::EaseOutBounce, Easing::EaseInOutBounce,
+            Easing::EaseIn,
+            Easing::EaseOut,
+            Easing::EaseInOut,
+            Easing::EaseInQuad,
+            Easing::EaseOutQuad,
+            Easing::EaseInOutQuad,
+            Easing::EaseInCubic,
+            Easing::EaseOutCubic,
+            Easing::EaseInOutCubic,
+            Easing::EaseInQuart,
+            Easing::EaseOutQuart,
+            Easing::EaseInOutQuart,
+            Easing::EaseInQuint,
+            Easing::EaseOutQuint,
+            Easing::EaseInOutQuint,
+            Easing::EaseInExpo,
+            Easing::EaseOutExpo,
+            Easing::EaseInOutExpo,
+            Easing::EaseInCirc,
+            Easing::EaseOutCirc,
+            Easing::EaseInOutCirc,
+            Easing::EaseInBounce,
+            Easing::EaseOutBounce,
+            Easing::EaseInOutBounce,
         ];
         for e in &easings {
             let at_zero = apply_easing(0.0, e);
@@ -411,8 +482,7 @@ mod tests {
 
     #[test]
     fn advance_uses_easing() {
-        let mut tween = Tween::new(0.0, 100.0, 1000)
-            .easing(Easing::EaseInQuad);
+        let mut tween = Tween::new(0.0, 100.0, 1000).easing(Easing::EaseInQuad);
         tween.start(0);
         tween.advance(500);
         // EaseInQuad at t=0.5: 0.25, so value should be ~25
@@ -422,9 +492,7 @@ mod tests {
 
     #[test]
     fn repeat_restarts() {
-        let mut tween = Tween::new(0.0, 100.0, 100)
-            .easing(Easing::Linear)
-            .repeat(2);
+        let mut tween = Tween::new(0.0, 100.0, 100).easing(Easing::Linear).repeat(2);
         tween.start(0);
         tween.advance(100); // first cycle ends
         assert!(!tween.finished());

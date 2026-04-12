@@ -258,7 +258,6 @@ pub fn prop_bool_default(props: &Props, key: &str, default: bool) -> bool {
     prop_bool(props, key).unwrap_or(default)
 }
 
-
 /// Parse a "range" prop as `[min, max]` into an inclusive `f32` range.
 pub fn prop_range_f32(props: &Props) -> std::ops::RangeInclusive<f32> {
     props
@@ -393,13 +392,13 @@ pub fn prop_animated_f32(
         return val.as_f64().map(f64_to_f32);
     }
     // Fall back to tree props (skip descriptor maps)
-    if let Some(val) = props.get(key) {
-        if val.is_object() {
-            // This is likely an animation descriptor -- the renderer hasn't
-            // started animating yet (first frame) or it just completed.
-            // Return None so the widget uses its default.
-            return None;
-        }
+    if let Some(val) = props.get(key)
+        && val.is_object()
+    {
+        // This is likely an animation descriptor; the renderer hasn't
+        // started animating yet (first frame) or it just completed.
+        // Return None so the widget uses its default.
+        return None;
     }
     prop_f32(props, key)
 }
@@ -416,13 +415,12 @@ pub fn prop_animated_color(
     {
         return val.as_str().and_then(parse_hex_color);
     }
-    if let Some(val) = props.get(key) {
-        if val.is_object() {
-            return None;
-        }
+    if let Some(val) = props.get(key)
+        && val.is_object()
+    {
+        return None;
     }
-    plushie_core::types::Color::extract(props, key)
-        .map(|c| crate::iced_convert::color(&c))
+    plushie_core::types::Color::extract(props, key).map(|c| crate::iced_convert::color(&c))
 }
 
 // ---------------------------------------------------------------------------
@@ -847,8 +845,8 @@ mod tests {
     fn typed_prop_bool() {
         let p = make_typed_props();
         assert_eq!(prop_bool(&p, "visible"), Some(true));
-        assert_eq!(prop_bool_default(&p, "visible", false), true);
-        assert_eq!(prop_bool_default(&p, "missing", false), false);
+        assert!(prop_bool_default(&p, "visible", false));
+        assert!(!prop_bool_default(&p, "missing", false));
     }
 
     #[test]

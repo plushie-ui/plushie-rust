@@ -102,10 +102,7 @@ fn render_toggler<'a, R: PlushieRenderer>(
     if let Some(ts) = tp.text_size.or(ctx.default_text_size) {
         t = t.text_size(ts);
     }
-    let font = tp
-        .font
-        .map(|f| iced_convert::font(&f))
-        .or(ctx.default_font);
+    let font = tp.font.map(|f| iced_convert::font(&f)).or(ctx.default_font);
     if let Some(f) = font {
         t = t.font(f);
     }

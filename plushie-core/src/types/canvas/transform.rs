@@ -65,7 +65,9 @@ impl PlushieType for Transform {
                 // Uniform: {type: "scale", factor: f32}
                 // Non-uniform: {type: "scale", x: f32, y: f32}
                 if let Some(factor) = obj.get("factor").and_then(|v| v.as_f64()) {
-                    Some(Self::ScaleUniform { factor: factor as f32 })
+                    Some(Self::ScaleUniform {
+                        factor: factor as f32,
+                    })
                 } else {
                     let x = obj.get("x").and_then(|v| v.as_f64())? as f32;
                     let y = obj.get("y").and_then(|v| v.as_f64())? as f32;
@@ -133,7 +135,7 @@ mod tests {
 
     #[test]
     fn rotate() {
-        let val = json!({"type": "rotate", "angle": 1.5707963});
+        let val = json!({"type": "rotate", "angle": std::f32::consts::FRAC_PI_2});
         let t = Transform::wire_decode(&val).unwrap();
         if let Transform::Rotate { angle } = t {
             assert!((angle - std::f32::consts::FRAC_PI_2).abs() < 0.001);

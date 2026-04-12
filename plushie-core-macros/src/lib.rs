@@ -83,7 +83,7 @@ fn derive_enum_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream
 
     let metas: Vec<VariantMeta> = variants
         .iter()
-        .map(|v| extract_variant_meta(v))
+        .map(extract_variant_meta)
         .collect::<syn::Result<_>>()?;
 
     let enum_name = &input.ident;
@@ -323,14 +323,14 @@ fn derive_widget_event_impl(input: &DeriveInput) -> syn::Result<proc_macro2::Tok
 
     // Reject multi-field tuple variants (ambiguous encoding).
     for v in variants {
-        if let Fields::Unnamed(fields) = &v.fields {
-            if fields.unnamed.len() > 1 {
-                return Err(syn::Error::new_spanned(
-                    v,
-                    "WidgetEvent tuple variants must have exactly one field; \
-                     use named fields for multiple values",
-                ));
-            }
+        if let Fields::Unnamed(fields) = &v.fields
+            && fields.unnamed.len() > 1
+        {
+            return Err(syn::Error::new_spanned(
+                v,
+                "WidgetEvent tuple variants must have exactly one field; \
+                 use named fields for multiple values",
+            ));
         }
     }
 
@@ -354,20 +354,23 @@ fn derive_widget_event_impl(input: &DeriveInput) -> syn::Result<proc_macro2::Tok
                 }
             }
             Fields::Named(fields) => {
-                let field_names: Vec<_> = fields.named.iter()
+                let field_names: Vec<_> = fields
+                    .named
+                    .iter()
                     .map(|f| f.ident.as_ref().unwrap())
                     .collect();
-                let field_keys: Vec<_> = field_names.iter()
-                    .map(|n| n.to_string())
-                    .collect();
-                let inserts = field_names.iter().zip(field_keys.iter()).map(|(name, key)| {
-                    quote! {
-                        map.insert(
-                            #key,
-                            ::plushie_core::types::PlushieType::wire_encode(#name),
-                        );
-                    }
-                });
+                let field_keys: Vec<_> = field_names.iter().map(|n| n.to_string()).collect();
+                let inserts = field_names
+                    .iter()
+                    .zip(field_keys.iter())
+                    .map(|(name, key)| {
+                        quote! {
+                            map.insert(
+                                #key,
+                                ::plushie_core::types::PlushieType::wire_encode(#name),
+                            );
+                        }
+                    });
 
                 quote! {
                     Self::#ident { #(#field_names),* } => {
@@ -498,15 +501,16 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
             let ty = &f.ty;
             let ty_str = quote!(#ty).to_string();
             // Extract the first doc line if present
-            let doc = f.attrs.iter()
+            let doc = f
+                .attrs
+                .iter()
                 .filter(|a| a.path().is_ident("doc"))
                 .filter_map(|a| {
-                    if let syn::Meta::NameValue(nv) = &a.meta {
-                        if let syn::Expr::Lit(lit) = &nv.value {
-                            if let syn::Lit::Str(s) = &lit.lit {
-                                return Some(s.value().trim().to_string());
-                            }
-                        }
+                    if let syn::Meta::NameValue(nv) = &a.meta
+                        && let syn::Expr::Lit(lit) = &nv.value
+                        && let syn::Lit::Str(s) = &lit.lit
+                    {
+                        return Some(s.value().trim().to_string());
                     }
                     None
                 })
@@ -523,14 +527,8 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
         "Typed properties for the `{}` widget.\n\n## Fields\n\n{}",
         widget_name, field_list
     );
-    let from_node_doc = format!(
-        "Extract properties from a `{}` tree node.",
-        widget_name
-    );
-    let type_name_doc = format!(
-        "The widget type name: `\"{}\"`.",
-        widget_name
-    );
+    let from_node_doc = format!("Extract properties from a `{}` tree node.", widget_name);
+    let type_name_doc = format!("The widget type name: `\"{}\"`.", widget_name);
 
     // Second set of extraction tokens for the FromNode impl (quote
     // iterators are consumed on first use).
@@ -551,15 +549,16 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
         let name = f.ident.as_ref().unwrap();
         let ty = &f.ty;
         let key = name.to_string();
-        let doc = f.attrs.iter()
+        let doc = f
+            .attrs
+            .iter()
             .filter(|a| a.path().is_ident("doc"))
             .filter_map(|a| {
-                if let syn::Meta::NameValue(nv) = &a.meta {
-                    if let syn::Expr::Lit(lit) = &nv.value {
-                        if let syn::Lit::Str(s) = &lit.lit {
-                            return Some(s.value().trim().to_string());
-                        }
-                    }
+                if let syn::Meta::NameValue(nv) = &a.meta
+                    && let syn::Expr::Lit(lit) = &nv.value
+                    && let syn::Lit::Str(s) = &lit.lit
+                {
+                    return Some(s.value().trim().to_string());
                 }
                 None
             })
@@ -678,8 +677,9 @@ fn extract_widget_name(input: &DeriveInput) -> syn::Result<String> {
                     Err(meta.error("unknown widget attribute, expected `name`"))
                 }
             })?;
-            return name
-                .ok_or_else(|| syn::Error::new_spanned(attr, "widget attribute requires name = \"...\""));
+            return name.ok_or_else(|| {
+                syn::Error::new_spanned(attr, "widget attribute requires name = \"...\"")
+            });
         }
     }
     Err(syn::Error::new_spanned(
@@ -712,7 +712,10 @@ mod tests {
     fn pascal_to_snake_consecutive_upper() {
         assert_eq!(pascal_to_snake("URL"), "url");
         assert_eq!(pascal_to_snake("HTMLParser"), "html_parser");
-        assert_eq!(pascal_to_snake("ResizingDiagonallyUp"), "resizing_diagonally_up");
+        assert_eq!(
+            pascal_to_snake("ResizingDiagonallyUp"),
+            "resizing_diagonally_up"
+        );
     }
 
     #[test]

@@ -29,11 +29,11 @@
 
 use crate::animation::{Sequence, Spring, Transition};
 use crate::protocol::PropValue;
+use crate::types::PlushieType;
 use crate::types::background::Background;
 use crate::types::color::Color;
 use crate::types::gradient::Gradient;
 use crate::types::line_height::LineHeight;
-use crate::types::PlushieType;
 
 /// A value that can be either static or animated.
 ///

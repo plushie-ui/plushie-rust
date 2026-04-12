@@ -4,9 +4,9 @@ use serde_json::Value;
 
 use crate::protocol::PropValue;
 
+use super::PlushieType;
 use super::color::Color;
 use super::gradient::Gradient;
-use super::PlushieType;
 
 /// A background fill: either a solid color or a gradient.
 #[derive(Debug, Clone, PartialEq)]

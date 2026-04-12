@@ -2,8 +2,8 @@
 
 use serde_json::Value;
 
-use crate::protocol::{PropMap, PropValue};
 use crate::PlushieEnum;
+use crate::protocol::{PropMap, PropValue};
 
 use super::super::PlushieType;
 
@@ -35,15 +35,28 @@ impl PlushieType for DragBounds {
         let max_x = obj.get("max_x").and_then(|v| v.as_f64()).map(|f| f as f32);
         let min_y = obj.get("min_y").and_then(|v| v.as_f64()).map(|f| f as f32);
         let max_y = obj.get("max_y").and_then(|v| v.as_f64()).map(|f| f as f32);
-        Some(Self { min_x, max_x, min_y, max_y })
+        Some(Self {
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+        })
     }
 
     fn wire_encode(&self) -> PropValue {
         let mut m = PropMap::new();
-        if let Some(v) = self.min_x { m.insert("min_x", PropValue::F64(v as f64)); }
-        if let Some(v) = self.max_x { m.insert("max_x", PropValue::F64(v as f64)); }
-        if let Some(v) = self.min_y { m.insert("min_y", PropValue::F64(v as f64)); }
-        if let Some(v) = self.max_y { m.insert("max_y", PropValue::F64(v as f64)); }
+        if let Some(v) = self.min_x {
+            m.insert("min_x", PropValue::F64(v as f64));
+        }
+        if let Some(v) = self.max_x {
+            m.insert("max_x", PropValue::F64(v as f64));
+        }
+        if let Some(v) = self.min_y {
+            m.insert("min_y", PropValue::F64(v as f64));
+        }
+        if let Some(v) = self.max_y {
+            m.insert("max_y", PropValue::F64(v as f64));
+        }
         PropValue::Object(m)
     }
 
@@ -84,7 +97,11 @@ mod tests {
 
     #[test]
     fn drag_axis_round_trip() {
-        for (axis, s) in [(DragAxis::Both, "both"), (DragAxis::X, "x"), (DragAxis::Y, "y")] {
+        for (axis, s) in [
+            (DragAxis::Both, "both"),
+            (DragAxis::X, "x"),
+            (DragAxis::Y, "y"),
+        ] {
             let encoded = axis.wire_encode();
             assert_eq!(encoded, PropValue::Str(s.into()));
             let decoded = DragAxis::wire_decode(&json!(s)).unwrap();

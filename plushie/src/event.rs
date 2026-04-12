@@ -24,7 +24,7 @@ pub enum Event {
     Stream(StreamEvent),
     Effect(EffectEvent),
     System(SystemEvent),
-    WidgetCommandError(WidgetCommandError),
+    CommandError(CommandError),
     Modifiers(ModifiersEvent),
     Ime(ImeEvent),
 }
@@ -696,18 +696,18 @@ pub enum SystemEventType {
 }
 
 // ---------------------------------------------------------------------------
-// WidgetCommandError
+// CommandError
 // ---------------------------------------------------------------------------
 
-/// Error from a native widget command.
+/// Error from a command.
 #[derive(Debug, Clone)]
-pub struct WidgetCommandError {
+pub struct CommandError {
     /// The error category (e.g. "not_found", "invalid_op").
     pub reason: String,
-    /// The target node ID that the command was sent to.
-    pub node_id: Option<String>,
-    /// The operation that failed.
-    pub op: Option<String>,
+    /// The target ID that the command was sent to.
+    pub id: Option<String>,
+    /// The command family that failed.
+    pub family: Option<String>,
     /// The widget type of the target node.
     pub widget_type: Option<String>,
     /// Human-readable error message.

@@ -1155,7 +1155,7 @@ Current renderer error payloads include:
 
 | `value.kind` | Other fields | Description |
 |-------------|--------------|-------------|
-| `widget_command` | `reason`, `node_id`, `family`, `message`, `widget_type` (optional) | Widget command failed. `reason` is currently `"unknown_node"`, `"poisoned"`, or `"panic"`. |
+| `command` | `reason`, `id`, `family`, `message`, `widget_type` (optional) | Command failed. `reason` is currently `"unknown_node"`, `"poisoned"`, or `"panic"`. |
 
 #### Pointer events
 

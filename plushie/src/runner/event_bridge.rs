@@ -169,12 +169,12 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
             }))
         }
 
-        "widget_command_error" => {
+        "command_error" => {
             let value = event.value.as_ref().unwrap_or(&Value::Null);
-            Some(Event::WidgetCommandError(WidgetCommandError {
+            Some(Event::CommandError(CommandError {
                 reason: json_str(value, "reason"),
-                node_id: json_str_opt(value, "node_id"),
-                op: json_str_opt(value, "op"),
+                id: json_str_opt(value, "id"),
+                family: json_str_opt(value, "family"),
                 widget_type: json_str_opt(value, "widget_type"),
                 message: json_str_opt(value, "message"),
             }))

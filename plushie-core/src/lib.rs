@@ -13,7 +13,10 @@ pub mod animation;
 pub mod ops;
 pub mod protocol;
 pub mod settings;
+pub mod spec;
 pub mod types;
 pub mod widget_builder;
 
+pub use scoped_id::ScopedId;
+pub use spec::{CommandSpec, EventSpec, PayloadSpec, ValueType, WidgetCommandEncode};
 pub use widget_builder::WidgetBuilder;

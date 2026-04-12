@@ -85,7 +85,7 @@ host when sessions fail or complete teardown.
 `max_sessions` is exceeded.
 
 ```json
-{"type": "event", "session": "s1", "family": "session_error", "id": "", "data": {"error": "session thread panicked: ..."}}
+{"type": "event", "session": "s1", "family": "session_error", "id": "", "value": {"error": "session thread panicked: ..."}}
 ```
 
 - Emitted to stdout so the host knows a session is no longer functional.
@@ -95,7 +95,7 @@ host when sessions fail or complete teardown.
 thread exits.
 
 ```json
-{"type": "event", "session": "s1", "family": "session_closed", "id": "", "data": {"reason": "reset"}}
+{"type": "event", "session": "s1", "family": "session_closed", "id": "", "value": {"reason": "reset"}}
 ```
 
 - Confirms the old session has fully torn down.
@@ -169,7 +169,7 @@ A UI tree is a nested structure of nodes. Every node has four fields:
 
 ```json
 {
-  "id": "unique-string",
+  "id": "main#form/email",
   "type": "widget-type",
   "props": {},
   "children": []
@@ -178,10 +178,16 @@ A UI tree is a nested structure of nodes. Every node has four fields:
 
 | Field      | Type     | Description |
 |------------|----------|-------------|
-| `id`       | string   | Unique identifier for this node |
+| `id`       | string   | Unique identifier for this node (see ID format below) |
 | `type`     | string   | Widget type (e.g. `"text"`, `"button"`, `"column"`) |
 | `props`    | object   | Widget-specific properties |
 | `children` | array    | Child TreeNode objects |
+
+**Node ID format.** IDs use the format `window#scope/path/id`. The
+`#` separator divides the window name from the widget path within
+that window. For example, `"main#form/email"` refers to the widget
+`email` inside the `form` scope in the `main` window. Window nodes
+themselves use bare IDs without the `#` prefix (e.g. `"main"`).
 
 Window nodes (`"type": "window"`) are special -- they map to native
 windows. Place them at the top level of the tree (root or direct
@@ -269,7 +275,7 @@ ones, closes removed ones), and re-renders.
 the renderer accepts the tree but emits an error event:
 
 ```json
-{"type": "event", "session": "", "family": "error", "id": "duplicate_node_ids", "data": {"error": "snapshot contains duplicate node IDs", "duplicates": ["btn1 (button)", "btn1 (text)"]}}
+{"type": "event", "session": "", "family": "error", "id": "duplicate_node_ids", "value": {"error": "snapshot contains duplicate node IDs", "duplicates": ["btn1 (button)", "btn1 (text)"]}}
 ```
 
 The host should treat this as a bug in the tree construction. Duplicate
@@ -715,8 +721,8 @@ Inspect the tree or find widgets by selector.
 | `label` | Find by a11y label |
 | `focused` | Find the focused widget (no value field needed) |
 
-When `by` is `"id"`, the selector may also include an optional
-`window_id` field to limit the lookup to one window.
+When `by` is `"id"`, the selector value can include the `window#`
+prefix to limit the lookup to one window (e.g. `"main#btn1"`).
 
 **Selector search semantics:**
 
@@ -1066,8 +1072,7 @@ User interaction or subscription event.
   "type": "event",
   "session": "s1",
   "family": "click",
-  "id": "btn-1",
-  "window_id": "main"
+  "id": "main#toolbar/btn-1"
 }
 ```
 
@@ -1076,19 +1081,17 @@ User interaction or subscription event.
 | `type` | string | Always `"event"` |
 | `session` | string | Session that produced this event |
 | `family` | string | Event kind (see tables below) |
-| `id` | string | Node ID that produced the event |
-| `value` | any | Event value (optional) |
+| `id` | string | Node ID that produced the event (includes `window#` prefix for widget events) |
+| `value` | any | Event value (optional, carries all event-specific data) |
 | `tag` | string | Subscription tag (optional, for subscription events) |
-| `window_id` | string | Window that produced the event (required on widget-like events) |
 | `modifiers` | object | Keyboard modifiers (optional) |
-| `data` | object | Additional event data (optional) |
 | `captured` | bool | Whether a widget consumed this event (optional, subscription events only) |
 
 Fields that are null or absent are omitted from the serialized output.
 
-`window_id` is required on widget-like events. Applications declare
-windows explicitly, and widget-like events always identify which window
-produced them. Subscription events omit this field.
+The window that produced a widget event is encoded in the node ID
+via the `window#` prefix (e.g. `"main#btn-1"`). Subscription events
+use bare IDs without the window prefix.
 
 **Event capture status.** All keyboard, mouse, touch, and IME subscription
 events include an optional `captured` boolean. When `true`, an iced widget
@@ -1098,8 +1101,8 @@ When `false` or absent, no widget handled the event. Widget-level events
 
 #### Widget events
 
-Produced by widget interactions. The `id` field is the node ID and
-`window_id` identifies the window that produced the event.
+Produced by widget interactions. The `id` field is the full wire ID
+(including the `window#` prefix).
 
 | Family | Fields | Description |
 |--------|--------|-------------|
@@ -1112,10 +1115,10 @@ Produced by widget interactions. The `id` field is the node ID and
 | `select` | id, value (string) | Pick list or radio selected |
 | `paste` | id, value (string) | Text pasted into input |
 | `option_hovered` | id, value (string) | Combo box option hovered |
-| `resize` | id, data: {width, height} | Sensor widget resized. Coalescable (Replace). |
-| `scrolled` | id, data: {absolute_x, absolute_y, relative_x, relative_y, bounds_width, bounds_height, content_width, content_height} | Scrollable viewport changed. NOT a pointer event. Coalescable (Replace). |
-| `sort` | id, data: {column} | Table column sort clicked |
-| `key_binding` | id, data | TextEditor key binding rule matched |
+| `resize` | id, value: {width, height} | Sensor widget resized. Coalescable (Replace). |
+| `scrolled` | id, value: {absolute_x, absolute_y, relative_x, relative_y, bounds_width, bounds_height, content_width, content_height} | Scrollable viewport changed. NOT a pointer event. Coalescable (Replace). |
+| `sort` | id, value: {column} | Table column sort clicked |
+| `key_binding` | id, value | TextEditor key binding rule matched |
 | `open` | id | PickList or ComboBox menu opened |
 | `close` | id | PickList or ComboBox menu closed |
 
@@ -1123,11 +1126,11 @@ Renderer-side errors also use the normal `event` envelope:
 
 | Family | Fields | Description |
 |--------|--------|-------------|
-| `error` | id, data | Renderer or protocol error |
+| `error` | id, value | Renderer or protocol error |
 
 Current renderer error payloads include:
 
-| `data.kind` | Other fields | Description |
+| `value.kind` | Other fields | Description |
 |-------------|--------------|-------------|
 | `widget_command` | `reason`, `node_id`, `op`, `message`, `widget_type` (optional) | Widget command failed. `reason` is currently `"unknown_node"`, `"poisoned"`, or `"panic"`. |
 
@@ -1136,9 +1139,9 @@ Current renderer error payloads include:
 All pointer interactions (from `pointer_area`, canvas, and touch
 input) use a unified set of event families. The same families are
 emitted regardless of widget type -- the `pointer` field in the
-data distinguishes the input device.
+value distinguishes the input device.
 
-| Family | Data fields | Coalescable | Description |
+| Family | Value fields | Coalescable | Description |
 |--------|-------------|-------------|-------------|
 | `press` | `{x, y, button, pointer, finger?, modifiers}` | No | Pointer button down with coordinates |
 | `release` | `{x, y, button, pointer, finger?, modifiers}` | No | Pointer button up |
@@ -1173,20 +1176,20 @@ These families are emitted by:
 - `canvas` widget -- pointer interactions on the canvas surface.
   The `id` field is the canvas node ID.
 - Canvas interactive elements -- pointer interactions on canvas
-  elements. The `id` field is `"{canvas_id}/{element_id}"`.
+  elements. The `id` field is the element's scoped wire ID.
 
 Note: `scrolled` (scrollable container viewport change) is a
 separate widget event, not a pointer event. It has a different
-data shape and is documented in the widget events table above.
+value shape and is documented in the widget events table above.
 
 Pane grid events:
 
 | Family | Fields | Description |
 |--------|--------|-------------|
-| `pane_resized` | id, data: {split, ratio} | Pane divider moved |
-| `pane_dragged` | id, data: {action, pane, target, region, edge} | Pane dragged (action: picked/dropped/canceled) |
-| `pane_clicked` | id, data: {pane} | Pane clicked |
-| `pane_focus_cycle` | id, data: {pane} | Pane focus cycled (F6/Shift+F6) |
+| `pane_resized` | id, value: {split, ratio} | Pane divider moved |
+| `pane_dragged` | id, value: {action, pane, target, region, edge} | Pane dragged (action: picked/dropped/canceled) |
+| `pane_clicked` | id, value: {pane} | Pane clicked |
+| `pane_focus_cycle` | id, value: {pane} | Pane focus cycled (F6/Shift+F6) |
 
 #### Subscription events
 
@@ -1197,29 +1200,29 @@ tag from the subscription registration.
 
 | Family | Fields |
 |--------|--------|
-| `key_press` | tag, data: {key, modified_key, physical_key, location, text, repeat}, modifiers |
-| `key_release` | tag, data: {key, modified_key, physical_key, location}, modifiers |
+| `key_press` | tag, value: {key, modified_key, physical_key, location, text, repeat}, modifiers |
+| `key_release` | tag, value: {key, modified_key, physical_key, location}, modifiers |
 | `modifiers_changed` | tag, modifiers: {shift, ctrl, alt, logo, command} |
 
 **Mouse:**
 
 | Family | Fields |
 |--------|--------|
-| `cursor_moved` | tag, data: {x, y} |
+| `cursor_moved` | tag, value: {x, y} |
 | `cursor_entered` | tag |
 | `cursor_left` | tag |
 | `button_pressed` | tag, value (button name) |
 | `button_released` | tag, value (button name) |
-| `wheel_scrolled` | tag, data: {delta_x, delta_y, unit} |
+| `wheel_scrolled` | tag, value: {delta_x, delta_y, unit} |
 
 **Touch:**
 
 | Family | Fields |
 |--------|--------|
-| `finger_pressed` | tag, data: {id, x, y} |
-| `finger_moved` | tag, data: {id, x, y} |
-| `finger_lifted` | tag, data: {id, x, y} |
-| `finger_lost` | tag, data: {id, x, y} |
+| `finger_pressed` | tag, value: {id, x, y} |
+| `finger_moved` | tag, value: {id, x, y} |
+| `finger_lifted` | tag, value: {id, x, y} |
+| `finger_lost` | tag, value: {id, x, y} |
 
 **Subscription events vs widget pointer events.** Subscription
 pointer events (`cursor_moved`, `button_pressed`, `finger_pressed`,
@@ -1236,31 +1239,31 @@ abstraction levels.
 | Family | Fields |
 |--------|--------|
 | `ime_opened` | tag |
-| `ime_preedit` | tag, data: {text, cursor} |
-| `ime_commit` | tag, data: {text} |
+| `ime_preedit` | tag, value: {text, cursor} |
+| `ime_commit` | tag, value: {text} |
 | `ime_closed` | tag |
 
 **Window lifecycle:**
 
 | Family | Fields |
 |--------|--------|
-| `window_opened` | tag, data: {window_id, position: {x, y}, width, height, scale_factor} |
-| `window_closed` | tag, data: {window_id} |
-| `window_close_requested` | tag, data: {window_id} |
-| `window_moved` | tag, data: {window_id, x, y} |
-| `window_resized` | tag, data: {window_id, width, height} |
-| `window_focused` | tag, data: {window_id} |
-| `window_unfocused` | tag, data: {window_id} |
-| `window_rescaled` | tag, data: {window_id, scale_factor} |
-| `file_hovered` | tag, data: {window_id, path} |
-| `file_dropped` | tag, data: {window_id, path} |
-| `files_hovered_left` | tag, data: {window_id} |
+| `window_opened` | tag, value: {window_id, position: {x, y}, width, height, scale_factor} |
+| `window_closed` | tag, value: {window_id} |
+| `window_close_requested` | tag, value: {window_id} |
+| `window_moved` | tag, value: {window_id, x, y} |
+| `window_resized` | tag, value: {window_id, width, height} |
+| `window_focused` | tag, value: {window_id} |
+| `window_unfocused` | tag, value: {window_id} |
+| `window_rescaled` | tag, value: {window_id, scale_factor} |
+| `file_hovered` | tag, value: {window_id, path} |
+| `file_dropped` | tag, value: {window_id, path} |
+| `files_hovered_left` | tag, value: {window_id} |
 
 **Other:**
 
 | Family | Fields |
 |--------|--------|
-| `animation_frame` | tag, data: {timestamp} |
+| `animation_frame` | tag, value: {timestamp} |
 | `theme_changed` | tag, value (light/dark) |
 | `all_windows_closed` | -- (emitted when last window closes) |
 
@@ -1530,7 +1533,7 @@ emit a synthetic event instead of dispatching to the platform
 accessibility layer (which does not exist without a display server):
 
 ```json
-{"type": "event", "session": "", "family": "announce", "id": "", "data": {"text": "Item saved successfully"}}
+{"type": "event", "session": "", "family": "announce", "id": "", "value": {"text": "Item saved successfully"}}
 ```
 
 This allows host test suites to verify that announcements are triggered
@@ -1796,6 +1799,10 @@ props.
 | `markdown` | `link_color` | hex color | Hyperlink colour |
 | `markdown` | `code_theme` | string | Syntax highlighting theme for code blocks |
 
+**Table rows.** Tables use children-based rows. The `table` node's
+children are `table_row` nodes, each containing `table_cell`
+children. Both `table_row` and `table_cell` are wire types.
+
 **StyleMap `base` field.** A StyleMap object can include a `"base"` field
 naming a preset to extend. The style starts from the preset's defaults,
 then remaining fields override individual properties:
@@ -1989,9 +1996,9 @@ group to add interaction.
   image, svg). Pure visual, no interactivity.
 - **Group**: the only container type. Carries transforms, clips, and
   optionally interactivity (when it has an `id` field).
-- **Element**: an interactive group (one with an `id`). Uses scoped
-  IDs for events (`"{canvas_id}/{element_id}"`), commands
-  (scoped `focus`), and test actions.
+- **Element**: an interactive group (one with an `id`). Uses the
+  element's scoped wire ID for events, commands (`focus`), and
+  test actions.
 
 ### Group wire format
 
@@ -2109,27 +2116,27 @@ precision at transformed element boundaries.
 
 ### Events emitted
 
-Canvas events use standard event families with scoped IDs. The wire
-`id` field is `"{canvas_id}/{element_id}"` so the SDK's scoped ID
-system splits it into `id: element_id, scope: [canvas_id, ...]`.
-Canvas elements look like regular widgets inside a container from
-the SDK's perspective.
+Canvas element events are regular `Message::Event` messages. The
+wire `id` field is the element's scoped wire ID, which the SDK's
+scoped ID system splits into `id`, `scope`, and window. Canvas
+elements look like regular widgets inside a container from the
+SDK's perspective.
 
-| Family | ID | Data | Coalescable | Description |
-|--------|-----|------|-------------|-------------|
-| `enter` | `{canvas}/{element}` | `x`, `y` | No | Pointer entered hit region |
-| `exit` | `{canvas}/{element}` | - | No | Pointer left hit region |
-| `click` | `{canvas}/{element}` | `x`, `y`, `button` | No | Activated (click or keyboard). `button`: `"left"`, `"right"`, `"keyboard"` |
-| `key_press` | `{canvas}/{element}` | `key`, `modifiers` | No | Navigation key on focused element when `arrow_mode` is `"none"`. Keys: arrows, Home, End, PageUp, PageDown. `modifiers`: `{shift, ctrl, alt, logo, command}` |
-| `drag` | `{canvas}/{element}` | `x`, `y`, `delta_x`, `delta_y` | Replace | Drag movement |
-| `drag_end` | `{canvas}/{element}` | `x`, `y` | No | Drag released |
-| `focused` | `{canvas}/{element}` | - | No | Element gained keyboard focus |
-| `blurred` | `{canvas}/{element}` | - | No | Element lost keyboard focus |
-| `focused` | `{canvas}` | - | No | Canvas widget gained iced-level focus |
-| `blurred` | `{canvas}` | - | No | Canvas widget lost iced-level focus |
-| `focused` | `{canvas}/{group}` | - | No | Focusable group entered |
-| `blurred` | `{canvas}/{group}` | - | No | Focusable group exited |
-| `diagnostic` | `{canvas}` | `level`, `element_id`, `code`, `message` | Deduplicate | Validation warning |
+| Family | ID | Value | Coalescable | Description |
+|--------|-----|-------|-------------|-------------|
+| `enter` | scoped element ID | `x`, `y` | No | Pointer entered hit region |
+| `exit` | scoped element ID | - | No | Pointer left hit region |
+| `click` | scoped element ID | `x`, `y`, `button` | No | Activated (click or keyboard). `button`: `"left"`, `"right"`, `"keyboard"` |
+| `key_press` | scoped element ID | `key`, `modifiers` | No | Navigation key on focused element when `arrow_mode` is `"none"`. Keys: arrows, Home, End, PageUp, PageDown. `modifiers`: `{shift, ctrl, alt, logo, command}` |
+| `drag` | scoped element ID | `x`, `y`, `delta_x`, `delta_y` | Replace | Drag movement |
+| `drag_end` | scoped element ID | `x`, `y` | No | Drag released |
+| `focused` | scoped element ID | - | No | Element gained keyboard focus |
+| `blurred` | scoped element ID | - | No | Element lost keyboard focus |
+| `focused` | canvas ID | - | No | Canvas widget gained iced-level focus |
+| `blurred` | canvas ID | - | No | Canvas widget lost iced-level focus |
+| `focused` | scoped group ID | - | No | Focusable group entered |
+| `blurred` | scoped group ID | - | No | Focusable group exited |
+| `diagnostic` | canvas ID | `level`, `element_id`, `code`, `message` | Deduplicate | Validation warning |
 
 **Event ordering guarantees:**
 

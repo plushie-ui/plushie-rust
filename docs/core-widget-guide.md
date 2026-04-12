@@ -459,7 +459,7 @@ For high-frequency events (continuous value changes), set a
 `CoalesceHint`:
 
 ```rust
-OutgoingEvent::widget_event("value_changed", node_id, data)
+OutgoingEvent::widget_event("value_changed", id, data)
     .with_coalesce(CoalesceHint::Replace)
 ```
 

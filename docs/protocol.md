@@ -709,11 +709,6 @@ Or with raw RGBA pixels:
 In MessagePack mode, `data` and `pixels` can be sent as raw binary
 (no base64 encoding needed).
 
-**Note:** The former `widget_command` and `widget_commands` message
-types are replaced by `command` and `commands` (see above). The
-unified format uses `id`/`family`/`value` fields for all
-widget-targeted operations.
-
 ### Query
 
 Inspect the tree or find widgets by selector.

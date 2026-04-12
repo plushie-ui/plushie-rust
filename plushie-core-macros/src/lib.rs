@@ -1,13 +1,10 @@
-//! Proc macros for Plushie types and widgets.
+//! Derive macros for Plushie widget development.
 //!
-//! Two derives:
+//! - [`PlushieEnum`]: Make an enum usable as a widget property type.
+//!   Variants become snake_case strings on the wire.
 //!
-//! - `PlushieEnum`: generates `PlushieType` impl for simple
-//!   string-encoded enums. Used by plushie-core's own enum types.
-//!
-//! - `WidgetProps`: generates typed prop extraction from a struct
-//!   annotated with `#[widget(name = "...")]`. Used by widget
-//!   authors for native widgets.
+//! - [`WidgetProps`]: Define your widget's properties as a struct
+//!   and get typed extraction from the widget tree.
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
@@ -17,26 +14,33 @@ use syn::{Data, DeriveInput, Fields, Lit, parse_macro_input};
 // PlushieEnum derive
 // ---------------------------------------------------------------------------
 
-/// Derive `PlushieType` for a simple string-encoded enum.
+/// Make an enum usable as a widget property type.
 ///
-/// Annotate the enum with `#[plushie_type(name = "...")]` to set the
-/// wire type name. Variants map to snake_case by default. Override
-/// with `#[plushie(wire = "custom")]` on individual variants. Add
-/// decode aliases with `#[plushie(aliases = ["a", "b"])]`.
+/// Variants become snake_case strings on the wire. For example,
+/// `WordOrGlyph` becomes `"word_or_glyph"`.
 ///
 /// # Example
 ///
 /// ```ignore
-/// #[derive(PlushieEnum)]
+/// #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 /// #[plushie_type(name = "direction")]
 /// pub enum Direction {
 ///     Horizontal,
 ///     Vertical,
 ///     Both,
 /// }
+///
+/// // Now usable as a widget property type:
+/// // field :direction, Direction
+/// // builder: .direction(Direction::Horizontal)
 /// ```
 ///
-/// Generates `wire_decode`, `wire_encode`, `extract`, and `type_name`.
+/// # Custom wire names
+///
+/// If a variant's wire name doesn't match its snake_case form,
+/// override it with `#[plushie(wire = "custom_name")]`. Add
+/// alternative names the decoder should accept with
+/// `#[plushie(aliases = ["old_name"])]`.
 #[proc_macro_derive(PlushieEnum, attributes(plushie_type, plushie))]
 pub fn derive_plushie_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -263,21 +267,32 @@ fn pascal_to_snake(s: &str) -> String {
 // WidgetProps derive
 // ---------------------------------------------------------------------------
 
-/// Derive macro for Plushie widget prop extraction.
+/// Define your widget's properties and get typed extraction.
 ///
-/// Annotate a struct with `#[widget(name = "...")]` and derive
-/// `WidgetProps` to generate:
+/// Declare your widget's fields as a struct. The derive creates
+/// a `{Name}Props` struct with a `from_node()` method that reads
+/// each property from the widget tree with the correct type.
 ///
-/// - A `{Name}Props` struct wrapping each field in `Option<T>`,
-///   with a `from_node()` method that extracts typed values from
-///   a `TreeNode` via `PlushieType::extract`.
-/// - A `type_name()` method on the original struct returning the
-///   wire protocol type name.
+/// Document fields with `///` comments; they carry over to the
+/// generated Props struct.
 ///
-/// Fields use `PlushieType::extract` by default. Annotate a field
-/// with `#[field(default = <expr>)]` to document the expected
-/// default (the attribute is parsed but the default is not used
-/// in the Props struct, since all fields are `Option<T>`).
+/// # Example
+///
+/// ```ignore
+/// #[derive(WidgetProps)]
+/// #[widget(name = "gauge")]
+/// struct Gauge {
+///     /// Current gauge value (0.0 to 1.0).
+///     value: f32,
+///     /// Label displayed below the gauge.
+///     label: String,
+/// }
+///
+/// // In your widget's render method:
+/// let props = GaugeProps::from_node(node);
+/// let value = props.value.unwrap_or(0.0);
+/// let label = props.label.unwrap_or_default();
+/// ```
 #[proc_macro_derive(WidgetProps, attributes(widget, field))]
 pub fn derive_plushie_widget(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -351,7 +366,47 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
         }
     });
 
-    let props_doc = format!("Auto-generated props for the `{}` widget.", struct_name_str);
+    // Build a field summary for the doc comment
+    let field_list: String = fields
+        .iter()
+        .map(|f| {
+            let name = f.ident.as_ref().unwrap().to_string();
+            let ty = &f.ty;
+            let ty_str = quote!(#ty).to_string();
+            // Extract the first doc line if present
+            let doc = f.attrs.iter()
+                .filter(|a| a.path().is_ident("doc"))
+                .filter_map(|a| {
+                    if let syn::Meta::NameValue(nv) = &a.meta {
+                        if let syn::Expr::Lit(lit) = &nv.value {
+                            if let syn::Lit::Str(s) = &lit.lit {
+                                return Some(s.value().trim().to_string());
+                            }
+                        }
+                    }
+                    None
+                })
+                .next();
+            match doc {
+                Some(d) => format!("- **`{}`** (`{}`): {}", name, ty_str, d),
+                None => format!("- **`{}`** (`{}`)", name, ty_str),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let props_doc = format!(
+        "Typed properties for the `{}` widget.\n\n## Fields\n\n{}",
+        widget_name, field_list
+    );
+    let from_node_doc = format!(
+        "Extract properties from a `{}` tree node.",
+        widget_name
+    );
+    let type_name_doc = format!(
+        "The widget type name: `\"{}\"`.",
+        widget_name
+    );
 
     Ok(quote! {
         #[doc = #props_doc]
@@ -360,7 +415,7 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
         }
 
         impl #props_name {
-            /// Extract typed props from a `TreeNode`.
+            #[doc = #from_node_doc]
             pub fn from_node(node: &::plushie_core::protocol::TreeNode) -> Self {
                 let p = &node.props;
                 Self {
@@ -378,7 +433,7 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
         }
 
         impl #struct_name {
-            /// Returns the widget type name for the wire protocol.
+            #[doc = #type_name_doc]
             pub fn type_name() -> &'static str {
                 #widget_name
             }

@@ -20,6 +20,9 @@ pub use crate::View;
 pub use crate::event::WidgetMatch::*;
 pub use crate::event::{Event, EventType, WidgetMatch};
 
+// Scoped IDs
+pub use plushie_core::ScopedId;
+
 // Commands
 pub use crate::command::Command;
 

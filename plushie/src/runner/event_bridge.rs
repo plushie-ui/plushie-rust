@@ -64,16 +64,16 @@ fn outgoing_to_sdk_event(event: OutgoingEvent) -> Option<Event> {
         return tagged_event_to_sdk(family, tag, &event);
     }
 
-    // Widget events: split scoped id and map family to EventType.
-    let (local_id, scope) = split_scoped_id(&event.id);
+    // Widget events: parse canonical wire ID and map family to EventType.
+    let sid = plushie_core::ScopedId::parse(&event.id);
     let event_type = family_to_event_type(family);
     let primary_value = event.value.unwrap_or(Value::Null);
 
     Some(Event::Widget(WidgetEvent {
         event_type,
-        id: local_id,
-        window_id: String::new(),
-        scope,
+        id: sid.id,
+        window_id: sid.window.unwrap_or_default(),
+        scope: sid.scope,
         value: primary_value,
     }))
 }
@@ -142,10 +142,10 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
 
         "ime_opened" | "ime_preedit" | "ime_commit" | "ime_closed" => {
             let value = event.value.as_ref().unwrap_or(&Value::Null);
-            let (local_id, scope) = value["id"]
+            let sid = value["id"]
                 .as_str()
-                .map(split_scoped_id)
-                .unwrap_or_default();
+                .map(plushie_core::ScopedId::parse)
+                .unwrap_or_else(|| plushie_core::ScopedId::parse(""));
             Some(Event::Ime(ImeEvent {
                 event_type: match family {
                     "ime_opened" => ImeEventType::Opened,
@@ -153,12 +153,12 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
                     "ime_commit" => ImeEventType::Commit,
                     _ => ImeEventType::Closed,
                 },
-                id: if local_id.is_empty() {
+                id: if sid.id.is_empty() {
                     None
                 } else {
-                    Some(local_id)
+                    Some(sid.id)
                 },
-                scope,
+                scope: sid.scope,
                 text: json_str_opt(value, "text"),
                 cursor: value["cursor"].as_array().and_then(|arr: &Vec<Value>| {
                     Some((
@@ -267,21 +267,7 @@ fn window_event(event_type: WindowEventType, event: &OutgoingEvent) -> Event {
     })
 }
 
-/// Split a scoped ID ("form/section/field") into local ID and reversed scope.
-fn split_scoped_id(scoped: &str) -> (String, Vec<String>) {
-    let parts: Vec<&str> = scoped.split('/').collect();
-    if parts.len() <= 1 {
-        (scoped.to_string(), vec![])
-    } else {
-        let local = parts.last().unwrap().to_string();
-        let scope = parts[..parts.len() - 1]
-            .iter()
-            .rev()
-            .map(|s| s.to_string())
-            .collect();
-        (local, scope)
-    }
-}
+// split_scoped_id removed: use plushie_core::ScopedId::parse instead
 
 /// Extract KeyModifiers from an OutgoingEvent.
 fn extract_modifiers(event: &OutgoingEvent) -> KeyModifiers {
@@ -592,17 +578,27 @@ mod tests {
     }
 
     #[test]
-    fn split_scoped_id_simple() {
-        let (local, scope) = split_scoped_id("save");
-        assert_eq!(local, "save");
-        assert!(scope.is_empty());
+    fn scoped_id_parse_simple() {
+        let sid = plushie_core::ScopedId::parse("save");
+        assert_eq!(sid.id, "save");
+        assert!(sid.scope.is_empty());
+        assert_eq!(sid.window, None);
     }
 
     #[test]
-    fn split_scoped_id_nested() {
-        let (local, scope) = split_scoped_id("form/section/field");
-        assert_eq!(local, "field");
-        assert_eq!(scope, vec!["section", "form"]);
+    fn scoped_id_parse_nested() {
+        let sid = plushie_core::ScopedId::parse("form/section/field");
+        assert_eq!(sid.id, "field");
+        assert_eq!(sid.scope, vec!["section", "form"]);
+        assert_eq!(sid.window, None);
+    }
+
+    #[test]
+    fn scoped_id_parse_with_window() {
+        let sid = plushie_core::ScopedId::parse("main#form/email");
+        assert_eq!(sid.id, "email");
+        assert_eq!(sid.scope, vec!["form"]);
+        assert_eq!(sid.window, Some("main".to_string()));
     }
 
     #[test]

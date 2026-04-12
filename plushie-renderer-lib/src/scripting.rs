@@ -50,19 +50,29 @@ pub fn parse_selector(selector: &Value) -> Option<Selector> {
     match by {
         "focused" => Some(Selector::Focused),
         _ => {
-            let value = selector.get("value")?.as_str()?.to_string();
-            let window_id = selector
+            let raw_value = selector.get("value")?.as_str()?.to_string();
+            // For ID selectors, extract window from # in the value.
+            // Fall back to separate window_id field for compatibility.
+            let explicit_window = selector
                 .get("window_id")
-                .and_then(|value| value.as_str())
+                .and_then(|v| v.as_str())
                 .map(str::to_string);
             match by {
-                "id" => Some(Selector::Id {
-                    widget_id: value,
-                    window_id,
-                }),
-                "text" => Some(Selector::Text(value)),
-                "role" => Some(Selector::Role(value)),
-                "label" => Some(Selector::Label(value)),
+                "id" => {
+                    // Extract window for scoping but keep full wire ID for tree search.
+                    let window_id = raw_value
+                        .split_once('#')
+                        .filter(|(win, _)| !win.is_empty())
+                        .map(|(win, _)| win.to_string())
+                        .or(explicit_window);
+                    Some(Selector::Id {
+                        widget_id: raw_value,
+                        window_id,
+                    })
+                }
+                "text" => Some(Selector::Text(raw_value)),
+                "role" => Some(Selector::Role(raw_value)),
+                "label" => Some(Selector::Label(raw_value)),
                 _ => None,
             }
         }

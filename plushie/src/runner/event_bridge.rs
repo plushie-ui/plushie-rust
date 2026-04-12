@@ -72,7 +72,7 @@ fn outgoing_to_sdk_event(event: OutgoingEvent) -> Option<Event> {
     Some(Event::Widget(WidgetEvent {
         event_type,
         id: sid.id,
-        window_id: sid.window.unwrap_or_default(),
+        window_id: sid.window_id.unwrap_or_default(),
         scope: sid.scope,
         value: primary_value,
     }))
@@ -582,7 +582,7 @@ mod tests {
         let sid = plushie_core::ScopedId::parse("save");
         assert_eq!(sid.id, "save");
         assert!(sid.scope.is_empty());
-        assert_eq!(sid.window, None);
+        assert_eq!(sid.window_id, None);
     }
 
     #[test]
@@ -590,7 +590,7 @@ mod tests {
         let sid = plushie_core::ScopedId::parse("form/section/field");
         assert_eq!(sid.id, "field");
         assert_eq!(sid.scope, vec!["section", "form"]);
-        assert_eq!(sid.window, None);
+        assert_eq!(sid.window_id, None);
     }
 
     #[test]
@@ -598,7 +598,7 @@ mod tests {
         let sid = plushie_core::ScopedId::parse("main#form/email");
         assert_eq!(sid.id, "email");
         assert_eq!(sid.scope, vec!["form"]);
-        assert_eq!(sid.window, Some("main".to_string()));
+        assert_eq!(sid.window_id, Some("main".to_string()));
     }
 
     #[test]

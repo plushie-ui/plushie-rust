@@ -25,11 +25,17 @@ impl App {
             // -- Focus --
             RendererOp::Focus(id) => {
                 if id.contains('/') {
-                    // Canvas element focus
+                    // Canvas element focus: route through the registry to set
+                    // pending focus, then focus the canvas iced widget.
                     self.registry
                         .handle_widget_op(&id, "focus", &serde_json::json!({}));
-                    let parent = id.rsplit_once('/').map(|(p, _)| p).unwrap_or(&id);
-                    operation::focus::<Message>(Id::from(parent.to_string()))
+                    // Use the registry's prefix walk to find the canvas widget ID.
+                    let canvas_id = self
+                        .registry
+                        .get_for_node_id(&id)
+                        .map(|(_, matched)| matched)
+                        .unwrap_or(&id);
+                    operation::focus::<Message>(Id::from(canvas_id.to_string()))
                 } else {
                     operation::focus::<Message>(Id::from(id))
                 }

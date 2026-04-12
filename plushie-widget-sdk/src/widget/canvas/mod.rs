@@ -226,9 +226,8 @@ pub fn canvas_hit_test(node: &crate::protocol::TreeNode, x: f32, y: f32) -> Opti
 
 /// Check whether a canvas node contains an interactive element with the given ID.
 ///
-/// Used by the scripting layer to verify that a scoped canvas element ID
-/// (e.g. "my-canvas/save-button") refers to a real interactive element
-/// before emitting a click event.
+/// Used by the scripting layer to verify that a canvas element ID refers
+/// to a real interactive element before emitting events.
 pub fn canvas_find_element_by_id(node: &crate::protocol::TreeNode, element_id: &str) -> bool {
     let layer_map = canvas_layers_from_node(node);
 

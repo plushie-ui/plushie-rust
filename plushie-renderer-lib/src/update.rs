@@ -37,22 +37,7 @@ impl App {
             | Message::MouseAreaEvent(..)
             | Message::MouseAreaMove(..)
             | Message::MouseAreaScroll(..)
-            | Message::CanvasEvent { .. }
-            | Message::CanvasScroll { .. }
-            | Message::CanvasElementEnter { .. }
-            | Message::CanvasElementLeave { .. }
-            | Message::CanvasElementClick { .. }
-            | Message::CanvasElementKeyPress { .. }
-            | Message::CanvasElementKeyRelease { .. }
-            | Message::CanvasElementDrag { .. }
-            | Message::CanvasElementDragEnd { .. }
-            | Message::CanvasElementFocused { .. }
-            | Message::CanvasElementBlurred { .. }
             | Message::CanvasElementFocusChanged { .. }
-            | Message::CanvasFocused { .. }
-            | Message::CanvasBlurred { .. }
-            | Message::CanvasGroupFocused { .. }
-            | Message::CanvasGroupBlurred { .. }
             | Message::Diagnostic { .. }
             | Message::Slide(..)
             | Message::SlideRelease(..)

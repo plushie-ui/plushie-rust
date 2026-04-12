@@ -139,143 +139,17 @@ pub enum Message {
     ThemeChanged(iced::theme::Mode),
     /// Sensor widget resize event (window_id, id, width, height).
     SensorResize(String, String, f32, f32),
-    /// Canvas interaction event (press, release, move).
-    CanvasEvent {
-        window_id: String,
-        id: String,
-        kind: String,
-        x: f32,
-        y: f32,
-        /// Encoded as "button:pointer_type:finger_id" for press/release,
-        /// "pointer_type:finger_id" for move. Finger omitted for mouse.
-        extra: String,
-        /// Keyboard modifiers at the time of the event.
-        modifiers: KeyModifiers,
-    },
-    /// Canvas scroll event.
-    CanvasScroll {
-        window_id: String,
-        id: String,
-        x: f32,
-        y: f32,
-        delta_x: f32,
-        delta_y: f32,
-        /// Pointer type: "mouse", "touch", or "pen".
-        pointer_type: String,
-        /// Keyboard modifiers at the time of the event.
-        modifiers: KeyModifiers,
-    },
-    // -- Canvas element events (interactive group interactions) --
-    /// Cursor entered an interactive element's hit region.
-    CanvasElementEnter {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-        x: f32,
-        y: f32,
-    },
-    /// Cursor left an interactive element's hit region.
-    CanvasElementLeave {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-    },
-    /// Interactive element activated (click or keyboard Enter/Space).
-    /// `button` is `"left"`, `"right"`, `"keyboard"`, or `"test"`.
-    CanvasElementClick {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-        x: f32,
-        y: f32,
-        button: String,
-    },
-    /// Continuous drag on a draggable element.
-    CanvasElementDrag {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-        x: f32,
-        y: f32,
-        delta_x: f32,
-        delta_y: f32,
-    },
-    /// Mouse released after a drag.
-    CanvasElementDragEnd {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-        x: f32,
-        y: f32,
-    },
-    /// A focused interactive element received a key that the canvas did not
-    /// consume for navigation. Emitted when `arrow_mode` is `"none"` and the
-    /// key is one the canvas would normally handle (arrows, Home, End,
-    /// PageUp, PageDown). Lets the host implement custom value adjustment
-    /// on focused canvas elements (e.g. slider-like controls).
-    CanvasElementKeyPress {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-        key: String,
-        modifiers: KeyModifiers,
-    },
-    /// A focused canvas element received a key release. Mirrors
-    /// `CanvasElementKeyPress` for the release phase. Emitted when
-    /// `arrow_mode` is `"none"` and the released key is a navigation key.
-    CanvasElementKeyRelease {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-        key: String,
-        modifiers: KeyModifiers,
-    },
-    /// An interactive element gained keyboard focus.
-    CanvasElementFocused {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-    },
-    /// An interactive element lost keyboard focus.
-    CanvasElementBlurred {
-        window_id: String,
-        canvas_id: String,
-        element_id: String,
-    },
     /// Focus moved between elements within a canvas. Emitted as a single
     /// iced Message because `Program::update()` can only return one action,
-    /// but the emitter splits this into separate `canvas_element_blurred`
-    /// and `canvas_element_focused` outgoing events (in that order).
+    /// but the emitter splits this into separate blurred and focused
+    /// outgoing events (in that order). Internal only, not sent on the wire.
     ///
     /// When `old_element_id` is `None`, only focus is emitted (first focus).
     /// When `new_element_id` is `None`, only blur is emitted (focus cleared).
     CanvasElementFocusChanged {
         window_id: String,
-        canvas_id: String,
         old_element_id: Option<String>,
         new_element_id: Option<String>,
-    },
-    /// The canvas widget itself gained iced-level focus (Tab or click).
-    CanvasFocused {
-        window_id: String,
-        canvas_id: String,
-    },
-    /// The canvas widget itself lost iced-level focus.
-    CanvasBlurred {
-        window_id: String,
-        canvas_id: String,
-    },
-    /// A focusable group gained group-level focus (two-level navigation).
-    CanvasGroupFocused {
-        window_id: String,
-        canvas_id: String,
-        group_id: String,
-    },
-    /// A focusable group lost group-level focus.
-    CanvasGroupBlurred {
-        window_id: String,
-        canvas_id: String,
-        group_id: String,
     },
     /// Renderer-side validation diagnostic (a11y, hit regions, etc.).
     Diagnostic {
@@ -352,22 +226,12 @@ impl Message {
             Message::MouseAreaEvent(_, id, ..)
             | Message::MouseAreaMove(_, id, ..)
             | Message::MouseAreaScroll(_, id, ..) => Some(id),
-            // Canvas events (use canvas ID, not element ID)
-            Message::CanvasEvent { id, .. } | Message::CanvasScroll { id, .. } => Some(id),
-            Message::CanvasElementEnter { canvas_id, .. }
-            | Message::CanvasElementLeave { canvas_id, .. }
-            | Message::CanvasElementClick { canvas_id, .. }
-            | Message::CanvasElementDrag { canvas_id, .. }
-            | Message::CanvasElementDragEnd { canvas_id, .. }
-            | Message::CanvasElementKeyPress { canvas_id, .. }
-            | Message::CanvasElementKeyRelease { canvas_id, .. }
-            | Message::CanvasElementFocused { canvas_id, .. }
-            | Message::CanvasElementBlurred { canvas_id, .. }
-            | Message::CanvasElementFocusChanged { canvas_id, .. }
-            | Message::CanvasFocused { canvas_id, .. }
-            | Message::CanvasBlurred { canvas_id, .. }
-            | Message::CanvasGroupFocused { canvas_id, .. }
-            | Message::CanvasGroupBlurred { canvas_id, .. } => Some(canvas_id),
+            // FocusChanged uses old or new element ID for routing.
+            Message::CanvasElementFocusChanged {
+                old_element_id,
+                new_element_id,
+                ..
+            } => new_element_id.as_deref().or(old_element_id.as_deref()),
             // Pane grid events
             Message::PaneResized(_, grid_id, ..)
             | Message::PaneDragged(_, grid_id, ..)
@@ -494,226 +358,9 @@ impl Message {
                         .with_window_id(window_id.clone()),
                 )
             }
-            Message::CanvasEvent {
-                window_id,
-                id,
-                kind,
-                x,
-                y,
-                extra,
-                modifiers,
-            } => {
-                // `extra` encodes: "button:pointer_type:finger_id" for press/release,
-                // "pointer_type:finger_id" for move. Finger omitted for mouse.
-                let parts: Vec<&str> = extra.splitn(3, ':').collect();
-                let (button, pointer_type, finger) = match kind.as_str() {
-                    "press" | "release" => {
-                        let btn = parts.first().copied().unwrap_or("left");
-                        let ptr = parts.get(1).copied().unwrap_or("mouse");
-                        let fng = parts.get(2).and_then(|s| s.parse::<u64>().ok());
-                        (btn, ptr, fng)
-                    }
-                    _ => {
-                        let ptr = parts.first().copied().unwrap_or("mouse");
-                        let fng = parts.get(1).and_then(|s| s.parse::<u64>().ok());
-                        ("", ptr, fng)
-                    }
-                };
-                match kind.as_str() {
-                    "press" => Some(OutgoingEvent::pointer_press(
-                        id.clone(),
-                        *x,
-                        *y,
-                        button,
-                        pointer_type,
-                        finger,
-                        *modifiers,
-                    )),
-                    "release" => Some(OutgoingEvent::pointer_release(
-                        id.clone(),
-                        *x,
-                        *y,
-                        button,
-                        pointer_type,
-                        finger,
-                        *modifiers,
-                    )),
-                    "move" => Some(OutgoingEvent::pointer_move(
-                        id.clone(),
-                        *x,
-                        *y,
-                        pointer_type,
-                        finger,
-                        *modifiers,
-                    )),
-                    _ => None,
-                }
-                .map(|event| event.with_window_id(window_id.clone()))
-            }
-            Message::CanvasScroll {
-                window_id,
-                id,
-                x,
-                y,
-                delta_x,
-                delta_y,
-                pointer_type,
-                modifiers,
-            } => Some(
-                OutgoingEvent::pointer_scroll(
-                    id.clone(),
-                    *x,
-                    *y,
-                    *delta_x,
-                    *delta_y,
-                    pointer_type,
-                    *modifiers,
-                )
-                .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementEnter {
-                window_id,
-                canvas_id,
-                element_id,
-                x,
-                y,
-            } => Some(
-                OutgoingEvent::canvas_element_enter(canvas_id.clone(), element_id.clone(), *x, *y)
-                    .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementLeave {
-                window_id,
-                canvas_id,
-                element_id,
-            } => Some(
-                OutgoingEvent::canvas_element_leave(canvas_id.clone(), element_id.clone())
-                    .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementKeyPress {
-                window_id,
-                canvas_id,
-                element_id,
-                key,
-                modifiers,
-            } => Some(
-                OutgoingEvent::canvas_element_key_press(
-                    canvas_id.clone(),
-                    element_id.clone(),
-                    key.clone(),
-                    *modifiers,
-                )
-                .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementKeyRelease {
-                window_id,
-                canvas_id,
-                element_id,
-                key,
-                modifiers,
-            } => Some(
-                OutgoingEvent::canvas_element_key_release(
-                    canvas_id.clone(),
-                    element_id.clone(),
-                    key.clone(),
-                    *modifiers,
-                )
-                .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementClick {
-                window_id,
-                canvas_id,
-                element_id,
-                x,
-                y,
-                button,
-            } => Some(
-                OutgoingEvent::canvas_element_click(
-                    canvas_id.clone(),
-                    element_id.clone(),
-                    *x,
-                    *y,
-                    button.clone(),
-                )
-                .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementDrag {
-                window_id,
-                canvas_id,
-                element_id,
-                x,
-                y,
-                delta_x,
-                delta_y,
-            } => Some(
-                OutgoingEvent::canvas_element_drag(
-                    canvas_id.clone(),
-                    element_id.clone(),
-                    *x,
-                    *y,
-                    *delta_x,
-                    *delta_y,
-                )
-                .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementDragEnd {
-                window_id,
-                canvas_id,
-                element_id,
-                x,
-                y,
-            } => Some(
-                OutgoingEvent::canvas_element_drag_end(
-                    canvas_id.clone(),
-                    element_id.clone(),
-                    *x,
-                    *y,
-                )
-                .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementFocused {
-                window_id,
-                canvas_id,
-                element_id,
-            } => Some(
-                OutgoingEvent::canvas_element_focused(canvas_id.clone(), element_id.clone())
-                    .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasElementBlurred {
-                window_id,
-                canvas_id,
-                element_id,
-            } => Some(
-                OutgoingEvent::canvas_element_blurred(canvas_id.clone(), element_id.clone())
-                    .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasFocused {
-                window_id,
-                canvas_id,
-            } => Some(
-                OutgoingEvent::canvas_focused(canvas_id.clone()).with_window_id(window_id.clone()),
-            ),
-            Message::CanvasBlurred {
-                window_id,
-                canvas_id,
-            } => Some(
-                OutgoingEvent::canvas_blurred(canvas_id.clone()).with_window_id(window_id.clone()),
-            ),
-            Message::CanvasGroupFocused {
-                window_id,
-                canvas_id,
-                group_id,
-            } => Some(
-                OutgoingEvent::canvas_group_focused(canvas_id.clone(), group_id.clone())
-                    .with_window_id(window_id.clone()),
-            ),
-            Message::CanvasGroupBlurred {
-                window_id,
-                canvas_id,
-                group_id,
-            } => Some(
-                OutgoingEvent::canvas_group_blurred(canvas_id.clone(), group_id.clone())
-                    .with_window_id(window_id.clone()),
-            ),
+            // CanvasElementFocusChanged is internal-only: split into
+            // blur + focus events by CanvasEngine::handle_message.
+            Message::CanvasElementFocusChanged { .. } => None,
             Message::Diagnostic {
                 window_id,
                 canvas_id,

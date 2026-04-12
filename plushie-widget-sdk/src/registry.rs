@@ -233,7 +233,7 @@ pub trait PlushieWidget<R: PlushieRenderer> {
     /// or a descendant ID (via prefix-based routing).
     ///
     /// The `node_id` is the full original ID from the operation.
-    /// For canvas element focus, this would be "canvas_id/element_id".
+    /// For canvas element focus, this is the element's full wire ID.
     fn handle_widget_op(
         &mut self,
         _node_id: &str,
@@ -582,21 +582,6 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             | Message::MouseAreaEvent(..)
             | Message::MouseAreaMove(..)
             | Message::MouseAreaScroll(..)
-            | Message::CanvasEvent { .. }
-            | Message::CanvasScroll { .. }
-            | Message::CanvasElementEnter { .. }
-            | Message::CanvasElementLeave { .. }
-            | Message::CanvasElementClick { .. }
-            | Message::CanvasElementKeyPress { .. }
-            | Message::CanvasElementKeyRelease { .. }
-            | Message::CanvasElementDrag { .. }
-            | Message::CanvasElementDragEnd { .. }
-            | Message::CanvasElementFocused { .. }
-            | Message::CanvasElementBlurred { .. }
-            | Message::CanvasFocused { .. }
-            | Message::CanvasBlurred { .. }
-            | Message::CanvasGroupFocused { .. }
-            | Message::CanvasGroupBlurred { .. }
             | Message::Diagnostic { .. } => msg.to_outgoing_event().into_iter().collect(),
 
             // CanvasElementFocusChanged is handled by CanvasWidget::handle_message

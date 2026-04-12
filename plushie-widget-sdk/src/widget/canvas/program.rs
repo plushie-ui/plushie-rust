@@ -12,7 +12,88 @@ use super::interaction::*;
 use super::shapes::*;
 use super::types::*;
 use crate::PlushieRenderer;
+use serde_json::json;
+
 use crate::message::{Message, serialize_modifiers};
+use crate::protocol::KeyModifiers;
+
+/// Replace non-finite f32 with 0.0 for safe JSON serialization.
+fn sanitize_f32(v: f32) -> f32 {
+    if v.is_finite() { v } else { 0.0 }
+}
+
+/// Build a modifiers JSON value for pointer event data payloads.
+fn modifiers_json(mods: &KeyModifiers) -> serde_json::Value {
+    json!({
+        "shift": mods.shift,
+        "ctrl": mods.ctrl,
+        "alt": mods.alt,
+        "logo": mods.logo,
+        "command": mods.command,
+    })
+}
+
+/// Build a pointer press/release/move Message::Event with the same wire
+/// format as OutgoingEvent::pointer_press/release/move.
+#[allow(clippy::too_many_arguments)]
+fn pointer_event(
+    family: &str,
+    window_id: &str,
+    id: &str,
+    x: f32,
+    y: f32,
+    button: Option<&str>,
+    pointer_type: &str,
+    finger: Option<u64>,
+    modifiers: KeyModifiers,
+) -> Message {
+    let mut data = json!({
+        "x": sanitize_f32(x),
+        "y": sanitize_f32(y),
+        "pointer": pointer_type,
+        "modifiers": modifiers_json(&modifiers),
+    });
+    if let Some(btn) = button {
+        data["button"] = json!(btn);
+    }
+    if let Some(f) = finger {
+        data["finger"] = json!(f);
+    }
+    Message::Event {
+        window_id: window_id.to_string(),
+        id: id.to_string(),
+        family: family.to_string(),
+        data,
+    }
+}
+
+/// Build a pointer scroll Message::Event with the same wire format as
+/// OutgoingEvent::pointer_scroll.
+#[allow(clippy::too_many_arguments)]
+fn pointer_scroll_event(
+    window_id: &str,
+    id: &str,
+    x: f32,
+    y: f32,
+    delta_x: f32,
+    delta_y: f32,
+    pointer_type: &str,
+    modifiers: KeyModifiers,
+) -> Message {
+    Message::Event {
+        window_id: window_id.to_string(),
+        id: id.to_string(),
+        family: "scroll".to_string(),
+        data: json!({
+            "x": sanitize_f32(x),
+            "y": sanitize_f32(y),
+            "delta_x": sanitize_f32(delta_x),
+            "delta_y": sanitize_f32(delta_y),
+            "pointer": pointer_type,
+            "modifiers": modifiers_json(&modifiers),
+        }),
+    }
+}
 
 pub(crate) struct CanvasProgram<'a, R: PlushieRenderer = iced::Renderer> {
     /// Sorted layer data: (layer_name, shapes array).
@@ -138,7 +219,6 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
         if old_id.is_some() || new_id.is_some() {
             Some(Message::CanvasElementFocusChanged {
                 window_id: self.window_id.clone(),
-                canvas_id: self.id.clone(),
                 old_element_id: old_id,
                 new_element_id: new_id,
             })
@@ -326,13 +406,16 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
             );
             if is_nav_key {
                 let element = &self.interactive_elements[idx];
+                let mods = serialize_modifiers(modifiers);
                 return Some(
-                    iced::widget::Action::publish(Message::CanvasElementKeyPress {
+                    iced::widget::Action::publish(Message::Event {
                         window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: element.id.clone(),
-                        key: crate::message::serialize_key(key),
-                        modifiers: crate::message::serialize_modifiers(modifiers),
+                        id: element.id.clone(),
+                        family: "key_press".to_string(),
+                        data: json!({
+                            "key": crate::message::serialize_key(key),
+                            "modifiers": modifiers_json(&mods),
+                        }),
                     })
                     .and_capture(),
                 );
@@ -473,13 +556,15 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                     if element.on_click {
                         let center = hit_region_center(&element.hit_region);
                         Some(
-                            iced::widget::Action::publish(Message::CanvasElementClick {
+                            iced::widget::Action::publish(Message::Event {
                                 window_id: self.window_id.clone(),
-                                canvas_id: self.id.clone(),
-                                element_id: element.id.clone(),
-                                x: center.x,
-                                y: center.y,
-                                button: "keyboard".to_string(),
+                                id: element.id.clone(),
+                                family: "click".to_string(),
+                                data: json!({
+                                    "x": sanitize_f32(center.x),
+                                    "y": sanitize_f32(center.y),
+                                    "button": "keyboard",
+                                }),
                             })
                             .and_capture(),
                         )
@@ -566,13 +651,16 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
             );
             if is_nav_key {
                 let element = &self.interactive_elements[idx];
+                let mods = serialize_modifiers(modifiers);
                 return Some(
-                    iced::widget::Action::publish(Message::CanvasElementKeyRelease {
+                    iced::widget::Action::publish(Message::Event {
                         window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: element.id.clone(),
-                        key: crate::message::serialize_key(key),
-                        modifiers: crate::message::serialize_modifiers(modifiers),
+                        id: element.id.clone(),
+                        family: "key_release".to_string(),
+                        data: json!({
+                            "key": crate::message::serialize_key(key),
+                            "modifiers": modifiers_json(&mods),
+                        }),
                     })
                     .and_capture(),
                 );
@@ -822,20 +910,20 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                 let mut action: Option<iced::widget::Action<Message>> = None;
                 if let Some(drag) = state.dragging.take() {
                     let pos = state.cursor_position.unwrap_or(Point::ORIGIN);
-                    let msg = Message::CanvasElementDragEnd {
+                    let msg = Message::Event {
                         window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: drag.element_id,
-                        x: pos.x,
-                        y: pos.y,
+                        id: drag.element_id,
+                        family: "drag_end".to_string(),
+                        data: json!({"x": sanitize_f32(pos.x), "y": sanitize_f32(pos.y)}),
                     };
                     action = Some(iced::widget::Action::publish(msg));
                 }
                 if let Some(hovered_id) = state.hovered_element.take() {
-                    let msg = Message::CanvasElementLeave {
+                    let msg = Message::Event {
                         window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: hovered_id,
+                        id: hovered_id,
+                        family: "exit".to_string(),
+                        data: serde_json::Value::Null,
                     };
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
@@ -879,14 +967,16 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                     // Track the effective (clamped) position so deltas
                     // are consistent across frames.
                     drag.last = effective;
-                    let msg = Message::CanvasElementDrag {
+                    let msg = Message::Event {
                         window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: drag.element_id.clone(),
-                        x: effective.x,
-                        y: effective.y,
-                        delta_x: dx,
-                        delta_y: dy,
+                        id: drag.element_id.clone(),
+                        family: "drag".to_string(),
+                        data: json!({
+                            "x": sanitize_f32(effective.x),
+                            "y": sanitize_f32(effective.y),
+                            "delta_x": sanitize_f32(dx),
+                            "delta_y": sanitize_f32(dy),
+                        }),
                     };
                     action = Some(iced::widget::Action::publish(msg).and_capture());
                 }
@@ -904,20 +994,23 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         // different shape. Losing Enter is worse than losing
                         // Leave -- Enter tells the host WHAT is hovered.
                         if let Some(ref old_id) = old_hovered {
-                            let msg = Message::CanvasElementLeave {
+                            let msg = Message::Event {
                                 window_id: self.window_id.clone(),
-                                canvas_id: self.id.clone(),
-                                element_id: old_id.clone(),
+                                id: old_id.clone(),
+                                family: "exit".to_string(),
+                                data: serde_json::Value::Null,
                             };
                             action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                         }
                         if let Some(ref new_id) = new_hovered {
-                            let msg = Message::CanvasElementEnter {
+                            let msg = Message::Event {
                                 window_id: self.window_id.clone(),
-                                canvas_id: self.id.clone(),
-                                element_id: new_id.clone(),
-                                x: position.x,
-                                y: position.y,
+                                id: new_id.clone(),
+                                family: "enter".to_string(),
+                                data: json!({
+                                    "x": sanitize_f32(position.x),
+                                    "y": sanitize_f32(position.y),
+                                }),
                             };
                             // Override any previous action -- Enter takes
                             // priority over Leave and raw canvas move.
@@ -929,15 +1022,18 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
 
                 // -- Raw canvas move event --
                 if self.on_move {
-                    let msg = Message::CanvasEvent {
-                        window_id: self.window_id.clone(),
-                        id: self.id.clone(),
-                        kind: "move".to_string(),
-                        x: position.x,
-                        y: position.y,
-                        extra: "mouse".to_string(),
-                        modifiers: serialize_modifiers(state.current_modifiers),
-                    };
+                    let mods = serialize_modifiers(state.current_modifiers);
+                    let msg = pointer_event(
+                        "move",
+                        &self.window_id,
+                        &self.id,
+                        position.x,
+                        position.y,
+                        None,
+                        "mouse",
+                        None,
+                        mods,
+                    );
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
 
@@ -989,15 +1085,18 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
 
                 // -- Raw canvas press event --
                 if self.on_press {
-                    let msg = Message::CanvasEvent {
-                        window_id: self.window_id.clone(),
-                        id: self.id.clone(),
-                        kind: "press".to_string(),
-                        x: position.x,
-                        y: position.y,
-                        extra: format!("{}:mouse", btn_str),
-                        modifiers: serialize_modifiers(state.current_modifiers),
-                    };
+                    let mods = serialize_modifiers(state.current_modifiers);
+                    let msg = pointer_event(
+                        "press",
+                        &self.window_id,
+                        &self.id,
+                        position.x,
+                        position.y,
+                        Some(&btn_str),
+                        "mouse",
+                        None,
+                        mods,
+                    );
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
 
@@ -1011,12 +1110,14 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                 if matches!(button, mouse::Button::Left) {
                     // -- Drag end --
                     if let Some(drag) = state.dragging.take() {
-                        let msg = Message::CanvasElementDragEnd {
+                        let msg = Message::Event {
                             window_id: self.window_id.clone(),
-                            canvas_id: self.id.clone(),
-                            element_id: drag.element_id,
-                            x: position.x,
-                            y: position.y,
+                            id: drag.element_id,
+                            family: "drag_end".to_string(),
+                            data: json!({
+                                "x": sanitize_f32(position.x),
+                                "y": sanitize_f32(position.y),
+                            }),
                         };
                         action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                     }
@@ -1029,13 +1130,15 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                             .map(|h| h == &pressed_id)
                             .unwrap_or(false);
                         if still_over {
-                            let msg = Message::CanvasElementClick {
+                            let msg = Message::Event {
                                 window_id: self.window_id.clone(),
-                                canvas_id: self.id.clone(),
-                                element_id: pressed_id,
-                                x: position.x,
-                                y: position.y,
-                                button: btn_str.clone(),
+                                id: pressed_id,
+                                family: "click".to_string(),
+                                data: json!({
+                                    "x": sanitize_f32(position.x),
+                                    "y": sanitize_f32(position.y),
+                                    "button": btn_str,
+                                }),
                             };
                             action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                         }
@@ -1044,15 +1147,18 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
 
                 // -- Raw canvas release event --
                 if self.on_release {
-                    let msg = Message::CanvasEvent {
-                        window_id: self.window_id.clone(),
-                        id: self.id.clone(),
-                        kind: "release".to_string(),
-                        x: position.x,
-                        y: position.y,
-                        extra: format!("{}:mouse", btn_str),
-                        modifiers: serialize_modifiers(state.current_modifiers),
-                    };
+                    let mods = serialize_modifiers(state.current_modifiers);
+                    let msg = pointer_event(
+                        "release",
+                        &self.window_id,
+                        &self.id,
+                        position.x,
+                        position.y,
+                        Some(&btn_str),
+                        "mouse",
+                        None,
+                        mods,
+                    );
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
 
@@ -1064,16 +1170,17 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                     mouse::ScrollDelta::Lines { x, y } => (*x, *y),
                     mouse::ScrollDelta::Pixels { x, y } => (*x, *y),
                 };
-                Some(iced::widget::Action::publish(Message::CanvasScroll {
-                    window_id: self.window_id.clone(),
-                    id: self.id.clone(),
-                    x: position.x,
-                    y: position.y,
-                    delta_x: dx,
-                    delta_y: dy,
-                    pointer_type: "mouse".to_string(),
-                    modifiers: serialize_modifiers(state.current_modifiers),
-                }))
+                let mods = serialize_modifiers(state.current_modifiers);
+                Some(iced::widget::Action::publish(pointer_scroll_event(
+                    &self.window_id,
+                    &self.id,
+                    position.x,
+                    position.y,
+                    dx,
+                    dy,
+                    "mouse",
+                    mods,
+                )))
             }
 
             // -- Touch events --
@@ -1110,15 +1217,18 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                 }
 
                 if self.on_press {
-                    let msg = Message::CanvasEvent {
-                        window_id: self.window_id.clone(),
-                        id: self.id.clone(),
-                        kind: "press".to_string(),
-                        x: touch_position.x,
-                        y: touch_position.y,
-                        extra: format!("left:touch:{}", finger.0),
-                        modifiers: serialize_modifiers(state.current_modifiers),
-                    };
+                    let mods = serialize_modifiers(state.current_modifiers);
+                    let msg = pointer_event(
+                        "press",
+                        &self.window_id,
+                        &self.id,
+                        touch_position.x,
+                        touch_position.y,
+                        Some("left"),
+                        "touch",
+                        Some(finger.0),
+                        mods,
+                    );
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
 
@@ -1155,28 +1265,33 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         }
                     }
                     drag.last = effective;
-                    let msg = Message::CanvasElementDrag {
+                    let msg = Message::Event {
                         window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: drag.element_id.clone(),
-                        x: effective.x,
-                        y: effective.y,
-                        delta_x: dx,
-                        delta_y: dy,
+                        id: drag.element_id.clone(),
+                        family: "drag".to_string(),
+                        data: json!({
+                            "x": sanitize_f32(effective.x),
+                            "y": sanitize_f32(effective.y),
+                            "delta_x": sanitize_f32(dx),
+                            "delta_y": sanitize_f32(dy),
+                        }),
                     };
                     action = Some(iced::widget::Action::publish(msg).and_capture());
                 }
 
                 if self.on_move {
-                    let msg = Message::CanvasEvent {
-                        window_id: self.window_id.clone(),
-                        id: self.id.clone(),
-                        kind: "move".to_string(),
-                        x: touch_position.x,
-                        y: touch_position.y,
-                        extra: format!("touch:{}", finger.0),
-                        modifiers: serialize_modifiers(state.current_modifiers),
-                    };
+                    let mods = serialize_modifiers(state.current_modifiers);
+                    let msg = pointer_event(
+                        "move",
+                        &self.window_id,
+                        &self.id,
+                        touch_position.x,
+                        touch_position.y,
+                        None,
+                        "touch",
+                        Some(finger.0),
+                        mods,
+                    );
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
 
@@ -1192,12 +1307,14 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
 
                 // Drag end
                 if let Some(drag) = state.dragging.take() {
-                    let msg = Message::CanvasElementDragEnd {
+                    let msg = Message::Event {
                         window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: drag.element_id,
-                        x: touch_position.x,
-                        y: touch_position.y,
+                        id: drag.element_id,
+                        family: "drag_end".to_string(),
+                        data: json!({
+                            "x": sanitize_f32(touch_position.x),
+                            "y": sanitize_f32(touch_position.y),
+                        }),
                     };
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
@@ -1208,28 +1325,33 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         .map(|s| s.id == pressed_id)
                         .unwrap_or(false);
                     if still_over {
-                        let msg = Message::CanvasElementClick {
+                        let msg = Message::Event {
                             window_id: self.window_id.clone(),
-                            canvas_id: self.id.clone(),
-                            element_id: pressed_id,
-                            x: touch_position.x,
-                            y: touch_position.y,
-                            button: "left".to_string(),
+                            id: pressed_id,
+                            family: "click".to_string(),
+                            data: json!({
+                                "x": sanitize_f32(touch_position.x),
+                                "y": sanitize_f32(touch_position.y),
+                                "button": "left",
+                            }),
                         };
                         action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                     }
                 }
 
                 if self.on_release {
-                    let msg = Message::CanvasEvent {
-                        window_id: self.window_id.clone(),
-                        id: self.id.clone(),
-                        kind: "release".to_string(),
-                        x: touch_position.x,
-                        y: touch_position.y,
-                        extra: format!("left:touch:{}", finger.0),
-                        modifiers: serialize_modifiers(state.current_modifiers),
-                    };
+                    let mods = serialize_modifiers(state.current_modifiers);
+                    let msg = pointer_event(
+                        "release",
+                        &self.window_id,
+                        &self.id,
+                        touch_position.x,
+                        touch_position.y,
+                        Some("left"),
+                        "touch",
+                        Some(finger.0),
+                        mods,
+                    );
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
 
@@ -1362,33 +1484,33 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
     ) -> Vec<iced::widget::Action<Message>> {
         state.canvas_focused = true;
         state.focus_visible = focus_visible;
-        let mut actions = vec![iced::widget::Action::publish(Message::CanvasFocused {
+        let mut actions = vec![iced::widget::Action::publish(Message::Event {
             window_id: self.window_id.clone(),
-            canvas_id: self.id.clone(),
+            id: self.id.clone(),
+            family: "focused".to_string(),
+            data: serde_json::Value::Null,
         })];
         // If returning to a canvas that had internal focus, re-announce
-        // the focused element -- but only if it still exists. If it was
+        // the focused element, but only if it still exists. If it was
         // removed while the canvas was unfocused, clear the stale ID.
         if let Some(ref id) = state.focused_id {
             let still_exists = self.interactive_elements.iter().any(|e| &e.id == id);
             if still_exists {
-                actions.push(iced::widget::Action::publish(
-                    Message::CanvasElementFocused {
-                        window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: id.clone(),
-                    },
-                ));
+                actions.push(iced::widget::Action::publish(Message::Event {
+                    window_id: self.window_id.clone(),
+                    id: id.clone(),
+                    family: "focused".to_string(),
+                    data: serde_json::Value::Null,
+                }));
             } else {
                 // Element was removed while canvas was unfocused.
                 // Emit blur for the stale element and clear.
-                actions.push(iced::widget::Action::publish(
-                    Message::CanvasElementBlurred {
-                        window_id: self.window_id.clone(),
-                        canvas_id: self.id.clone(),
-                        element_id: id.clone(),
-                    },
-                ));
+                actions.push(iced::widget::Action::publish(Message::Event {
+                    window_id: self.window_id.clone(),
+                    id: id.clone(),
+                    family: "blurred".to_string(),
+                    data: serde_json::Value::Null,
+                }));
                 state.focused_id = None;
                 state.focused_group = None;
             }
@@ -1400,20 +1522,21 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
         state.canvas_focused = false;
         let mut actions = Vec::new();
         // Emit blur for the currently focused element (but DON'T clear
-        // focused_id -- preserve position so re-entry via Tab returns
+        // focused_id, preserve position so re-entry via Tab returns
         // to the same element).
         if let Some(ref id) = state.focused_id {
-            actions.push(iced::widget::Action::publish(
-                Message::CanvasElementBlurred {
-                    window_id: self.window_id.clone(),
-                    canvas_id: self.id.clone(),
-                    element_id: id.clone(),
-                },
-            ));
+            actions.push(iced::widget::Action::publish(Message::Event {
+                window_id: self.window_id.clone(),
+                id: id.clone(),
+                family: "blurred".to_string(),
+                data: serde_json::Value::Null,
+            }));
         }
-        actions.push(iced::widget::Action::publish(Message::CanvasBlurred {
+        actions.push(iced::widget::Action::publish(Message::Event {
             window_id: self.window_id.clone(),
-            canvas_id: self.id.clone(),
+            id: self.id.clone(),
+            family: "blurred".to_string(),
+            data: serde_json::Value::Null,
         }));
         actions
     }

@@ -794,8 +794,14 @@ pub fn build_interact_response(
                     plushie_widget_sdk::widget::canvas::canvas_hit_test(node, x, y)
                 {
                     vec![
-                        OutgoingEvent::canvas_element_click(wid, element_id, x, y, button)
-                            .with_window_id(window_id),
+                        OutgoingEvent::generic(
+                            "click",
+                            element_id,
+                            Some(serde_json::json!({
+                                "x": x, "y": y, "button": button,
+                            })),
+                        )
+                        .with_window_id(window_id),
                     ]
                 } else if plushie_widget_sdk::widget::canvas::canvas_has_on_press(node) {
                     vec![
@@ -848,8 +854,12 @@ pub fn build_interact_response(
                     plushie_widget_sdk::widget::canvas::canvas_hit_test(node, x, y)
                 {
                     events.push(
-                        OutgoingEvent::canvas_element_enter(wid.clone(), element_id, x, y)
-                            .with_window_id(window_id.clone()),
+                        OutgoingEvent::generic(
+                            "enter",
+                            element_id,
+                            Some(serde_json::json!({"x": x, "y": y})),
+                        )
+                        .with_window_id(window_id.clone()),
                     );
                 }
                 events.push(
@@ -863,8 +873,8 @@ pub fn build_interact_response(
         }
         // Canvas element click via scoped ID (e.g. "my-canvas/save-button").
         // The full scoped ID doesn't match any tree node, so widget_target
-        // is None. Split into canvas_id + element_id, find the canvas node,
-        // verify the element exists, and emit a canvas_element_click event.
+        // is None. Walk prefixes to find the canvas node, verify the element
+        // exists, and emit a canvas_element_click with the full wire ID.
         ("click", None) => {
             let raw_id = parse_selector(&selector).and_then(|sel| match sel {
                 Selector::Id { widget_id, .. } => Some(widget_id),
@@ -872,52 +882,55 @@ pub fn build_interact_response(
             });
 
             if let Some(scoped_id) = raw_id.filter(|id| id.contains('/')) {
-                if let Some((canvas_id, element_id)) = scoped_id.split_once('/') {
-                    let window_id = core
+                // Walk prefixes to find the canvas node in the tree.
+                let mut found_canvas = None;
+                let mut remaining = scoped_id.as_str();
+                while let Some(slash) = remaining.rfind('/') {
+                    let prefix = &scoped_id[..slash];
+                    let element_local = &scoped_id[slash + 1..];
+                    if let Some(window_id) = core
                         .tree
                         .root()
-                        .and_then(|root| find_window_id_for_node(root, canvas_id, None));
-
-                    if let Some(window_id) = window_id {
-                        let found = core.tree.root().and_then(|root| {
+                        .and_then(|root| find_window_id_for_node(root, prefix, None))
+                        && let Some(node) = core.tree.root().and_then(|root| {
                             find_tree_node_by_id_with_window(
                                 root,
-                                canvas_id,
+                                prefix,
                                 Some(&window_id),
                                 None,
                                 0,
                             )
-                        });
+                        })
+                    {
+                        found_canvas = Some((node, window_id, prefix, element_local));
+                        break;
+                    }
+                    remaining = &scoped_id[..slash];
+                }
 
-                        if let Some(node) = found {
-                            if plushie_widget_sdk::widget::canvas::canvas_find_element_by_id(
-                                node, element_id,
-                            ) {
-                                vec![
-                                    OutgoingEvent::canvas_element_click(
-                                        canvas_id.to_string(),
-                                        element_id.to_string(),
-                                        0.0,
-                                        0.0,
-                                        "left".to_string(),
-                                    )
-                                    .with_window_id(window_id),
-                                ]
-                            } else {
-                                log::warn!(
-                                    "canvas element '{element_id}' not found in canvas '{canvas_id}'"
-                                );
-                                vec![]
-                            }
-                        } else {
-                            log::warn!("canvas node '{canvas_id}' not found");
-                            vec![]
-                        }
+                if let Some((node, window_id, canvas_id, element_local)) = found_canvas {
+                    if plushie_widget_sdk::widget::canvas::canvas_find_element_by_id(
+                        node,
+                        element_local,
+                    ) {
+                        vec![
+                            OutgoingEvent::generic(
+                                "click",
+                                scoped_id,
+                                Some(serde_json::json!({
+                                    "x": 0.0, "y": 0.0, "button": "left",
+                                })),
+                            )
+                            .with_window_id(window_id),
+                        ]
                     } else {
-                        log::warn!("no window found for canvas '{canvas_id}'");
+                        log::warn!(
+                            "canvas element '{element_local}' not found in canvas '{canvas_id}'"
+                        );
                         vec![]
                     }
                 } else {
+                    log::warn!("click action: no canvas node found for '{scoped_id}'");
                     vec![]
                 }
             } else {

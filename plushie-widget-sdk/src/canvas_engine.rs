@@ -182,20 +182,19 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         match msg {
             Message::CanvasElementFocusChanged {
                 window_id,
-                canvas_id,
                 old_element_id,
                 new_element_id,
             } => {
                 let mut events = Vec::with_capacity(2);
                 if let Some(old_id) = old_element_id {
                     events.push(
-                        OutgoingEvent::canvas_element_blurred(canvas_id.clone(), old_id.clone())
+                        OutgoingEvent::generic("blurred", old_id.clone(), None)
                             .with_window_id(window_id.clone()),
                     );
                 }
                 if let Some(new_id) = new_element_id {
                     events.push(
-                        OutgoingEvent::canvas_element_focused(canvas_id.clone(), new_id.clone())
+                        OutgoingEvent::generic("focused", new_id.clone(), None)
                             .with_window_id(window_id.clone()),
                     );
                 }
@@ -207,13 +206,14 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
 
     /// Set pending programmatic focus for a canvas element.
     ///
-    /// The focus will be applied on the next render cycle. The canvas_id
-    /// is matched against the node_id part of existing interaction keys.
-    pub fn set_pending_focus(&mut self, canvas_id: &str, element_id: &str) {
+    /// `element_id` is the element's full wire ID. The canvas is found by
+    /// matching the element_id as a prefix of existing interaction keys.
+    pub fn set_pending_focus(&mut self, element_id: &str) {
+        // Find the interaction key whose canvas node_id is a prefix of the element_id.
         if let Some(key) = self
             .interactions
             .keys()
-            .find(|(_, nid)| nid == canvas_id)
+            .find(|(_, nid)| element_id.starts_with(nid.as_str()))
             .cloned()
         {
             self.pending_focus.insert(key, element_id.to_string());

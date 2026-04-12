@@ -46,11 +46,13 @@ impl App {
                 // the registry so CanvasWidget sets pending focus.
                 if target.contains('/') {
                     self.registry.handle_widget_op(&target, "focus", payload);
-                    // Also focus the iced widget (the canvas container).
-                    let parent = target.rsplit_once('/').map(|(p, _)| p).unwrap_or(&target);
-                    iced::widget::operation::focus::<Message>(iced::widget::Id::from(
-                        parent.to_string(),
-                    ))
+                    // Use the registry's prefix walk to find the canvas widget ID.
+                    let canvas_id = self
+                        .registry
+                        .get_for_node_id(&target)
+                        .map(|(_, matched)| matched.to_string())
+                        .unwrap_or(target);
+                    iced::widget::operation::focus::<Message>(iced::widget::Id::from(canvas_id))
                 } else {
                     iced::widget::operation::focus::<Message>(iced::widget::Id::from(target))
                 }

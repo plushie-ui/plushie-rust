@@ -49,11 +49,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
         _payload: &serde_json::Value,
     ) -> Option<Vec<crate::protocol::OutgoingEvent>> {
         if op == "focus" {
-            if let Some(slash) = node_id.find('/') {
-                let canvas_id = &node_id[..slash];
-                let element_id = &node_id[slash + 1..];
-                self.engine.set_pending_focus(canvas_id, element_id);
-            }
+            self.engine.set_pending_focus(node_id);
             Some(vec![])
         } else {
             None

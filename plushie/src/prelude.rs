@@ -38,7 +38,8 @@ pub use crate::types::{
     Direction, DragAxis, Ellipsis, ErrorCorrection, FillRule, FilterMethod, Font, FontStretch,
     FromNode, Gradient, HorizontalAlignment, InputPurpose, KeyModifiers, Length, Length::*,
     LineCap, LineHeight, LineJoin, Padding, PlushieType, Position, Radius, Shadow, Shaping,
-    SortOrder, Style, StyleMap, Theme, UntypedProps, WidgetEventEncode, WindowLevel, Wrapping,
+    SortOrder, Style, StyleMap, Theme, UntypedProps, WidgetCommandEncode, WidgetEventEncode,
+    WindowLevel, Wrapping,
 };
 
 // A11y sub-types for typed accessibility builders

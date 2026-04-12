@@ -379,7 +379,32 @@ impl Command {
 
     // -- Widget commands --
 
-    /// Send a command to a widget by ID.
+    /// Send a typed command to a widget.
+    ///
+    /// Uses a `#[derive(WidgetCommand)]` enum for type-safe command
+    /// construction. The derive macro generates `to_wire()` which
+    /// provides the family string and encoded value.
+    ///
+    /// ```ignore
+    /// #[derive(WidgetCommand)]
+    /// enum GaugeCommand {
+    ///     SetValue(f32),
+    ///     Reset,
+    ///     SetRange { min: f32, max: f32 },
+    /// }
+    ///
+    /// Command::widget("temp-gauge", GaugeCommand::SetValue(72.0))
+    /// ```
+    pub fn widget<C: plushie_core::WidgetCommandEncode>(id: &str, cmd: C) -> Self {
+        let (family, prop_value) = cmd.to_wire();
+        Self::Renderer(RendererOp::Command {
+            id: id.to_string(),
+            family: family.to_string(),
+            value: Value::from(prop_value),
+        })
+    }
+
+    /// Send a command to a widget by ID with raw family and value.
     ///
     /// Low-level generic builder. Prefer `Command::widget()` with a
     /// typed command enum derived via `#[derive(WidgetCommand)]`.
@@ -392,7 +417,7 @@ impl Command {
     }
 
     /// Send a command to a widget by ID (old name, delegates to `send`).
-    #[deprecated(note = "use Command::send() instead")]
+    #[deprecated(note = "use Command::send() or Command::widget() instead")]
     pub fn widget_command(node_id: &str, op: &str, payload: Value) -> Self {
         Self::send(node_id, op, payload)
     }

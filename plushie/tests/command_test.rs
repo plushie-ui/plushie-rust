@@ -108,6 +108,37 @@ fn command_builder_creates_command() {
 }
 
 #[test]
+fn command_widget_typed_builder() {
+    use plushie_core::WidgetCommand;
+
+    #[derive(WidgetCommand)]
+    enum TestCmd {
+        SetValue(f32),
+        Reset,
+    }
+
+    let cmd = Command::widget("gauge-1", TestCmd::SetValue(72.0));
+    match cmd {
+        Command::Renderer(RendererOp::Command { id, family, value }) => {
+            assert_eq!(id, "gauge-1");
+            assert_eq!(family, "set_value");
+            assert_eq!(value.as_f64(), Some(72.0));
+        }
+        _ => panic!("expected Renderer(Command)"),
+    }
+
+    let cmd = Command::widget("gauge-1", TestCmd::Reset);
+    match cmd {
+        Command::Renderer(RendererOp::Command { id, family, value }) => {
+            assert_eq!(id, "gauge-1");
+            assert_eq!(family, "reset");
+            assert!(value.is_null());
+        }
+        _ => panic!("expected Renderer(Command)"),
+    }
+}
+
+#[test]
 fn commands_are_inspectable_for_testing() {
     let cmd = Command::focus("email");
     assert!(

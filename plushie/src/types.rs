@@ -69,6 +69,9 @@ pub use plushie_core::types::{
     Wrapping,
 };
 
+// Re-export WidgetCommandEncode from spec module (parallel to WidgetEventEncode)
+pub use plushie_core::spec::WidgetCommandEncode;
+
 // -------------------------------------------------------------------------
 // Re-exports from plushie-core (canvas)
 // -------------------------------------------------------------------------

@@ -385,7 +385,7 @@ impl App for MixedEventApp {
 
     fn update(model: &mut Self, event: Event) -> Command {
         if let Event::Widget(w) = &event {
-            match (w.event_type, w.id.as_str()) {
+            match (w.event_type, w.scoped_id.id.as_str()) {
                 (EventType::Click, _) => model.clicks += 1,
                 (EventType::Input, _) => {
                     if let Some(text) = w.value_string() {

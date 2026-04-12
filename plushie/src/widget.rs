@@ -397,10 +397,13 @@ impl WidgetStateStore {
     /// event. Returns the result along with the interceptor's ID and
     /// the remaining scope above it.
     pub fn intercept_event(&mut self, event: &Event) -> Option<Interception> {
-        let (scope, window_id) = match event {
-            Event::Widget(w) => (&w.scope, &w.window_id),
+        let scoped_id = match event {
+            Event::Widget(w) => &w.scoped_id,
             _ => return None,
         };
+
+        let scope = &scoped_id.scope;
+        let window_id = scoped_id.window_id.clone().unwrap_or_default();
 
         for (i, ancestor_id) in scope.iter().enumerate() {
             if let Some(expander) = self.expanders.get(ancestor_id) {

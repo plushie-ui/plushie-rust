@@ -126,7 +126,7 @@ impl Event {
 
     /// Access the widget event's scope chain (reversed ancestor path).
     pub fn scope(&self) -> Option<&[String]> {
-        self.as_widget().map(|w| w.scope.as_slice())
+        self.as_widget().map(|w| w.scoped_id.scope.as_slice())
     }
 }
 
@@ -186,13 +186,9 @@ pub enum EventType {
 pub struct WidgetEvent {
     /// What kind of interaction occurred.
     pub event_type: EventType,
-    /// The widget's local ID (without scope prefix).
-    pub id: String,
-    /// The window this widget belongs to.
-    pub window_id: String,
-    /// Reversed ancestor scope chain. First element is the
-    /// immediate parent's ID.
-    pub scope: Vec<String>,
+    /// The widget's identity: local ID, scope chain, window, and
+    /// canonical wire ID. Access the local name via `scoped_id.id`.
+    pub scoped_id: plushie_core::ScopedId,
     /// The event's primary value (text for Input, bool for Toggle, etc.).
     pub value: Value,
 }
@@ -213,42 +209,35 @@ impl WidgetEvent {
         self.value.as_f64()
     }
 
-    /// Reconstruct the full scoped path (e.g. "form/save").
-    pub fn target(&self) -> String {
-        if self.scope.is_empty() {
-            self.id.clone()
-        } else {
-            let mut parts: Vec<&str> = self.scope.iter().rev().map(|s| s.as_str()).collect();
-            parts.push(&self.id);
-            parts.join("/")
-        }
+    /// Reconstruct the full scoped path (e.g. "main#form/save").
+    pub fn target(&self) -> &str {
+        &self.scoped_id.full
     }
 
     /// Convert to a [`WidgetMatch`] for ergonomic pattern matching.
     fn to_match(&self) -> WidgetMatch<'_> {
+        let id = &self.scoped_id.id;
         use EventType::*;
         match self.event_type {
-            Click => WidgetMatch::Click(&self.id),
-            DoubleClick => WidgetMatch::DoubleClick(&self.id),
-            Input => WidgetMatch::Input(&self.id, self.value.as_str().unwrap_or_default()),
-            Submit => WidgetMatch::Submit(&self.id, self.value.as_str().unwrap_or_default()),
-            Toggle => WidgetMatch::Toggle(&self.id, self.value.as_bool().unwrap_or_default()),
-            Select => WidgetMatch::Select(&self.id, self.value.as_str().unwrap_or_default()),
-            Slide => WidgetMatch::Slide(&self.id, self.value.as_f64().unwrap_or_default()),
-            SlideRelease => {
-                WidgetMatch::SlideRelease(&self.id, self.value.as_f64().unwrap_or_default())
-            }
-            Paste => WidgetMatch::Paste(&self.id, self.value.as_str().unwrap_or_default()),
-            Press => WidgetMatch::Press(&self.id, self.value.as_str().unwrap_or("Left")),
-            Release => WidgetMatch::Release(&self.id, self.value.as_str().unwrap_or("Left")),
-            Enter => WidgetMatch::Enter(&self.id),
-            Exit => WidgetMatch::Exit(&self.id),
-            Drag => WidgetMatch::Drag(&self.id, &self.value),
-            DragEnd => WidgetMatch::DragEnd(&self.id, &self.value),
-            Focused => WidgetMatch::Focused(&self.id),
-            Blurred => WidgetMatch::Blurred(&self.id),
-            Resize => WidgetMatch::Resize(&self.id, &self.value),
-            _ => WidgetMatch::Other(&self.id, self.event_type),
+            Click => WidgetMatch::Click(id),
+            DoubleClick => WidgetMatch::DoubleClick(id),
+            Input => WidgetMatch::Input(id, self.value.as_str().unwrap_or_default()),
+            Submit => WidgetMatch::Submit(id, self.value.as_str().unwrap_or_default()),
+            Toggle => WidgetMatch::Toggle(id, self.value.as_bool().unwrap_or_default()),
+            Select => WidgetMatch::Select(id, self.value.as_str().unwrap_or_default()),
+            Slide => WidgetMatch::Slide(id, self.value.as_f64().unwrap_or_default()),
+            SlideRelease => WidgetMatch::SlideRelease(id, self.value.as_f64().unwrap_or_default()),
+            Paste => WidgetMatch::Paste(id, self.value.as_str().unwrap_or_default()),
+            Press => WidgetMatch::Press(id, self.value.as_str().unwrap_or("Left")),
+            Release => WidgetMatch::Release(id, self.value.as_str().unwrap_or("Left")),
+            Enter => WidgetMatch::Enter(id),
+            Exit => WidgetMatch::Exit(id),
+            Drag => WidgetMatch::Drag(id, &self.value),
+            DragEnd => WidgetMatch::DragEnd(id, &self.value),
+            Focused => WidgetMatch::Focused(id),
+            Blurred => WidgetMatch::Blurred(id),
+            Resize => WidgetMatch::Resize(id, &self.value),
+            _ => WidgetMatch::Other(id, self.event_type),
         }
     }
 }

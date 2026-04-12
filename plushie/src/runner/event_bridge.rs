@@ -71,9 +71,7 @@ fn outgoing_to_sdk_event(event: OutgoingEvent) -> Option<Event> {
 
     Some(Event::Widget(WidgetEvent {
         event_type,
-        id: sid.id,
-        window_id: sid.window_id.unwrap_or_default(),
-        scope: sid.scope,
+        scoped_id: sid,
         value: primary_value,
     }))
 }
@@ -314,8 +312,8 @@ mod tests {
         match sdk {
             Event::Widget(w) => {
                 assert_eq!(w.event_type, EventType::Click);
-                assert_eq!(w.id, "save");
-                assert!(w.scope.is_empty());
+                assert_eq!(w.scoped_id.id, "save");
+                assert!(w.scoped_id.scope.is_empty());
             }
             _ => panic!("expected Widget event"),
         }
@@ -327,8 +325,8 @@ mod tests {
         let sdk = outgoing_to_sdk_event(event).unwrap();
         match sdk {
             Event::Widget(w) => {
-                assert_eq!(w.id, "save");
-                assert_eq!(w.scope, vec!["section", "form"]);
+                assert_eq!(w.scoped_id.id, "save");
+                assert_eq!(w.scoped_id.scope, vec!["section", "form"]);
             }
             _ => panic!("expected Widget event"),
         }

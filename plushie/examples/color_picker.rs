@@ -108,7 +108,7 @@ impl App for ColorPickerApp {
         // since "change" isn't a built-in family. Use as_widget() to
         // read the structured value.
         if let Some(w) = event.as_widget()
-            && w.id == "picker"
+            && w.scoped_id.id == "picker"
             && let Some(obj) = w.value.as_object()
         {
             model.hue = obj.get("hue").and_then(|v| v.as_f64()).unwrap_or(model.hue);

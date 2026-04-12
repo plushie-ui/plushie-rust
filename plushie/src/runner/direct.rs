@@ -256,9 +256,7 @@ impl<A: App> DirectApp<A> {
             }) => {
                 let new_event = Event::Widget(WidgetEvent {
                     event_type: crate::event::family_to_event_type(&family),
-                    id: widget_id,
-                    window_id,
-                    scope: outer_scope,
+                    scoped_id: plushie_core::ScopedId::new(widget_id, outer_scope, Some(window_id)),
                     value,
                 });
                 let cmd = A::update(&mut self.model, new_event);

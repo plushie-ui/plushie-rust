@@ -129,9 +129,7 @@ impl<A: App> TestSession<A> {
             }) => {
                 let new_event = Event::Widget(WidgetEvent {
                     event_type: crate::event::family_to_event_type(&family),
-                    id: widget_id,
-                    window_id,
-                    scope: outer_scope,
+                    scoped_id: plushie_core::ScopedId::new(widget_id, outer_scope, Some(window_id)),
                     value,
                 });
                 let _cmd = A::update(&mut self.model, new_event);
@@ -234,9 +232,7 @@ impl<A: App> TestSession<A> {
 fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
     Event::Widget(WidgetEvent {
         event_type,
-        id: id.to_string(),
-        window_id: "main".to_string(),
-        scope: vec![],
+        scoped_id: plushie_core::ScopedId::new(id, vec![], Some("main".to_string())),
         value,
     })
 }

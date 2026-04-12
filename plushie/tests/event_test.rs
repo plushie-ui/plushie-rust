@@ -1,6 +1,7 @@
 //! Tests for event types and matching.
 
 use plushie::event::*;
+use plushie_core::ScopedId;
 use serde_json::json;
 
 // ---------------------------------------------------------------------------
@@ -10,9 +11,7 @@ use serde_json::json;
 fn click_event(id: &str) -> Event {
     Event::Widget(WidgetEvent {
         event_type: EventType::Click,
-        id: id.to_string(),
-        window_id: "main".to_string(),
-        scope: vec![],
+        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
         value: serde_json::Value::Null,
     })
 }
@@ -20,9 +19,7 @@ fn click_event(id: &str) -> Event {
 fn input_event(id: &str, text: &str) -> Event {
     Event::Widget(WidgetEvent {
         event_type: EventType::Input,
-        id: id.to_string(),
-        window_id: "main".to_string(),
-        scope: vec![],
+        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
         value: json!(text),
     })
 }
@@ -30,9 +27,7 @@ fn input_event(id: &str, text: &str) -> Event {
 fn toggle_event(id: &str, checked: bool) -> Event {
     Event::Widget(WidgetEvent {
         event_type: EventType::Toggle,
-        id: id.to_string(),
-        window_id: "main".to_string(),
-        scope: vec![],
+        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
         value: json!(checked),
     })
 }
@@ -40,9 +35,7 @@ fn toggle_event(id: &str, checked: bool) -> Event {
 fn slide_event(id: &str, value: f64) -> Event {
     Event::Widget(WidgetEvent {
         event_type: EventType::Slide,
-        id: id.to_string(),
-        window_id: "main".to_string(),
-        scope: vec![],
+        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
         value: json!(value),
     })
 }
@@ -50,9 +43,11 @@ fn slide_event(id: &str, value: f64) -> Event {
 fn scoped_click(id: &str, scope: Vec<&str>) -> Event {
     Event::Widget(WidgetEvent {
         event_type: EventType::Click,
-        id: id.to_string(),
-        window_id: "main".to_string(),
-        scope: scope.into_iter().map(String::from).collect(),
+        scoped_id: ScopedId::new(
+            id,
+            scope.into_iter().map(String::from).collect(),
+            Some("main".to_string()),
+        ),
         value: serde_json::Value::Null,
     })
 }
@@ -65,7 +60,7 @@ fn scoped_click(id: &str, scope: Vec<&str>) -> Event {
 fn as_widget_returns_some_for_widget_event() {
     let event = click_event("btn");
     assert!(event.as_widget().is_some());
-    assert_eq!(event.as_widget().unwrap().id, "btn");
+    assert_eq!(event.as_widget().unwrap().scoped_id.id, "btn");
 }
 
 #[test]
@@ -129,24 +124,24 @@ fn value_f64_extracts_number() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn target_without_scope_is_bare_id() {
+fn target_without_scope_is_canonical() {
     let event = click_event("save");
     let w = event.as_widget().unwrap();
-    assert_eq!(w.target(), "save");
+    assert_eq!(w.target(), "main#save");
 }
 
 #[test]
 fn target_with_scope_joins_path() {
     let event = scoped_click("save", vec!["form"]);
     let w = event.as_widget().unwrap();
-    assert_eq!(w.target(), "form/save");
+    assert_eq!(w.target(), "main#form/save");
 }
 
 #[test]
 fn target_with_nested_scope() {
     let event = scoped_click("field", vec!["row", "section"]);
     let w = event.as_widget().unwrap();
-    assert_eq!(w.target(), "section/row/field");
+    assert_eq!(w.target(), "main#section/row/field");
 }
 
 // ---------------------------------------------------------------------------

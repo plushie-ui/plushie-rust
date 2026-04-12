@@ -215,7 +215,7 @@ impl App for RatePlushie {
         // families ("select", "toggle") aren't all covered by
         // WidgetMatch's typed variants.
         if let Some(w) = event.as_widget() {
-            match w.id.as_str() {
+            match w.scoped_id.id.as_str() {
                 "stars" => {
                     if let Some(n) = w.value.as_u64() {
                         model.rating = n as usize;

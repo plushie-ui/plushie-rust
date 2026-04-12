@@ -6,6 +6,7 @@
 use plushie::WidgetEvent;
 use plushie::prelude::*;
 use plushie::widget::{EventResult, Widget};
+use plushie_core::ScopedId;
 use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
@@ -61,9 +62,7 @@ fn props(value: Value) -> UntypedProps {
 fn click_event(id: &str) -> Event {
     Event::Widget(plushie::event::WidgetEvent {
         event_type: plushie::event::EventType::Click,
-        id: id.to_string(),
-        window_id: "main".to_string(),
-        scope: vec![],
+        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
         value: Value::Null,
     })
 }
@@ -72,9 +71,7 @@ fn click_event(id: &str) -> Event {
 fn input_event(id: &str, text: &str) -> Event {
     Event::Widget(plushie::event::WidgetEvent {
         event_type: plushie::event::EventType::Input,
-        id: id.to_string(),
-        window_id: "main".to_string(),
-        scope: vec![],
+        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
         value: Value::String(text.to_string()),
     })
 }

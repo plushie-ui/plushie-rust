@@ -243,6 +243,22 @@ pub trait PlushieWidget<R: PlushieRenderer> {
         None
     }
 
+    /// Event payload specs for this widget type.
+    ///
+    /// Used for runtime validation of emitted event payloads.
+    /// Override to declare the expected shape of each event family.
+    fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+        vec![]
+    }
+
+    /// Command payload specs for this widget type.
+    ///
+    /// Used for runtime validation of incoming command payloads.
+    /// Override to declare the expected shape of each command family.
+    fn command_specs(&self) -> Vec<plushie_core::CommandSpec> {
+        vec![]
+    }
+
     /// Create a clone of this widget for multiplexed sessions.
     ///
     /// Each session gets its own widget instance with independent
@@ -587,6 +603,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             Message::Event {
                 id, value, family, ..
             } => {
+                self.validate_event_payload(id, family, value);
                 let value_opt = if value.is_null() {
                     None
                 } else {
@@ -621,6 +638,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         payload: &Value,
     ) -> Option<Vec<OutgoingEvent>> {
         let (idx, _) = self.get_for_node_id(node_id)?;
+        self.validate_command_payload(idx, node_id, op, payload);
         self.impls[idx].handle_widget_op(node_id, op, payload)
     }
 
@@ -652,6 +670,59 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// Whether any widgets are registered.
     pub fn is_empty(&self) -> bool {
         self.impls.is_empty()
+    }
+
+    // -- Spec validation (debug: panic, release: log warning) ----------------
+
+    /// Validate an event payload against the widget's declared event specs.
+    fn validate_event_payload(&self, node_id: &str, family: &str, value: &Value) {
+        let Some((idx, _)) = self.get_for_node_id(node_id) else {
+            return;
+        };
+        let specs = self.impls[idx].event_specs();
+        if specs.is_empty() {
+            return;
+        }
+        let Some(spec) = specs.iter().find(|s| s.family == family) else {
+            return; // unknown family: widget may emit events not in its spec list
+        };
+        if !spec.payload.validate(value) {
+            let msg = format!(
+                "event spec mismatch: widget {node_id} emitted \
+                 family={family:?} with value that doesn't match spec {:?}",
+                spec.payload
+            );
+            debug_assert!(false, "{msg}");
+            #[cfg(not(debug_assertions))]
+            log::warn!("{msg}");
+        }
+    }
+
+    /// Validate a command payload against the widget's declared command specs.
+    fn validate_command_payload(
+        &self,
+        factory_idx: usize,
+        node_id: &str,
+        family: &str,
+        value: &Value,
+    ) {
+        let specs = self.impls[factory_idx].command_specs();
+        if specs.is_empty() {
+            return;
+        }
+        let Some(spec) = specs.iter().find(|s| s.family == family) else {
+            return; // unknown family: widget may accept commands not in its spec list
+        };
+        if !spec.payload.validate(value) {
+            let msg = format!(
+                "command spec mismatch: widget {node_id} received \
+                 family={family:?} with value that doesn't match spec {:?}",
+                spec.payload
+            );
+            debug_assert!(false, "{msg}");
+            #[cfg(not(debug_assertions))]
+            log::warn!("{msg}");
+        }
     }
 }
 
@@ -804,5 +875,131 @@ mod tests {
         assert!(by_set.get("test").unwrap().contains(&"alpha"));
         assert!(by_set.get("test").unwrap().contains(&"beta"));
         assert!(by_set.get("(none)").unwrap().contains(&"custom"));
+    }
+
+    // -- Spec validation tests -----------------------------------------------
+
+    struct SpecWidget;
+
+    impl PlushieWidget<()> for SpecWidget {
+        fn type_names(&self) -> &[&str] {
+            &["gauge"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("gauge").into()
+        }
+
+        fn clone_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(SpecWidget)
+        }
+
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            vec![
+                EventSpec {
+                    family: "slide".into(),
+                    payload: PayloadSpec::Value(ValueType::Float),
+                },
+                EventSpec {
+                    family: "calibrated".into(),
+                    payload: PayloadSpec::None,
+                },
+            ]
+        }
+
+        fn command_specs(&self) -> Vec<plushie_core::CommandSpec> {
+            use plushie_core::spec::*;
+            vec![
+                CommandSpec {
+                    family: "set_value".into(),
+                    payload: PayloadSpec::Value(ValueType::Float),
+                },
+                CommandSpec {
+                    family: "reset".into(),
+                    payload: PayloadSpec::None,
+                },
+            ]
+        }
+    }
+
+    #[test]
+    fn event_validation_accepts_correct_payload() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecWidget));
+        let idx = registry.index_for_type("gauge").unwrap();
+        registry.map_node("g1".into(), idx);
+
+        // Correct float value for "slide" event: no panic
+        registry.validate_event_payload("g1", "slide", &serde_json::json!(42.0));
+        // Correct null for "calibrated" event: no panic
+        registry.validate_event_payload("g1", "calibrated", &serde_json::Value::Null);
+    }
+
+    #[test]
+    fn command_validation_accepts_correct_payload() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecWidget));
+        let idx = registry.index_for_type("gauge").unwrap();
+        registry.map_node("g1".into(), idx);
+
+        // Correct float value for "set_value": no panic
+        registry.validate_command_payload(idx, "g1", "set_value", &serde_json::json!(72.0));
+        // Correct null for "reset": no panic
+        registry.validate_command_payload(idx, "g1", "reset", &serde_json::Value::Null);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "event spec mismatch")]
+    fn event_validation_panics_on_wrong_type_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecWidget));
+        let idx = registry.index_for_type("gauge").unwrap();
+        registry.map_node("g1".into(), idx);
+
+        // String where float expected: should panic in debug
+        registry.validate_event_payload("g1", "slide", &serde_json::json!("not a number"));
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "command spec mismatch")]
+    fn command_validation_panics_on_wrong_type_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecWidget));
+        let idx = registry.index_for_type("gauge").unwrap();
+        registry.map_node("g1".into(), idx);
+
+        // String where float expected: should panic in debug
+        registry.validate_command_payload(idx, "g1", "set_value", &serde_json::json!("wrong"));
+    }
+
+    #[test]
+    fn validation_skipped_for_unknown_family() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecWidget));
+        let idx = registry.index_for_type("gauge").unwrap();
+        registry.map_node("g1".into(), idx);
+
+        // Unknown family: no panic regardless of value
+        registry.validate_event_payload("g1", "unknown_event", &serde_json::json!("anything"));
+        registry.validate_command_payload(idx, "g1", "unknown_cmd", &serde_json::json!(true));
+    }
+
+    #[test]
+    fn validation_skipped_for_widgets_without_specs() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["button"])));
+        let idx = registry.index_for_type("button").unwrap();
+        registry.map_node("b1".into(), idx);
+
+        // No specs declared: no panic regardless of value
+        registry.validate_event_payload("b1", "click", &serde_json::json!("wrong type"));
+        registry.validate_command_payload(idx, "b1", "anything", &serde_json::json!(true));
     }
 }

@@ -366,12 +366,12 @@ impl App {
             "move_cursor_to_front" => operation::move_cursor_to_front(WId::from(id.to_string())),
             "move_cursor_to_end" => operation::move_cursor_to_end(WId::from(id.to_string())),
             "move_cursor_to" => {
-                let pos = value.get("position").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let pos = value.as_u64().unwrap_or(0) as usize;
                 operation::move_cursor_to(WId::from(id.to_string()), pos)
             }
             "select_range" => {
-                let start = value.get("start").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                let end = value.get("end").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let start = value.get("start_pos").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let end = value.get("end_pos").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 operation::select_range(WId::from(id.to_string()), start, end)
             }
             "scroll_to" => {

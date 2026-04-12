@@ -79,9 +79,9 @@ impl PayloadSpec {
                 let has_required = required.iter().all(|r| obj.contains_key(r));
 
                 // Present fields must have correct types
-                let types_ok = fields.iter().all(|(name, vt)| {
-                    obj.get(name).map(|v| vt.matches(v)).unwrap_or(true)
-                });
+                let types_ok = fields
+                    .iter()
+                    .all(|(name, vt)| obj.get(name).map(|v| vt.matches(v)).unwrap_or(true));
 
                 has_required && types_ok
             }
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn value_spec_validates_type() {
         let spec = PayloadSpec::Value(ValueType::Float);
-        assert!(spec.validate(&json!(3.14)));
+        assert!(spec.validate(&json!(2.5)));
         assert!(!spec.validate(&json!("hello")));
         assert!(!spec.validate(&Value::Null));
 
@@ -193,7 +193,7 @@ mod tests {
         let spec = PayloadSpec::Value(ValueType::Integer);
         assert!(spec.validate(&json!(42)));
         assert!(spec.validate(&json!(-5)));
-        assert!(!spec.validate(&json!(3.14)));
+        assert!(!spec.validate(&json!(2.5)));
         assert!(!spec.validate(&json!("42")));
     }
 }

@@ -1,10 +1,11 @@
-//! Integration tests for the WidgetEvent derive macro.
+//! Integration tests for the WidgetEvent and WidgetCommand derive macros.
 //!
-//! These tests verify that the generated WidgetEventEncode impl
-//! produces the correct wire format with real plushie-core types.
+//! These tests verify that the generated impls produce the correct
+//! wire format and specs with real plushie-core types.
 
-use plushie::WidgetEvent;
+use plushie::{WidgetCommand, WidgetEvent};
 use plushie_core::protocol::PropValue;
+use plushie_core::spec::{PayloadSpec, ValueType, WidgetCommandEncode};
 use plushie_core::types::WidgetEventEncode;
 
 // ---------------------------------------------------------------------------
@@ -154,4 +155,119 @@ fn struct_value_round_trip() {
     let obj = json_value.as_object().unwrap();
     assert_eq!(obj.get("x").and_then(|v| v.as_f64()), Some(3.0));
     assert_eq!(obj.get("y").and_then(|v| v.as_f64()), Some(4.0));
+}
+
+// ---------------------------------------------------------------------------
+// Event specs generation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn event_specs_generated_for_all_variants() {
+    let specs = UnitEvent::event_specs();
+    assert_eq!(specs.len(), 2);
+    assert_eq!(specs[0].family, "cleared");
+    assert!(matches!(specs[0].payload, PayloadSpec::None));
+    assert_eq!(specs[1].family, "reset");
+}
+
+#[test]
+fn event_spec_tuple_variant_has_value_type() {
+    let specs = TupleEvent::event_specs();
+    assert_eq!(specs[0].family, "select");
+    match &specs[0].payload {
+        PayloadSpec::Value(vt) => assert_eq!(*vt, ValueType::Integer),
+        other => panic!("expected Value, got {other:?}"),
+    }
+}
+
+#[test]
+fn event_spec_struct_variant_has_fields() {
+    let specs = StructEvent::event_specs();
+    assert_eq!(specs[0].family, "change");
+    match &specs[0].payload {
+        PayloadSpec::Fields { fields, required } => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].0, "x");
+            assert_eq!(fields[0].1, ValueType::Float);
+            assert_eq!(fields[1].0, "y");
+            assert_eq!(required, &["x", "y"]);
+        }
+        other => panic!("expected Fields, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WidgetCommand derive
+// ---------------------------------------------------------------------------
+
+#[derive(WidgetCommand)]
+enum TestCommand {
+    SetValue(f32),
+    Reset,
+    SetRange { min: f32, max: f32 },
+}
+
+#[test]
+fn command_unit_variant() {
+    let (op, value) = TestCommand::Reset.to_wire();
+    assert_eq!(op, "reset");
+    assert_eq!(value, PropValue::Null);
+}
+
+#[test]
+fn command_tuple_variant() {
+    let (op, value) = TestCommand::SetValue(72.0).to_wire();
+    assert_eq!(op, "set_value");
+    let json = serde_json::Value::from(value);
+    assert_eq!(json.as_f64(), Some(72.0));
+}
+
+#[test]
+fn command_struct_variant() {
+    let (op, value) = TestCommand::SetRange {
+        min: 0.0,
+        max: 100.0,
+    }
+    .to_wire();
+    assert_eq!(op, "set_range");
+    let json = serde_json::Value::from(value);
+    let obj = json.as_object().unwrap();
+    assert_eq!(obj.get("min").and_then(|v| v.as_f64()), Some(0.0));
+    assert_eq!(obj.get("max").and_then(|v| v.as_f64()), Some(100.0));
+}
+
+#[test]
+fn command_specs_generated() {
+    let specs = TestCommand::command_specs();
+    assert_eq!(specs.len(), 3);
+
+    assert_eq!(specs[0].op, "set_value");
+    assert!(matches!(
+        specs[0].payload,
+        PayloadSpec::Value(ValueType::Float)
+    ));
+
+    assert_eq!(specs[1].op, "reset");
+    assert!(matches!(specs[1].payload, PayloadSpec::None));
+
+    assert_eq!(specs[2].op, "set_range");
+    match &specs[2].payload {
+        PayloadSpec::Fields { fields, required } => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(required.len(), 2);
+        }
+        other => panic!("expected Fields, got {other:?}"),
+    }
+}
+
+#[test]
+fn command_spec_validates_correct_payload() {
+    let specs = TestCommand::command_specs();
+    let set_value_spec = &specs[0];
+    assert!(set_value_spec.payload.validate(&serde_json::json!(72.0)));
+    assert!(!set_value_spec.payload.validate(&serde_json::json!("wrong")));
+
+    let reset_spec = &specs[1];
+    assert!(reset_spec.payload.validate(&serde_json::Value::Null));
+    assert!(!reset_spec.payload.validate(&serde_json::json!(42)));
 }

@@ -8,7 +8,7 @@
 pub use crate::App;
 
 // Derive macros for widget authoring
-pub use crate::{WidgetEvent, WidgetProps};
+pub use crate::{WidgetCommand, WidgetEvent, WidgetProps};
 
 // Widget registrar (for App::view)
 pub use crate::widget::WidgetRegistrar;

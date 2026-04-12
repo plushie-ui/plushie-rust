@@ -3,6 +3,12 @@
 //! - [`PlushieEnum`]: Make an enum usable as a widget property type.
 //!   Variants become snake_case strings on the wire.
 //!
+//! - [`WidgetEvent`]: Declare widget events as an enum for typed
+//!   emission via `EventResult::emit_event()`.
+//!
+//! - [`WidgetCommand`]: Declare widget commands as an enum for typed
+//!   construction via `Command::widget()`.
+//!
 //! - [`WidgetProps`]: Define your widget's properties as a struct
 //!   and get typed extraction from the widget tree.
 
@@ -383,6 +389,8 @@ fn derive_widget_event_impl(input: &DeriveInput) -> syn::Result<proc_macro2::Tok
         }
     });
 
+    let spec_arms = generate_spec_arms(variants, "EventSpec");
+
     Ok(quote! {
         impl ::plushie_core::types::WidgetEventEncode for #enum_name {
             fn to_wire(&self) -> (&'static str, ::plushie_core::protocol::PropValue) {
@@ -391,7 +399,230 @@ fn derive_widget_event_impl(input: &DeriveInput) -> syn::Result<proc_macro2::Tok
                 }
             }
         }
+
+        impl #enum_name {
+            /// Return specs for all event variants.
+            pub fn event_specs() -> Vec<::plushie_core::spec::EventSpec> {
+                vec![#(#spec_arms,)*]
+            }
+        }
     })
+}
+
+// ---------------------------------------------------------------------------
+// WidgetCommand derive
+// ---------------------------------------------------------------------------
+
+/// Typed command declarations for widget operations.
+///
+/// Generates a [`WidgetCommandEncode`] implementation that converts
+/// each variant to an `(op, PropValue)` pair for wire transport.
+/// Variant names become snake_case operation strings.
+///
+/// Uses the same variant forms as [`WidgetEvent`]:
+///
+/// - **Unit**: `Reset` produces `("reset", PropValue::Null)`
+/// - **Single-field tuple**: `SetValue(f32)` produces `("set_value", PropValue::F64(v))`
+/// - **Named fields**: `SetRange { min: f32, max: f32 }` produces
+///   `("set_range", PropValue::Object({min: ..., max: ...}))`
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(WidgetCommand)]
+/// enum GaugeCommand {
+///     /// Set gauge to a value immediately.
+///     SetValue(f32),
+///     /// Reset gauge to zero.
+///     Reset,
+///     /// Set the value range.
+///     SetRange { min: f32, max: f32 },
+/// }
+///
+/// // Usage:
+/// Command::widget("temp", GaugeCommand::SetValue(72.0))
+/// ```
+#[proc_macro_derive(WidgetCommand)]
+pub fn derive_widget_command(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    match derive_widget_command_impl(&input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+fn derive_widget_command_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let enum_name = &input.ident;
+
+    let variants = match &input.data {
+        Data::Enum(data) => &data.variants,
+        _ => {
+            return Err(syn::Error::new_spanned(
+                enum_name,
+                "WidgetCommand can only be derived for enums",
+            ));
+        }
+    };
+
+    // Reject multi-field tuple variants (ambiguous encoding).
+    for v in variants {
+        if let Fields::Unnamed(fields) = &v.fields
+            && fields.unnamed.len() > 1
+        {
+            return Err(syn::Error::new_spanned(
+                v,
+                "WidgetCommand tuple variants must have exactly one field; \
+                 use named fields for multiple values",
+            ));
+        }
+    }
+
+    // Generate to_wire() match arms (same logic as WidgetEvent)
+    let match_arms = variants.iter().map(|v| {
+        let ident = &v.ident;
+        let op = pascal_to_snake(&ident.to_string());
+
+        match &v.fields {
+            Fields::Unit => {
+                quote! {
+                    Self::#ident => (#op, ::plushie_core::protocol::PropValue::Null)
+                }
+            }
+            Fields::Unnamed(_) => {
+                quote! {
+                    Self::#ident(v) => (
+                        #op,
+                        ::plushie_core::types::PlushieType::wire_encode(v),
+                    )
+                }
+            }
+            Fields::Named(fields) => {
+                let field_names: Vec<_> = fields
+                    .named
+                    .iter()
+                    .map(|f| f.ident.as_ref().unwrap())
+                    .collect();
+                let field_keys: Vec<_> = field_names.iter().map(|n| n.to_string()).collect();
+                let inserts = field_names
+                    .iter()
+                    .zip(field_keys.iter())
+                    .map(|(name, key)| {
+                        quote! {
+                            map.insert(
+                                #key,
+                                ::plushie_core::types::PlushieType::wire_encode(#name),
+                            );
+                        }
+                    });
+
+                quote! {
+                    Self::#ident { #(#field_names),* } => {
+                        let mut map = ::plushie_core::protocol::PropMap::new();
+                        #(#inserts)*
+                        (#op, ::plushie_core::protocol::PropValue::Object(map))
+                    }
+                }
+            }
+        }
+    });
+
+    let spec_arms = generate_spec_arms(variants, "CommandSpec");
+
+    Ok(quote! {
+        impl ::plushie_core::spec::WidgetCommandEncode for #enum_name {
+            fn to_wire(&self) -> (&'static str, ::plushie_core::protocol::PropValue) {
+                match self {
+                    #(#match_arms,)*
+                }
+            }
+
+            fn command_specs() -> Vec<::plushie_core::spec::CommandSpec> {
+                vec![#(#spec_arms,)*]
+            }
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Shared spec generation for WidgetEvent and WidgetCommand
+// ---------------------------------------------------------------------------
+
+/// Generate spec constructor expressions for each enum variant.
+///
+/// `spec_type` is either "EventSpec" or "CommandSpec".
+/// The field name is "family" for events, "op" for commands.
+fn generate_spec_arms<'a>(
+    variants: impl IntoIterator<Item = &'a syn::Variant>,
+    spec_type: &str,
+) -> Vec<proc_macro2::TokenStream> {
+    let spec_ident = format_ident!("{}", spec_type);
+    let name_field = if spec_type == "EventSpec" {
+        format_ident!("family")
+    } else {
+        format_ident!("op")
+    };
+
+    variants
+        .into_iter()
+        .map(|v| {
+            let name = pascal_to_snake(&v.ident.to_string());
+
+            let payload = match &v.fields {
+                Fields::Unit => {
+                    quote! { ::plushie_core::spec::PayloadSpec::None }
+                }
+                Fields::Unnamed(fields) => {
+                    let ty = &fields.unnamed.first().unwrap().ty;
+                    let vt = rust_type_to_value_type(ty);
+                    quote! { ::plushie_core::spec::PayloadSpec::Value(#vt) }
+                }
+                Fields::Named(fields) => {
+                    let field_specs: Vec<_> = fields
+                        .named
+                        .iter()
+                        .map(|f| {
+                            let fname = f.ident.as_ref().unwrap().to_string();
+                            let vt = rust_type_to_value_type(&f.ty);
+                            quote! { (#fname.to_string(), #vt) }
+                        })
+                        .collect();
+                    let required: Vec<_> = fields
+                        .named
+                        .iter()
+                        .map(|f| f.ident.as_ref().unwrap().to_string())
+                        .collect();
+                    quote! {
+                        ::plushie_core::spec::PayloadSpec::Fields {
+                            fields: vec![#(#field_specs),*],
+                            required: vec![#(#required.to_string()),*],
+                        }
+                    }
+                }
+            };
+
+            quote! {
+                ::plushie_core::spec::#spec_ident {
+                    #name_field: #name.to_string(),
+                    payload: #payload,
+                }
+            }
+        })
+        .collect()
+}
+
+/// Map a Rust type to a ValueType for spec generation.
+fn rust_type_to_value_type(ty: &syn::Type) -> proc_macro2::TokenStream {
+    let type_str = quote!(#ty).to_string().replace(' ', "");
+    match type_str.as_str() {
+        "f32" | "f64" => quote! { ::plushie_core::spec::ValueType::Float },
+        "i32" | "i64" | "u32" | "u64" | "usize" | "isize" => {
+            quote! { ::plushie_core::spec::ValueType::Integer }
+        }
+        "bool" => quote! { ::plushie_core::spec::ValueType::Bool },
+        "String" | "&str" => quote! { ::plushie_core::spec::ValueType::String },
+        _ => quote! { ::plushie_core::spec::ValueType::Any },
+    }
 }
 
 // ---------------------------------------------------------------------------

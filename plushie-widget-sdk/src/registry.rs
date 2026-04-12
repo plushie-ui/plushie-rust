@@ -599,20 +599,18 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             // Widget events: if the registry's handle_message (above) didn't
             // match, pass through as a generic outgoing event.
             Message::Event {
-                window_id,
-                id,
-                data,
-                family,
+                id, value, family, ..
             } => {
-                let data_opt = if data.is_null() {
+                let value_opt = if value.is_null() {
                     None
                 } else {
-                    Some(data.clone())
+                    Some(value.clone())
                 };
-                vec![
-                    OutgoingEvent::generic(family.clone(), id.clone(), data_opt)
-                        .with_window_id(window_id.clone()),
-                ]
+                vec![OutgoingEvent::generic(
+                    family.clone(),
+                    id.clone(),
+                    value_opt,
+                )]
             }
 
             // Pane grid events are handled by PaneGridWidget via registry

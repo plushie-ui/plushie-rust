@@ -62,7 +62,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
                 window_id: wid.clone(),
                 id: nid.clone(),
                 family: family.clone(),
-                data: Value::Null,
+                value: Value::Null,
             });
         }
         if let Some(ref tag) = pap.on_release {
@@ -73,7 +73,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
                 window_id: wid.clone(),
                 id: nid.clone(),
                 family: family.clone(),
-                data: Value::Null,
+                value: Value::Null,
             });
         }
 

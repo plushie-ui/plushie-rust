@@ -67,13 +67,12 @@ fn outgoing_to_sdk_event(event: OutgoingEvent) -> Option<Event> {
     // Widget events: split scoped id and map family to EventType.
     let (local_id, scope) = split_scoped_id(&event.id);
     let event_type = family_to_event_type(family);
-    let primary_value = event.data.or(event.value).unwrap_or(Value::Null);
-    let window_id = event.window_id.unwrap_or_default();
+    let primary_value = event.value.unwrap_or(Value::Null);
 
     Some(Event::Widget(WidgetEvent {
         event_type,
         id: local_id,
-        window_id,
+        window_id: String::new(),
         scope,
         value: primary_value,
     }))
@@ -81,38 +80,36 @@ fn outgoing_to_sdk_event(event: OutgoingEvent) -> Option<Event> {
 
 /// Convert a tagged (subscription) event to an SDK Event.
 fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option<Event> {
-    let window_id = event.window_id.clone();
-
     match family {
         "key_press" | "key_release" => {
-            let data = event.data.as_ref().unwrap_or(&Value::Null);
+            let value = event.value.as_ref().unwrap_or(&Value::Null);
             Some(Event::Key(KeyEvent {
                 event_type: if family == "key_press" {
                     KeyEventType::Press
                 } else {
                     KeyEventType::Release
                 },
-                key: json_str(data, "key"),
-                modified_key: json_str_opt(data, "modified_key"),
-                physical_key: json_str_opt(data, "physical_key"),
-                location: match json_str_opt(data, "location").as_deref() {
+                key: json_str(value, "key"),
+                modified_key: json_str_opt(value, "modified_key"),
+                physical_key: json_str_opt(value, "physical_key"),
+                location: match json_str_opt(value, "location").as_deref() {
                     Some("left") => KeyLocation::Left,
                     Some("right") => KeyLocation::Right,
                     Some("numpad") => KeyLocation::Numpad,
                     _ => KeyLocation::Standard,
                 },
                 modifiers: extract_modifiers(event),
-                text: json_str_opt(data, "text"),
-                repeat: data["repeat"].as_bool().unwrap_or(false),
+                text: json_str_opt(value, "text"),
+                repeat: value["repeat"].as_bool().unwrap_or(false),
                 captured: event.captured.unwrap_or(false),
-                window_id,
+                window_id: None,
             }))
         }
 
         "modifiers_changed" => Some(Event::Modifiers(ModifiersEvent {
             modifiers: extract_modifiers(event),
             captured: event.captured.unwrap_or(false),
-            window_id,
+            window_id: None,
         })),
 
         "window_opened" => Some(window_event(WindowEventType::Opened, event)),
@@ -132,7 +129,7 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
             tag: Some(tag.to_string()),
             value: event.value.clone(),
             id: None,
-            window_id,
+            window_id: None,
         })),
 
         "theme_changed" => Some(Event::System(SystemEvent {
@@ -144,11 +141,9 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
         })),
 
         "ime_opened" | "ime_preedit" | "ime_commit" | "ime_closed" => {
-            let data = event.data.as_ref().unwrap_or(&Value::Null);
-            let (local_id, scope) = event
-                .data
-                .as_ref()
-                .and_then(|d| d["id"].as_str())
+            let value = event.value.as_ref().unwrap_or(&Value::Null);
+            let (local_id, scope) = value["id"]
+                .as_str()
                 .map(split_scoped_id)
                 .unwrap_or_default();
             Some(Event::Ime(ImeEvent {
@@ -164,26 +159,26 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
                     Some(local_id)
                 },
                 scope,
-                text: json_str_opt(data, "text"),
-                cursor: data["cursor"].as_array().and_then(|arr| {
+                text: json_str_opt(value, "text"),
+                cursor: value["cursor"].as_array().and_then(|arr: &Vec<Value>| {
                     Some((
                         arr.first()?.as_u64()? as usize,
                         arr.get(1)?.as_u64()? as usize,
                     ))
                 }),
                 captured: event.captured.unwrap_or(false),
-                window_id,
+                window_id: None,
             }))
         }
 
         "widget_command_error" => {
-            let data = event.data.as_ref().unwrap_or(&Value::Null);
+            let value = event.value.as_ref().unwrap_or(&Value::Null);
             Some(Event::WidgetCommandError(WidgetCommandError {
-                reason: json_str(data, "reason"),
-                node_id: json_str_opt(data, "node_id"),
-                op: json_str_opt(data, "op"),
-                widget_type: json_str_opt(data, "widget_type"),
-                message: json_str_opt(data, "message"),
+                reason: json_str(value, "reason"),
+                node_id: json_str_opt(value, "node_id"),
+                op: json_str_opt(value, "op"),
+                widget_type: json_str_opt(value, "widget_type"),
+                message: json_str_opt(value, "message"),
             }))
         }
 
@@ -193,7 +188,7 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
             tag: Some(tag.to_string()),
             value: event.value.clone(),
             id: None,
-            window_id,
+            window_id: None,
         })),
     }
 }
@@ -254,21 +249,21 @@ fn query_response_to_sdk(kind: &str, tag: &str, data: Value) -> Event {
 
 /// Build a WindowEvent from an OutgoingEvent.
 fn window_event(event_type: WindowEventType, event: &OutgoingEvent) -> Event {
-    let data = event.data.as_ref().unwrap_or(&Value::Null);
-    let window_id = event.window_id.clone().unwrap_or_default();
+    let value = event.value.as_ref().unwrap_or(&Value::Null);
+    let window_id = json_str(value, "window_id");
 
     Event::Window(WindowEvent {
         event_type,
         window_id,
-        x: data["x"].as_f64().map(|v| v as f32),
-        y: data["y"].as_f64().map(|v| v as f32),
-        width: data["width"].as_f64().map(|v| v as f32),
-        height: data["height"].as_f64().map(|v| v as f32),
-        position: data["position"]
-            .as_array()
-            .and_then(|arr| Some((arr.first()?.as_f64()? as f32, arr.get(1)?.as_f64()? as f32))),
-        path: json_str_opt(data, "path"),
-        scale_factor: data["scale_factor"].as_f64().map(|v| v as f32),
+        x: value["x"].as_f64().map(|v| v as f32),
+        y: value["y"].as_f64().map(|v| v as f32),
+        width: value["width"].as_f64().map(|v| v as f32),
+        height: value["height"].as_f64().map(|v| v as f32),
+        position: value["position"].as_array().and_then(|arr: &Vec<Value>| {
+            Some((arr.first()?.as_f64()? as f32, arr.get(1)?.as_f64()? as f32))
+        }),
+        path: json_str_opt(value, "path"),
+        scale_factor: value["scale_factor"].as_f64().map(|v| v as f32),
     })
 }
 
@@ -311,11 +306,9 @@ mod tests {
             session: String::new(),
             family: family.to_string(),
             id: id.to_string(),
-            window_id: Some("main".to_string()),
             value: None,
             tag: None,
             modifiers: None,
-            data: None,
             captured: None,
             coalesce: None,
         }
@@ -336,7 +329,6 @@ mod tests {
             Event::Widget(w) => {
                 assert_eq!(w.event_type, EventType::Click);
                 assert_eq!(w.id, "save");
-                assert_eq!(w.window_id, "main");
                 assert!(w.scope.is_empty());
             }
             _ => panic!("expected Widget event"),
@@ -357,10 +349,9 @@ mod tests {
     }
 
     #[test]
-    fn input_event_uses_data_over_value() {
+    fn input_event_uses_value() {
         let mut event = make_event("input", "name");
-        event.value = Some(Value::String("old".to_string()));
-        event.data = Some(Value::String("typed text".to_string()));
+        event.value = Some(Value::String("typed text".to_string()));
         let sdk = outgoing_to_sdk_event(event).unwrap();
         match sdk {
             Event::Widget(w) => {
@@ -402,7 +393,7 @@ mod tests {
     #[test]
     fn key_press_event() {
         let mut event = make_tagged("key_press", "key_events");
-        event.data = Some(serde_json::json!({
+        event.value = Some(serde_json::json!({
             "key": "a",
             "modified_key": "A",
             "physical_key": "KeyA",
@@ -455,8 +446,8 @@ mod tests {
     #[test]
     fn window_resized_event() {
         let mut event = make_tagged("window_resized", "win_events");
-        event.window_id = Some("main".to_string());
-        event.data = Some(serde_json::json!({
+        event.value = Some(serde_json::json!({
+            "window_id": "main",
             "width": 800.0,
             "height": 600.0,
         }));

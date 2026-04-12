@@ -109,10 +109,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                 let key = (window_id.to_string(), grid_id.to_string());
                 if let Some(state) = self.states.get(&key) {
                     let pane_id = state.get(*pane).cloned().unwrap_or_default();
-                    Some(vec![
-                        OutgoingEvent::pane_focus_cycle(grid_id.clone(), pane_id)
-                            .with_window_id(window_id.clone()),
-                    ])
+                    Some(vec![OutgoingEvent::pane_focus_cycle(
+                        grid_id.clone(),
+                        pane_id,
+                    )])
                 } else {
                     Some(vec![])
                 }
@@ -122,14 +122,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                 if let Some(state) = self.states.get_mut(&key) {
                     state.resize(evt.split, evt.ratio);
                 }
-                Some(vec![
-                    OutgoingEvent::pane_resized(
-                        grid_id.clone(),
-                        format!("{:?}", evt.split),
-                        evt.ratio,
-                    )
-                    .with_window_id(window_id.clone()),
-                ])
+                Some(vec![OutgoingEvent::pane_resized(
+                    grid_id.clone(),
+                    format!("{:?}", evt.split),
+                    evt.ratio,
+                )])
             }
             Message::PaneDragged(window_id, grid_id, evt) => {
                 let key = (window_id.to_string(), grid_id.to_string());
@@ -137,17 +134,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                     pane_grid::DragEvent::Picked { pane } => {
                         if let Some(state) = self.states.get(&key) {
                             let pane_id = state.get(*pane).cloned().unwrap_or_default();
-                            Some(vec![
-                                OutgoingEvent::pane_dragged(
-                                    grid_id.clone(),
-                                    "picked",
-                                    pane_id,
-                                    None,
-                                    None,
-                                    None,
-                                )
-                                .with_window_id(window_id.clone()),
-                            ])
+                            Some(vec![OutgoingEvent::pane_dragged(
+                                grid_id.clone(),
+                                "picked",
+                                pane_id,
+                                None,
+                                None,
+                                None,
+                            )])
                         } else {
                             Some(vec![])
                         }
@@ -180,17 +174,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                                 }
                             };
                             state.drop(*pane, *target);
-                            Some(vec![
-                                OutgoingEvent::pane_dragged(
-                                    grid_id.clone(),
-                                    "dropped",
-                                    pane_id,
-                                    target_pane,
-                                    region,
-                                    edge,
-                                )
-                                .with_window_id(window_id.clone()),
-                            ])
+                            Some(vec![OutgoingEvent::pane_dragged(
+                                grid_id.clone(),
+                                "dropped",
+                                pane_id,
+                                target_pane,
+                                region,
+                                edge,
+                            )])
                         } else {
                             Some(vec![])
                         }
@@ -198,17 +189,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                     pane_grid::DragEvent::Canceled { pane } => {
                         if let Some(state) = self.states.get(&key) {
                             let pane_id = state.get(*pane).cloned().unwrap_or_default();
-                            Some(vec![
-                                OutgoingEvent::pane_dragged(
-                                    grid_id.clone(),
-                                    "canceled",
-                                    pane_id,
-                                    None,
-                                    None,
-                                    None,
-                                )
-                                .with_window_id(window_id.clone()),
-                            ])
+                            Some(vec![OutgoingEvent::pane_dragged(
+                                grid_id.clone(),
+                                "canceled",
+                                pane_id,
+                                None,
+                                None,
+                                None,
+                            )])
                         } else {
                             Some(vec![])
                         }
@@ -219,10 +207,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                 let key = (window_id.to_string(), grid_id.to_string());
                 if let Some(state) = self.states.get(&key) {
                     let pane_id = state.get(*pane).cloned().unwrap_or_default();
-                    Some(vec![
-                        OutgoingEvent::pane_clicked(grid_id.clone(), pane_id)
-                            .with_window_id(window_id.clone()),
-                    ])
+                    Some(vec![OutgoingEvent::pane_clicked(grid_id.clone(), pane_id)])
                 } else {
                     Some(vec![])
                 }

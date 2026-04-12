@@ -109,7 +109,7 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         let diags = canvas_widgets::validate_interactive_elements(&node.id, &interactive_elements);
         for diag in &diags {
             if let Some(msg) = diag
-                .data
+                .value
                 .as_ref()
                 .and_then(|d| d.get("message"))
                 .and_then(|m| m.as_str())
@@ -181,22 +181,16 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     pub fn handle_message(&mut self, msg: &Message) -> Option<Vec<OutgoingEvent>> {
         match msg {
             Message::CanvasElementFocusChanged {
-                window_id,
                 old_element_id,
                 new_element_id,
+                ..
             } => {
                 let mut events = Vec::with_capacity(2);
                 if let Some(old_id) = old_element_id {
-                    events.push(
-                        OutgoingEvent::generic("blurred", old_id.clone(), None)
-                            .with_window_id(window_id.clone()),
-                    );
+                    events.push(OutgoingEvent::generic("blurred", old_id.clone(), None));
                 }
                 if let Some(new_id) = new_element_id {
-                    events.push(
-                        OutgoingEvent::generic("focused", new_id.clone(), None)
-                            .with_window_id(window_id.clone()),
-                    );
+                    events.push(OutgoingEvent::generic("focused", new_id.clone(), None));
                 }
                 Some(events)
             }

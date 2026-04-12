@@ -15,7 +15,7 @@ impl OutgoingEventKeyExt for OutgoingEvent {
     fn key_press(tag: String, data: &crate::message::KeyEventData) -> OutgoingEvent {
         OutgoingEvent {
             modifiers: Some(crate::message::serialize_modifiers(data.modifiers)),
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "key": crate::message::serialize_key(&data.key),
                 "modified_key": crate::message::serialize_key(&data.modified_key),
                 "physical_key": crate::message::serialize_physical_key(&data.physical_key),
@@ -30,7 +30,7 @@ impl OutgoingEventKeyExt for OutgoingEvent {
     fn key_release(tag: String, data: &crate::message::KeyEventData) -> OutgoingEvent {
         OutgoingEvent {
             modifiers: Some(crate::message::serialize_modifiers(data.modifiers)),
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "key": crate::message::serialize_key(&data.key),
                 "modified_key": crate::message::serialize_key(&data.modified_key),
                 "physical_key": crate::message::serialize_physical_key(&data.physical_key),

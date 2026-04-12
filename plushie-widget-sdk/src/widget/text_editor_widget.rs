@@ -84,7 +84,7 @@ fn parse_binding(val: &Value, id: &str, window_id: &str) -> Option<text_editor::
                 return Some(Binding::Custom(Message::Event {
                     window_id: window_id.to_string(),
                     id: event_id,
-                    data: serde_json::json!(tag),
+                    value: serde_json::json!(tag),
                     family: "key_binding".to_string(),
                 }));
             }
@@ -255,10 +255,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
                     if is_edit {
                         let new_text = content.text();
                         self.content_hashes.insert(key, hash_str(&new_text));
-                        return Some(vec![
-                            crate::protocol::OutgoingEvent::input(id.clone(), new_text)
-                                .with_window_id(window_id.clone()),
-                        ]);
+                        return Some(vec![crate::protocol::OutgoingEvent::input(
+                            id.clone(),
+                            new_text,
+                        )]);
                     }
                 }
                 Some(vec![])

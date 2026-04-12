@@ -242,7 +242,13 @@ fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
 }
 
 fn find_node<'a>(node: &'a TreeNode, target_id: &str) -> Option<&'a TreeNode> {
-    let local_id = node.id.rsplit_once('/').map(|(_, l)| l).unwrap_or(&node.id);
+    // Extract local name: split on both # and /, take the last segment.
+    let local_id = node
+        .id
+        .rsplit_once('/')
+        .or_else(|| node.id.rsplit_once('#'))
+        .map(|(_, l)| l)
+        .unwrap_or(&node.id);
     if local_id == target_id || node.id == target_id {
         return Some(node);
     }

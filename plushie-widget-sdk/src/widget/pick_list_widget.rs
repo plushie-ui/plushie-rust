@@ -169,7 +169,7 @@ fn render_pick_list<'a, R: PlushieRenderer>(
         pl = pl.on_open(Message::Event {
             window_id: ctx.window_id.to_string(),
             id: open_id,
-            data: Value::Null,
+            value: Value::Null,
             family: "open".into(),
         });
     }
@@ -178,7 +178,7 @@ fn render_pick_list<'a, R: PlushieRenderer>(
         pl = pl.on_close(Message::Event {
             window_id: ctx.window_id.to_string(),
             id: close_id,
-            data: Value::Null,
+            value: Value::Null,
             family: "close".into(),
         });
     }

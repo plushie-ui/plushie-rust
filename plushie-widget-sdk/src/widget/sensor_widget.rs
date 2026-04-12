@@ -65,7 +65,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
                     window_id: wid.clone(),
                     id: nid.clone(),
                     family: family.clone(),
-                    data: serde_json::json!({"width": size.width, "height": size.height}),
+                    value: serde_json::json!({"width": size.width, "height": size.height}),
                 });
             }
             // on_resize: emit with the tag directly
@@ -77,7 +77,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
                     window_id: wid.clone(),
                     id: nid.clone(),
                     family: family.clone(),
-                    data: serde_json::json!({"width": size.width, "height": size.height}),
+                    value: serde_json::json!({"width": size.width, "height": size.height}),
                 });
             }
             // on_hide: emit as "{tag}:hide"
@@ -89,7 +89,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
                     window_id: wid,
                     id: nid,
                     family,
-                    data: Value::Null,
+                    value: Value::Null,
                 });
             }
         }

@@ -71,9 +71,9 @@ impl PendingEvent {
             CoalesceHint::Replace => PendingEvent::Replace(event),
             CoalesceHint::Accumulate(fields) => {
                 let mut totals = HashMap::new();
-                if let Some(data) = &event.data {
+                if let Some(value) = &event.value {
                     for field in fields {
-                        if let Some(val) = data.get(field).and_then(|v| v.as_f64()) {
+                        if let Some(val) = value.get(field).and_then(|v| v.as_f64()) {
                             totals.insert(field.clone(), val);
                         }
                     }
@@ -95,9 +95,9 @@ impl PendingEvent {
                 fields,
                 totals,
             } => {
-                if let Some(data) = &event.data {
+                if let Some(value) = &event.value {
                     for field in fields.iter() {
-                        if let Some(val) = data.get(field).and_then(|v| v.as_f64()) {
+                        if let Some(val) = value.get(field).and_then(|v| v.as_f64()) {
                             *totals.entry(field.clone()).or_insert(0.0) += val;
                         }
                     }
@@ -113,9 +113,9 @@ impl PendingEvent {
             PendingEvent::Accumulate {
                 mut base, totals, ..
             } => {
-                // Patch accumulated totals back into the event's data.
-                if let Some(ref mut data) = base.data
-                    && let Some(obj) = data.as_object_mut()
+                // Patch accumulated totals back into the event's value.
+                if let Some(ref mut value) = base.value
+                    && let Some(obj) = value.as_object_mut()
                 {
                     for (field, total) in totals {
                         obj.insert(field, serde_json::json!(total));
@@ -498,11 +498,9 @@ mod tests {
             session: String::new(),
             family: family.to_string(),
             id: id.to_string(),
-            window_id: None,
             value: None,
             tag: None,
             modifiers: None,
-            data: None,
             captured: None,
             coalesce: None,
         }
@@ -514,11 +512,9 @@ mod tests {
             session: String::new(),
             family: family.to_string(),
             id: id.to_string(),
-            window_id: None,
-            value: None,
+            value: Some(data),
             tag: None,
             modifiers: None,
-            data: Some(data),
             captured: None,
             coalesce: None,
         }
@@ -644,11 +640,11 @@ mod tests {
             totals,
         };
         let event = pending.into_event();
-        let data = event.data.unwrap();
-        assert_eq!(data["delta_x"], 10.0);
-        assert_eq!(data["delta_y"], 20.0);
+        let value = event.value.unwrap();
+        assert_eq!(value["delta_x"], 10.0);
+        assert_eq!(value["delta_y"], 20.0);
         // Other fields preserved.
-        assert_eq!(data["x"], 50.0);
+        assert_eq!(value["x"], 50.0);
     }
 
     // -- CoalesceHint on constructors --
@@ -846,12 +842,12 @@ mod tests {
         emitter.buffer_event(&key, ev2, &hint);
 
         let result = emitter.pending.remove(&key).unwrap().into_event();
-        let data = result.data.unwrap();
+        let value = result.value.unwrap();
         // Position fields: latest value wins.
-        assert_eq!(data["x"], 15.0);
-        assert_eq!(data["y"], 25.0);
+        assert_eq!(value["x"], 15.0);
+        assert_eq!(value["y"], 25.0);
         // Impulse fields: accumulated.
-        assert_eq!(data["impulse_x"], 4.0);
-        assert_eq!(data["impulse_y"], 6.0);
+        assert_eq!(value["impulse_x"], 4.0);
+        assert_eq!(value["impulse_y"], 6.0);
     }
 }

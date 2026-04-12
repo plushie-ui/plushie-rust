@@ -206,7 +206,7 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         cb = cb.on_open(Message::Event {
             window_id: ctx.window_id.to_string(),
             id: open_id,
-            data: Value::Null,
+            value: Value::Null,
             family: "open".into(),
         });
     }
@@ -215,7 +215,7 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         cb = cb.on_close(Message::Event {
             window_id: ctx.window_id.to_string(),
             id: close_id,
-            data: Value::Null,
+            value: Value::Null,
             family: "close".into(),
         });
     }

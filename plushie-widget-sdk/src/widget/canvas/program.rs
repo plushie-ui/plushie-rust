@@ -63,7 +63,7 @@ fn pointer_event(
         window_id: window_id.to_string(),
         id: id.to_string(),
         family: family.to_string(),
-        data,
+        value: data,
     }
 }
 
@@ -84,7 +84,7 @@ fn pointer_scroll_event(
         window_id: window_id.to_string(),
         id: id.to_string(),
         family: "scroll".to_string(),
-        data: json!({
+        value: json!({
             "x": sanitize_f32(x),
             "y": sanitize_f32(y),
             "delta_x": sanitize_f32(delta_x),
@@ -412,7 +412,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                         window_id: self.window_id.clone(),
                         id: element.id.clone(),
                         family: "key_press".to_string(),
-                        data: json!({
+                        value: json!({
                             "key": crate::message::serialize_key(key),
                             "modifiers": modifiers_json(&mods),
                         }),
@@ -560,7 +560,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                                 window_id: self.window_id.clone(),
                                 id: element.id.clone(),
                                 family: "click".to_string(),
-                                data: json!({
+                                value: json!({
                                     "x": sanitize_f32(center.x),
                                     "y": sanitize_f32(center.y),
                                     "button": "keyboard",
@@ -657,7 +657,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                         window_id: self.window_id.clone(),
                         id: element.id.clone(),
                         family: "key_release".to_string(),
-                        data: json!({
+                        value: json!({
                             "key": crate::message::serialize_key(key),
                             "modifiers": modifiers_json(&mods),
                         }),
@@ -914,7 +914,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         window_id: self.window_id.clone(),
                         id: drag.element_id,
                         family: "drag_end".to_string(),
-                        data: json!({"x": sanitize_f32(pos.x), "y": sanitize_f32(pos.y)}),
+                        value: json!({"x": sanitize_f32(pos.x), "y": sanitize_f32(pos.y)}),
                     };
                     action = Some(iced::widget::Action::publish(msg));
                 }
@@ -923,7 +923,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         window_id: self.window_id.clone(),
                         id: hovered_id,
                         family: "exit".to_string(),
-                        data: serde_json::Value::Null,
+                        value: serde_json::Value::Null,
                     };
                     action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                 }
@@ -971,7 +971,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         window_id: self.window_id.clone(),
                         id: drag.element_id.clone(),
                         family: "drag".to_string(),
-                        data: json!({
+                        value: json!({
                             "x": sanitize_f32(effective.x),
                             "y": sanitize_f32(effective.y),
                             "delta_x": sanitize_f32(dx),
@@ -998,7 +998,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                                 window_id: self.window_id.clone(),
                                 id: old_id.clone(),
                                 family: "exit".to_string(),
-                                data: serde_json::Value::Null,
+                                value: serde_json::Value::Null,
                             };
                             action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                         }
@@ -1007,7 +1007,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                                 window_id: self.window_id.clone(),
                                 id: new_id.clone(),
                                 family: "enter".to_string(),
-                                data: json!({
+                                value: json!({
                                     "x": sanitize_f32(position.x),
                                     "y": sanitize_f32(position.y),
                                 }),
@@ -1114,7 +1114,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                             window_id: self.window_id.clone(),
                             id: drag.element_id,
                             family: "drag_end".to_string(),
-                            data: json!({
+                            value: json!({
                                 "x": sanitize_f32(position.x),
                                 "y": sanitize_f32(position.y),
                             }),
@@ -1134,7 +1134,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                                 window_id: self.window_id.clone(),
                                 id: pressed_id,
                                 family: "click".to_string(),
-                                data: json!({
+                                value: json!({
                                     "x": sanitize_f32(position.x),
                                     "y": sanitize_f32(position.y),
                                     "button": btn_str,
@@ -1269,7 +1269,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         window_id: self.window_id.clone(),
                         id: drag.element_id.clone(),
                         family: "drag".to_string(),
-                        data: json!({
+                        value: json!({
                             "x": sanitize_f32(effective.x),
                             "y": sanitize_f32(effective.y),
                             "delta_x": sanitize_f32(dx),
@@ -1311,7 +1311,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         window_id: self.window_id.clone(),
                         id: drag.element_id,
                         family: "drag_end".to_string(),
-                        data: json!({
+                        value: json!({
                             "x": sanitize_f32(touch_position.x),
                             "y": sanitize_f32(touch_position.y),
                         }),
@@ -1329,7 +1329,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                             window_id: self.window_id.clone(),
                             id: pressed_id,
                             family: "click".to_string(),
-                            data: json!({
+                            value: json!({
                                 "x": sanitize_f32(touch_position.x),
                                 "y": sanitize_f32(touch_position.y),
                                 "button": "left",
@@ -1488,7 +1488,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
             window_id: self.window_id.clone(),
             id: self.id.clone(),
             family: "focused".to_string(),
-            data: serde_json::Value::Null,
+            value: serde_json::Value::Null,
         })];
         // If returning to a canvas that had internal focus, re-announce
         // the focused element, but only if it still exists. If it was
@@ -1500,7 +1500,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                     window_id: self.window_id.clone(),
                     id: id.clone(),
                     family: "focused".to_string(),
-                    data: serde_json::Value::Null,
+                    value: serde_json::Value::Null,
                 }));
             } else {
                 // Element was removed while canvas was unfocused.
@@ -1509,7 +1509,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                     window_id: self.window_id.clone(),
                     id: id.clone(),
                     family: "blurred".to_string(),
-                    data: serde_json::Value::Null,
+                    value: serde_json::Value::Null,
                 }));
                 state.focused_id = None;
                 state.focused_group = None;
@@ -1529,14 +1529,14 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                 window_id: self.window_id.clone(),
                 id: id.clone(),
                 family: "blurred".to_string(),
-                data: serde_json::Value::Null,
+                value: serde_json::Value::Null,
             }));
         }
         actions.push(iced::widget::Action::publish(Message::Event {
             window_id: self.window_id.clone(),
             id: self.id.clone(),
             family: "blurred".to_string(),
-            data: serde_json::Value::Null,
+            value: serde_json::Value::Null,
         }));
         actions
     }

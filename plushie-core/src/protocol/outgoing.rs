@@ -19,7 +19,7 @@ use serde_json::Value;
 /// Set on events returned from `handle_message()`:
 ///
 /// ```ignore
-/// let event = OutgoingEvent::widget_event("cursor_pos", node_id, data)
+/// let event = OutgoingEvent::widget_event("cursor_pos", node_id, value)
 ///     .with_coalesce(CoalesceHint::Replace);
 /// ```
 ///
@@ -31,7 +31,7 @@ pub enum CoalesceHint {
     /// Use for: position reports, state snapshots, progress values --
     /// anything where only the most recent value matters.
     Replace,
-    /// Sum the named `data` fields across coalesced events.
+    /// Sum the named `value` fields across coalesced events.
     /// Other fields keep the latest event's values.
     /// Use for: scroll deltas, velocity changes, counters -- anything
     /// where intermediate values carry magnitude that would be lost
@@ -63,10 +63,8 @@ pub struct OutgoingEvent {
     pub family: String,
     /// Source widget node ID (widget events) or empty (subscription events).
     pub id: String,
-    /// Source window ID for widget-level events, when known.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub window_id: Option<String>,
-    /// Primary value payload (e.g. input text, slider value, selected option).
+    /// Primary value payload (e.g. input text, slider value, selected option,
+    /// or structured data for pointer/window/IME events).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<Value>,
     /// Subscription tag identifying which subscription requested this event.
@@ -75,10 +73,6 @@ pub struct OutgoingEvent {
     /// Keyboard modifier state at the time of the event.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modifiers: Option<KeyModifiers>,
-    /// Flexible extra data for events that carry additional fields beyond
-    /// the standard id/value/tag/modifiers shape.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
     /// Whether the event was captured (consumed) by an iced widget before
     /// reaching the subscription listener. Present on keyboard, mouse,
     /// touch, and IME events; absent on widget-level events.
@@ -119,25 +113,11 @@ impl OutgoingEvent {
     /// compatible with the built-in shape:
     ///
     /// ```ignore
-    /// OutgoingEvent::widget_event("input", id, data)
+    /// OutgoingEvent::widget_event("input", id, value)
     ///     .with_value(serde_json::Value::String(text))
     /// ```
     pub fn with_value(mut self, value: Value) -> Self {
         self.value = Some(value);
-        self
-    }
-
-    /// Set the source window for this event.
-    ///
-    /// Widget-like events must always carry a real window id on the wire.
-    /// Empty ids are a renderer bug and should be fixed at the call site.
-    pub fn with_window_id(mut self, window_id: impl Into<String>) -> Self {
-        let window_id = window_id.into();
-        assert!(
-            !window_id.is_empty(),
-            "widget-like events must include a non-empty window_id"
-        );
-        self.window_id = Some(window_id);
         self
     }
 }
@@ -172,11 +152,9 @@ impl OutgoingEvent {
             session: String::new(),
             family: family.into(),
             id: id.into(),
-            window_id: None,
             value: None,
             tag: None,
             modifiers: None,
-            data: None,
             captured: None,
             coalesce: None,
         }
@@ -189,21 +167,19 @@ impl OutgoingEvent {
             session: String::new(),
             family: family.into(),
             id: String::new(),
-            window_id: None,
             value: None,
             tag: Some(tag),
             modifiers: None,
-            data: None,
             captured: None,
             coalesce: None,
         }
     }
 
-    /// Generic widget event with a family string and optional data payload.
+    /// Generic widget event with a family string and optional value payload.
     /// Used for on_open, on_close, sort, and other events.
-    pub fn generic(family: impl Into<String>, id: impl Into<String>, data: Option<Value>) -> Self {
+    pub fn generic(family: impl Into<String>, id: impl Into<String>, value: Option<Value>) -> Self {
         Self {
-            data,
+            value,
             ..Self::bare(family, id)
         }
     }
@@ -215,9 +191,9 @@ impl OutgoingEvent {
     pub fn widget_event(
         family: impl Into<String>,
         id: impl Into<String>,
-        data: Option<Value>,
+        value: Option<Value>,
     ) -> Self {
-        Self::generic(family, id, data)
+        Self::generic(family, id, value)
     }
 
     pub fn click(id: String) -> Self {
@@ -288,7 +264,7 @@ impl OutgoingEvent {
 
     pub fn cursor_moved(tag: String, x: f32, y: f32) -> Self {
         Self {
-            data: Some(serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y)})),
+            value: Some(serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y)})),
             coalesce: Some(CoalesceHint::Replace),
             ..Self::tagged("cursor_moved", tag)
         }
@@ -318,7 +294,7 @@ impl OutgoingEvent {
 
     pub fn wheel_scrolled(tag: String, delta_x: f32, delta_y: f32, unit: &str) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "delta_x": sanitize_f32(delta_x),
                 "delta_y": sanitize_f32(delta_y),
                 "unit": unit,
@@ -337,7 +313,7 @@ impl OutgoingEvent {
 
     fn touch_event(family: &str, tag: String, finger_id: u64, x: f32, y: f32) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "id": finger_id,
                 "x": sanitize_f32(x),
                 "y": sanitize_f32(y),
@@ -378,14 +354,14 @@ impl OutgoingEvent {
             .map(|r| serde_json::json!({"start": r.start, "end": r.end}))
             .unwrap_or(serde_json::Value::Null);
         Self {
-            data: Some(serde_json::json!({"text": text, "cursor": cursor_val})),
+            value: Some(serde_json::json!({"text": text, "cursor": cursor_val})),
             ..Self::tagged("ime_preedit", tag)
         }
     }
 
     pub fn ime_commit(tag: String, text: String) -> Self {
         Self {
-            data: Some(serde_json::json!({"text": text})),
+            value: Some(serde_json::json!({"text": text})),
             ..Self::tagged("ime_commit", tag)
         }
     }
@@ -409,7 +385,7 @@ impl OutgoingEvent {
         let pos =
             position.map(|(x, y)| serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y)}));
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "window_id": window_id,
                 "position": pos,
                 "width": sanitize_f32(width),
@@ -420,10 +396,10 @@ impl OutgoingEvent {
         }
     }
 
-    /// Window event carrying only a window_id in its data payload.
+    /// Window event carrying only a window_id in its value payload.
     fn window_event(family: &str, tag: String, window_id: String) -> Self {
         Self {
-            data: Some(serde_json::json!({"window_id": window_id})),
+            value: Some(serde_json::json!({"window_id": window_id})),
             ..Self::tagged(family, tag)
         }
     }
@@ -438,7 +414,7 @@ impl OutgoingEvent {
 
     pub fn window_moved(tag: String, window_id: String, x: f32, y: f32) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "window_id": window_id,
                 "x": sanitize_f32(x),
                 "y": sanitize_f32(y),
@@ -449,7 +425,7 @@ impl OutgoingEvent {
 
     pub fn window_resized(tag: String, window_id: String, width: f32, height: f32) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "window_id": window_id,
                 "width": sanitize_f32(width),
                 "height": sanitize_f32(height),
@@ -468,7 +444,7 @@ impl OutgoingEvent {
 
     pub fn window_rescaled(tag: String, window_id: String, scale_factor: f32) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "window_id": window_id,
                 "scale_factor": sanitize_f32(scale_factor),
             })),
@@ -478,7 +454,7 @@ impl OutgoingEvent {
 
     pub fn file_hovered(tag: String, window_id: String, path: String) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "window_id": window_id,
                 "path": path,
             })),
@@ -488,7 +464,7 @@ impl OutgoingEvent {
 
     pub fn file_dropped(tag: String, window_id: String, path: String) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "window_id": window_id,
                 "path": path,
             })),
@@ -506,7 +482,7 @@ impl OutgoingEvent {
 
     pub fn animation_frame(tag: String, timestamp_millis: u128) -> Self {
         Self {
-            data: Some(serde_json::json!({"timestamp": timestamp_millis})),
+            value: Some(serde_json::json!({"timestamp": timestamp_millis})),
             coalesce: Some(CoalesceHint::Replace),
             ..Self::tagged("animation_frame", tag)
         }
@@ -523,7 +499,7 @@ impl OutgoingEvent {
     /// Renderer-side validation diagnostic.
     ///
     /// The `id` field on the event envelope is set to `canvas_id` for
-    /// consistency with other canvas events. The `data` payload carries
+    /// consistency with other canvas events. The `value` payload carries
     /// the full diagnostic detail including the optional `element_id`.
     pub fn diagnostic(
         canvas_id: String,
@@ -533,7 +509,7 @@ impl OutgoingEvent {
         message: &str,
     ) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "level": level,
                 "element_id": element_id,
                 "code": code,
@@ -549,7 +525,7 @@ impl OutgoingEvent {
 
     pub fn pane_resized(id: String, split: String, ratio: f32) -> Self {
         Self {
-            data: Some(serde_json::json!({"split": split, "ratio": sanitize_f32(ratio)})),
+            value: Some(serde_json::json!({"split": split, "ratio": sanitize_f32(ratio)})),
             coalesce: Some(CoalesceHint::Replace),
             ..Self::bare("pane_resized", id)
         }
@@ -563,32 +539,32 @@ impl OutgoingEvent {
         region: Option<&str>,
         edge: Option<&str>,
     ) -> Self {
-        let mut data = serde_json::json!({"action": kind, "pane": pane});
+        let mut val = serde_json::json!({"action": kind, "pane": pane});
         if let Some(t) = target {
-            data["target"] = serde_json::json!(t);
+            val["target"] = serde_json::json!(t);
         }
         if let Some(r) = region {
-            data["region"] = serde_json::json!(r);
+            val["region"] = serde_json::json!(r);
         }
         if let Some(e) = edge {
-            data["edge"] = serde_json::json!(e);
+            val["edge"] = serde_json::json!(e);
         }
         Self {
-            data: Some(data),
+            value: Some(val),
             ..Self::bare("pane_dragged", id)
         }
     }
 
     pub fn pane_clicked(id: String, pane: String) -> Self {
         Self {
-            data: Some(serde_json::json!({"pane": pane})),
+            value: Some(serde_json::json!({"pane": pane})),
             ..Self::bare("pane_clicked", id)
         }
     }
 
     pub fn pane_focus_cycle(id: String, pane: String) -> Self {
         Self {
-            data: Some(serde_json::json!({"pane": pane})),
+            value: Some(serde_json::json!({"pane": pane})),
             ..Self::bare("pane_focus_cycle", id)
         }
     }
@@ -611,14 +587,14 @@ impl OutgoingEvent {
     /// Key press event from scripting (no full KeyEventData).
     ///
     /// Produces the same event shape as real key_press events: `key` in
-    /// `data.key`, modifiers in the top-level `modifiers` field. Missing
+    /// `value.key`, modifiers in the top-level `modifiers` field. Missing
     /// modifier fields default to `false`.
     pub fn scripting_key_press(key: String, modifiers_json: Value) -> Self {
         let mods: KeyModifiers =
             serde_json::from_value(modifiers_json).unwrap_or(KeyModifiers::default());
         Self {
             modifiers: Some(mods),
-            data: Some(serde_json::json!({"key": key})),
+            value: Some(serde_json::json!({"key": key})),
             ..Self::bare("key_press", String::new())
         }
     }
@@ -626,14 +602,14 @@ impl OutgoingEvent {
     /// Key release event from scripting (no full KeyEventData).
     ///
     /// Produces the same event shape as real key_release events: `key` in
-    /// `data.key`, modifiers in the top-level `modifiers` field. Missing
+    /// `value.key`, modifiers in the top-level `modifiers` field. Missing
     /// modifier fields default to `false`.
     pub fn scripting_key_release(key: String, modifiers_json: Value) -> Self {
         let mods: KeyModifiers =
             serde_json::from_value(modifiers_json).unwrap_or(KeyModifiers::default());
         Self {
             modifiers: Some(mods),
-            data: Some(serde_json::json!({"key": key})),
+            value: Some(serde_json::json!({"key": key})),
             ..Self::bare("key_release", String::new())
         }
     }
@@ -641,7 +617,7 @@ impl OutgoingEvent {
     /// Cursor moved event from scripting.
     pub fn scripting_cursor_moved(x: f64, y: f64) -> Self {
         Self {
-            data: Some(serde_json::json!({"x": x, "y": y})),
+            value: Some(serde_json::json!({"x": x, "y": y})),
             ..Self::bare("cursor_moved", String::new())
         }
     }
@@ -649,7 +625,7 @@ impl OutgoingEvent {
     /// Scroll event from scripting.
     pub fn scripting_scroll(delta_x: f64, delta_y: f64) -> Self {
         Self {
-            data: Some(
+            value: Some(
                 serde_json::json!({"delta_x": delta_x, "delta_y": delta_y, "unit": "pixel"}),
             ),
             ..Self::bare("wheel_scrolled", String::new())
@@ -684,7 +660,7 @@ impl OutgoingEvent {
         content_h: f32,
     ) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "absolute_x": sanitize_f32(abs_x), "absolute_y": sanitize_f32(abs_y),
                 "relative_x": sanitize_f32(rel_x), "relative_y": sanitize_f32(rel_y),
                 "bounds_width": sanitize_f32(bounds_w), "bounds_height": sanitize_f32(bounds_h),
@@ -704,7 +680,7 @@ impl OutgoingEvent {
     // modifier state.
     // -----------------------------------------------------------------------
 
-    /// Build a modifiers data object for inclusion in pointer event data.
+    /// Build a modifiers object for inclusion in pointer event values.
     fn modifiers_data(modifiers: &KeyModifiers) -> serde_json::Value {
         serde_json::json!({
             "shift": modifiers.shift,
@@ -728,7 +704,7 @@ impl OutgoingEvent {
         finger: Option<u64>,
         modifiers: KeyModifiers,
     ) -> Self {
-        let mut data = serde_json::json!({
+        let mut val = serde_json::json!({
             "x": sanitize_f32(x),
             "y": sanitize_f32(y),
             "button": button,
@@ -736,10 +712,10 @@ impl OutgoingEvent {
             "modifiers": Self::modifiers_data(&modifiers),
         });
         if let Some(f) = finger {
-            data["finger"] = serde_json::json!(f);
+            val["finger"] = serde_json::json!(f);
         }
         Self {
-            data: Some(data),
+            value: Some(val),
             ..Self::bare("press", id)
         }
     }
@@ -754,7 +730,7 @@ impl OutgoingEvent {
         finger: Option<u64>,
         modifiers: KeyModifiers,
     ) -> Self {
-        let mut data = serde_json::json!({
+        let mut val = serde_json::json!({
             "x": sanitize_f32(x),
             "y": sanitize_f32(y),
             "button": button,
@@ -762,10 +738,10 @@ impl OutgoingEvent {
             "modifiers": Self::modifiers_data(&modifiers),
         });
         if let Some(f) = finger {
-            data["finger"] = serde_json::json!(f);
+            val["finger"] = serde_json::json!(f);
         }
         Self {
-            data: Some(data),
+            value: Some(val),
             ..Self::bare("release", id)
         }
     }
@@ -779,17 +755,17 @@ impl OutgoingEvent {
         finger: Option<u64>,
         modifiers: KeyModifiers,
     ) -> Self {
-        let mut data = serde_json::json!({
+        let mut val = serde_json::json!({
             "x": sanitize_f32(x),
             "y": sanitize_f32(y),
             "pointer": pointer_type,
             "modifiers": Self::modifiers_data(&modifiers),
         });
         if let Some(f) = finger {
-            data["finger"] = serde_json::json!(f);
+            val["finger"] = serde_json::json!(f);
         }
         Self {
-            data: Some(data),
+            value: Some(val),
             coalesce: Some(CoalesceHint::Replace),
             ..Self::bare("move", id)
         }
@@ -806,7 +782,7 @@ impl OutgoingEvent {
         modifiers: KeyModifiers,
     ) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "x": sanitize_f32(x),
                 "y": sanitize_f32(y),
                 "delta_x": sanitize_f32(delta_x),
@@ -841,7 +817,7 @@ impl OutgoingEvent {
         modifiers: KeyModifiers,
     ) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "x": sanitize_f32(x),
                 "y": sanitize_f32(y),
                 "pointer": pointer_type,
@@ -854,7 +830,7 @@ impl OutgoingEvent {
     /// Unified resize event (for sensor widgets).
     pub fn resize(id: String, width: f32, height: f32) -> Self {
         Self {
-            data: Some(serde_json::json!({
+            value: Some(serde_json::json!({
                 "width": sanitize_f32(width),
                 "height": sanitize_f32(height),
             })),

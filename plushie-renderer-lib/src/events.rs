@@ -52,7 +52,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_KEY_PRESS, wid, data.captured, |tag| {
-            OutgoingEvent::key_press(tag, &data).with_window_id(&window_id)
+            OutgoingEvent::key_press(tag, &data)
         })
     }
 
@@ -63,7 +63,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_KEY_RELEASE, wid, data.captured, |tag| {
-            OutgoingEvent::key_release(tag, &data).with_window_id(&window_id)
+            OutgoingEvent::key_release(tag, &data)
         })
     }
 
@@ -81,7 +81,6 @@ impl App {
         let wid = Some(window_id.as_str());
         self.coalesce_subscription_for_window(SUB_MODIFIERS_CHANGED, wid, captured, |tag| {
             OutgoingEvent::modifiers_changed(tag, serialize_modifiers(mods))
-                .with_window_id(&window_id)
         })
     }
 
@@ -97,7 +96,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.coalesce_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
-            OutgoingEvent::cursor_moved(tag, pos.x, pos.y).with_window_id(&window_id)
+            OutgoingEvent::cursor_moved(tag, pos.x, pos.y)
         })
     }
 
@@ -108,7 +107,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
-            OutgoingEvent::cursor_entered(tag).with_window_id(&window_id)
+            OutgoingEvent::cursor_entered(tag)
         })
     }
 
@@ -119,7 +118,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_MOVE, wid, captured, |tag| {
-            OutgoingEvent::cursor_left(tag).with_window_id(&window_id)
+            OutgoingEvent::cursor_left(tag)
         })
     }
 
@@ -136,7 +135,6 @@ impl App {
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_BUTTON, wid, captured, |tag| {
             OutgoingEvent::button_pressed(tag, serialize_mouse_button(&button))
-                .with_window_id(&window_id)
         })
     }
 
@@ -153,7 +151,6 @@ impl App {
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_BUTTON, wid, captured, |tag| {
             OutgoingEvent::button_released(tag, serialize_mouse_button(&button))
-                .with_window_id(&window_id)
         })
     }
 
@@ -170,7 +167,7 @@ impl App {
         let wid = Some(window_id.as_str());
         self.coalesce_subscription_for_window(SUB_POINTER_SCROLL, wid, captured, |tag| {
             let (dx, dy, unit) = serialize_scroll_delta(&delta);
-            OutgoingEvent::wheel_scrolled(tag, dx, dy, unit).with_window_id(&window_id)
+            OutgoingEvent::wheel_scrolled(tag, dx, dy, unit)
         })
     }
 
@@ -187,7 +184,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
-            OutgoingEvent::finger_pressed(tag, finger.0, pos.x, pos.y).with_window_id(&window_id)
+            OutgoingEvent::finger_pressed(tag, finger.0, pos.x, pos.y)
         })
     }
 
@@ -204,7 +201,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.coalesce_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
-            OutgoingEvent::finger_moved(tag, finger.0, pos.x, pos.y).with_window_id(&window_id)
+            OutgoingEvent::finger_moved(tag, finger.0, pos.x, pos.y)
         })
     }
 
@@ -221,7 +218,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
-            OutgoingEvent::finger_lifted(tag, finger.0, pos.x, pos.y).with_window_id(&window_id)
+            OutgoingEvent::finger_lifted(tag, finger.0, pos.x, pos.y)
         })
     }
 
@@ -238,7 +235,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_POINTER_TOUCH, wid, captured, |tag| {
-            OutgoingEvent::finger_lost(tag, finger.0, pos.x, pos.y).with_window_id(&window_id)
+            OutgoingEvent::finger_lost(tag, finger.0, pos.x, pos.y)
         })
     }
 
@@ -255,7 +252,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            OutgoingEvent::ime_opened(tag).with_window_id(&window_id)
+            OutgoingEvent::ime_opened(tag)
         })
     }
 
@@ -272,7 +269,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            OutgoingEvent::ime_preedit(tag, text.clone(), cursor.clone()).with_window_id(&window_id)
+            OutgoingEvent::ime_preedit(tag, text.clone(), cursor.clone())
         })
     }
 
@@ -288,7 +285,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            OutgoingEvent::ime_commit(tag, text.clone()).with_window_id(&window_id)
+            OutgoingEvent::ime_commit(tag, text.clone())
         })
     }
 
@@ -299,7 +296,7 @@ impl App {
         };
         let wid = Some(window_id.as_str());
         self.emit_subscription_for_window(SUB_IME, wid, captured, |tag| {
-            OutgoingEvent::ime_closed(tag).with_window_id(&window_id)
+            OutgoingEvent::ime_closed(tag)
         })
     }
 

@@ -40,18 +40,18 @@ fn handle_slider_message(
     match msg {
         Message::Slide(window_id, id, value) => {
             last_values.insert((window_id.clone(), id.clone()), *value);
-            Some(vec![
-                crate::protocol::OutgoingEvent::slide(id.clone(), *value)
-                    .with_window_id(window_id.clone()),
-            ])
+            Some(vec![crate::protocol::OutgoingEvent::slide(
+                id.clone(),
+                *value,
+            )])
         }
         Message::SlideRelease(window_id, id) => {
             let key = (window_id.clone(), id.clone());
             let value = last_values.remove(&key).unwrap_or(0.0);
-            Some(vec![
-                crate::protocol::OutgoingEvent::slide_release(id.clone(), value)
-                    .with_window_id(window_id.clone()),
-            ])
+            Some(vec![crate::protocol::OutgoingEvent::slide_release(
+                id.clone(),
+                value,
+            )])
         }
         _ => None,
     }

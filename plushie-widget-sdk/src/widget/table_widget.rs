@@ -267,7 +267,7 @@ fn build_header_cell<'a, R: PlushieRenderer>(
                 .on_press(Message::Event {
                     window_id,
                     id: click_id,
-                    data: serde_json::json!(click_key),
+                    value: serde_json::json!(click_key),
                     family: "sort".into(),
                 })
                 .style(button::text),

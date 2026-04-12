@@ -656,82 +656,62 @@ pub fn build_interact_response(
 ) -> InteractResponse {
     let widget_target = resolve_widget_target(core, &selector);
 
-    // Resolve window context for input simulation actions that don't
-    // target a specific widget. Uses the selector's widget window if
-    // available, otherwise falls back to the first window in the tree.
-    let context_window_id = widget_target
-        .as_ref()
-        .map(|(wid, _)| wid.clone())
-        .or_else(|| find_first_window_id(core));
-
     let events: Vec<OutgoingEvent> = match (action.as_str(), widget_target) {
-        ("click", Some((window_id, wid))) => {
-            vec![OutgoingEvent::click(wid).with_window_id(window_id)]
+        ("click", Some((_window_id, wid))) => {
+            vec![OutgoingEvent::click(wid)]
         }
-        ("type_text", Some((window_id, wid))) => {
+        ("type_text", Some((_window_id, wid))) => {
             let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or("");
-            vec![OutgoingEvent::input(wid, text.to_string()).with_window_id(window_id)]
+            vec![OutgoingEvent::input(wid, text.to_string())]
         }
-        ("submit", Some((window_id, wid))) => {
+        ("submit", Some((_window_id, wid))) => {
             let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
-            vec![OutgoingEvent::submit(wid, value.to_string()).with_window_id(window_id)]
+            vec![OutgoingEvent::submit(wid, value.to_string())]
         }
-        ("toggle", Some((window_id, wid))) => {
+        ("toggle", Some((_window_id, wid))) => {
             let value = payload
                 .get("value")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            vec![OutgoingEvent::toggle(wid, value).with_window_id(window_id)]
+            vec![OutgoingEvent::toggle(wid, value)]
         }
-        ("select", Some((window_id, wid))) => {
+        ("select", Some((_window_id, wid))) => {
             let value = payload.get("value").and_then(|v| v.as_str()).unwrap_or("");
-            vec![OutgoingEvent::select(wid, value.to_string()).with_window_id(window_id)]
+            vec![OutgoingEvent::select(wid, value.to_string())]
         }
-        ("slide", Some((window_id, wid))) => {
+        ("slide", Some((_window_id, wid))) => {
             let value = payload.get("value").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            vec![OutgoingEvent::slide(wid, value).with_window_id(window_id)]
+            vec![OutgoingEvent::slide(wid, value)]
         }
         ("press", _) => {
             let payload_map = payload.as_object();
             let (key, modifiers) = parse_key_and_modifiers(payload_map);
-            with_context_window(
-                vec![OutgoingEvent::scripting_key_press(key, modifiers)],
-                &context_window_id,
-            )
+            vec![OutgoingEvent::scripting_key_press(key, modifiers)]
         }
         ("release", _) => {
             let payload_map = payload.as_object();
             let (key, modifiers) = parse_key_and_modifiers(payload_map);
-            with_context_window(
-                vec![OutgoingEvent::scripting_key_release(key, modifiers)],
-                &context_window_id,
-            )
+            vec![OutgoingEvent::scripting_key_release(key, modifiers)]
         }
         ("move_to", _) => {
             let x = payload.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let y = payload.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            with_context_window(
-                vec![OutgoingEvent::scripting_cursor_moved(x, y)],
-                &context_window_id,
-            )
+            vec![OutgoingEvent::scripting_cursor_moved(x, y)]
         }
         ("type_key", _) => {
             let payload_map = payload.as_object();
             let (key, modifiers) = parse_key_and_modifiers(payload_map);
-            with_context_window(
-                vec![
-                    OutgoingEvent::scripting_key_press(key.clone(), modifiers.clone()),
-                    OutgoingEvent::scripting_key_release(key, modifiers),
-                ],
-                &context_window_id,
-            )
+            vec![
+                OutgoingEvent::scripting_key_press(key.clone(), modifiers.clone()),
+                OutgoingEvent::scripting_key_release(key, modifiers),
+            ]
         }
-        ("paste", Some((window_id, wid))) => {
+        ("paste", Some((_window_id, wid))) => {
             let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or("");
-            vec![OutgoingEvent::paste(wid, text.to_string()).with_window_id(window_id)]
+            vec![OutgoingEvent::paste(wid, text.to_string())]
         }
         // Widget-targeted scroll: scroll a specific scrollable widget.
-        ("scroll", Some((window_id, wid))) => {
+        ("scroll", Some((_window_id, wid))) => {
             let delta_x = payload
                 .get("delta_x")
                 .and_then(|v| v.as_f64())
@@ -740,14 +720,11 @@ pub fn build_interact_response(
                 .get("delta_y")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0);
-            vec![
-                OutgoingEvent::generic(
-                    "scroll",
-                    wid,
-                    Some(serde_json::json!({"delta_x": delta_x, "delta_y": delta_y})),
-                )
-                .with_window_id(window_id),
-            ]
+            vec![OutgoingEvent::generic(
+                "scroll",
+                wid,
+                Some(serde_json::json!({"delta_x": delta_x, "delta_y": delta_y})),
+            )]
         }
         // Input simulation: wheel event at current cursor position.
         ("scroll", None) => {
@@ -759,20 +736,18 @@ pub fn build_interact_response(
                 .get("delta_y")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0);
-            with_context_window(
-                vec![OutgoingEvent::scripting_scroll(delta_x, delta_y)],
-                &context_window_id,
-            )
+            vec![OutgoingEvent::scripting_scroll(delta_x, delta_y)]
         }
-        ("sort", Some((window_id, wid))) => {
+        ("sort", Some((_window_id, wid))) => {
             let column = payload.get("column").and_then(|v| v.as_str()).unwrap_or("");
-            vec![
-                OutgoingEvent::generic("sort", wid, Some(serde_json::json!({"column": column})))
-                    .with_window_id(window_id),
-            ]
+            vec![OutgoingEvent::generic(
+                "sort",
+                wid,
+                Some(serde_json::json!({"column": column})),
+            )]
         }
-        ("pane_focus_cycle", Some((window_id, wid))) => {
-            vec![OutgoingEvent::generic("pane_focus_cycle", wid, None).with_window_id(window_id)]
+        ("pane_focus_cycle", Some((_window_id, wid))) => {
+            vec![OutgoingEvent::generic("pane_focus_cycle", wid, None)]
         }
         ("canvas_press", Some((window_id, wid))) => {
             let x = payload.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
@@ -793,21 +768,17 @@ pub fn build_interact_response(
                 if let Some(element_id) =
                     plushie_widget_sdk::widget::canvas::canvas_hit_test(node, x, y)
                 {
-                    vec![
-                        OutgoingEvent::generic(
-                            "click",
-                            element_id,
-                            Some(serde_json::json!({
-                                "x": x, "y": y, "button": button,
-                            })),
-                        )
-                        .with_window_id(window_id),
-                    ]
+                    vec![OutgoingEvent::generic(
+                        "click",
+                        element_id,
+                        Some(serde_json::json!({
+                            "x": x, "y": y, "button": button,
+                        })),
+                    )]
                 } else if plushie_widget_sdk::widget::canvas::canvas_has_on_press(node) {
-                    vec![
-                        OutgoingEvent::pointer_press(wid, x, y, &button, "mouse", None, mods)
-                            .with_window_id(window_id),
-                    ]
+                    vec![OutgoingEvent::pointer_press(
+                        wid, x, y, &button, "mouse", None, mods,
+                    )]
                 } else {
                     vec![]
                 }
@@ -829,10 +800,9 @@ pub fn build_interact_response(
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
                 if plushie_widget_sdk::widget::canvas::canvas_has_on_press(node) {
-                    vec![
-                        OutgoingEvent::pointer_release(wid, x, y, &button, "mouse", None, mods)
-                            .with_window_id(window_id),
-                    ]
+                    vec![OutgoingEvent::pointer_release(
+                        wid, x, y, &button, "mouse", None, mods,
+                    )]
                 } else {
                     vec![]
                 }
@@ -853,19 +823,13 @@ pub fn build_interact_response(
                 if let Some(element_id) =
                     plushie_widget_sdk::widget::canvas::canvas_hit_test(node, x, y)
                 {
-                    events.push(
-                        OutgoingEvent::generic(
-                            "enter",
-                            element_id,
-                            Some(serde_json::json!({"x": x, "y": y})),
-                        )
-                        .with_window_id(window_id.clone()),
-                    );
+                    events.push(OutgoingEvent::generic(
+                        "enter",
+                        element_id,
+                        Some(serde_json::json!({"x": x, "y": y})),
+                    ));
                 }
-                events.push(
-                    OutgoingEvent::pointer_move(wid, x, y, "mouse", None, mods)
-                        .with_window_id(window_id),
-                );
+                events.push(OutgoingEvent::pointer_move(wid, x, y, "mouse", None, mods));
                 events
             } else {
                 vec![]
@@ -908,21 +872,18 @@ pub fn build_interact_response(
                     remaining = &scoped_id[..slash];
                 }
 
-                if let Some((node, window_id, canvas_id, element_local)) = found_canvas {
+                if let Some((node, _window_id, canvas_id, element_local)) = found_canvas {
                     if plushie_widget_sdk::widget::canvas::canvas_find_element_by_id(
                         node,
                         element_local,
                     ) {
-                        vec![
-                            OutgoingEvent::generic(
-                                "click",
-                                scoped_id,
-                                Some(serde_json::json!({
-                                    "x": 0.0, "y": 0.0, "button": "left",
-                                })),
-                            )
-                            .with_window_id(window_id),
-                        ]
+                        vec![OutgoingEvent::generic(
+                            "click",
+                            scoped_id,
+                            Some(serde_json::json!({
+                                "x": 0.0, "y": 0.0, "button": "left",
+                            })),
+                        )]
                     } else {
                         log::warn!(
                             "canvas element '{element_local}' not found in canvas '{canvas_id}'"
@@ -961,36 +922,6 @@ fn resolve_widget_target(core: &Core, selector: &Value) -> Option<(String, Strin
         return None;
     }
     Some((window_id, widget_id))
-}
-
-/// Applies a context window ID to a list of events. Used by input
-/// simulation actions (press, scroll, etc.) that produce events
-/// without an inherent widget target.
-fn with_context_window(
-    events: Vec<OutgoingEvent>,
-    context_window_id: &Option<String>,
-) -> Vec<OutgoingEvent> {
-    match context_window_id {
-        Some(wid) => events
-            .into_iter()
-            .map(|e| e.with_window_id(wid.clone()))
-            .collect(),
-        None => events,
-    }
-}
-
-/// Returns the ID of the first window node in the tree, or None.
-/// Used as a fallback for input simulation actions when the selector
-/// doesn't resolve to a specific widget.
-fn find_first_window_id(core: &Core) -> Option<String> {
-    let root = core.tree.root()?;
-    if root.type_name == "window" {
-        return Some(root.id.clone());
-    }
-    root.children
-        .iter()
-        .find(|child| child.type_name == "window")
-        .map(|child| child.id.clone())
 }
 
 fn find_tree_node_by_id_with_window<'a>(

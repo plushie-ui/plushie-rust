@@ -70,13 +70,12 @@ impl App {
             // Status changes are emitted directly, not through the widget
             // message pipeline. This prevents them from being bundled into
             // interact_step event arrays during headless interactions.
-            Message::StatusChanged(window_id, id, status) => {
+            Message::StatusChanged(_window_id, id, status) => {
                 let event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
                     "status".to_string(),
                     id,
                     Some(serde_json::json!(status)),
-                )
-                .with_window_id(window_id);
+                );
                 self.emitter.emit_immediate(event)
             }
 

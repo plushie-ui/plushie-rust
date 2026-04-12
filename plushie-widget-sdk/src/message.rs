@@ -183,11 +183,11 @@ pub enum Message {
     /// MouseArea scroll event (window_id, id, delta_x, delta_y, x, y).
     MouseAreaScroll(String, String, f32, f32, f32, f32),
     /// Generic widget event. Used for on_open, on_close, sort, and
-    /// other events that carry a family string and optional data.
+    /// other events that carry a family string and optional value.
     Event {
         window_id: String,
         id: String,
-        data: Value,
+        value: Value,
         family: String,
     },
     /// Widget status changed (window_id, widget_id, status_name).
@@ -253,46 +253,40 @@ impl Message {
     /// actions, widget events, pane grid state changes).
     pub fn to_outgoing_event(&self) -> Option<OutgoingEvent> {
         match self {
-            Message::Click(window_id, id) => {
-                Some(OutgoingEvent::click(id.clone()).with_window_id(window_id.clone()))
+            Message::Click(_window_id, id) => Some(OutgoingEvent::click(id.clone())),
+            Message::Input(_window_id, id, value) => {
+                Some(OutgoingEvent::input(id.clone(), value.clone()))
             }
-            Message::Input(window_id, id, value) => Some(
-                OutgoingEvent::input(id.clone(), value.clone()).with_window_id(window_id.clone()),
-            ),
-            Message::Submit(window_id, id, value) => Some(
-                OutgoingEvent::submit(id.clone(), value.clone()).with_window_id(window_id.clone()),
-            ),
-            Message::Toggle(window_id, id, value) => {
-                Some(OutgoingEvent::toggle(id.clone(), *value).with_window_id(window_id.clone()))
+            Message::Submit(_window_id, id, value) => {
+                Some(OutgoingEvent::submit(id.clone(), value.clone()))
             }
-            Message::Select(window_id, id, value) => Some(
-                OutgoingEvent::select(id.clone(), value.clone()).with_window_id(window_id.clone()),
-            ),
-            Message::Paste(window_id, id, text) => Some(
-                OutgoingEvent::paste(id.clone(), text.clone()).with_window_id(window_id.clone()),
-            ),
-            Message::OptionHovered(window_id, id, value) => Some(
-                OutgoingEvent::option_hovered(id.clone(), value.clone())
-                    .with_window_id(window_id.clone()),
-            ),
-            Message::SensorResize(window_id, id, w, h) => {
-                Some(OutgoingEvent::resize(id.clone(), *w, *h).with_window_id(window_id.clone()))
+            Message::Toggle(_window_id, id, value) => {
+                Some(OutgoingEvent::toggle(id.clone(), *value))
             }
-            Message::ScrollEvent(window_id, id, viewport) => Some(
-                OutgoingEvent::scroll(
-                    id.clone(),
-                    viewport.absolute_x,
-                    viewport.absolute_y,
-                    viewport.relative_x,
-                    viewport.relative_y,
-                    viewport.viewport_width,
-                    viewport.viewport_height,
-                    viewport.content_width,
-                    viewport.content_height,
-                )
-                .with_window_id(window_id.clone()),
-            ),
-            Message::MouseAreaEvent(window_id, id, kind, x, y) => {
+            Message::Select(_window_id, id, value) => {
+                Some(OutgoingEvent::select(id.clone(), value.clone()))
+            }
+            Message::Paste(_window_id, id, text) => {
+                Some(OutgoingEvent::paste(id.clone(), text.clone()))
+            }
+            Message::OptionHovered(_window_id, id, value) => {
+                Some(OutgoingEvent::option_hovered(id.clone(), value.clone()))
+            }
+            Message::SensorResize(_window_id, id, w, h) => {
+                Some(OutgoingEvent::resize(id.clone(), *w, *h))
+            }
+            Message::ScrollEvent(_window_id, id, viewport) => Some(OutgoingEvent::scroll(
+                id.clone(),
+                viewport.absolute_x,
+                viewport.absolute_y,
+                viewport.relative_x,
+                viewport.relative_y,
+                viewport.viewport_width,
+                viewport.viewport_height,
+                viewport.content_width,
+                viewport.content_height,
+            )),
+            Message::MouseAreaEvent(_window_id, id, kind, x, y) => {
                 let mods = KeyModifiers::default();
                 match kind.as_str() {
                     "right_press" => Some(OutgoingEvent::pointer_press(
@@ -343,41 +337,46 @@ impl Message {
                     _ => None,
                 }
             }
-            .map(|event| event.with_window_id(window_id.clone())),
-            Message::MouseAreaMove(window_id, id, x, y) => {
+            Message::MouseAreaMove(_window_id, id, x, y) => {
                 let mods = KeyModifiers::default();
-                Some(
-                    OutgoingEvent::pointer_move(id.clone(), *x, *y, "mouse", None, mods)
-                        .with_window_id(window_id.clone()),
-                )
+                Some(OutgoingEvent::pointer_move(
+                    id.clone(),
+                    *x,
+                    *y,
+                    "mouse",
+                    None,
+                    mods,
+                ))
             }
-            Message::MouseAreaScroll(window_id, id, dx, dy, x, y) => {
+            Message::MouseAreaScroll(_window_id, id, dx, dy, x, y) => {
                 let mods = KeyModifiers::default();
-                Some(
-                    OutgoingEvent::pointer_scroll(id.clone(), *x, *y, *dx, *dy, "mouse", mods)
-                        .with_window_id(window_id.clone()),
-                )
+                Some(OutgoingEvent::pointer_scroll(
+                    id.clone(),
+                    *x,
+                    *y,
+                    *dx,
+                    *dy,
+                    "mouse",
+                    mods,
+                ))
             }
             // CanvasElementFocusChanged is internal-only: split into
             // blur + focus events by CanvasEngine::handle_message.
             Message::CanvasElementFocusChanged { .. } => None,
             Message::Diagnostic {
-                window_id,
                 canvas_id,
                 element_id,
                 level,
                 code,
                 message,
-            } => Some(
-                OutgoingEvent::diagnostic(
-                    canvas_id.clone(),
-                    element_id.clone(),
-                    level,
-                    code,
-                    message,
-                )
-                .with_window_id(window_id.clone()),
-            ),
+                ..
+            } => Some(OutgoingEvent::diagnostic(
+                canvas_id.clone(),
+                element_id.clone(),
+                level,
+                code,
+                message,
+            )),
             _ => None,
         }
     }
@@ -393,13 +392,13 @@ impl Message {
         window_id: impl Into<String>,
         id: impl Into<String>,
         family: impl Into<String>,
-        data: Value,
+        value: Value,
     ) -> Self {
         Message::Event {
             window_id: window_id.into(),
             id: id.into(),
             family: family.into(),
-            data,
+            value,
         }
     }
 }

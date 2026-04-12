@@ -5,6 +5,7 @@
 
 use plushie::prelude::*;
 use plushie::widget::{EventResult, Widget};
+use plushie::WidgetEvent;
 use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
@@ -206,4 +207,51 @@ fn widget_view_reflects_pressed_state() {
 
     let pressed = ToggleButton::view("t", &p, &ToggleState { pressed: true });
     assert_eq!(pressed.props.get_str("style"), Some("primary"));
+}
+
+// ---------------------------------------------------------------------------
+// EventResult::emit_event tests
+// ---------------------------------------------------------------------------
+
+#[derive(WidgetEvent)]
+enum TestWidgetEvent {
+    Selected(u64),
+    Toggled(bool),
+    Cleared,
+}
+
+#[test]
+fn emit_event_typed_u64() {
+    let result = EventResult::emit_event(TestWidgetEvent::Selected(42));
+    match result {
+        EventResult::Emit { family, value } => {
+            assert_eq!(family, "selected");
+            assert_eq!(value, json!(42));
+        }
+        other => panic!("expected Emit, got {other:?}"),
+    }
+}
+
+#[test]
+fn emit_event_typed_bool() {
+    let result = EventResult::emit_event(TestWidgetEvent::Toggled(true));
+    match result {
+        EventResult::Emit { family, value } => {
+            assert_eq!(family, "toggled");
+            assert_eq!(value, json!(true));
+        }
+        other => panic!("expected Emit, got {other:?}"),
+    }
+}
+
+#[test]
+fn emit_event_typed_unit() {
+    let result = EventResult::emit_event(TestWidgetEvent::Cleared);
+    match result {
+        EventResult::Emit { family, value } => {
+            assert_eq!(family, "cleared");
+            assert!(value.is_null());
+        }
+        other => panic!("expected Emit, got {other:?}"),
+    }
 }

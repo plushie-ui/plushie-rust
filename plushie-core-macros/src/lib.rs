@@ -264,6 +264,134 @@ fn pascal_to_snake(s: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// WidgetEvent derive
+// ---------------------------------------------------------------------------
+
+/// Typed event declarations for composite widgets.
+///
+/// Generates a [`WidgetEventEncode`] implementation that converts
+/// each variant to a `(family, PropValue)` pair for wire transport.
+/// Variant names become snake_case family strings.
+///
+/// # Variant forms
+///
+/// - **Unit**: `Cleared` produces `("cleared", PropValue::Null)`
+/// - **Single-field tuple**: `Select(u64)` produces `("select", PropValue::U64(v))`
+/// - **Named fields**: `Change { x: f32, y: f32 }` produces
+///   `("change", PropValue::Object({x: ..., y: ...}))`
+///
+/// Field types must implement [`PlushieType`] (all primitives do).
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(WidgetEvent)]
+/// enum StarRatingEvent {
+///     /// User selected a rating.
+///     Select(u64),
+///     /// Hover state changed.
+///     HoverChanged(bool),
+///     /// Selection was cleared.
+///     Cleared,
+/// }
+///
+/// // In handle_event:
+/// EventResult::emit_event(StarRatingEvent::Select(5))
+/// ```
+#[proc_macro_derive(WidgetEvent)]
+pub fn derive_widget_event(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    match derive_widget_event_impl(&input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+fn derive_widget_event_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let enum_name = &input.ident;
+
+    let variants = match &input.data {
+        Data::Enum(data) => &data.variants,
+        _ => {
+            return Err(syn::Error::new_spanned(
+                enum_name,
+                "WidgetEvent can only be derived for enums",
+            ));
+        }
+    };
+
+    // Reject multi-field tuple variants (ambiguous encoding).
+    for v in variants {
+        if let Fields::Unnamed(fields) = &v.fields {
+            if fields.unnamed.len() > 1 {
+                return Err(syn::Error::new_spanned(
+                    v,
+                    "WidgetEvent tuple variants must have exactly one field; \
+                     use named fields for multiple values",
+                ));
+            }
+        }
+    }
+
+    let match_arms = variants.iter().map(|v| {
+        let ident = &v.ident;
+        let family = pascal_to_snake(&ident.to_string());
+
+        match &v.fields {
+            Fields::Unit => {
+                quote! {
+                    Self::#ident => (#family, ::plushie_core::protocol::PropValue::Null)
+                }
+            }
+            Fields::Unnamed(_) => {
+                // Single-field tuple variant: encode via PlushieType::wire_encode.
+                quote! {
+                    Self::#ident(v) => (
+                        #family,
+                        ::plushie_core::types::PlushieType::wire_encode(v),
+                    )
+                }
+            }
+            Fields::Named(fields) => {
+                let field_names: Vec<_> = fields.named.iter()
+                    .map(|f| f.ident.as_ref().unwrap())
+                    .collect();
+                let field_keys: Vec<_> = field_names.iter()
+                    .map(|n| n.to_string())
+                    .collect();
+                let inserts = field_names.iter().zip(field_keys.iter()).map(|(name, key)| {
+                    quote! {
+                        map.insert(
+                            #key,
+                            ::plushie_core::types::PlushieType::wire_encode(#name),
+                        );
+                    }
+                });
+
+                quote! {
+                    Self::#ident { #(#field_names),* } => {
+                        let mut map = ::plushie_core::protocol::PropMap::new();
+                        #(#inserts)*
+                        (#family, ::plushie_core::protocol::PropValue::Object(map))
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(quote! {
+        impl ::plushie_core::types::WidgetEventEncode for #enum_name {
+            fn to_wire(&self) -> (&'static str, ::plushie_core::protocol::PropValue) {
+                match self {
+                    #(#match_arms,)*
+                }
+            }
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
 // WidgetProps derive
 // ---------------------------------------------------------------------------
 
@@ -615,6 +743,93 @@ mod tests {
             }
         };
         assert!(derive_enum_impl(&input).is_err());
+    }
+
+    // -- WidgetEvent tests --
+
+    #[test]
+    fn widget_event_unit_variant() {
+        let input: DeriveInput = parse_quote! {
+            enum TestEvent {
+                Cleared,
+            }
+        };
+        let output = derive_widget_event_impl(&input).unwrap();
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("WidgetEventEncode"));
+        assert!(output_str.contains("to_wire"));
+        assert!(output_str.contains("\"cleared\""));
+        assert!(output_str.contains("PropValue :: Null"));
+    }
+
+    #[test]
+    fn widget_event_tuple_variant() {
+        let input: DeriveInput = parse_quote! {
+            enum TestEvent {
+                Select(u64),
+                HoverChanged(bool),
+            }
+        };
+        let output = derive_widget_event_impl(&input).unwrap();
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("\"select\""));
+        assert!(output_str.contains("\"hover_changed\""));
+        assert!(output_str.contains("wire_encode"));
+    }
+
+    #[test]
+    fn widget_event_struct_variant() {
+        let input: DeriveInput = parse_quote! {
+            enum TestEvent {
+                Change { x: f32, y: f32 },
+            }
+        };
+        let output = derive_widget_event_impl(&input).unwrap();
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("\"change\""));
+        assert!(output_str.contains("PropMap"));
+        assert!(output_str.contains("\"x\""));
+        assert!(output_str.contains("\"y\""));
+    }
+
+    #[test]
+    fn widget_event_mixed_variants() {
+        let input: DeriveInput = parse_quote! {
+            enum TestEvent {
+                Select(u64),
+                Change { x: f32, y: f32 },
+                Cleared,
+            }
+        };
+        let output = derive_widget_event_impl(&input).unwrap();
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("\"select\""));
+        assert!(output_str.contains("\"change\""));
+        assert!(output_str.contains("\"cleared\""));
+    }
+
+    #[test]
+    fn widget_event_rejects_struct() {
+        let input: DeriveInput = parse_quote! {
+            struct NotAnEnum {
+                x: f32,
+            }
+        };
+        assert!(derive_widget_event_impl(&input).is_err());
+    }
+
+    #[test]
+    fn widget_event_rejects_multi_field_tuple() {
+        let input: DeriveInput = parse_quote! {
+            enum BadEvent {
+                Change(f32, f32),
+            }
+        };
+        assert!(derive_widget_event_impl(&input).is_err());
     }
 
     // -- WidgetProps tests --

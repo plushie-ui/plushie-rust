@@ -260,3 +260,20 @@ impl PlushieType for PropValue {
         "prop_value"
     }
 }
+
+// -------------------------------------------------------------------------
+// WidgetEventEncode: typed event -> wire format
+// -------------------------------------------------------------------------
+
+/// Trait for typed widget events that can be encoded to wire format.
+///
+/// Derived automatically by `#[derive(WidgetEvent)]`. Each enum
+/// variant maps to a `(family, payload)` pair where family is the
+/// snake_case variant name and payload is a `PropValue`.
+///
+/// Used by `EventResult::emit_event` to emit typed events from
+/// composite widget `handle_event` implementations.
+pub trait WidgetEventEncode {
+    /// Convert to wire format: (family_name, payload).
+    fn to_wire(&self) -> (&'static str, PropValue);
+}

@@ -23,6 +23,12 @@ use plushie::widget::{Widget, WidgetView, EventResult};
 
 struct StarRating;
 
+#[derive(WidgetEvent)]
+enum StarRatingEvent {
+    /// User selected a rating.
+    Select(u64),
+}
+
 #[derive(Default)]
 struct StarState {
     hover: Option<usize>,
@@ -54,7 +60,7 @@ impl Widget for StarRating {
             Some(Click(id)) if id.starts_with("star-") => {
                 if let Ok(n) = id["star-".len()..].parse::<usize>() {
                     state.hover = None;
-                    EventResult::emit("select", (n + 1) as u64)
+                    EventResult::emit_event(StarRatingEvent::Select((n + 1) as u64))
                 } else {
                     EventResult::Ignored
                 }
@@ -77,6 +83,12 @@ impl Widget for StarRating {
 // ---------------------------------------------------------------------------
 
 struct ThemeToggle;
+
+#[derive(WidgetEvent)]
+enum ThemeToggleEvent {
+    /// Theme toggled on or off.
+    Toggle(bool),
+}
 
 /// ThemeToggle has no internal state; it's a pure view wrapper
 /// that transforms toggler events into "toggle" emissions.
@@ -107,7 +119,9 @@ impl Widget for ThemeToggle {
 
     fn handle_event(event: &Event, _state: &mut Self::State) -> EventResult {
         match event.widget_match() {
-            Some(Toggle("switch", on)) => EventResult::emit("toggle", on),
+            Some(Toggle("switch", on)) => {
+                EventResult::emit_event(ThemeToggleEvent::Toggle(on))
+            }
             _ => EventResult::Ignored,
         }
     }

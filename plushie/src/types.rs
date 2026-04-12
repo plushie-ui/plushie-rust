@@ -11,7 +11,7 @@
 
 pub use plushie_core::types::{
     // Core traits
-    PlushieType, FromNode,
+    PlushieType, FromNode, WidgetEventEncode,
     // Untyped props escape hatch
     UntypedProps,
     // Animation

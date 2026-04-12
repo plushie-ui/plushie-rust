@@ -7,7 +7,7 @@
 
 extern crate self as plushie_core;
 
-pub use plushie_core_macros::PlushieEnum;
+pub use plushie_core_macros::{PlushieEnum, WidgetEvent};
 
 pub mod animation;
 pub mod ops;

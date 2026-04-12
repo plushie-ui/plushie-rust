@@ -7,8 +7,8 @@
 // Core trait
 pub use crate::App;
 
-// Derive macro for widget authoring
-pub use crate::WidgetProps;
+// Derive macros for widget authoring
+pub use crate::{WidgetEvent, WidgetProps};
 
 // Widget registrar (for App::view)
 pub use crate::widget::WidgetRegistrar;
@@ -37,7 +37,7 @@ pub use crate::types::{
     HorizontalAlignment, InputPurpose, KeyModifiers, Length, Length::*,
     LineCap, LineJoin, LineHeight, Padding, PlushieType, Position, Radius,
     Shadow, Shaping, SortOrder, Style, StyleMap, Theme, UntypedProps,
-    WindowLevel, Wrapping,
+    WidgetEventEncode, WindowLevel, Wrapping,
 };
 
 // A11y sub-types for typed accessibility builders

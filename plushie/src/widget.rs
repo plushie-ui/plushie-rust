@@ -12,6 +12,11 @@
 //!
 //! struct StarRating;
 //!
+//! #[derive(WidgetEvent)]
+//! enum StarRatingEvent {
+//!     Select(u64),
+//! }
+//!
 //! #[derive(Default)]
 //! struct StarState { hover: Option<usize> }
 //!
@@ -28,7 +33,7 @@
 //!     fn handle_event(event: &Event, state: &mut StarState) -> EventResult {
 //!         match event.widget_match() {
 //!             Some(Click(id)) if id.starts_with("star-") => {
-//!                 EventResult::emit("select", 1)
+//!                 EventResult::emit_event(StarRatingEvent::Select(1))
 //!             }
 //!             _ => EventResult::Consumed,
 //!         }
@@ -121,11 +126,31 @@ pub enum EventResult {
 }
 
 impl EventResult {
-    /// Create an Emit result.
+    /// Create an Emit result from a family string and untyped value.
     pub fn emit(family: &str, value: impl Into<Value>) -> Self {
         Self::Emit {
             family: family.to_string(),
             value: value.into(),
+        }
+    }
+
+    /// Create an Emit result from a typed widget event.
+    ///
+    /// The event's variant name becomes the family string (snake_case)
+    /// and its payload is encoded via `PlushieType::wire_encode`.
+    ///
+    /// ```ignore
+    /// #[derive(WidgetEvent)]
+    /// enum MyEvent { Select(u64) }
+    ///
+    /// EventResult::emit_event(MyEvent::Select(5))
+    /// // equivalent to: EventResult::emit("select", 5u64)
+    /// ```
+    pub fn emit_event(event: impl plushie_core::types::WidgetEventEncode) -> Self {
+        let (family, value) = event.to_wire();
+        Self::Emit {
+            family: family.to_string(),
+            value: serde_json::Value::from(value),
         }
     }
 }

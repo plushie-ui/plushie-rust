@@ -415,10 +415,4 @@ impl Command {
             value,
         })
     }
-
-    /// Send a command to a widget by ID (old name, delegates to `send`).
-    #[deprecated(note = "use Command::send() or Command::widget() instead")]
-    pub fn widget_command(node_id: &str, op: &str, payload: Value) -> Self {
-        Self::send(node_id, op, payload)
-    }
 }

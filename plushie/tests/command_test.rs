@@ -81,9 +81,8 @@ fn command_clipboard_read() {
 }
 
 #[test]
-fn command_carries_payload() {
-    #[allow(deprecated)]
-    let cmd = Command::widget_command("gauge-1", "set_value", serde_json::json!({"value": 42}));
+fn command_send_carries_payload() {
+    let cmd = Command::send("gauge-1", "set_value", serde_json::json!({"value": 42}));
     match cmd {
         Command::Renderer(RendererOp::Command { id, family, value }) => {
             assert_eq!(id, "gauge-1");

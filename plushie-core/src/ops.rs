@@ -124,10 +124,6 @@ pub enum RendererOp {
     /// Perform an image operation (create, update, delete).
     Image(ImageOp),
 
-    // -- PaneGrid --
-    /// Perform a pane grid operation (split, close, swap).
-    PaneGrid(PaneGridOp),
-
     // -- Accessibility --
     /// Announce text to screen readers.
     Announce(String),
@@ -440,34 +436,6 @@ pub enum ImageOp {
     List { tag: String },
     /// Delete all loaded images.
     Clear,
-}
-
-// ---------------------------------------------------------------------------
-// PaneGrid operations
-// ---------------------------------------------------------------------------
-
-/// A pane grid operation.
-#[derive(Debug)]
-pub enum PaneGridOp {
-    /// Split a pane along an axis, creating a new pane.
-    Split {
-        target: String,
-        pane: String,
-        axis: String,
-        new_pane: String,
-    },
-    /// Close a pane.
-    Close { target: String, pane: String },
-    /// Swap the positions of two panes.
-    Swap {
-        target: String,
-        a: String,
-        b: String,
-    },
-    /// Maximize a pane to fill the entire grid.
-    Maximize { target: String, pane: String },
-    /// Restore the pane grid from a maximized state.
-    Restore(String),
 }
 
 // ---------------------------------------------------------------------------

@@ -76,9 +76,6 @@ impl App {
             // -- Images --
             RendererOp::Image(op) => self.execute_image_op(op),
 
-            // -- PaneGrid --
-            RendererOp::PaneGrid(op) => self.execute_pane_grid_op(op),
-
             // -- Font loading --
             RendererOp::LoadFont(data) => iced::font::load(data).map(|_| Message::NoOp),
 
@@ -407,35 +404,6 @@ impl App {
             _ => {
                 self.registry.handle_widget_op(id, family, value);
                 Task::none()
-            }
-        }
-    }
-
-    fn execute_pane_grid_op(&mut self, op: PaneGridOp) -> Task<Message> {
-        use serde_json::json;
-        match op {
-            PaneGridOp::Split {
-                target,
-                pane,
-                axis,
-                new_pane,
-            } => self.handle_widget_op(
-                "pane_split",
-                &json!({
-                    "target": target, "pane": pane, "axis": axis, "new_pane": new_pane
-                }),
-            ),
-            PaneGridOp::Close { target, pane } => {
-                self.handle_widget_op("pane_close", &json!({"target": target, "pane": pane}))
-            }
-            PaneGridOp::Swap { target, a, b } => {
-                self.handle_widget_op("pane_swap", &json!({"target": target, "a": a, "b": b}))
-            }
-            PaneGridOp::Maximize { target, pane } => {
-                self.handle_widget_op("pane_maximize", &json!({"target": target, "pane": pane}))
-            }
-            PaneGridOp::Restore(target) => {
-                self.handle_widget_op("pane_restore", &json!({"target": target}))
             }
         }
     }

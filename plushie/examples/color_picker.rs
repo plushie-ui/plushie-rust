@@ -104,7 +104,7 @@ impl App for ColorPickerApp {
     }
 
     fn update(model: &mut Self, event: Event) -> Command {
-        // The widget emits "change" which maps to EventType::Other(0)
+        // The widget emits "change" which maps to EventType::Custom(_)
         // since "change" isn't a built-in family. Use as_widget() to
         // read the structured value.
         if let Some(w) = event.as_widget()

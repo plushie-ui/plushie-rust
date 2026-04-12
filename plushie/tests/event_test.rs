@@ -372,6 +372,6 @@ fn family_to_event_type_returns_other_for_unknown() {
     use plushie::event::family_to_event_type;
     assert!(matches!(
         family_to_event_type("nonsense"),
-        EventType::Other(_)
+        EventType::Custom(_)
     ));
 }

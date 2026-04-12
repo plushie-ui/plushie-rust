@@ -137,7 +137,7 @@ impl Event {
 /// The kind of widget interaction that occurred.
 ///
 /// `Copy` so it can be used directly in match arms without borrowing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EventType {
     Click,
     DoubleClick,
@@ -173,8 +173,9 @@ pub enum EventType {
     Open,
     Close,
     KeyBinding,
-    /// A custom event family from a native widget.
-    Other(u64),
+    /// A custom event family (e.g., "star_rating:select").
+    /// Carries the raw family string for matching.
+    Custom(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +219,7 @@ impl WidgetEvent {
     fn to_match(&self) -> WidgetMatch<'_> {
         let id = &self.scoped_id.id;
         use EventType::*;
-        match self.event_type {
+        match &self.event_type {
             Click => WidgetMatch::Click(id),
             DoubleClick => WidgetMatch::DoubleClick(id),
             Input => WidgetMatch::Input(id, self.value.as_str().unwrap_or_default()),
@@ -230,6 +231,9 @@ impl WidgetEvent {
             Paste => WidgetMatch::Paste(id, self.value.as_str().unwrap_or_default()),
             Press => WidgetMatch::Press(id, self.value.as_str().unwrap_or("Left")),
             Release => WidgetMatch::Release(id, self.value.as_str().unwrap_or("Left")),
+            Move => WidgetMatch::Move(id, &self.value),
+            Scroll => WidgetMatch::Scroll(id, &self.value),
+            Scrolled => WidgetMatch::Scrolled(id, &self.value),
             Enter => WidgetMatch::Enter(id),
             Exit => WidgetMatch::Exit(id),
             Drag => WidgetMatch::Drag(id, &self.value),
@@ -237,7 +241,24 @@ impl WidgetEvent {
             Focused => WidgetMatch::Focused(id),
             Blurred => WidgetMatch::Blurred(id),
             Resize => WidgetMatch::Resize(id, &self.value),
-            _ => WidgetMatch::Other(id, self.event_type),
+            KeyPress => WidgetMatch::KeyPress(id, &self.value),
+            KeyRelease => WidgetMatch::KeyRelease(id, &self.value),
+            Sort => WidgetMatch::Sort(id, self.value.as_str().unwrap_or_default()),
+            Status => WidgetMatch::Status(id, &self.value),
+            OptionHovered => WidgetMatch::OptionHovered(id, &self.value),
+            Open => WidgetMatch::Open(id),
+            Close => WidgetMatch::Close(id),
+            KeyBinding => WidgetMatch::KeyBinding(id, &self.value),
+            TransitionComplete => WidgetMatch::TransitionComplete(id),
+            PaneResized => WidgetMatch::PaneResized(id, &self.value),
+            PaneDragged => WidgetMatch::PaneDragged(id, &self.value),
+            PaneClicked => WidgetMatch::PaneClicked(id, &self.value),
+            PaneFocusCycle => WidgetMatch::PaneFocusCycle(id),
+            Custom(family) => WidgetMatch::Custom {
+                id,
+                family,
+                value: &self.value,
+            },
         }
     }
 }
@@ -274,23 +295,42 @@ pub enum WidgetMatch<'a> {
     Slide(&'a str, f64),
     SlideRelease(&'a str, f64),
     Paste(&'a str, &'a str),
-    /// Pointer press with button name (`"Left"`, `"Right"`, `"Middle"`).
     Press(&'a str, &'a str),
-    /// Pointer release with button name.
     Release(&'a str, &'a str),
+    Move(&'a str, &'a Value),
+    Scroll(&'a str, &'a Value),
+    Scrolled(&'a str, &'a Value),
     Enter(&'a str),
     Exit(&'a str),
-    /// Drag with coordinates and delta from the event data.
     Drag(&'a str, &'a Value),
-    /// Drag ended with final coordinates.
     DragEnd(&'a str, &'a Value),
     Focused(&'a str),
     Blurred(&'a str),
-    /// Resize with the event data (typically `{width, height}`).
     Resize(&'a str, &'a Value),
+    KeyPress(&'a str, &'a Value),
+    KeyRelease(&'a str, &'a Value),
+    Sort(&'a str, &'a str),
+    Status(&'a str, &'a Value),
+    OptionHovered(&'a str, &'a Value),
+    Open(&'a str),
+    Close(&'a str),
+    KeyBinding(&'a str, &'a Value),
+    TransitionComplete(&'a str),
+    PaneResized(&'a str, &'a Value),
+    PaneDragged(&'a str, &'a Value),
+    PaneClicked(&'a str, &'a Value),
+    PaneFocusCycle(&'a str),
     Timer(&'a str),
-    /// Catch-all for event types not covered by named variants.
-    Other(&'a str, EventType),
+    /// Custom widget event. `family` is the full family string
+    /// (e.g., "star_rating:select"). Match with:
+    /// ```ignore
+    /// Some(Custom { family: "star_rating:select", value, .. }) => { ... }
+    /// ```
+    Custom {
+        id: &'a str,
+        family: &'a str,
+        value: &'a Value,
+    },
 }
 
 /// Convert an event family string to an [`EventType`].
@@ -330,7 +370,7 @@ pub fn family_to_event_type(family: &str) -> EventType {
         "pane_resized" => EventType::PaneResized,
         "pane_dragged" => EventType::PaneDragged,
         "pane_clicked" => EventType::PaneClicked,
-        _ => EventType::Other(0),
+        _ => EventType::Custom(family.to_string()),
     }
 }
 

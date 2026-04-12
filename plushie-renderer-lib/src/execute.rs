@@ -341,7 +341,7 @@ impl App {
     ///
     /// Built-in operations (focus, scroll, text cursor) return iced Tasks.
     /// Everything else routes to the widget registry.
-    fn execute_command(
+    pub(crate) fn execute_command(
         &mut self,
         id: &str,
         family: &str,

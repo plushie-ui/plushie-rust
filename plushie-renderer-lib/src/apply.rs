@@ -14,23 +14,17 @@ impl App {
         // Route through the unified widget registry.
         match &message {
             IncomingMessage::Command { id, family, value } => {
-                if let Some(events) = self.registry.handle_widget_op(id, family, value) {
-                    for ev in events {
-                        self.emitter.emit_event(ev)?;
-                    }
-                }
+                // Route through execute_command which handles both
+                // built-in ops (focus, scroll, text cursor) and
+                // native widget commands (via registry fallback).
+                let task = self.execute_command(id, family, value);
+                self.pending_tasks.push(task);
                 return Ok(());
             }
             IncomingMessage::Commands { commands } => {
                 for cmd in commands {
-                    if let Some(events) =
-                        self.registry
-                            .handle_widget_op(&cmd.id, &cmd.family, &cmd.value)
-                    {
-                        for ev in events {
-                            self.emitter.emit_event(ev)?;
-                        }
-                    }
+                    let task = self.execute_command(&cmd.id, &cmd.family, &cmd.value);
+                    self.pending_tasks.push(task);
                 }
                 return Ok(());
             }

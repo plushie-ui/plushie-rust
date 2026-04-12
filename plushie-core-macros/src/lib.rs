@@ -455,10 +455,6 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
     let struct_name = &input.ident;
     let props_name = format_ident!("{}Props", struct_name);
 
-    // Collect doc attrs from the original struct to reference in the
-    // generated props struct doc comment.
-    let struct_name_str = struct_name.to_string();
-
     // Generate props struct fields (all Option<T>).
     let prop_fields = fields.iter().map(|f| {
         let name = &f.ident;
@@ -547,6 +543,58 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
         }
     });
 
+    // -- Builder generation --
+
+    let builder_name = format_ident!("{}Builder", struct_name);
+
+    let builder_setters = fields.iter().map(|f| {
+        let name = f.ident.as_ref().unwrap();
+        let ty = &f.ty;
+        let key = name.to_string();
+        let doc = f.attrs.iter()
+            .filter(|a| a.path().is_ident("doc"))
+            .filter_map(|a| {
+                if let syn::Meta::NameValue(nv) = &a.meta {
+                    if let syn::Expr::Lit(lit) = &nv.value {
+                        if let syn::Lit::Str(s) = &lit.lit {
+                            return Some(s.value().trim().to_string());
+                        }
+                    }
+                }
+                None
+            })
+            .next();
+        let setter_doc = match doc {
+            Some(d) => d,
+            None => format!("The `{}` property.", key),
+        };
+
+        quote! {
+            #[doc = #setter_doc]
+            pub fn #name(mut self, v: #ty) -> Self {
+                self.0.props.insert(
+                    #key,
+                    ::plushie_core::types::PlushieType::wire_encode(&v),
+                );
+                self
+            }
+        }
+    });
+
+    let builder_doc = format!(
+        "Builder for the `{}` widget.\n\n\
+         ## Properties\n\n{}",
+        widget_name, field_list
+    );
+    let builder_new_doc = format!(
+        "Create a new `{}` widget builder with the given ID.",
+        widget_name
+    );
+    let builder_fn_doc = format!(
+        "Create a `{}` widget builder with the given ID.",
+        widget_name
+    );
+
     Ok(quote! {
         #[doc = #props_doc]
         pub struct #props_name {
@@ -584,6 +632,29 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
             #[doc = #type_name_doc]
             pub fn type_name() -> &'static str {
                 #widget_name
+            }
+
+            #[doc = #builder_fn_doc]
+            pub fn builder(id: &str) -> #builder_name {
+                #builder_name::new(id)
+            }
+        }
+
+        #[doc = #builder_doc]
+        pub struct #builder_name(pub ::plushie_core::WidgetBuilder);
+
+        impl #builder_name {
+            #[doc = #builder_new_doc]
+            pub fn new(id: &str) -> Self {
+                Self(::plushie_core::WidgetBuilder::new(#widget_name, id))
+            }
+
+            #(#builder_setters)*
+
+            /// Set a property by key (untyped fallback).
+            pub fn prop(mut self, key: &str, value: impl Into<::plushie_core::protocol::PropValue>) -> Self {
+                self.0.props.insert(key, value.into());
+                self
             }
         }
     })
@@ -890,6 +961,54 @@ mod tests {
         assert!(output_str.contains("\"gauge\""));
         // Field extractions use PlushieType
         assert!(output_str.contains("PlushieType"));
+
+        // Builder struct generated
+        assert!(output_str.contains("GaugeBuilder"));
+        // Builder wraps WidgetBuilder
+        assert!(output_str.contains("WidgetBuilder"));
+        // Typed setter methods generated for each field
+        assert!(output_str.contains("fn value"));
+        assert!(output_str.contains("fn label"));
+        assert!(output_str.contains("fn enabled"));
+        // builder() static method on the original struct
+        assert!(output_str.contains("fn builder"));
+        // Untyped fallback prop method
+        assert!(output_str.contains("fn prop"));
+    }
+
+    #[test]
+    fn derive_widget_builder_uses_wire_encode() {
+        let input: DeriveInput = parse_quote! {
+            #[widget(name = "slider")]
+            struct Slider {
+                min: f32,
+                max: f32,
+            }
+        };
+        let output = derive_widget_impl(&input).unwrap();
+        let output_str = output.to_string();
+
+        // Setters encode via PlushieType::wire_encode
+        assert!(output_str.contains("wire_encode"));
+        // Setters use the field name as the prop key
+        assert!(output_str.contains("\"min\""));
+        assert!(output_str.contains("\"max\""));
+    }
+
+    #[test]
+    fn derive_widget_builder_new_uses_widget_name() {
+        let input: DeriveInput = parse_quote! {
+            #[widget(name = "progress_bar")]
+            struct ProgressBar {
+                value: f32,
+            }
+        };
+        let output = derive_widget_impl(&input).unwrap();
+        let output_str = output.to_string();
+
+        // Builder::new passes the widget name to WidgetBuilder::new
+        assert!(output_str.contains("\"progress_bar\""));
+        assert!(output_str.contains("ProgressBarBuilder"));
     }
 
     #[test]

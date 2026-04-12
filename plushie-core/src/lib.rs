@@ -14,3 +14,6 @@ pub mod ops;
 pub mod protocol;
 pub mod settings;
 pub mod types;
+pub mod widget_builder;
+
+pub use widget_builder::WidgetBuilder;

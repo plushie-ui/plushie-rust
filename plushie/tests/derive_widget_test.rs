@@ -1,7 +1,7 @@
 //! Integration tests for the WidgetProps derive macro.
 //!
-//! These tests verify that the generated Props struct and type_name
-//! method work correctly with real plushie-core types.
+//! These tests verify that the generated Props struct, type_name
+//! method, and typed builder work correctly with real plushie-core types.
 
 #![allow(dead_code)] // derive test structs have fields read only via generated code
 
@@ -142,4 +142,70 @@ fn props_debug_format() {
     let debug = format!("{:?}", props);
     assert!(debug.contains("TestWidgetProps"));
     assert!(debug.contains("label"));
+}
+
+// ---------------------------------------------------------------------------
+// Builder: typed construction
+// ---------------------------------------------------------------------------
+
+#[test]
+fn builder_sets_id_and_type_name() {
+    let b = TestWidget::builder("tw1");
+    assert_eq!(b.0.id, "tw1");
+    assert_eq!(b.0.type_name, "test_widget");
+}
+
+#[test]
+fn builder_typed_setters() {
+    let b = TestWidget::builder("tw2")
+        .label("hello".to_string())
+        .size(14.0)
+        .visible(true);
+
+    assert_eq!(b.0.props.get("label").unwrap().as_str(), Some("hello"));
+    assert_eq!(b.0.props.get("size").unwrap().as_f64(), Some(14.0));
+    assert_eq!(b.0.props.get("visible").unwrap().as_bool(), Some(true));
+}
+
+#[test]
+fn builder_untyped_fallback() {
+    let b = TestWidget::builder("tw3")
+        .prop("custom", "value");
+
+    assert_eq!(b.0.props.get("custom").unwrap().as_str(), Some("value"));
+}
+
+#[test]
+fn builder_complex_type() {
+    let b = ColorBox::builder("cb2")
+        .color(Color::red())
+        .opacity(0.5)
+        .count(7);
+
+    // Color encodes as a hex string via PlushieType::wire_encode.
+    assert_eq!(b.0.props.get("color").unwrap().as_str(), Some("#ff0000"));
+    assert_eq!(b.0.props.get("opacity").unwrap().as_f64(), Some(0.5));
+    // i32 encodes as I64 via PlushieType::wire_encode.
+    assert_eq!(b.0.props.get("count").unwrap().as_i64(), Some(7));
+}
+
+#[test]
+fn builder_roundtrip_through_props() {
+    // Build with typed builder, then extract with generated Props.
+    let b = TestWidget::builder("rt1")
+        .label("roundtrip".to_string())
+        .size(20.0)
+        .visible(false);
+
+    let node = TreeNode {
+        id: b.0.id.clone(),
+        type_name: b.0.type_name.to_string(),
+        props: Props::Typed(b.0.props),
+        children: vec![],
+    };
+
+    let props = TestWidgetProps::from_node(&node);
+    assert_eq!(props.label, Some("roundtrip".to_string()));
+    assert_eq!(props.size, Some(20.0));
+    assert_eq!(props.visible, Some(false));
 }

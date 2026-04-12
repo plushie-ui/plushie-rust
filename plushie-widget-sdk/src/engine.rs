@@ -548,16 +548,16 @@ impl Core {
             IncomingMessage::Reset { .. } => {
                 log::debug!("Reset message ignored by Core (handled by scripting layer)");
             }
-            IncomingMessage::WidgetCommand { .. } => {
-                log::debug!("WidgetCommand message ignored by Core (handled by renderer App)");
+            IncomingMessage::Command { .. } => {
+                log::debug!("Command message ignored by Core (handled by renderer App)");
+            }
+            IncomingMessage::Commands { .. } => {
+                log::debug!("Commands message ignored by Core (handled by renderer App)");
             }
             IncomingMessage::AdvanceFrame { .. } => {
                 log::warn!(
                     "AdvanceFrame is only supported in headless/test mode; ignored in daemon mode"
                 );
-            }
-            IncomingMessage::WidgetCommands { .. } => {
-                log::debug!("WidgetCommands message ignored by Core (handled by renderer App)");
             }
             IncomingMessage::RegisterEffectStub { kind, response } => {
                 log::info!("effect stub registered: {kind}");

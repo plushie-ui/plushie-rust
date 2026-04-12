@@ -78,39 +78,25 @@ impl fmt::Display for NotificationUrgency {
 /// In wire mode, they are serialized at the process boundary.
 #[derive(Debug)]
 pub enum RendererOp {
-    // -- Focus --
-    /// Move keyboard focus to the widget with the given ID.
-    Focus(String),
+    // -- Widget-targeted command --
+    /// Send a command to a widget by ID.
+    ///
+    /// Subsumes focus, scroll, text cursor, pane grid, and native
+    /// widget operations. The `family` string identifies the
+    /// operation; the `value` carries typed payload data.
+    Command {
+        id: String,
+        family: String,
+        value: Value,
+    },
+    /// Send multiple widget commands in a batch.
+    Commands(Vec<CommandItem>),
+
+    // -- Focus (global, no target widget) --
     /// Move keyboard focus to the next focusable widget.
     FocusNext,
     /// Move keyboard focus to the previous focusable widget.
     FocusPrevious,
-
-    // -- Text operations --
-    /// Select all text in a text input.
-    SelectAll(String),
-    /// Move the cursor to the start of a text input.
-    MoveCursorToFront(String),
-    /// Move the cursor to the end of a text input.
-    MoveCursorToEnd(String),
-    /// Move the cursor to a specific position in a text input.
-    MoveCursorTo { target: String, position: usize },
-    /// Select a range of text in a text input.
-    SelectRange {
-        target: String,
-        start: usize,
-        end: usize,
-    },
-
-    // -- Scroll --
-    /// Scroll to an absolute position (animated).
-    ScrollTo { target: String, x: f32, y: f32 },
-    /// Scroll by a relative offset (animated).
-    ScrollBy { target: String, x: f32, y: f32 },
-    /// Snap to an absolute scroll position (instant, no animation).
-    SnapTo { target: String, x: f32, y: f32 },
-    /// Snap to the end of the scrollable content.
-    SnapToEnd(String),
 
     // -- Window operations --
     /// Perform a window operation (close, resize, move, etc.).
@@ -141,16 +127,6 @@ pub enum RendererOp {
     // -- PaneGrid --
     /// Perform a pane grid operation (split, close, swap).
     PaneGrid(PaneGridOp),
-
-    // -- Native widget commands --
-    /// Send a single command to a native widget.
-    WidgetCommand {
-        node_id: String,
-        op: String,
-        payload: Value,
-    },
-    /// Send multiple native widget commands in a batch.
-    WidgetCommands(Vec<WidgetCommandItem>),
 
     // -- Accessibility --
     /// Announce text to screen readers.
@@ -498,15 +474,15 @@ pub enum PaneGridOp {
 // Widget commands
 // ---------------------------------------------------------------------------
 
-/// A single native widget command within a batch.
+/// A single widget command within a batch.
 #[derive(Debug, Clone)]
-pub struct WidgetCommandItem {
-    /// The target widget's node ID.
-    pub node_id: String,
-    /// The operation name understood by the widget.
-    pub op: String,
-    /// Operation-specific data.
-    pub payload: Value,
+pub struct CommandItem {
+    /// The target widget's scoped ID.
+    pub id: String,
+    /// The command family name.
+    pub family: String,
+    /// Command-specific data.
+    pub value: Value,
 }
 
 // ---------------------------------------------------------------------------

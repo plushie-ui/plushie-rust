@@ -118,16 +118,16 @@ pub enum IncomingMessage {
         #[serde(default)]
         height: Option<u32>,
     },
-    /// A single command pushed to a native widget.
+    /// A widget-targeted command (focus, scroll, text, native widget, etc).
     /// Bypasses the normal tree update / diff / patch cycle.
-    WidgetCommand {
-        node_id: String,
-        op: String,
+    Command {
+        id: String,
+        family: String,
         #[serde(default)]
-        payload: Value,
+        value: Value,
     },
-    /// A batch of widget commands processed in one cycle.
-    WidgetCommands { commands: Vec<WidgetCommandItem> },
+    /// A batch of widget-targeted commands processed in one cycle.
+    Commands { commands: Vec<CommandItem> },
     /// Advance the animation clock by one frame (headless/test mode).
     /// Emits an `animation_frame` event if `on_animation_frame` is subscribed.
     AdvanceFrame { timestamp: u64 },
@@ -143,13 +143,13 @@ pub enum IncomingMessage {
     UnregisterEffectStub { kind: String },
 }
 
-/// A single item within a `WidgetCommands` batch.
+/// A single item within a `Commands` batch.
 #[derive(Debug, Clone, Deserialize)]
-pub struct WidgetCommandItem {
-    pub node_id: String,
-    pub op: String,
+pub struct CommandItem {
+    pub id: String,
+    pub family: String,
     #[serde(default)]
-    pub payload: Value,
+    pub value: Value,
 }
 
 // ---------------------------------------------------------------------------
@@ -528,59 +528,55 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // WidgetCommand deserialization
+    // Command deserialization
     // -----------------------------------------------------------------------
 
     #[test]
-    fn widget_command_deserializes() {
+    fn command_deserializes() {
         let msg: IncomingMessage = serde_json::from_value(json!({
-            "type": "widget_command",
-            "node_id": "term-1",
-            "op": "write",
-            "payload": { "data": "hello" }
+            "type": "command",
+            "id": "term-1",
+            "family": "write",
+            "value": { "data": "hello" }
         }))
         .unwrap();
         match msg {
-            IncomingMessage::WidgetCommand {
-                node_id,
-                op,
-                payload,
-            } => {
-                assert_eq!(node_id, "term-1");
-                assert_eq!(op, "write");
-                assert_eq!(payload["data"], "hello");
+            IncomingMessage::Command { id, family, value } => {
+                assert_eq!(id, "term-1");
+                assert_eq!(family, "write");
+                assert_eq!(value["data"], "hello");
             }
             _ => panic!("wrong variant"),
         }
     }
 
     #[test]
-    fn widget_commands_deserializes() {
+    fn commands_batch_deserializes() {
         let msg: IncomingMessage = serde_json::from_value(json!({
-            "type": "widget_commands",
+            "type": "commands",
             "commands": [
-                { "node_id": "term-1", "op": "write", "payload": { "data": "a" } },
-                { "node_id": "log-1", "op": "append", "payload": { "line": "x" } }
+                { "id": "term-1", "family": "write", "value": { "data": "a" } },
+                { "id": "log-1", "family": "append", "value": { "line": "x" } }
             ]
         }))
         .unwrap();
         match msg {
-            IncomingMessage::WidgetCommands { commands } => {
+            IncomingMessage::Commands { commands } => {
                 assert_eq!(commands.len(), 2);
-                assert_eq!(commands[0].node_id, "term-1");
-                assert_eq!(commands[1].op, "append");
+                assert_eq!(commands[0].id, "term-1");
+                assert_eq!(commands[1].family, "append");
             }
             _ => panic!("wrong variant"),
         }
     }
 
     #[test]
-    fn widget_command_with_default_payload() {
-        let json = r#"{"type":"widget_command","node_id":"wgt-1","op":"reset"}"#;
+    fn command_with_default_value() {
+        let json = r#"{"type":"command","id":"wgt-1","family":"reset"}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
         match msg {
-            IncomingMessage::WidgetCommand { payload, .. } => {
-                assert!(payload.is_null());
+            IncomingMessage::Command { value, .. } => {
+                assert!(value.is_null());
             }
             _ => panic!("wrong variant"),
         }

@@ -140,7 +140,11 @@ impl Command {
 
     /// Move keyboard focus to the widget with the given ID.
     pub fn focus(id: &str) -> Self {
-        Self::Renderer(RendererOp::Focus(id.to_string()))
+        Self::Renderer(RendererOp::Command {
+            id: id.to_string(),
+            family: "focus".to_string(),
+            value: Value::Null,
+        })
     }
 
     /// Move keyboard focus to the next focusable widget.
@@ -157,10 +161,10 @@ impl Command {
 
     /// Scroll a scrollable widget to an absolute position.
     pub fn scroll_to(target: &str, x: f32, y: f32) -> Self {
-        Self::Renderer(RendererOp::ScrollTo {
-            target: target.to_string(),
-            x,
-            y,
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "scroll_to".to_string(),
+            value: serde_json::json!({"x": x, "y": y}),
         })
     }
 
@@ -375,12 +379,21 @@ impl Command {
 
     // -- Widget commands --
 
-    /// Send a command to a native widget.
-    pub fn widget_command(node_id: &str, op: &str, payload: Value) -> Self {
-        Self::Renderer(RendererOp::WidgetCommand {
-            node_id: node_id.to_string(),
-            op: op.to_string(),
-            payload,
+    /// Send a command to a widget by ID.
+    ///
+    /// Low-level generic builder. Prefer `Command::widget()` with a
+    /// typed command enum derived via `#[derive(WidgetCommand)]`.
+    pub fn send(id: &str, family: &str, value: Value) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: id.to_string(),
+            family: family.to_string(),
+            value,
         })
+    }
+
+    /// Send a command to a widget by ID (old name, delegates to `send`).
+    #[deprecated(note = "use Command::send() instead")]
+    pub fn widget_command(node_id: &str, op: &str, payload: Value) -> Self {
+        Self::send(node_id, op, payload)
     }
 }

@@ -209,27 +209,27 @@ enum TestCommand {
 
 #[test]
 fn command_unit_variant() {
-    let (op, value) = TestCommand::Reset.to_wire();
-    assert_eq!(op, "reset");
+    let (family, value) = TestCommand::Reset.to_wire();
+    assert_eq!(family, "reset");
     assert_eq!(value, PropValue::Null);
 }
 
 #[test]
 fn command_tuple_variant() {
-    let (op, value) = TestCommand::SetValue(72.0).to_wire();
-    assert_eq!(op, "set_value");
+    let (family, value) = TestCommand::SetValue(72.0).to_wire();
+    assert_eq!(family, "set_value");
     let json = serde_json::Value::from(value);
     assert_eq!(json.as_f64(), Some(72.0));
 }
 
 #[test]
 fn command_struct_variant() {
-    let (op, value) = TestCommand::SetRange {
+    let (family, value) = TestCommand::SetRange {
         min: 0.0,
         max: 100.0,
     }
     .to_wire();
-    assert_eq!(op, "set_range");
+    assert_eq!(family, "set_range");
     let json = serde_json::Value::from(value);
     let obj = json.as_object().unwrap();
     assert_eq!(obj.get("min").and_then(|v| v.as_f64()), Some(0.0));
@@ -241,16 +241,16 @@ fn command_specs_generated() {
     let specs = TestCommand::command_specs();
     assert_eq!(specs.len(), 3);
 
-    assert_eq!(specs[0].op, "set_value");
+    assert_eq!(specs[0].family, "set_value");
     assert!(matches!(
         specs[0].payload,
         PayloadSpec::Value(ValueType::Float)
     ));
 
-    assert_eq!(specs[1].op, "reset");
+    assert_eq!(specs[1].family, "reset");
     assert!(matches!(specs[1].payload, PayloadSpec::None));
 
-    assert_eq!(specs[2].op, "set_range");
+    assert_eq!(specs[2].family, "set_range");
     match &specs[2].payload {
         PayloadSpec::Fields { fields, required } => {
             assert_eq!(fields.len(), 2);

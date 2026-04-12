@@ -551,17 +551,13 @@ fn derive_widget_command_impl(input: &DeriveInput) -> syn::Result<proc_macro2::T
 /// Generate spec constructor expressions for each enum variant.
 ///
 /// `spec_type` is either "EventSpec" or "CommandSpec".
-/// The field name is "family" for events, "op" for commands.
+/// Both use "family" as the name field.
 fn generate_spec_arms<'a>(
     variants: impl IntoIterator<Item = &'a syn::Variant>,
     spec_type: &str,
 ) -> Vec<proc_macro2::TokenStream> {
     let spec_ident = format_ident!("{}", spec_type);
-    let name_field = if spec_type == "EventSpec" {
-        format_ident!("family")
-    } else {
-        format_ident!("op")
-    };
+    let name_field = format_ident!("family");
 
     variants
         .into_iter()

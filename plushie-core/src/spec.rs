@@ -101,8 +101,8 @@ pub struct EventSpec {
 /// Spec for a widget command.
 #[derive(Debug, Clone)]
 pub struct CommandSpec {
-    /// Command operation name (e.g., "set_value", "reset").
-    pub op: String,
+    /// Command family name (e.g., "set_value", "reset").
+    pub family: String,
     /// Expected payload shape.
     pub payload: PayloadSpec,
 }
@@ -114,7 +114,7 @@ pub struct CommandSpec {
 pub trait WidgetCommandEncode {
     /// Encode this command to its wire representation.
     ///
-    /// Returns `(operation_name, payload)`.
+    /// Returns `(family, value)`.
     fn to_wire(&self) -> (&'static str, crate::protocol::PropValue);
 
     /// Return the specs for all command variants.

@@ -22,8 +22,11 @@ fn command_batch_collects_commands() {
 #[test]
 fn command_focus_carries_id() {
     match Command::focus("email") {
-        Command::Renderer(RendererOp::Focus(id)) => assert_eq!(id, "email"),
-        _ => panic!("expected Renderer(Focus)"),
+        Command::Renderer(RendererOp::Command { id, family, .. }) => {
+            assert_eq!(id, "email");
+            assert_eq!(family, "focus");
+        }
+        _ => panic!("expected Renderer(Command)"),
     }
 }
 
@@ -53,12 +56,13 @@ fn command_send_after_carries_delay_and_event() {
 #[test]
 fn command_scroll_to_carries_coordinates() {
     match Command::scroll_to("list", 0.0, 100.0) {
-        Command::Renderer(RendererOp::ScrollTo { target, x, y }) => {
-            assert_eq!(target, "list");
-            assert_eq!(x, 0.0);
-            assert_eq!(y, 100.0);
+        Command::Renderer(RendererOp::Command { id, family, value }) => {
+            assert_eq!(id, "list");
+            assert_eq!(family, "scroll_to");
+            assert_eq!(value["x"], 0.0);
+            assert_eq!(value["y"], 100.0);
         }
-        _ => panic!("expected Renderer(ScrollTo)"),
+        _ => panic!("expected Renderer(Command)"),
     }
 }
 
@@ -77,24 +81,36 @@ fn command_clipboard_read() {
 }
 
 #[test]
-fn command_widget_command_carries_payload() {
+fn command_carries_payload() {
+    #[allow(deprecated)]
     let cmd = Command::widget_command("gauge-1", "set_value", serde_json::json!({"value": 42}));
     match cmd {
-        Command::Renderer(RendererOp::WidgetCommand {
-            node_id,
-            op,
-            payload,
-        }) => {
-            assert_eq!(node_id, "gauge-1");
-            assert_eq!(op, "set_value");
-            assert_eq!(payload["value"], 42);
+        Command::Renderer(RendererOp::Command { id, family, value }) => {
+            assert_eq!(id, "gauge-1");
+            assert_eq!(family, "set_value");
+            assert_eq!(value["value"], 42);
         }
-        _ => panic!("expected Renderer(WidgetCommand)"),
+        _ => panic!("expected Renderer(Command)"),
+    }
+}
+
+#[test]
+fn command_builder_creates_command() {
+    let cmd = Command::send("gauge-1", "set_value", serde_json::json!(42));
+    match cmd {
+        Command::Renderer(RendererOp::Command { id, family, value }) => {
+            assert_eq!(id, "gauge-1");
+            assert_eq!(family, "set_value");
+            assert_eq!(value, 42);
+        }
+        _ => panic!("expected Renderer(Command)"),
     }
 }
 
 #[test]
 fn commands_are_inspectable_for_testing() {
     let cmd = Command::focus("email");
-    assert!(matches!(cmd, Command::Renderer(RendererOp::Focus(ref id)) if id == "email"));
+    assert!(
+        matches!(cmd, Command::Renderer(RendererOp::Command { ref id, ref family, .. }) if id == "email" && family == "focus")
+    );
 }

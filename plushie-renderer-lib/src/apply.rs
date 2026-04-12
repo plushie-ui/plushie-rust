@@ -13,23 +13,19 @@ impl App {
         // Widget commands bypass the normal tree update / diff / patch cycle.
         // Route through the unified widget registry.
         match &message {
-            IncomingMessage::WidgetCommand {
-                node_id,
-                op,
-                payload,
-            } => {
-                if let Some(events) = self.registry.handle_widget_op(node_id, op, payload) {
+            IncomingMessage::Command { id, family, value } => {
+                if let Some(events) = self.registry.handle_widget_op(id, family, value) {
                     for ev in events {
                         self.emitter.emit_event(ev)?;
                     }
                 }
                 return Ok(());
             }
-            IncomingMessage::WidgetCommands { commands } => {
+            IncomingMessage::Commands { commands } => {
                 for cmd in commands {
                     if let Some(events) =
                         self.registry
-                            .handle_widget_op(&cmd.node_id, &cmd.op, &cmd.payload)
+                            .handle_widget_op(&cmd.id, &cmd.family, &cmd.value)
                     {
                         for ev in events {
                             self.emitter.emit_event(ev)?;

@@ -18,57 +18,26 @@ impl App {
     /// Returns an iced Task for operations that need async completion
     /// (focus, scroll, effects, window queries).
     pub fn execute(&mut self, op: RendererOp) -> Task<Message> {
-        use iced::widget::Id;
         use iced::widget::operation;
 
         match op {
-            // -- Focus --
-            RendererOp::Focus(id) => {
-                if id.contains('/') {
-                    // Canvas element focus: route through the registry to set
-                    // pending focus, then focus the canvas iced widget.
-                    self.registry
-                        .handle_widget_op(&id, "focus", &serde_json::json!({}));
-                    // Use the registry's prefix walk to find the canvas widget ID.
-                    let canvas_id = self
-                        .registry
-                        .get_for_node_id(&id)
-                        .map(|(_, matched)| matched)
-                        .unwrap_or(&id);
-                    operation::focus::<Message>(Id::from(canvas_id.to_string()))
-                } else {
-                    operation::focus::<Message>(Id::from(id))
-                }
+            // -- Widget-targeted command (unified) --
+            RendererOp::Command {
+                ref id,
+                ref family,
+                ref value,
+            } => self.execute_command(id, family, value),
+            RendererOp::Commands(commands) => {
+                let tasks: Vec<_> = commands
+                    .iter()
+                    .map(|cmd| self.execute_command(&cmd.id, &cmd.family, &cmd.value))
+                    .collect();
+                Task::batch(tasks)
             }
+
+            // -- Global focus (no target widget) --
             RendererOp::FocusNext => operation::focus_next(),
             RendererOp::FocusPrevious => operation::focus_previous(),
-
-            // -- Text operations --
-            RendererOp::SelectAll(id) => operation::select_all(Id::from(id)),
-            RendererOp::MoveCursorToFront(id) => operation::move_cursor_to_front(Id::from(id)),
-            RendererOp::MoveCursorToEnd(id) => operation::move_cursor_to_end(Id::from(id)),
-            RendererOp::MoveCursorTo { target, position } => {
-                operation::move_cursor_to(Id::from(target), position)
-            }
-            RendererOp::SelectRange { target, start, end } => {
-                operation::select_range(Id::from(target), start, end)
-            }
-
-            // -- Scroll --
-            RendererOp::ScrollTo { target, x, y } => {
-                operation::scroll_to(Id::from(target), operation::AbsoluteOffset { x, y })
-            }
-            RendererOp::ScrollBy { target, x, y } => {
-                operation::scroll_by(Id::from(target), operation::AbsoluteOffset { x, y })
-            }
-            RendererOp::SnapTo { target, x, y } => operation::snap_to(
-                Id::from(target),
-                operation::RelativeOffset {
-                    x: Some(x),
-                    y: Some(y),
-                },
-            ),
-            RendererOp::SnapToEnd(id) => operation::snap_to_end(Id::from(id)),
 
             // -- Accessibility --
             RendererOp::Announce(text) => iced::announce(text),
@@ -109,23 +78,6 @@ impl App {
 
             // -- PaneGrid --
             RendererOp::PaneGrid(op) => self.execute_pane_grid_op(op),
-
-            // -- Widget commands --
-            RendererOp::WidgetCommand {
-                node_id,
-                op,
-                payload,
-            } => {
-                self.registry.handle_widget_op(&node_id, &op, &payload);
-                Task::none()
-            }
-            RendererOp::WidgetCommands(commands) => {
-                for cmd in commands {
-                    self.registry
-                        .handle_widget_op(&cmd.node_id, &cmd.op, &cmd.payload);
-                }
-                Task::none()
-            }
 
             // -- Font loading --
             RendererOp::LoadFont(data) => iced::font::load(data).map(|_| Message::NoOp),
@@ -382,6 +334,80 @@ impl App {
                 self.handle_widget_op("list_images", &serde_json::json!({"target": tag}))
             }
             ImageOp::Clear => self.handle_widget_op("clear_images", &serde_json::json!({})),
+        }
+    }
+
+    /// Dispatch a widget-targeted command by family.
+    ///
+    /// Built-in operations (focus, scroll, text cursor) return iced Tasks.
+    /// Everything else routes to the widget registry.
+    fn execute_command(
+        &mut self,
+        id: &str,
+        family: &str,
+        value: &serde_json::Value,
+    ) -> Task<Message> {
+        use iced::widget::Id as WId;
+        use iced::widget::operation;
+
+        match family {
+            "focus" => {
+                if id.contains('/') {
+                    self.registry
+                        .handle_widget_op(id, "focus", &serde_json::json!({}));
+                    let canvas_id = self
+                        .registry
+                        .get_for_node_id(id)
+                        .map(|(_, matched)| matched.to_string())
+                        .unwrap_or_else(|| id.to_string());
+                    operation::focus::<Message>(WId::from(canvas_id))
+                } else {
+                    operation::focus::<Message>(WId::from(id.to_string()))
+                }
+            }
+            "select_all" => operation::select_all(WId::from(id.to_string())),
+            "move_cursor_to_front" => operation::move_cursor_to_front(WId::from(id.to_string())),
+            "move_cursor_to_end" => operation::move_cursor_to_end(WId::from(id.to_string())),
+            "move_cursor_to" => {
+                let pos = value.get("position").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                operation::move_cursor_to(WId::from(id.to_string()), pos)
+            }
+            "select_range" => {
+                let start = value.get("start").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                let end = value.get("end").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                operation::select_range(WId::from(id.to_string()), start, end)
+            }
+            "scroll_to" => {
+                let x = value.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                let y = value.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                operation::scroll_to(
+                    WId::from(id.to_string()),
+                    operation::AbsoluteOffset { x, y },
+                )
+            }
+            "scroll_by" => {
+                let x = value.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                let y = value.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                operation::scroll_by(
+                    WId::from(id.to_string()),
+                    operation::AbsoluteOffset { x, y },
+                )
+            }
+            "snap_to" => {
+                let x = value.get("x").and_then(|v| v.as_f64()).map(|v| v as f32);
+                let y = value.get("y").and_then(|v| v.as_f64()).map(|v| v as f32);
+                operation::snap_to(
+                    WId::from(id.to_string()),
+                    operation::RelativeOffset { x, y },
+                )
+            }
+            "snap_to_end" => operation::snap_to_end(WId::from(id.to_string())),
+            // Everything else routes to the widget registry (native widgets,
+            // pane grid ops, etc.)
+            _ => {
+                self.registry.handle_widget_op(id, family, value);
+                Task::none()
+            }
         }
     }
 

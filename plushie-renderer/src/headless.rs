@@ -390,8 +390,8 @@ impl<R: PlushieRenderer> Session<R> {
                             IncomingMessage::Unsubscribe { .. } => "unsubscribe",
                             IncomingMessage::TreeHash { .. } => "tree_hash",
                             IncomingMessage::Screenshot { .. } => "screenshot",
-                            IncomingMessage::WidgetCommand { .. } => "widget_command",
-                            IncomingMessage::WidgetCommands { .. } => "widget_commands",
+                            IncomingMessage::Command { .. } => "command",
+                            IncomingMessage::Commands { .. } => "commands",
                             IncomingMessage::AdvanceFrame { .. } => "advance_frame",
                             IncomingMessage::RegisterEffectStub { .. } => "register_effect_stub",
                             IncomingMessage::UnregisterEffectStub { .. } => {
@@ -819,22 +819,18 @@ fn handle_message<R: PlushieRenderer>(
                 .with_session(session_id);
             s.writer.emit(&resp)?;
         }
-        IncomingMessage::WidgetCommand {
-            node_id,
-            op,
-            payload,
-        } => {
-            if let Some(events) = s.registry.handle_widget_op(&node_id, &op, &payload) {
+        IncomingMessage::Command { id, family, value } => {
+            if let Some(events) = s.registry.handle_widget_op(&id, &family, &value) {
                 for event in events {
                     s.writer.emit(&event.with_session(session_id))?;
                 }
             }
         }
-        IncomingMessage::WidgetCommands { commands } => {
+        IncomingMessage::Commands { commands } => {
             for cmd in commands {
-                if let Some(events) =
-                    s.registry
-                        .handle_widget_op(&cmd.node_id, &cmd.op, &cmd.payload)
+                if let Some(events) = s
+                    .registry
+                    .handle_widget_op(&cmd.id, &cmd.family, &cmd.value)
                 {
                     for event in events {
                         s.writer.emit(&event.with_session(session_id))?;

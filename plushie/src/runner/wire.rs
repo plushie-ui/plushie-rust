@@ -277,52 +277,20 @@ fn execute_wire_renderer_op(
 ) -> std::io::Result<()> {
     use plushie_core::ops::RendererOp;
     match op {
-        RendererOp::Focus(id) => bridge.send_widget_op("focus", &serde_json::json!({"target": id})),
+        RendererOp::Command { id, family, value } => bridge.send_command(id, family, value),
+        RendererOp::Commands(commands) => {
+            for cmd in commands {
+                bridge.send_command(&cmd.id, &cmd.family, &cmd.value)?;
+            }
+            Ok(())
+        }
         RendererOp::FocusNext => {
             bridge.send_widget_op("focus_next", &Value::Object(Default::default()))
         }
         RendererOp::FocusPrevious => {
             bridge.send_widget_op("focus_previous", &Value::Object(Default::default()))
         }
-        RendererOp::SelectAll(target) => {
-            bridge.send_widget_op("select_all", &serde_json::json!({"target": target}))
-        }
-        RendererOp::MoveCursorToFront(target) => bridge.send_widget_op(
-            "move_cursor_to_front",
-            &serde_json::json!({"target": target}),
-        ),
-        RendererOp::MoveCursorToEnd(target) => {
-            bridge.send_widget_op("move_cursor_to_end", &serde_json::json!({"target": target}))
-        }
-        RendererOp::MoveCursorTo { target, position } => bridge.send_widget_op(
-            "move_cursor_to",
-            &serde_json::json!({"target": target, "position": position}),
-        ),
-        RendererOp::SelectRange { target, start, end } => bridge.send_widget_op(
-            "select_range",
-            &serde_json::json!({"target": target, "start": start, "end": end}),
-        ),
-        RendererOp::ScrollTo { target, x, y } => bridge.send_widget_op(
-            "scroll_to",
-            &serde_json::json!({"target": target, "offset_x": x, "offset_y": y}),
-        ),
-        RendererOp::ScrollBy { target, x, y } => bridge.send_widget_op(
-            "scroll_by",
-            &serde_json::json!({"target": target, "offset_x": x, "offset_y": y}),
-        ),
-        RendererOp::SnapTo { target, x, y } => bridge.send_widget_op(
-            "snap_to",
-            &serde_json::json!({"target": target, "x": x, "y": y}),
-        ),
-        RendererOp::SnapToEnd(target) => {
-            bridge.send_widget_op("snap_to_end", &serde_json::json!({"target": target}))
-        }
         RendererOp::Window(op) => execute_wire_window_op(bridge, op),
-        RendererOp::WidgetCommand {
-            node_id,
-            op,
-            payload,
-        } => bridge.send_widget_command(node_id, op, payload),
         RendererOp::Announce(text) => {
             bridge.send_widget_op("announce", &serde_json::json!({"text": text}))
         }

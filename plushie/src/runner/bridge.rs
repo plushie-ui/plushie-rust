@@ -146,19 +146,14 @@ impl Bridge {
         self.send(&msg)
     }
 
-    /// Send a widget command to a native widget.
-    pub fn send_widget_command(
-        &mut self,
-        node_id: &str,
-        op: &str,
-        payload: &Value,
-    ) -> io::Result<()> {
+    /// Send a widget-targeted command.
+    pub fn send_command(&mut self, id: &str, family: &str, value: &Value) -> io::Result<()> {
         let msg = serde_json::json!({
-            "type": "widget_command",
+            "type": "command",
             "session": "",
-            "node_id": node_id,
-            "op": op,
-            "payload": payload,
+            "id": id,
+            "family": family,
+            "value": value,
         });
         self.send(&msg)
     }

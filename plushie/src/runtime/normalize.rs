@@ -34,13 +34,13 @@ use plushie_core::protocol::TreeNode;
 pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
     let mut warnings = Vec::new();
     let mut seen_ids = HashSet::new();
-    let result = normalize_node(tree, &[], &mut seen_ids, &mut warnings);
+    let result = normalize_node(tree, "", &mut seen_ids, &mut warnings);
     (result, warnings)
 }
 
 fn normalize_node(
     node: &TreeNode,
-    scope: &[&str],
+    scope: &str,
     seen_ids: &mut HashSet<String>,
     warnings: &mut Vec<String>,
 ) -> TreeNode {
@@ -51,10 +51,14 @@ fn normalize_node(
     let is_window = type_name == "window";
 
     // Build the scoped ID.
-    let scoped_id = if scope.is_empty() || is_auto {
+    // Window nodes keep their bare ID. Children of windows get "window#id".
+    // Deeper descendants get "window#parent/id" (# only at window boundary).
+    let scoped_id = if is_auto || scope.is_empty() {
         id.clone()
+    } else if scope.ends_with('#') {
+        format!("{scope}{id}")
     } else {
-        format!("{}/{}", scope.join("/"), id)
+        format!("{scope}/{id}")
     };
 
     // Check for duplicate IDs (only for non-auto IDs).
@@ -63,20 +67,31 @@ fn normalize_node(
     }
 
     // Check for reserved characters in user-provided IDs.
-    if !is_auto && id.contains('/') {
-        warnings.push(format!(
-            "ID \"{id}\" contains reserved character '/'. \
-             Use container scoping instead."
-        ));
+    if !is_auto {
+        if id.contains('/') {
+            warnings.push(format!(
+                "ID \"{id}\" contains reserved character '/'. \
+                 Use container scoping instead."
+            ));
+        }
+        if id.contains('#') {
+            warnings.push(format!(
+                "ID \"{id}\" contains reserved character '#'. \
+                 '#' is reserved for window-qualified paths."
+            ));
+        }
     }
 
-    // Build the new scope for children.
-    let child_scope: Vec<&str> = if !is_auto && !is_window && !id.is_empty() {
-        let mut s = scope.to_vec();
-        s.push(id);
-        s
+    // Build the scope for children.
+    // Window nodes set "window#" as the child scope.
+    // Named non-window nodes propagate their scoped ID.
+    // Auto-ID nodes are transparent.
+    let child_scope = if is_window {
+        format!("{scoped_id}#")
+    } else if is_auto || id.is_empty() {
+        scope.to_string()
     } else {
-        scope.to_vec()
+        scoped_id.clone()
     };
 
     // Normalize children recursively.
@@ -151,11 +166,37 @@ mod tests {
     }
 
     #[test]
-    fn window_does_not_scope_children() {
+    fn window_scopes_children_with_hash() {
         let tree = node("main", "window", vec![node("col", "column", vec![])]);
         let (result, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
-        assert_eq!(result.children[0].id, "col");
+        assert_eq!(result.id, "main");
+        assert_eq!(result.children[0].id, "main#col");
+    }
+
+    #[test]
+    fn window_nested_children_use_slash_after_hash() {
+        let tree = node(
+            "main",
+            "window",
+            vec![node(
+                "form",
+                "container",
+                vec![node("email", "text_input", vec![])],
+            )],
+        );
+        let (result, warnings) = normalize(&tree);
+        assert!(warnings.is_empty());
+        assert_eq!(result.children[0].id, "main#form");
+        assert_eq!(result.children[0].children[0].id, "main#form/email");
+    }
+
+    #[test]
+    fn hash_in_id_produces_warning() {
+        let tree = node("bad#id", "text", vec![]);
+        let (_, warnings) = normalize(&tree);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("reserved character '#'"));
     }
 
     #[test]

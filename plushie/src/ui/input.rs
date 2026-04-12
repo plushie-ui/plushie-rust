@@ -272,7 +272,7 @@ pub fn slider(id: &str, range: (f32, f32), value: f32) -> SliderBuilder {
 impl SliderBuilder {
     pub fn step(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "step", s); self }
     pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
-    pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
+    pub fn height(mut self, h: f32) -> Self { super::set_prop(&mut self.props, "height", PropValue::F64(h as f64)); self }
     pub fn default(mut self, d: f32) -> Self { super::set_prop(&mut self.props, "default", d); self }
     pub fn shift_step(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "shift_step", s); self }
     pub fn circular_handle(mut self, enabled: bool) -> Self { super::set_prop(&mut self.props, "circular_handle", enabled); self }
@@ -315,7 +315,7 @@ pub fn vertical_slider(id: &str, range: (f32, f32), value: f32) -> VerticalSlide
 
 impl VerticalSliderBuilder {
     pub fn step(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "step", s); self }
-    pub fn width(mut self, w: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "width", super::length_to_value(w.into())); self }
+    pub fn width(mut self, w: f32) -> Self { super::set_prop(&mut self.props, "width", PropValue::F64(w as f64)); self }
     pub fn height(mut self, h: impl Into<Length>) -> Self { super::set_prop(&mut self.props, "height", super::length_to_value(h.into())); self }
     pub fn default(mut self, d: f32) -> Self { super::set_prop(&mut self.props, "default", d); self }
     pub fn shift_step(mut self, s: f32) -> Self { super::set_prop(&mut self.props, "shift_step", s); self }

@@ -112,13 +112,13 @@ pub fn pointer_area(id: &str) -> PointerAreaBuilder {
 }
 
 impl PointerAreaBuilder {
-    pub fn on_press(mut self, v: bool) -> Self {
-        super::set_prop(&mut self.props, "on_press", v);
+    pub fn on_press(mut self, tag: &str) -> Self {
+        super::set_prop(&mut self.props, "on_press", tag);
         self
     }
 
-    pub fn on_release(mut self, v: bool) -> Self {
-        super::set_prop(&mut self.props, "on_release", v);
+    pub fn on_release(mut self, tag: &str) -> Self {
+        super::set_prop(&mut self.props, "on_release", tag);
         self
     }
 
@@ -236,9 +236,9 @@ impl SensorBuilder {
         self
     }
 
-    /// Enable resize events.
-    pub fn on_resize(mut self, v: bool) -> Self {
-        super::set_prop(&mut self.props, "on_resize", v);
+    /// Enable resize events with a custom event tag.
+    pub fn on_resize(mut self, tag: &str) -> Self {
+        super::set_prop(&mut self.props, "on_resize", tag);
         self
     }
 

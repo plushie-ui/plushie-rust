@@ -2,18 +2,21 @@ use std::time::Duration;
 
 use iced::widget::{Space, sensor};
 use iced::{Element, Theme};
+use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
+use crate::widget::helpers::*;
 
 use plushie_core::types::PlushieType;
 
 struct SensorProps {
     delay: Option<f64>,
     anticipate: Option<f32>,
+    on_resize: Option<String>,
 }
 
 impl SensorProps {
@@ -22,6 +25,7 @@ impl SensorProps {
         Self {
             delay: f64::extract(p, "delay"),
             anticipate: f32::extract(p, "anticipate"),
+            on_resize: prop_str(p, "on_resize"),
         }
     }
 }
@@ -46,37 +50,53 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
             .map(|c| ctx.render_child(c))
             .unwrap_or_else(|| Space::new().into());
 
-        // Sensor needs a key. Use the node id.
         let id = node.id.clone();
-        let show_id = node.id.clone();
-        let resize_id = node.id.clone();
-        let hide_id = format!("{}:hide", node.id);
+        let window_id = ctx.window_id.to_string();
 
-        let mut s = sensor(child)
-            .key(id)
-            .on_show({
-                let window_id = ctx.window_id.to_string();
-                move |size| {
-                    Message::SensorResize(
-                        window_id.clone(),
-                        format!("{}:show", show_id),
-                        size.width,
-                        size.height,
-                    )
-                }
-            })
-            .on_resize({
-                let window_id = ctx.window_id.to_string();
-                move |size| {
-                    Message::SensorResize(
-                        window_id.clone(),
-                        resize_id.clone(),
-                        size.width,
-                        size.height,
-                    )
-                }
-            })
-            .on_hide(Message::Click(ctx.window_id.to_string(), hide_id));
+        let mut s = sensor(child).key(id);
+
+        if let Some(ref tag) = sp.on_resize {
+            // on_show: emit as "{tag}:show"
+            {
+                let wid = window_id.clone();
+                let nid = node.id.clone();
+                let family = format!("{}:show", tag);
+                s = s.on_show(move |size| {
+                    Message::Event {
+                        window_id: wid.clone(),
+                        id: nid.clone(),
+                        family: family.clone(),
+                        data: serde_json::json!({"width": size.width, "height": size.height}),
+                    }
+                });
+            }
+            // on_resize: emit with the tag directly
+            {
+                let wid = window_id.clone();
+                let nid = node.id.clone();
+                let family = tag.clone();
+                s = s.on_resize(move |size| {
+                    Message::Event {
+                        window_id: wid.clone(),
+                        id: nid.clone(),
+                        family: family.clone(),
+                        data: serde_json::json!({"width": size.width, "height": size.height}),
+                    }
+                });
+            }
+            // on_hide: emit as "{tag}:hide"
+            {
+                let wid = window_id.clone();
+                let nid = node.id.clone();
+                let family = format!("{}:hide", tag);
+                s = s.on_hide(Message::Event {
+                    window_id: wid,
+                    id: nid,
+                    family,
+                    data: Value::Null,
+                });
+            }
+        }
 
         if let Some(d) = sp.delay {
             s = s.delay(Duration::from_millis(d as u64));

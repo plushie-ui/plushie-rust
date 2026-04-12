@@ -247,10 +247,10 @@ fn tooltip_with_tip_and_child() {
 #[test]
 fn pointer_area_with_child() {
     let v = view_json(
-        pointer_area("area").on_press(true).child(text("hover me"))
+        pointer_area("area").on_press("click").child(text("hover me"))
     );
     assert_eq!(get_type(&v), "pointer_area");
-    assert_eq!(get_prop(&v, "on_press"), &serde_json::json!(true));
+    assert_eq!(get_prop(&v, "on_press"), &serde_json::json!("click"));
 }
 
 // ---------------------------------------------------------------------------

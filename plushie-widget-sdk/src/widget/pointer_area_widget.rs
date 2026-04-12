@@ -1,5 +1,6 @@
 use iced::widget::{Space, mouse_area};
 use iced::{Element, Theme, mouse};
+use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::iced_convert;
@@ -13,6 +14,8 @@ use plushie_core::types::{CursorStyle, PlushieType};
 
 struct PointerAreaProps {
     cursor: Option<CursorStyle>,
+    on_press: Option<String>,
+    on_release: Option<String>,
 }
 
 impl PointerAreaProps {
@@ -20,6 +23,8 @@ impl PointerAreaProps {
         let p = &node.props;
         Self {
             cursor: CursorStyle::extract(p, "cursor"),
+            on_press: prop_str(p, "on_press"),
+            on_release: prop_str(p, "on_release"),
         }
     }
 }
@@ -45,21 +50,32 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
             .map(|c| ctx.render_child(c))
             .unwrap_or_else(|| Space::new().into());
 
-        let id = node.id.clone();
-        let release_id = format!("{}:release", node.id);
         let window_id = ctx.window_id.to_string();
 
-        let mut ma = mouse_area(child)
-            .on_press({
-                let wid = window_id.clone();
-                let nid = id.clone();
-                move |_p| Message::Click(wid.clone(), nid.clone())
-            })
-            .on_release({
-                let wid = window_id.clone();
-                let rid = release_id.clone();
-                move |_p| Message::Click(wid.clone(), rid.clone())
+        let mut ma = mouse_area(child);
+
+        if let Some(ref tag) = pap.on_press {
+            let wid = window_id.clone();
+            let nid = node.id.clone();
+            let family = tag.clone();
+            ma = ma.on_press(move |_p| Message::Event {
+                window_id: wid.clone(),
+                id: nid.clone(),
+                family: family.clone(),
+                data: Value::Null,
             });
+        }
+        if let Some(ref tag) = pap.on_release {
+            let wid = window_id.clone();
+            let nid = node.id.clone();
+            let family = tag.clone();
+            ma = ma.on_release(move |_p| Message::Event {
+                window_id: wid.clone(),
+                id: nid.clone(),
+                family: family.clone(),
+                data: Value::Null,
+            });
+        }
 
         // Conditional event handlers (opt-in via boolean props)
         if prop_bool_default(props, "on_middle_press", false) {

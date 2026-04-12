@@ -32,6 +32,16 @@ impl Route {
         }
     }
 
+    /// Create a new route at the given path with initial parameters.
+    pub fn new_with_params(path: &str, params: HashMap<String, serde_json::Value>) -> Self {
+        Self {
+            stack: vec![RouteEntry {
+                path: path.to_string(),
+                params,
+            }],
+        }
+    }
+
     /// Navigate to a new path, pushing it onto the stack.
     pub fn push(&mut self, path: &str) {
         self.push_with_params(path, HashMap::new());

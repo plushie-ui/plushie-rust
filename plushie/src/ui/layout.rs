@@ -231,8 +231,8 @@ impl ColumnBuilder {
         self
     }
 
-    pub fn max_width(mut self, w: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "max_width", super::length_to_value(w.into()));
+    pub fn max_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "max_width", w.into().wire_encode());
         self
     }
 
@@ -330,8 +330,8 @@ impl RowBuilder {
         self
     }
 
-    pub fn max_width(mut self, w: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "max_width", super::length_to_value(w.into()));
+    pub fn max_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
+        super::set_prop(&mut self.props, "max_width", w.into().wire_encode());
         self
     }
 
@@ -625,13 +625,13 @@ impl GridBuilder {
         self
     }
 
-    pub fn width(mut self, w: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
+    pub fn width(mut self, w: f32) -> Self {
+        super::set_prop(&mut self.props, "width", PropValue::F64(w as f64));
         self
     }
 
-    pub fn height(mut self, h: impl Into<Length>) -> Self {
-        super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
+    pub fn height(mut self, h: f32) -> Self {
+        super::set_prop(&mut self.props, "height", PropValue::F64(h as f64));
         self
     }
 

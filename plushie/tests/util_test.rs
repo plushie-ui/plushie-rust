@@ -236,6 +236,16 @@ fn new_route_starts_at_path() {
 }
 
 #[test]
+fn new_with_params_sets_initial_params() {
+    let mut params = std::collections::HashMap::new();
+    params.insert("tab".to_string(), serde_json::json!("general"));
+    let route = Route::new_with_params("/settings", params);
+    assert_eq!(route.current(), "/settings");
+    assert_eq!(route.params().get("tab").and_then(|v| v.as_str()), Some("general"));
+    assert_eq!(route.depth(), 1);
+}
+
+#[test]
 fn push_adds_to_stack() {
     let mut route = Route::new("/home");
     route.push("/settings");

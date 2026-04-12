@@ -463,6 +463,129 @@ OutgoingEvent::widget_event("value_changed", node_id, data)
     .with_coalesce(CoalesceHint::Replace)
 ```
 
+### Commands to your widget
+
+Host SDKs can send commands to your widget at runtime, bypassing
+the normal tree update cycle. This is useful for high-frequency
+data (pushing plot points to a chart) or imperative operations
+(scrolling to a position, clearing state).
+
+Commands arrive through `handle_widget_op()` on the PlushieWidget
+trait. On the wire, they use the unified command format:
+
+```json
+{"type": "command", "id": "gauge-1", "family": "set_value", "value": 72.0}
+```
+
+The `family` string identifies the operation. The `value` carries
+the payload (or `null` for operations with no data).
+
+#### Typed command enums with `#[derive(WidgetCommand)]`
+
+For Rust SDK users, `#[derive(WidgetCommand)]` generates type-safe
+command construction with automatic family naming and value
+encoding:
+
+```rust
+use plushie_core::WidgetCommand;
+
+#[derive(WidgetCommand)]
+enum GaugeCommand {
+    /// Set gauge to a value immediately.
+    SetValue(f32),
+    /// Reset gauge to zero.
+    Reset,
+    /// Set the display range.
+    SetRange { min: f32, max: f32 },
+}
+```
+
+The derive macro converts variant names to `snake_case` family
+strings and encodes payloads automatically:
+
+| Variant | Wire family | Wire value |
+|---------|-------------|------------|
+| `SetValue(72.0)` | `"set_value"` | `72.0` |
+| `Reset` | `"reset"` | `null` |
+| `SetRange { min: 0.0, max: 100.0 }` | `"set_range"` | `{"min": 0.0, "max": 100.0}` |
+
+Use `Command::widget()` with the typed enum:
+
+```rust
+use plushie::command::Command;
+
+// Type-safe: compiler checks the variant and payload types
+Command::widget("temp-gauge", GaugeCommand::SetValue(72.0))
+```
+
+For dynamic or untyped usage, `Command::send()` accepts raw
+family and value:
+
+```rust
+// Low-level: no compile-time type checking on the payload
+Command::send("temp-gauge", "set_value", serde_json::json!(72.0))
+```
+
+### Spec validation
+
+The PlushieWidget trait provides `event_specs()` and
+`command_specs()` for runtime validation of payloads. The renderer
+validates emitted event payloads and incoming command payloads
+against these specs and logs warnings on mismatch.
+
+```rust
+use plushie_core::{EventSpec, CommandSpec, PayloadSpec, ValueType};
+
+impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
+    // ... type_names, render, clone_for_session ...
+
+    fn event_specs(&self) -> Vec<EventSpec> {
+        vec![
+            EventSpec {
+                family: "value_changed".into(),
+                payload: PayloadSpec::Value(ValueType::Float),
+            },
+            EventSpec {
+                family: "gauge_clicked".into(),
+                payload: PayloadSpec::None,
+            },
+        ]
+    }
+
+    fn command_specs(&self) -> Vec<CommandSpec> {
+        vec![
+            CommandSpec {
+                family: "set_value".into(),
+                payload: PayloadSpec::Value(ValueType::Float),
+            },
+            CommandSpec {
+                family: "reset".into(),
+                payload: PayloadSpec::None,
+            },
+            CommandSpec {
+                family: "set_range".into(),
+                payload: PayloadSpec::Fields {
+                    fields: vec![
+                        ("min".into(), ValueType::Float),
+                        ("max".into(), ValueType::Float),
+                    ],
+                    required: vec!["min".into(), "max".into()],
+                },
+            },
+        ]
+    }
+}
+```
+
+When using `#[derive(WidgetCommand)]`, the derive macro also
+generates `command_specs()` on the enum type, so you can delegate:
+
+```rust
+fn command_specs(&self) -> Vec<CommandSpec> {
+    GaugeCommand::command_specs()
+}
+```
+
 ### Testing
 
 Test the widget crate and wrapper crate independently:

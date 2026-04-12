@@ -433,16 +433,83 @@ Remove a subscription.
 }
 ```
 
+### Command
+
+Send a command to a widget by ID. This is the unified format for
+all widget-targeted operations: focus, scroll, text cursor, pane
+grid, and custom widget commands.
+
+```json
+{
+  "type": "command",
+  "session": "s1",
+  "id": "input-1",
+  "family": "focus",
+  "value": null
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Target widget ID (scoped path, e.g. `"form/email"`) |
+| `family` | string | Yes | Operation name (see table below) |
+| `value` | any | No | Operation-specific data. Defaults to `null` if omitted. |
+
+**Built-in command families:**
+
+| Family | Value | Description |
+|--------|-------|-------------|
+| `focus` | null | Focus a widget by ID |
+| `focus_next` | null | Focus next focusable widget |
+| `focus_previous` | null | Focus previous focusable widget |
+| `scroll_to` | `{x, y}` | Scroll to absolute offset |
+| `scroll_by` | `{x, y}` | Scroll by relative amount |
+| `snap_to` | `{x, y}` | Snap scrollable to relative position (0.0-1.0) |
+| `snap_to_end` | null | Snap scrollable to end |
+| `select_all` | null | Select all text |
+| `select_range` | `{start, end}` | Select text range |
+| `move_cursor_to` | `{position}` | Move cursor to position |
+| `move_cursor_to_front` | null | Move cursor to start |
+| `move_cursor_to_end` | null | Move cursor to end |
+| `pane_split` | `{pane, axis, new_pane_id}` | Split a pane |
+| `pane_close` | `{pane}` | Close a pane |
+| `pane_swap` | `{a, b}` | Swap two panes |
+| `pane_maximize` | `{pane}` | Maximize a pane |
+| `pane_restore` | null | Restore maximized pane |
+
+Custom widgets receive commands through the same mechanism. The
+`family` string and `value` shape are defined by the widget's
+command spec (see `command_specs()` on the PlushieWidget trait).
+
+### Commands
+
+Send multiple widget commands in a single message.
+
+```json
+{
+  "type": "commands",
+  "session": "s1",
+  "commands": [
+    { "id": "chart-1", "family": "append_data", "value": {"values": [1.0, 2.5]} },
+    { "id": "chart-2", "family": "reset", "value": null }
+  ]
+}
+```
+
+Each item has the same `id`, `family`, `value` structure as a
+single Command message.
+
 ### WidgetOp
 
-Perform an operation on a widget (focus, scroll, etc.).
+Perform a global operation not targeted at a specific widget, or
+query renderer state.
 
 ```json
 {
   "type": "widget_op",
   "session": "s1",
-  "op": "focus",
-  "payload": { "target": "input-1" }
+  "op": "announce",
+  "payload": { "text": "Item saved" }
 }
 ```
 
@@ -450,27 +517,9 @@ Perform an operation on a widget (focus, scroll, etc.).
 
 | Op | Payload | Description |
 |----|---------|-------------|
-| `focus` | `target` | Focus a widget by ID |
-| `focus_next` | -- | Focus next focusable widget |
-| `focus_previous` | -- | Focus previous focusable widget |
-| `focus` | `target` (scoped path) | Focus a widget or canvas element (e.g., `"canvas/element"`) |
-| `scroll_to` | `target`, `offset_x`, `offset`/`offset_y` | Scroll to absolute offset |
-| `scroll_by` | `target`, `offset_x`, `offset_y` | Scroll by relative amount |
-| `snap_to` | `target`, `x`, `y` | Snap scrollable to relative position (0.0-1.0) |
-| `snap_to_end` | `target` | Snap scrollable to end |
-| `select_all` | `target` | Select all text |
-| `select_range` | `target`, `start`, `end` | Select text range |
-| `move_cursor_to` | `target`, `position` | Move cursor to position |
-| `move_cursor_to_front` | `target` | Move cursor to start |
-| `move_cursor_to_end` | `target` | Move cursor to end |
 | `close_window` | `window_id` | Close a window |
 | `announce` | `text` | Screen reader announcement (no visible widget needed) |
 | `exit` | -- | Exit the renderer |
-| `pane_split` | `target`, `pane`, `axis`, `new_pane_id` | Split a pane |
-| `pane_close` | `target`, `pane` | Close a pane |
-| `pane_swap` | `target`, `a`, `b` | Swap two panes |
-| `pane_maximize` | `target`, `pane` | Maximize a pane |
-| `pane_restore` | `target` | Restore maximized pane |
 | `tree_hash` | `tag` (optional) | Compute SHA-256 hash of current tree; response via `op_query_response` |
 | `find_focused` | `tag` (optional) | Find the currently focused widget; response via `op_query_response` |
 | `load_font` | `data` (base64 TTF/OTF) | Load a font at runtime |
@@ -660,36 +709,10 @@ Or with raw RGBA pixels:
 In MessagePack mode, `data` and `pixels` can be sent as raw binary
 (no base64 encoding needed).
 
-### WidgetCommand
-
-Send a command directly to a custom widget, bypassing the
-tree update cycle. Used for high-frequency data (e.g. pushing plot
-data to a chart widget).
-
-```json
-{
-  "type": "widget_command",
-  "session": "s1",
-  "node_id": "chart-1",
-  "op": "append_data",
-  "payload": { "values": [1.0, 2.5, 3.7] }
-}
-```
-
-### WidgetCommands
-
-Send multiple widget commands in a single message.
-
-```json
-{
-  "type": "widget_commands",
-  "session": "s1",
-  "commands": [
-    { "node_id": "chart-1", "op": "append_data", "payload": {...} },
-    { "node_id": "chart-2", "op": "clear", "payload": {} }
-  ]
-}
-```
+**Note:** The former `widget_command` and `widget_commands` message
+types are replaced by `command` and `commands` (see above). The
+unified format uses `id`/`family`/`value` fields for all
+widget-targeted operations.
 
 ### Query
 
@@ -1059,9 +1082,9 @@ Every request message produces exactly one response. The `id` and
 | SystemQuery | `op_query_response` | get_system_theme, get_system_info |
 
 Messages without responses: Settings, Snapshot, Patch,
-Subscribe, Unsubscribe, WidgetOp
+Subscribe, Unsubscribe, Command, Commands, WidgetOp
 (non-query), WindowOp (non-query), SystemOp, ImageOp,
-WidgetCommand, WidgetCommands, AdvanceFrame.
+AdvanceFrame.
 
 ### event
 
@@ -1132,7 +1155,7 @@ Current renderer error payloads include:
 
 | `value.kind` | Other fields | Description |
 |-------------|--------------|-------------|
-| `widget_command` | `reason`, `node_id`, `op`, `message`, `widget_type` (optional) | Widget command failed. `reason` is currently `"unknown_node"`, `"poisoned"`, or `"panic"`. |
+| `widget_command` | `reason`, `node_id`, `family`, `message`, `widget_type` (optional) | Widget command failed. `reason` is currently `"unknown_node"`, `"poisoned"`, or `"panic"`. |
 
 #### Pointer events
 

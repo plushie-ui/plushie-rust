@@ -65,13 +65,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ResponsiveWidget {
 
         sensor(container(child).width(width).height(height))
             .key(node.id.clone())
-            .on_resize(move |size| {
-                Message::SensorResize(
-                    window_id.clone(),
-                    resize_id.clone(),
-                    size.width,
-                    size.height,
-                )
+            .on_resize(move |size| Message::Event {
+                window_id: window_id.clone(),
+                id: resize_id.clone(),
+                value: serde_json::json!({"width": size.width, "height": size.height}),
+                family: "resize".into(),
             })
             .into()
     }

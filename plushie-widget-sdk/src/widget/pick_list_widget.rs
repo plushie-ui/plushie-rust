@@ -85,7 +85,12 @@ fn render_pick_list<'a, R: PlushieRenderer>(
         .unwrap_or(iced::Length::Shrink);
 
     let mut pl = pick_list(pp.selected, pp.options, |v: &String| v.clone())
-        .on_select(move |v: String| Message::Select(window_id.clone(), id.clone(), v))
+        .on_select(move |v: String| Message::Event {
+            window_id: window_id.clone(),
+            id: id.clone(),
+            value: Value::String(v),
+            family: "select".into(),
+        })
         .width(width);
 
     if let Some(ref p) = pp.padding {
@@ -186,8 +191,11 @@ fn render_pick_list<'a, R: PlushieRenderer>(
     {
         let status_wid = ctx.window_id.to_string();
         let status_id = node.id.clone();
-        pl = pl.on_status_change(move |status| {
-            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        pl = pl.on_status_change(move |status| Message::Event {
+            window_id: status_wid.clone(),
+            id: status_id.clone(),
+            value: Value::String(status.to_string()),
+            family: "status".into(),
         });
     }
 

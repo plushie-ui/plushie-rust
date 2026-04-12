@@ -144,7 +144,12 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         .unwrap_or(iced::Length::Fill);
 
     let mut cb = combo_box(state, &placeholder, cp.selected.as_ref(), move |selected| {
-        Message::Select(window_id.clone(), id.clone(), selected)
+        Message::Event {
+            window_id: window_id.clone(),
+            id: id.clone(),
+            value: Value::String(selected),
+            family: "select".into(),
+        }
     })
     .width(width);
 
@@ -152,8 +157,13 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
         cb = cb.padding(iced_convert::padding(p));
     }
 
-    // on_input: emit Input events so the host can filter
-    cb = cb.on_input(move |v| Message::Input(input_window_id.clone(), input_id.clone(), v));
+    // on_input: emit input events so the host can filter
+    cb = cb.on_input(move |v| Message::Event {
+        window_id: input_window_id.clone(),
+        id: input_id.clone(),
+        value: Value::String(v),
+        family: "input".into(),
+    });
 
     if let Some(sz) = cp.size.or(ctx.default_text_size) {
         cb = cb.size(sz);
@@ -197,8 +207,11 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     if prop_bool_default(&node.props, "on_option_hovered", false) {
         let hover_id = node.id.clone();
         let hover_window_id = ctx.window_id.to_string();
-        cb = cb.on_option_hovered(move |val| {
-            Message::OptionHovered(hover_window_id.clone(), hover_id.clone(), val)
+        cb = cb.on_option_hovered(move |val| Message::Event {
+            window_id: hover_window_id.clone(),
+            id: hover_id.clone(),
+            value: Value::String(val),
+            family: "option_hovered".into(),
         });
     }
     if prop_bool_default(&node.props, "on_open", false) {

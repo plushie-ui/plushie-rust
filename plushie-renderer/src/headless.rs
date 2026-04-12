@@ -459,6 +459,13 @@ impl<R: PlushieRenderer> Session<R> {
     fn process_captured_messages(&mut self, messages: Vec<Message>) -> Vec<OutgoingEvent> {
         let mut events = Vec::new();
         for msg in messages {
+            // Suppress status events in headless interact mode. Status
+            // changes are high-frequency, internal to iced's widget state
+            // machine, and not meaningful during scripted interactions.
+            // In daemon mode they flow as standalone wire events.
+            if matches!(&msg, Message::Event { family, .. } if family == "status") {
+                continue;
+            }
             events.extend(self.registry.process_message(&msg));
         }
         events

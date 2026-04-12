@@ -1,9 +1,10 @@
 use iced::widget::{Space, scrollable};
 use iced::{Element, Theme, widget};
+use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::iced_convert;
-use crate::message::{Message, ScrollViewport};
+use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
@@ -121,20 +122,17 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
                 let rel = viewport.relative_offset();
                 let bounds = viewport.bounds();
                 let content_bounds = viewport.content_bounds();
-                Message::ScrollEvent(
-                    window_id.clone(),
-                    scroll_id.clone(),
-                    ScrollViewport {
-                        absolute_x: abs.x,
-                        absolute_y: abs.y,
-                        relative_x: rel.x,
-                        relative_y: rel.y,
-                        viewport_width: bounds.width,
-                        viewport_height: bounds.height,
-                        content_width: content_bounds.width,
-                        content_height: content_bounds.height,
-                    },
-                )
+                Message::Event {
+                    window_id: window_id.clone(),
+                    id: scroll_id.clone(),
+                    value: serde_json::json!({
+                        "absolute_x": abs.x, "absolute_y": abs.y,
+                        "relative_x": rel.x, "relative_y": rel.y,
+                        "bounds_width": bounds.width, "bounds_height": bounds.height,
+                        "content_width": content_bounds.width, "content_height": content_bounds.height,
+                    }),
+                    family: "scrolled".into(),
+                }
             });
         }
 
@@ -164,8 +162,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
         {
             let status_wid = ctx.window_id.to_string();
             let status_id = node.id.clone();
-            s = s.on_status_change(move |status| {
-                Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+            s = s.on_status_change(move |status| Message::Event {
+                window_id: status_wid.clone(),
+                id: status_id.clone(),
+                value: Value::String(status.to_string()),
+                family: "status".into(),
             });
         }
 

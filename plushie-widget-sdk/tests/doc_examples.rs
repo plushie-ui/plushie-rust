@@ -218,12 +218,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocRating {
             let star_text = text(label).size(size).color(star_color);
 
             let star_button = button(star_text)
-                .on_press(Message::widget_event(
-                    "",
-                    &id,
-                    "select",
-                    json!({"value": i}),
-                ))
+                .on_press(Message::Event {
+                    window_id: String::new(),
+                    id: id.clone(),
+                    family: "select".into(),
+                    value: json!({"value": i}),
+                })
                 .padding(0)
                 .style(button::text);
 

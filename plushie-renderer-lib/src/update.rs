@@ -25,22 +25,8 @@ impl App {
             // update() call regardless of the returned Task. Widgets
             // using canvas::Cache must clear caches themselves (see
             // GenerationCounter in registry.rs).
-            msg @ (Message::Click(..)
-            | Message::Input(..)
-            | Message::Submit(..)
-            | Message::Toggle(..)
-            | Message::Select(..)
-            | Message::Paste(..)
-            | Message::OptionHovered(..)
-            | Message::SensorResize(..)
-            | Message::ScrollEvent(..)
-            | Message::MouseAreaEvent(..)
-            | Message::MouseAreaMove(..)
-            | Message::MouseAreaScroll(..)
-            | Message::CanvasElementFocusChanged { .. }
+            msg @ (Message::CanvasElementFocusChanged { .. }
             | Message::Diagnostic { .. }
-            | Message::Slide(..)
-            | Message::SlideRelease(..)
             | Message::TextEditorAction(..)
             | Message::Event { .. }
             | Message::PaneFocusCycle(..)
@@ -66,17 +52,6 @@ impl App {
                     task = Task::batch([task, t]);
                 }
                 task
-            }
-            // Status changes are emitted directly, not through the widget
-            // message pipeline. This prevents them from being bundled into
-            // interact_step event arrays during headless interactions.
-            Message::StatusChanged(_window_id, id, status) => {
-                let event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
-                    "status".to_string(),
-                    id,
-                    Some(serde_json::json!(status)),
-                );
-                self.emitter.emit_immediate(event)
             }
 
             Message::MarkdownUrl(url) => {

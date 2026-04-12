@@ -1,5 +1,6 @@
 use iced::widget::text_input;
 use iced::{Element, Theme};
+use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::a11y::A11yOverrides;
@@ -97,7 +98,15 @@ fn render_text_input<'a, R: PlushieRenderer>(
 
     let window_id = ctx.window_id.to_string();
     let mut ti = text_input(&placeholder, &value)
-        .on_input(move |v| Message::Input(window_id.clone(), id.clone(), v))
+        .on_input({
+            let wid = window_id.clone();
+            move |v| Message::Event {
+                window_id: wid.clone(),
+                id: id.clone(),
+                value: Value::String(v),
+                family: "input".into(),
+            }
+        })
         .width(width)
         .secure(secure);
 
@@ -127,21 +136,33 @@ fn render_text_input<'a, R: PlushieRenderer>(
         let submit_window_id = ctx.window_id.to_string();
         let submit_id = node.id.clone();
         let submit_value = value.clone();
-        ti = ti.on_submit(Message::Submit(submit_window_id, submit_id, submit_value));
+        ti = ti.on_submit(Message::Event {
+            window_id: submit_window_id,
+            id: submit_id,
+            value: Value::String(submit_value),
+            family: "submit".into(),
+        });
     }
 
     if prop_bool_default(props, "on_paste", false) {
         let paste_window_id = ctx.window_id.to_string();
         let paste_id = node.id.clone();
-        ti = ti
-            .on_paste(move |text| Message::Paste(paste_window_id.clone(), paste_id.clone(), text));
+        ti = ti.on_paste(move |text| Message::Event {
+            window_id: paste_window_id.clone(),
+            id: paste_id.clone(),
+            value: Value::String(text),
+            family: "paste".into(),
+        });
     }
 
     {
         let status_wid = ctx.window_id.to_string();
         let status_id = node.id.clone();
-        ti = ti.on_status_change(move |status| {
-            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        ti = ti.on_status_change(move |status| Message::Event {
+            window_id: status_wid.clone(),
+            id: status_id.clone(),
+            value: Value::String(status.to_string()),
+            family: "status".into(),
         });
     }
 

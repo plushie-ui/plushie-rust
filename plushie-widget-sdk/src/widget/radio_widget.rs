@@ -1,5 +1,6 @@
 use iced::widget::container;
 use iced::{Element, Theme, widget};
+use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::iced_convert;
@@ -89,12 +90,11 @@ fn render_radio<'a, R: PlushieRenderer>(
     };
     let select_value = value;
 
-    let mut r = iced::widget::Radio::new(label, 0u8, is_selected, move |_| {
-        Message::Select(
-            ctx.window_id.to_string(),
-            event_id.clone(),
-            select_value.clone(),
-        )
+    let mut r = iced::widget::Radio::new(label, 0u8, is_selected, move |_| Message::Event {
+        window_id: ctx.window_id.to_string(),
+        id: event_id.clone(),
+        value: Value::String(select_value.clone()),
+        family: "select".into(),
     });
 
     if let Some(s) = rp.spacing {
@@ -162,8 +162,11 @@ fn render_radio<'a, R: PlushieRenderer>(
     {
         let status_wid = ctx.window_id.to_string();
         let status_id = node.id.clone();
-        r = r.on_status_change(move |status| {
-            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        r = r.on_status_change(move |status| Message::Event {
+            window_id: status_wid.clone(),
+            id: status_id.clone(),
+            value: Value::String(status.to_string()),
+            family: "status".into(),
         });
     }
 

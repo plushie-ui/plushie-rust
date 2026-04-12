@@ -1,5 +1,6 @@
 use iced::widget::{container, slider, vertical_slider};
 use iced::{Element, Theme, widget};
+use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::iced_convert;
@@ -30,27 +31,35 @@ fn apply_rail_overrides(
     }
 }
 
-/// Handle Slide/SlideRelease messages for sliders. Tracks the latest drag
-/// value per (window_id, node_id) so SlideRelease can report the final
+/// Handle slide/slide_release events for sliders. Tracks the latest drag
+/// value per (window_id, node_id) so slide_release can report the final
 /// value (iced's release event doesn't carry the value itself).
 fn handle_slider_message(
     last_values: &mut std::collections::HashMap<(String, String), f64>,
     msg: &Message,
 ) -> Option<Vec<crate::protocol::OutgoingEvent>> {
     match msg {
-        Message::Slide(window_id, id, value) => {
-            last_values.insert((window_id.clone(), id.clone()), *value);
-            Some(vec![crate::protocol::OutgoingEvent::slide(
-                id.clone(),
-                *value,
-            )])
+        Message::Event {
+            window_id,
+            id,
+            value,
+            family,
+        } if family == "slide" => {
+            let v = value.as_f64().unwrap_or(0.0);
+            last_values.insert((window_id.clone(), id.clone()), v);
+            Some(vec![crate::protocol::OutgoingEvent::slide(id.clone(), v)])
         }
-        Message::SlideRelease(window_id, id) => {
+        Message::Event {
+            window_id,
+            id,
+            family,
+            ..
+        } if family == "slide_release" => {
             let key = (window_id.clone(), id.clone());
-            let value = last_values.remove(&key).unwrap_or(0.0);
+            let v = last_values.remove(&key).unwrap_or(0.0);
             Some(vec![crate::protocol::OutgoingEvent::slide_release(
                 id.clone(),
-                value,
+                v,
             )])
         }
         _ => None,
@@ -195,10 +204,18 @@ fn render_slider<'a, R: PlushieRenderer>(
     let window_id = ctx.window_id.to_string();
     let release_window_id = window_id.clone();
 
-    let mut s = slider(range, value, move |v| {
-        Message::Slide(window_id.clone(), id.clone(), v)
+    let mut s = slider(range, value, move |v| Message::Event {
+        window_id: window_id.clone(),
+        id: id.clone(),
+        value: serde_json::json!(v),
+        family: "slide".into(),
     })
-    .on_release(Message::SlideRelease(release_window_id, release_id))
+    .on_release(Message::Event {
+        window_id: release_window_id,
+        id: release_id,
+        value: Value::Null,
+        family: "slide_release".into(),
+    })
     .width(width);
 
     if let Some(st) = sp.step {
@@ -289,8 +306,11 @@ fn render_slider<'a, R: PlushieRenderer>(
     {
         let status_wid = ctx.window_id.to_string();
         let status_id = node.id.clone();
-        s = s.on_status_change(move |status| {
-            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        s = s.on_status_change(move |status| Message::Event {
+            window_id: status_wid.clone(),
+            id: status_id.clone(),
+            value: Value::String(status.to_string()),
+            family: "status".into(),
         });
     }
 
@@ -343,10 +363,18 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     let window_id = ctx.window_id.to_string();
     let release_window_id = window_id.clone();
 
-    let mut s = vertical_slider(range, value, move |v| {
-        Message::Slide(window_id.clone(), id.clone(), v)
+    let mut s = vertical_slider(range, value, move |v| Message::Event {
+        window_id: window_id.clone(),
+        id: id.clone(),
+        value: serde_json::json!(v),
+        family: "slide".into(),
     })
-    .on_release(Message::SlideRelease(release_window_id, release_id))
+    .on_release(Message::Event {
+        window_id: release_window_id,
+        id: release_id,
+        value: Value::Null,
+        family: "slide_release".into(),
+    })
     .height(height);
 
     if let Some(w) = width {
@@ -425,8 +453,11 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     {
         let status_wid = ctx.window_id.to_string();
         let status_id = node.id.clone();
-        s = s.on_status_change(move |status| {
-            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        s = s.on_status_change(move |status| Message::Event {
+            window_id: status_wid.clone(),
+            id: status_id.clone(),
+            value: Value::String(status.to_string()),
+            family: "status".into(),
         });
     }
 

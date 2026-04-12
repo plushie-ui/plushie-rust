@@ -1,5 +1,6 @@
 use iced::widget::{Space, button, container, text};
 use iced::{Element, Theme, widget};
+use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::iced_convert;
@@ -82,7 +83,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
         }
 
         if !disabled {
-            b = b.on_press(Message::Click(window_id, id));
+            b = b.on_press(Message::Event {
+                window_id,
+                id,
+                value: Value::Null,
+                family: "click".into(),
+            });
         }
 
         // Style: preset name or custom style map
@@ -156,8 +162,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
         {
             let status_wid = ctx.window_id.to_string();
             let status_id = node.id.clone();
-            b = b.on_status_change(move |status| {
-                Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+            b = b.on_status_change(move |status| Message::Event {
+                window_id: status_wid.clone(),
+                id: status_id.clone(),
+                value: Value::String(status.to_string()),
+                family: "status".into(),
             });
         }
 

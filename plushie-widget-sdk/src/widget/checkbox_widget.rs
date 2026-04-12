@@ -88,7 +88,12 @@ fn render_checkbox<'a, R: PlushieRenderer>(
     let mut cb = checkbox(cp.checked).label(label).width(width);
 
     if !cp.disabled {
-        cb = cb.on_toggle(move |v| Message::Toggle(ctx.window_id.to_string(), id.clone(), v));
+        cb = cb.on_toggle(move |v| Message::Event {
+            window_id: ctx.window_id.to_string(),
+            id: id.clone(),
+            value: Value::Bool(v),
+            family: "toggle".into(),
+        });
     }
 
     if let Some(s) = cp.spacing {
@@ -231,8 +236,11 @@ fn render_checkbox<'a, R: PlushieRenderer>(
     {
         let status_wid = ctx.window_id.to_string();
         let status_id = node.id.clone();
-        cb = cb.on_status_change(move |status| {
-            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        cb = cb.on_status_change(move |status| Message::Event {
+            window_id: status_wid.clone(),
+            id: status_id.clone(),
+            value: Value::String(status.to_string()),
+            family: "status".into(),
         });
     }
 

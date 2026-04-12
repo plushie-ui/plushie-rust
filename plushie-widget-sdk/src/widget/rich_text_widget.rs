@@ -165,8 +165,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
         }
 
         let window_id = ctx.window_id.to_string();
-        rt = rt.on_link_click(move |link| {
-            Message::Click(window_id.clone(), format!("{}:{}", id, link))
+        rt = rt.on_link_click(move |link| Message::Event {
+            window_id: window_id.clone(),
+            id: format!("{}:{}", id, link),
+            value: serde_json::Value::Null,
+            family: "click".into(),
         });
 
         rt.into()

@@ -588,8 +588,11 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     {
         let status_wid = ctx.window_id.to_string();
         let status_id = node.id.clone();
-        te = te.on_status_change(move |status| {
-            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        te = te.on_status_change(move |status| Message::Event {
+            window_id: status_wid.clone(),
+            id: status_id.clone(),
+            value: serde_json::Value::String(status.to_string()),
+            family: "status".into(),
         });
     }
 

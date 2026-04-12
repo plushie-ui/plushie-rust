@@ -569,35 +569,21 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
 
         match msg {
-            // Simple widget events: stateless conversion.
-            Message::Click(..)
-            | Message::Input(..)
-            | Message::Submit(..)
-            | Message::Toggle(..)
-            | Message::Select(..)
-            | Message::Paste(..)
-            | Message::OptionHovered(..)
-            | Message::SensorResize(..)
-            | Message::ScrollEvent(..)
-            | Message::MouseAreaEvent(..)
-            | Message::MouseAreaMove(..)
-            | Message::MouseAreaScroll(..)
-            | Message::Diagnostic { .. } => msg.to_outgoing_event().into_iter().collect(),
+            // Diagnostic: stateless conversion.
+            Message::Diagnostic { .. } => msg.to_outgoing_event().into_iter().collect(),
 
             // CanvasElementFocusChanged is handled by CanvasWidget::handle_message
             // (splits into blur + focus events). Fallback returns empty.
             Message::CanvasElementFocusChanged { .. } => vec![],
 
-            // Slider Slide/SlideRelease and TextEditorAction are handled
-            // by their PlushieWidget factories via registry dispatch.
-            // These arms are fallback for edge cases where the registry
-            // has no mapping.
-            Message::Slide(..) | Message::SlideRelease(..) | Message::TextEditorAction(..) => {
-                vec![]
-            }
+            // TextEditorAction is handled by its PlushieWidget factory via
+            // registry dispatch. This arm is fallback for edge cases where
+            // the registry has no mapping.
+            Message::TextEditorAction(..) => vec![],
 
-            // Widget events: if the registry's handle_message (above) didn't
-            // match, pass through as a generic outgoing event.
+            // Unified widget events: if the registry's handle_message
+            // (above) didn't match, pass through as a generic outgoing
+            // event.
             Message::Event {
                 id, value, family, ..
             } => {
@@ -621,7 +607,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             | Message::PaneClicked(..) => vec![],
 
             // Everything else (subscription events, NoOp, MarkdownUrl,
-            // StatusChanged, etc.) produces no outgoing events.
+            // etc.) produces no outgoing events.
             _ => vec![],
         }
     }

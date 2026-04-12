@@ -1,5 +1,6 @@
 use iced::widget::{container, toggler};
 use iced::{Element, Theme, widget};
+use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::iced_convert;
@@ -87,7 +88,12 @@ fn render_toggler<'a, R: PlushieRenderer>(
     let mut t = toggler(tp.is_toggled).width(width);
 
     if !tp.disabled {
-        t = t.on_toggle(move |v| Message::Toggle(ctx.window_id.to_string(), id.clone(), v));
+        t = t.on_toggle(move |v| Message::Event {
+            window_id: ctx.window_id.to_string(),
+            id: id.clone(),
+            value: Value::Bool(v),
+            family: "toggle".into(),
+        });
     }
 
     if let Some(l) = tp.label {
@@ -182,8 +188,11 @@ fn render_toggler<'a, R: PlushieRenderer>(
     {
         let status_wid = ctx.window_id.to_string();
         let status_id = node.id.clone();
-        t = t.on_status_change(move |status| {
-            Message::StatusChanged(status_wid.clone(), status_id.clone(), status.to_string())
+        t = t.on_status_change(move |status| Message::Event {
+            window_id: status_wid.clone(),
+            id: status_id.clone(),
+            value: Value::String(status.to_string()),
+            family: "status".into(),
         });
     }
 

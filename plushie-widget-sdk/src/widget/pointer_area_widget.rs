@@ -81,75 +81,79 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
         if prop_bool_default(props, "on_middle_press", false) {
             let ev_id = node.id.clone();
             let wid = window_id.clone();
-            ma = ma.on_middle_press(move |p| {
-                Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "middle_press".into(), p.x, p.y)
+            ma = ma.on_middle_press(move |p| Message::Event {
+                window_id: wid.clone(),
+                id: ev_id.clone(),
+                value: serde_json::json!({"x": p.x, "y": p.y}),
+                family: "middle_press".into(),
             });
         }
         if prop_bool_default(props, "on_right_press", false) {
             let ev_id = node.id.clone();
             let wid = window_id.clone();
-            ma = ma.on_right_press(move |p| {
-                Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "right_press".into(), p.x, p.y)
+            ma = ma.on_right_press(move |p| Message::Event {
+                window_id: wid.clone(),
+                id: ev_id.clone(),
+                value: serde_json::json!({"x": p.x, "y": p.y}),
+                family: "right_press".into(),
             });
         }
         if prop_bool_default(props, "on_right_release", false) {
             let ev_id = node.id.clone();
             let wid = window_id.clone();
-            ma = ma.on_right_release(move |p| {
-                Message::MouseAreaEvent(
-                    wid.clone(),
-                    ev_id.clone(),
-                    "right_release".into(),
-                    p.x,
-                    p.y,
-                )
+            ma = ma.on_right_release(move |p| Message::Event {
+                window_id: wid.clone(),
+                id: ev_id.clone(),
+                value: serde_json::json!({"x": p.x, "y": p.y}),
+                family: "right_release".into(),
             });
         }
         if prop_bool_default(props, "on_middle_release", false) {
             let ev_id = node.id.clone();
             let wid = window_id.clone();
-            ma = ma.on_middle_release(move |p| {
-                Message::MouseAreaEvent(
-                    wid.clone(),
-                    ev_id.clone(),
-                    "middle_release".into(),
-                    p.x,
-                    p.y,
-                )
+            ma = ma.on_middle_release(move |p| Message::Event {
+                window_id: wid.clone(),
+                id: ev_id.clone(),
+                value: serde_json::json!({"x": p.x, "y": p.y}),
+                family: "middle_release".into(),
             });
         }
         if prop_bool_default(props, "on_double_click", false) {
             let ev_id = node.id.clone();
             let wid = window_id.clone();
-            ma = ma.on_double_click(move |p| {
-                Message::MouseAreaEvent(wid.clone(), ev_id.clone(), "double_click".into(), p.x, p.y)
+            ma = ma.on_double_click(move |p| Message::Event {
+                window_id: wid.clone(),
+                id: ev_id.clone(),
+                value: serde_json::json!({"x": p.x, "y": p.y}),
+                family: "double_click".into(),
             });
         }
         if prop_bool_default(props, "on_enter", false) {
             let ev_id = node.id.clone();
-            ma = ma.on_enter(Message::MouseAreaEvent(
-                window_id.clone(),
-                ev_id,
-                "enter".into(),
-                0.0,
-                0.0,
-            ));
+            ma = ma.on_enter(Message::Event {
+                window_id: window_id.clone(),
+                id: ev_id,
+                value: Value::Null,
+                family: "enter".into(),
+            });
         }
         if prop_bool_default(props, "on_exit", false) {
             let ev_id = node.id.clone();
-            ma = ma.on_exit(Message::MouseAreaEvent(
-                window_id.clone(),
-                ev_id,
-                "exit".into(),
-                0.0,
-                0.0,
-            ));
+            ma = ma.on_exit(Message::Event {
+                window_id: window_id.clone(),
+                id: ev_id,
+                value: Value::Null,
+                family: "exit".into(),
+            });
         }
         if prop_bool_default(props, "on_move", false) {
             let ev_id = node.id.clone();
             let move_window_id = window_id.clone();
-            ma = ma.on_move(move |p| {
-                Message::MouseAreaMove(move_window_id.clone(), ev_id.clone(), p.x, p.y)
+            ma = ma.on_move(move |p| Message::Event {
+                window_id: move_window_id.clone(),
+                id: ev_id.clone(),
+                value: serde_json::json!({"x": p.x, "y": p.y}),
+                family: "move".into(),
             });
         }
         if prop_bool_default(props, "on_scroll", false) {
@@ -160,14 +164,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
                     mouse::ScrollDelta::Lines { x, y } => (x, y),
                     mouse::ScrollDelta::Pixels { x, y } => (x, y),
                 };
-                Message::MouseAreaScroll(
-                    scroll_window_id.clone(),
-                    ev_id.clone(),
-                    dx,
-                    dy,
-                    position.x,
-                    position.y,
-                )
+                Message::Event {
+                    window_id: scroll_window_id.clone(),
+                    id: ev_id.clone(),
+                    value: serde_json::json!({"delta_x": dx, "delta_y": dy, "x": position.x, "y": position.y}),
+                    family: "scroll".into(),
+                }
             });
         }
 

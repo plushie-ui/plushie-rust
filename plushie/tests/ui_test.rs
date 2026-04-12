@@ -308,3 +308,101 @@ fn conditional_child_with_option() {
     let v = view_json(col);
     assert_eq!(child_count(&v), 2);
 }
+
+// ---------------------------------------------------------------------------
+// Table builder
+// ---------------------------------------------------------------------------
+
+#[test]
+fn table_with_columns_and_rows() {
+    let v = view_json(
+        table("users")
+            .column("name", |c| c.label("Name").sortable(true))
+            .column("email", |c| c.label("Email"))
+            .row("u1", |r| r
+                .cell("name", text("Alice"))
+                .cell("email", text("alice@example.com")))
+    );
+    assert_eq!(get_type(&v), "table");
+    assert_eq!(get_id(&v), "users");
+
+    // Columns are props
+    let cols = get_prop(&v, "columns").as_array().unwrap();
+    assert_eq!(cols.len(), 2);
+    assert_eq!(cols[0]["key"], "name");
+    assert_eq!(cols[0]["label"], "Name");
+    assert_eq!(cols[0]["sortable"], true);
+    assert_eq!(cols[1]["key"], "email");
+
+    // Row is a child
+    assert_eq!(child_count(&v), 1);
+    let row = child_at(&v, 0);
+    assert_eq!(get_type(row), "table_row");
+    assert_eq!(get_id(row), "u1");
+
+    // Row has cell children
+    assert_eq!(child_count(row), 2);
+    let cell = child_at(row, 0);
+    assert_eq!(get_type(cell), "table_cell");
+    assert_eq!(get_prop(cell, "column"), "name");
+    assert_eq!(child_count(cell), 1);
+    assert_eq!(get_type(child_at(cell, 0)), "text");
+}
+
+#[test]
+fn table_columns_shorthand() {
+    let v = view_json(
+        table("t")
+            .columns(&[("a", "Alpha"), ("b", "Beta")])
+    );
+    let cols = get_prop(&v, "columns").as_array().unwrap();
+    assert_eq!(cols.len(), 2);
+    assert_eq!(cols[0]["key"], "a");
+    assert_eq!(cols[0]["label"], "Alpha");
+    assert_eq!(cols[1]["key"], "b");
+    assert_eq!(cols[1]["label"], "Beta");
+}
+
+#[test]
+fn table_data_row_shorthand() {
+    let v = view_json(
+        table("t")
+            .columns(&[("name", "Name")])
+            .data_row("r1", &[("name", "Alice")])
+    );
+    assert_eq!(child_count(&v), 1);
+    let row = child_at(&v, 0);
+    assert_eq!(get_type(row), "table_row");
+    assert_eq!(get_id(row), "r1");
+    let cell = child_at(row, 0);
+    assert_eq!(get_type(cell), "table_cell");
+    assert_eq!(get_prop(cell, "column"), "name");
+    let text_node = child_at(cell, 0);
+    assert_eq!(get_type(text_node), "text");
+    assert_eq!(get_prop(text_node, "content"), "Alice");
+}
+
+#[test]
+fn table_sort_props() {
+    let v = view_json(
+        table("t")
+            .sort_by("name")
+            .sort_order(SortOrder::Desc)
+    );
+    assert_eq!(get_prop(&v, "sort_by"), "name");
+    assert_eq!(get_prop(&v, "sort_order"), "desc");
+}
+
+#[test]
+fn table_column_with_width_and_align() {
+    let v = view_json(
+        table("t")
+            .column("x", |c| c.label("X")
+                .width(Length::Fixed(200.0))
+                .min_width(100.0)
+                .align(HorizontalAlignment::Center))
+    );
+    let cols = get_prop(&v, "columns").as_array().unwrap();
+    assert_eq!(cols[0]["min_width"], 100.0);
+    assert_eq!(cols[0]["align"], "center");
+}

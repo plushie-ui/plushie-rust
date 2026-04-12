@@ -73,7 +73,7 @@ pub mod tree;
 pub mod widget;
 
 // Re-export the PlushieWidget derive macro for widget authors.
-pub use plushie_widget_macros::WidgetProps;
+pub use plushie_core_macros::WidgetProps;
 
 // Re-export iced so widget crates can use `plushie_widget_sdk::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when

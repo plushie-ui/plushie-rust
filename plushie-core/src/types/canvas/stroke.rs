@@ -3,6 +3,7 @@
 use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
+use crate::PlushieEnum;
 
 use super::super::{Color, PlushieType};
 
@@ -28,7 +29,8 @@ pub struct Stroke {
 }
 
 /// Line cap style for stroke endpoints.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PlushieEnum)]
+#[plushie_type(name = "line_cap")]
 pub enum LineCap {
     Butt,
     Round,
@@ -36,7 +38,8 @@ pub enum LineCap {
 }
 
 /// Line join style for stroke corners.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PlushieEnum)]
+#[plushie_type(name = "line_join")]
 pub enum LineJoin {
     Miter,
     Round,
@@ -56,52 +59,6 @@ pub struct Dash {
     pub segments: Vec<f32>,
     /// Starting offset into the dash pattern, in logical pixels.
     pub offset: f32,
-}
-
-impl PlushieType for LineCap {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "butt" => Some(Self::Butt),
-            "round" => Some(Self::Round),
-            "square" => Some(Self::Square),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(match self {
-            Self::Butt => "butt",
-            Self::Round => "round",
-            Self::Square => "square",
-        }.into())
-    }
-
-    fn type_name() -> &'static str {
-        "line_cap"
-    }
-}
-
-impl PlushieType for LineJoin {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "miter" => Some(Self::Miter),
-            "round" => Some(Self::Round),
-            "bevel" => Some(Self::Bevel),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(match self {
-            Self::Miter => "miter",
-            Self::Round => "round",
-            Self::Bevel => "bevel",
-        }.into())
-    }
-
-    fn type_name() -> &'static str {
-        "line_join"
-    }
 }
 
 impl PlushieType for Dash {

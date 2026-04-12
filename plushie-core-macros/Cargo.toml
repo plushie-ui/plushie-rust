@@ -1,13 +1,13 @@
 [package]
-name = "plushie-widget-macros"
-description = "Proc macros for Plushie widget authoring"
+name = "plushie-core-macros"
+description = "Proc macros for Plushie types and widgets"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-keywords = ["gui", "desktop", "macros", "widget"]
+keywords = ["gui", "desktop", "macros", "types"]
 categories = ["gui"]
 
 [lib]

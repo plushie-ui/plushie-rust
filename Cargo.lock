@@ -3210,8 +3210,8 @@ dependencies = [
  "log",
  "notify-rust",
  "plushie-core",
+ "plushie-core-macros",
  "plushie-renderer-lib",
- "plushie-widget-macros",
  "plushie-widget-sdk",
  "rfd",
  "rmp-serde",
@@ -3226,8 +3226,18 @@ version = "0.6.1"
 dependencies = [
  "base64",
  "log",
+ "plushie-core-macros",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "plushie-core-macros"
+version = "0.6.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3520,23 +3530,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "plushie-widget-macros"
-version = "0.6.1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "plushie-widget-sdk"
 version = "0.6.1"
 dependencies = [
  "base64",
  "log",
  "plushie-core",
+ "plushie-core-macros",
  "plushie-iced",
- "plushie-widget-macros",
  "proptest",
  "qrcode",
  "rmp-serde",

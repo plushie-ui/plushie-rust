@@ -8,6 +8,7 @@
 use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue, Props};
+use crate::PlushieEnum;
 
 use super::PlushieType;
 
@@ -20,18 +21,22 @@ use super::PlushieType;
 /// Maps 1:1 to iced's `accessible::Role` variants. Wire format is a
 /// snake_case string. Some roles have aliases (e.g., "radio" decodes
 /// to `RadioButton`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
+#[plushie_type(name = "role")]
 pub enum Role {
     Alert,
     AlertDialog,
     Button,
     Canvas,
+    #[plushie(wire = "check_box")]
     CheckBox,
+    #[plushie(wire = "table_cell", aliases = ["cell"])]
     Cell,
     ColumnHeader,
     ComboBox,
     Dialog,
     Document,
+    #[plushie(aliases = ["container", "generic"])]
     GenericContainer,
     Group,
     Heading,
@@ -44,12 +49,16 @@ pub enum Role {
     MenuBar,
     MenuItem,
     Meter,
+    #[plushie(aliases = ["text_editor"])]
     MultilineTextInput,
     Navigation,
+    #[plushie(aliases = ["progress_bar"])]
     ProgressIndicator,
+    #[plushie(aliases = ["radio"])]
     RadioButton,
     RadioGroup,
     Region,
+    #[plushie(wire = "table_row", aliases = ["row"])]
     Row,
     ScrollBar,
     ScrollView,
@@ -71,156 +80,16 @@ pub enum Role {
     Window,
 }
 
-impl Role {
-    /// Canonical snake_case wire name for this role.
-    fn wire_name(&self) -> &'static str {
-        match self {
-            Self::Alert => "alert",
-            Self::AlertDialog => "alert_dialog",
-            Self::Button => "button",
-            Self::Canvas => "canvas",
-            Self::CheckBox => "check_box",
-            Self::Cell => "table_cell",
-            Self::ColumnHeader => "column_header",
-            Self::ComboBox => "combo_box",
-            Self::Dialog => "dialog",
-            Self::Document => "document",
-            Self::GenericContainer => "generic_container",
-            Self::Group => "group",
-            Self::Heading => "heading",
-            Self::Image => "image",
-            Self::Label => "label",
-            Self::Link => "link",
-            Self::List => "list",
-            Self::ListItem => "list_item",
-            Self::Menu => "menu",
-            Self::MenuBar => "menu_bar",
-            Self::MenuItem => "menu_item",
-            Self::Meter => "meter",
-            Self::MultilineTextInput => "multiline_text_input",
-            Self::Navigation => "navigation",
-            Self::ProgressIndicator => "progress_indicator",
-            Self::RadioButton => "radio_button",
-            Self::RadioGroup => "radio_group",
-            Self::Region => "region",
-            Self::Row => "table_row",
-            Self::ScrollBar => "scroll_bar",
-            Self::ScrollView => "scroll_view",
-            Self::Search => "search",
-            Self::Separator => "separator",
-            Self::Slider => "slider",
-            Self::StaticText => "static_text",
-            Self::Status => "status",
-            Self::Switch => "switch",
-            Self::Tab => "tab",
-            Self::TabList => "tab_list",
-            Self::TabPanel => "tab_panel",
-            Self::Table => "table",
-            Self::TextInput => "text_input",
-            Self::Toolbar => "toolbar",
-            Self::Tooltip => "tooltip",
-            Self::Tree => "tree",
-            Self::TreeItem => "tree_item",
-            Self::Window => "window",
-        }
-    }
-}
-
-impl PlushieType for Role {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        let s = value.as_str()?;
-        let role = match s {
-            "alert" => Self::Alert,
-            "alert_dialog" => Self::AlertDialog,
-            "button" => Self::Button,
-            "canvas" => Self::Canvas,
-            "check_box" => Self::CheckBox,
-            "combo_box" => Self::ComboBox,
-            "dialog" => Self::Dialog,
-            "document" => Self::Document,
-            "generic_container" | "container" | "generic" => Self::GenericContainer,
-            "group" => Self::Group,
-            "heading" => Self::Heading,
-            "image" => Self::Image,
-            "label" => Self::Label,
-            "link" => Self::Link,
-            "list" => Self::List,
-            "list_item" => Self::ListItem,
-            "menu" => Self::Menu,
-            "menu_bar" => Self::MenuBar,
-            "menu_item" => Self::MenuItem,
-            "meter" => Self::Meter,
-            "multiline_text_input" | "text_editor" => Self::MultilineTextInput,
-            "navigation" => Self::Navigation,
-            "progress_indicator" | "progress_bar" => Self::ProgressIndicator,
-            "radio_button" | "radio" => Self::RadioButton,
-            "radio_group" => Self::RadioGroup,
-            "region" => Self::Region,
-            "scroll_bar" => Self::ScrollBar,
-            "scroll_view" => Self::ScrollView,
-            "search" => Self::Search,
-            "separator" => Self::Separator,
-            "slider" => Self::Slider,
-            "static_text" => Self::StaticText,
-            "status" => Self::Status,
-            "switch" => Self::Switch,
-            "tab" => Self::Tab,
-            "tab_list" => Self::TabList,
-            "tab_panel" => Self::TabPanel,
-            "table" => Self::Table,
-            "table_row" | "row" => Self::Row,
-            "table_cell" | "cell" => Self::Cell,
-            "column_header" => Self::ColumnHeader,
-            "text_input" => Self::TextInput,
-            "toolbar" => Self::Toolbar,
-            "tooltip" => Self::Tooltip,
-            "tree" => Self::Tree,
-            "tree_item" => Self::TreeItem,
-            "window" => Self::Window,
-            _ => return None,
-        };
-        Some(role)
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(self.wire_name().to_string())
-    }
-
-    fn type_name() -> &'static str {
-        "role"
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Live enum
 // ---------------------------------------------------------------------------
 
 /// Live region urgency level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[plushie_type(name = "live")]
 pub enum Live {
     Polite,
     Assertive,
-}
-
-impl PlushieType for Live {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "polite" => Some(Self::Polite),
-            "assertive" => Some(Self::Assertive),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(match self {
-            Self::Polite => "polite",
-            Self::Assertive => "assertive",
-        }.to_string())
-    }
-
-    fn type_name() -> &'static str {
-        "live"
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -228,31 +97,11 @@ impl PlushieType for Live {
 // ---------------------------------------------------------------------------
 
 /// Widget orientation (horizontal or vertical).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[plushie_type(name = "orientation")]
 pub enum Orientation {
     Horizontal,
     Vertical,
-}
-
-impl PlushieType for Orientation {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "horizontal" => Some(Self::Horizontal),
-            "vertical" => Some(Self::Vertical),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(match self {
-            Self::Horizontal => "horizontal",
-            Self::Vertical => "vertical",
-        }.to_string())
-    }
-
-    fn type_name() -> &'static str {
-        "orientation"
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -260,40 +109,14 @@ impl PlushieType for Orientation {
 // ---------------------------------------------------------------------------
 
 /// Type of popup a widget triggers when activated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[plushie_type(name = "has_popup")]
 pub enum HasPopup {
     Listbox,
     Menu,
     Dialog,
     Tree,
     Grid,
-}
-
-impl PlushieType for HasPopup {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "listbox" => Some(Self::Listbox),
-            "menu" => Some(Self::Menu),
-            "dialog" => Some(Self::Dialog),
-            "tree" => Some(Self::Tree),
-            "grid" => Some(Self::Grid),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(match self {
-            Self::Listbox => "listbox",
-            Self::Menu => "menu",
-            Self::Dialog => "dialog",
-            Self::Tree => "tree",
-            Self::Grid => "grid",
-        }.to_string())
-    }
-
-    fn type_name() -> &'static str {
-        "has_popup"
-    }
 }
 
 // ---------------------------------------------------------------------------

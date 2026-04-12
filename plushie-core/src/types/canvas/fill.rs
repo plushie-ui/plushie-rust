@@ -3,6 +3,7 @@
 use serde_json::Value;
 
 use crate::protocol::PropValue;
+use crate::PlushieEnum;
 
 use super::super::{Color, Gradient, PlushieType};
 
@@ -42,31 +43,11 @@ impl PlushieType for CanvasFill {
 }
 
 /// Fill rule for closed paths.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PlushieEnum)]
+#[plushie_type(name = "fill_rule")]
 pub enum FillRule {
     NonZero,
     EvenOdd,
-}
-
-impl PlushieType for FillRule {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "non_zero" => Some(Self::NonZero),
-            "even_odd" => Some(Self::EvenOdd),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(match self {
-            Self::NonZero => "non_zero",
-            Self::EvenOdd => "even_odd",
-        }.into())
-    }
-
-    fn type_name() -> &'static str {
-        "fill_rule"
-    }
 }
 
 impl From<Color> for CanvasFill {

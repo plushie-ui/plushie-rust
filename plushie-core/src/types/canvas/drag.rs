@@ -3,6 +3,7 @@
 use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
+use crate::PlushieEnum;
 
 use super::super::PlushieType;
 
@@ -52,34 +53,12 @@ impl PlushieType for DragBounds {
 }
 
 /// Axis constraint for drag movement.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PlushieEnum)]
+#[plushie_type(name = "drag_axis")]
 pub enum DragAxis {
     Both,
     X,
     Y,
-}
-
-impl PlushieType for DragAxis {
-    fn wire_decode(value: &Value) -> Option<Self> {
-        match value.as_str()? {
-            "both" => Some(Self::Both),
-            "x" => Some(Self::X),
-            "y" => Some(Self::Y),
-            _ => None,
-        }
-    }
-
-    fn wire_encode(&self) -> PropValue {
-        PropValue::Str(match self {
-            Self::Both => "both",
-            Self::X => "x",
-            Self::Y => "y",
-        }.into())
-    }
-
-    fn type_name() -> &'static str {
-        "drag_axis"
-    }
 }
 
 #[cfg(test)]

@@ -70,8 +70,8 @@ pub mod widget;
 // Re-export the widget SDK for widget authors who also use the app SDK.
 pub use plushie_widget_sdk as widget_sdk;
 
-// Re-export the derive macro for widget authoring.
-pub use plushie_widget_macros::WidgetProps;
+// Re-export the derive macros for widget authoring.
+pub use plushie_core_macros::{PlushieEnum, WidgetProps};
 
 // ---------------------------------------------------------------------------
 // App trait

@@ -5,6 +5,10 @@
 //! for wire-mode apps, FFI bindings, and tooling that doesn't need
 //! the full rendering stack.
 
+extern crate self as plushie_core;
+
+pub use plushie_core_macros::PlushieEnum;
+
 pub mod animation;
 pub mod ops;
 pub mod protocol;

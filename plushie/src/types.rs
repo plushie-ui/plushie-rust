@@ -10,8 +10,10 @@
 // -------------------------------------------------------------------------
 
 pub use plushie_core::types::{
-    // Core trait
-    PlushieType,
+    // Core traits
+    PlushieType, FromNode,
+    // Untyped props escape hatch
+    UntypedProps,
     // Animation
     Animatable,
     // Visual

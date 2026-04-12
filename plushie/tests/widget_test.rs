@@ -20,9 +20,10 @@ struct ToggleState {
 
 impl Widget for ToggleButton {
     type State = ToggleState;
+    type Props = UntypedProps;
 
-    fn view(id: &str, props: &Value, state: &ToggleState) -> View {
-        let label = props
+    fn view(id: &str, props: &UntypedProps, state: &ToggleState) -> View {
+        let label = props.0
             .get("label")
             .and_then(|v| v.as_str())
             .unwrap_or("Toggle");
@@ -51,6 +52,11 @@ impl Widget for ToggleButton {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Build an UntypedProps from a serde_json::Value.
+fn props(value: Value) -> UntypedProps {
+    UntypedProps(value)
+}
 
 /// Build a synthetic click event for testing handle_event directly.
 fn click_event(id: &str) -> Event {
@@ -83,7 +89,7 @@ fn widget_trait_can_be_implemented() {
     // The fact that ToggleButton compiles and satisfies Widget
     // is the assertion. Call view to exercise the vtable.
     let state = ToggleState::default();
-    let _view = ToggleButton::view("t", &json!({}), &state);
+    let _view = ToggleButton::view("t", &props(json!({})), &state);
 }
 
 #[test]
@@ -141,8 +147,8 @@ fn event_result_emit_convenience_constructor() {
 #[test]
 fn widget_view_returns_valid_json() {
     let state = ToggleState { pressed: false };
-    let props = json!({"label": "Press me"});
-    let view = ToggleButton::view("toggle_btn", &props, &state);
+    let p = props(json!({"label": "Press me"}));
+    let view = ToggleButton::view("toggle_btn", &p, &state);
 
     assert_eq!(view.id, "toggle_btn");
     assert_eq!(view.type_name, "button");
@@ -193,11 +199,11 @@ fn widget_handle_event_ignores_non_click() {
 
 #[test]
 fn widget_view_reflects_pressed_state() {
-    let props = json!({"label": "Toggle"});
+    let p = props(json!({"label": "Toggle"}));
 
-    let unpressed = ToggleButton::view("t", &props, &ToggleState { pressed: false });
+    let unpressed = ToggleButton::view("t", &p, &ToggleState { pressed: false });
     assert_eq!(unpressed.props.get_str("style"), Some("secondary"));
 
-    let pressed = ToggleButton::view("t", &props, &ToggleState { pressed: true });
+    let pressed = ToggleButton::view("t", &p, &ToggleState { pressed: true });
     assert_eq!(pressed.props.get_str("style"), Some("primary"));
 }

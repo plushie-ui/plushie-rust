@@ -408,6 +408,17 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
         widget_name
     );
 
+    // Second set of extraction tokens for the FromNode impl (quote
+    // iterators are consumed on first use).
+    let extractions_for_trait = fields.iter().map(|f| {
+        let name = &f.ident;
+        let ty = &f.ty;
+        let key = name.as_ref().unwrap().to_string();
+        quote! {
+            #name: <#ty as ::plushie_core::types::PlushieType>::extract(p, #key)
+        }
+    });
+
     Ok(quote! {
         #[doc = #props_doc]
         pub struct #props_name {
@@ -420,6 +431,15 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
                 let p = &node.props;
                 Self {
                     #(#extractions,)*
+                }
+            }
+        }
+
+        impl ::plushie_core::types::FromNode for #props_name {
+            fn from_node(node: &::plushie_core::protocol::TreeNode) -> Self {
+                let p = &node.props;
+                Self {
+                    #(#extractions_for_trait,)*
                 }
             }
         }
@@ -647,8 +667,10 @@ mod tests {
 
         // Props struct generated
         assert!(output_str.contains("GaugeProps"));
-        // from_node method generated
+        // from_node inherent method generated
         assert!(output_str.contains("from_node"));
+        // FromNode trait impl generated
+        assert!(output_str.contains("FromNode"));
         // type_name method generated
         assert!(output_str.contains("\"gauge\""));
         // Field extractions use PlushieType

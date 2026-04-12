@@ -7,8 +7,6 @@
 //!
 //! Run with: `cargo run -p plushie --example color_picker`
 
-use serde_json::Value;
-
 use plushie::prelude::*;
 use plushie::widget::{Widget, WidgetView, EventResult};
 
@@ -27,8 +25,9 @@ struct PickerState {
 
 impl Widget for ColorPickerWidget {
     type State = PickerState;
+    type Props = UntypedProps;
 
-    fn view(id: &str, _props: &Value, state: &Self::State) -> View {
+    fn view(id: &str, _props: &UntypedProps, state: &Self::State) -> View {
         column().id(id).spacing(8.0)
             .child(
                 slider("hue", (0.0, 360.0), state.hue as f32)

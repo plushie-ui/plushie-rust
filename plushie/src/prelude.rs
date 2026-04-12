@@ -33,10 +33,11 @@ pub use crate::ui::*;
 pub use crate::types::{
     A11y, Align, Animatable, Anchor, ArrowMode, Background, Border, Color,
     ContentFit, CursorStyle, Direction, DragAxis, Ellipsis, ErrorCorrection,
-    FillRule, FilterMethod, Font, FontStretch, Gradient, HorizontalAlignment,
-    InputPurpose, KeyModifiers, Length, Length::*, LineCap, LineJoin,
-    LineHeight, Padding, PlushieType, Position, Radius, Shadow, Shaping,
-    SortOrder, Style, StyleMap, Theme, WindowLevel, Wrapping,
+    FillRule, FilterMethod, Font, FontStretch, FromNode, Gradient,
+    HorizontalAlignment, InputPurpose, KeyModifiers, Length, Length::*,
+    LineCap, LineJoin, LineHeight, Padding, PlushieType, Position, Radius,
+    Shadow, Shaping, SortOrder, Style, StyleMap, Theme, UntypedProps,
+    WindowLevel, Wrapping,
 };
 
 // A11y sub-types for typed accessibility builders

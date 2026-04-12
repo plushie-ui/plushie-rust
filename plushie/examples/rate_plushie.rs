@@ -14,8 +14,6 @@
 
 use std::collections::HashMap;
 
-use serde_json::Value;
-
 use plushie::prelude::*;
 use plushie::widget::{Widget, WidgetView, EventResult};
 
@@ -32,10 +30,11 @@ struct StarState {
 
 impl Widget for StarRating {
     type State = StarState;
+    type Props = UntypedProps;
 
-    fn view(id: &str, props: &Value, state: &Self::State) -> View {
-        let rating = props.get("rating")
-            .and_then(Value::as_u64)
+    fn view(id: &str, props: &UntypedProps, state: &Self::State) -> View {
+        let rating = props.0.get("rating")
+            .and_then(serde_json::Value::as_u64)
             .unwrap_or(0) as usize;
         let display = state.hover.unwrap_or(rating);
 
@@ -86,10 +85,11 @@ struct ToggleState;
 
 impl Widget for ThemeToggle {
     type State = ToggleState;
+    type Props = UntypedProps;
 
-    fn view(id: &str, props: &Value, _state: &Self::State) -> View {
-        let is_dark = props.get("dark")
-            .and_then(Value::as_bool)
+    fn view(id: &str, props: &UntypedProps, _state: &Self::State) -> View {
+        let is_dark = props.0.get("dark")
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
         row().id(id).align_y(Align::Center)

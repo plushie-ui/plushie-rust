@@ -97,7 +97,7 @@ impl A11yOverrides {
         let result = Self::from_core(&core);
 
         // Only wrap when there's something to do.
-        if result.core.hidden || result.has_overrides() {
+        if result.core.hidden.unwrap_or(false) || result.has_overrides() {
             Some(result)
         } else {
             None
@@ -117,11 +117,11 @@ impl A11yOverrides {
             || c.live.is_some()
             || c.level.is_some()
             || c.mnemonic.is_some()
-            || c.required
+            || c.required == Some(true)
             || c.busy.is_some()
-            || c.invalid
-            || c.modal
-            || c.read_only
+            || c.invalid == Some(true)
+            || c.modal == Some(true)
+            || c.read_only == Some(true)
             || c.toggled.is_some()
             || c.selected.is_some()
             || c.value.is_some()
@@ -168,11 +168,11 @@ impl A11yOverrides {
             expanded: c.expanded.or(base.expanded),
             live: live_iced.or(base.live),
             level: c.level.or(base.level),
-            required: c.required || base.required,
+            required: c.required.unwrap_or(base.required),
             busy: c.busy.unwrap_or(base.busy),
-            invalid: c.invalid || base.invalid,
-            modal: c.modal || base.modal,
-            read_only: c.read_only || base.read_only,
+            invalid: c.invalid.unwrap_or(base.invalid),
+            modal: c.modal.unwrap_or(base.modal),
+            read_only: c.read_only.unwrap_or(base.read_only),
             mnemonic: c.mnemonic.or(base.mnemonic),
             toggled: c.toggled.or(base.toggled),
             selected: c.selected.or(base.selected),
@@ -212,7 +212,7 @@ impl A11yOverrides {
 
     /// Whether the widget is hidden from the accessibility tree.
     pub(crate) fn hidden(&self) -> bool {
-        self.core.hidden
+        self.core.hidden.unwrap_or(false)
     }
 
     /// The semantic role, converted to iced's accessible type.
@@ -635,13 +635,13 @@ mod tests {
         assert_eq!(o.description(), Some("Something went wrong"));
         assert!(!o.hidden());
         assert_eq!(o.core.expanded, Some(true));
-        assert!(o.core.required);
+        assert_eq!(o.core.required, Some(true));
         assert_eq!(o.core.level, Some(2));
         assert_eq!(o.core.live, Some(core_a11y::Live::Assertive));
         assert_eq!(o.core.busy, Some(true));
-        assert!(o.core.invalid);
-        assert!(o.core.modal);
-        assert!(o.core.read_only);
+        assert_eq!(o.core.invalid, Some(true));
+        assert_eq!(o.core.modal, Some(true));
+        assert_eq!(o.core.read_only, Some(true));
         assert_eq!(o.core.mnemonic, Some('E'));
         assert_eq!(o.toggled(), Some(true));
         assert_eq!(o.selected(), Some(false));

@@ -143,20 +143,18 @@ pub struct A11y {
     pub label: Option<String>,
     pub description: Option<String>,
     /// Whether the widget is hidden from assistive technology.
-    ///
-    /// Wire encoding omits `false` values (the default). Decode treats
-    /// a missing key as `false`, so the round-trip is consistent.
-    pub hidden: bool,
+    /// `None` means not specified (inherits from base/inference).
+    pub hidden: Option<bool>,
     pub expanded: Option<bool>,
-    pub required: bool,
+    pub required: Option<bool>,
     /// Heading level (1 through 6, corresponding to h1-h6).
     /// Values outside this range are rejected during wire decode.
     pub level: Option<usize>,
     pub live: Option<Live>,
     pub busy: Option<bool>,
-    pub invalid: bool,
-    pub modal: bool,
-    pub read_only: bool,
+    pub invalid: Option<bool>,
+    pub modal: Option<bool>,
+    pub read_only: Option<bool>,
     pub mnemonic: Option<char>,
     pub toggled: Option<bool>,
     pub selected: Option<bool>,
@@ -212,7 +210,7 @@ impl A11y {
     }
 
     pub fn hidden(mut self, hidden: bool) -> Self {
-        self.hidden = hidden;
+        self.hidden = Some(hidden);
         self
     }
 
@@ -222,7 +220,7 @@ impl A11y {
     }
 
     pub fn required(mut self, required: bool) -> Self {
-        self.required = required;
+        self.required = Some(required);
         self
     }
 
@@ -242,17 +240,17 @@ impl A11y {
     }
 
     pub fn invalid(mut self, invalid: bool) -> Self {
-        self.invalid = invalid;
+        self.invalid = Some(invalid);
         self
     }
 
     pub fn modal(mut self, modal: bool) -> Self {
-        self.modal = modal;
+        self.modal = Some(modal);
         self
     }
 
     pub fn read_only(mut self, read_only: bool) -> Self {
-        self.read_only = read_only;
+        self.read_only = Some(read_only);
         self
     }
 
@@ -330,6 +328,76 @@ impl A11y {
         self.label_from = Some(id.into());
         self
     }
+
+    /// Merge two A11y values. Non-None fields in `overrides` take
+    /// precedence; None fields fall back to `base`.
+    ///
+    /// This mirrors the Elixir SDK's `A11y.merge/2`: widget defaults
+    /// are the base, user-provided a11y props are the overrides. The
+    /// result preserves defaults for any field the user didn't specify.
+    ///
+    /// ```
+    /// use plushie_core::types::a11y::{A11y, Role};
+    ///
+    /// let widget_default = A11y::new().role(Role::Slider).label("Volume");
+    /// let user_override = A11y::new().label("Master Volume");
+    /// let merged = A11y::merge(&widget_default, &user_override);
+    /// // Keeps role from default, takes label from override.
+    /// assert_eq!(merged.role, Some(Role::Slider));
+    /// assert_eq!(merged.label.as_deref(), Some("Master Volume"));
+    /// ```
+    pub fn merge(base: &A11y, overrides: &A11y) -> A11y {
+        A11y {
+            role: overrides.role.or(base.role),
+            label: overrides.label.clone().or_else(|| base.label.clone()),
+            description: overrides
+                .description
+                .clone()
+                .or_else(|| base.description.clone()),
+            hidden: overrides.hidden.or(base.hidden),
+            expanded: overrides.expanded.or(base.expanded),
+            required: overrides.required.or(base.required),
+            level: overrides.level.or(base.level),
+            live: overrides.live.or(base.live),
+            busy: overrides.busy.or(base.busy),
+            invalid: overrides.invalid.or(base.invalid),
+            modal: overrides.modal.or(base.modal),
+            read_only: overrides.read_only.or(base.read_only),
+            mnemonic: overrides.mnemonic.or(base.mnemonic),
+            toggled: overrides.toggled.or(base.toggled),
+            selected: overrides.selected.or(base.selected),
+            value: overrides.value.clone().or_else(|| base.value.clone()),
+            orientation: overrides.orientation.or(base.orientation),
+            disabled: overrides.disabled.or(base.disabled),
+            position_in_set: overrides.position_in_set.or(base.position_in_set),
+            size_of_set: overrides.size_of_set.or(base.size_of_set),
+            labelled_by: overrides
+                .labelled_by
+                .clone()
+                .or_else(|| base.labelled_by.clone()),
+            described_by: overrides
+                .described_by
+                .clone()
+                .or_else(|| base.described_by.clone()),
+            error_message: overrides
+                .error_message
+                .clone()
+                .or_else(|| base.error_message.clone()),
+            active_descendant: overrides
+                .active_descendant
+                .clone()
+                .or_else(|| base.active_descendant.clone()),
+            radio_group: overrides
+                .radio_group
+                .clone()
+                .or_else(|| base.radio_group.clone()),
+            has_popup: overrides.has_popup.or(base.has_popup),
+            label_from: overrides
+                .label_from
+                .clone()
+                .or_else(|| base.label_from.clone()),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -346,12 +414,9 @@ impl PlushieType for A11y {
             .get("description")
             .and_then(|v| v.as_str())
             .map(String::from);
-        let hidden = obj.get("hidden").and_then(|v| v.as_bool()).unwrap_or(false);
+        let hidden = obj.get("hidden").and_then(|v| v.as_bool());
         let expanded = obj.get("expanded").and_then(|v| v.as_bool());
-        let required = obj
-            .get("required")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let required = obj.get("required").and_then(|v| v.as_bool());
 
         let level = obj.get("level").and_then(|v| v.as_u64()).and_then(|n| {
             let n = n as usize;
@@ -360,15 +425,9 @@ impl PlushieType for A11y {
 
         let live = obj.get("live").and_then(Live::wire_decode);
         let busy = obj.get("busy").and_then(|v| v.as_bool());
-        let invalid = obj
-            .get("invalid")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let modal = obj.get("modal").and_then(|v| v.as_bool()).unwrap_or(false);
-        let read_only = obj
-            .get("read_only")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let invalid = obj.get("invalid").and_then(|v| v.as_bool());
+        let modal = obj.get("modal").and_then(|v| v.as_bool());
+        let read_only = obj.get("read_only").and_then(|v| v.as_bool());
 
         let mnemonic = obj
             .get("mnemonic")
@@ -465,14 +524,14 @@ impl PlushieType for A11y {
         if let Some(ref description) = self.description {
             m.insert("description", PropValue::Str(description.clone()));
         }
-        if self.hidden {
-            m.insert("hidden", PropValue::Bool(true));
+        if let Some(hidden) = self.hidden {
+            m.insert("hidden", PropValue::Bool(hidden));
         }
         if let Some(expanded) = self.expanded {
             m.insert("expanded", PropValue::Bool(expanded));
         }
-        if self.required {
-            m.insert("required", PropValue::Bool(true));
+        if let Some(required) = self.required {
+            m.insert("required", PropValue::Bool(required));
         }
         if let Some(level) = self.level {
             m.insert("level", PropValue::U64(level as u64));
@@ -483,14 +542,14 @@ impl PlushieType for A11y {
         if let Some(busy) = self.busy {
             m.insert("busy", PropValue::Bool(busy));
         }
-        if self.invalid {
-            m.insert("invalid", PropValue::Bool(true));
+        if let Some(invalid) = self.invalid {
+            m.insert("invalid", PropValue::Bool(invalid));
         }
-        if self.modal {
-            m.insert("modal", PropValue::Bool(true));
+        if let Some(modal) = self.modal {
+            m.insert("modal", PropValue::Bool(modal));
         }
-        if self.read_only {
-            m.insert("read_only", PropValue::Bool(true));
+        if let Some(read_only) = self.read_only {
+            m.insert("read_only", PropValue::Bool(read_only));
         }
         if let Some(mnemonic) = self.mnemonic {
             m.insert("mnemonic", PropValue::Str(mnemonic.to_string()));
@@ -691,15 +750,15 @@ mod tests {
         assert_eq!(a.role, Some(Role::Button));
         assert_eq!(a.label.as_deref(), Some("Save"));
         assert_eq!(a.description.as_deref(), Some("Save your work"));
-        assert!(a.hidden);
+        assert_eq!(a.hidden, Some(true));
         assert_eq!(a.expanded, Some(false));
-        assert!(a.required);
+        assert_eq!(a.required, Some(true));
         assert_eq!(a.level, Some(2));
         assert_eq!(a.live, Some(Live::Polite));
         assert_eq!(a.busy, Some(true));
-        assert!(a.invalid);
-        assert!(a.modal);
-        assert!(a.read_only);
+        assert_eq!(a.invalid, Some(true));
+        assert_eq!(a.modal, Some(true));
+        assert_eq!(a.read_only, Some(true));
         assert_eq!(a.mnemonic, Some('S'));
         assert_eq!(a.toggled, Some(true));
         assert_eq!(a.selected, Some(false));
@@ -746,11 +805,11 @@ mod tests {
     #[test]
     fn a11y_bool_defaults() {
         let a = A11y::wire_decode(&json!({})).unwrap();
-        assert!(!a.hidden);
-        assert!(!a.required);
-        assert!(!a.invalid);
-        assert!(!a.modal);
-        assert!(!a.read_only);
+        assert_eq!(a.hidden, None);
+        assert_eq!(a.required, None);
+        assert_eq!(a.invalid, None);
+        assert_eq!(a.modal, None);
+        assert_eq!(a.read_only, None);
     }
 
     #[test]

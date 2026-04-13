@@ -5,9 +5,194 @@
 //! accessors (`as_widget`, `widget_match`, `as_key_press`, etc.)
 //! to handle specific event types.
 
+use plushie_core::key::{MouseButton, PointerKind};
 use serde_json::Value;
 
 use crate::types::KeyModifiers;
+
+// ---------------------------------------------------------------------------
+// Typed pointer event data
+// ---------------------------------------------------------------------------
+
+/// Data from a pointer press event (mouse button down, touch start).
+#[derive(Debug, Clone)]
+pub struct PointerPress {
+    pub x: f32,
+    pub y: f32,
+    pub button: MouseButton,
+    pub pointer: PointerKind,
+    pub finger: Option<u64>,
+    pub modifiers: KeyModifiers,
+}
+
+/// Data from a pointer release event (mouse button up, touch end).
+#[derive(Debug, Clone)]
+pub struct PointerRelease {
+    pub x: f32,
+    pub y: f32,
+    pub button: MouseButton,
+    pub pointer: PointerKind,
+    pub finger: Option<u64>,
+    pub modifiers: KeyModifiers,
+}
+
+/// Data from a pointer move event.
+#[derive(Debug, Clone)]
+pub struct PointerMove {
+    pub x: f32,
+    pub y: f32,
+    pub pointer: PointerKind,
+    pub finger: Option<u64>,
+    pub modifiers: KeyModifiers,
+}
+
+/// Data from a scroll event.
+#[derive(Debug, Clone)]
+pub struct PointerScroll {
+    pub x: f32,
+    pub y: f32,
+    pub delta_x: f32,
+    pub delta_y: f32,
+    pub pointer: PointerKind,
+    pub modifiers: KeyModifiers,
+}
+
+/// Data from a drag event.
+#[derive(Debug, Clone)]
+pub struct PointerDrag {
+    pub x: f32,
+    pub y: f32,
+    pub pointer: PointerKind,
+    pub modifiers: KeyModifiers,
+}
+
+/// Parse pointer press/release data from an event value.
+fn parse_pointer_press(value: &Value) -> PointerPress {
+    let obj = value.as_object();
+    let get_f32 = |k: &str| -> f32 {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as f32
+    };
+    let get_str = |k: &str| -> &str {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    };
+    PointerPress {
+        x: get_f32("x"),
+        y: get_f32("y"),
+        button: MouseButton::from(
+            obj.and_then(|o| o.get("button"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("left"),
+        ),
+        pointer: PointerKind::from(get_str("pointer")),
+        finger: obj.and_then(|o| o.get("finger")).and_then(|v| v.as_u64()),
+        modifiers: parse_modifiers(obj),
+    }
+}
+
+fn parse_pointer_release(value: &Value) -> PointerRelease {
+    let p = parse_pointer_press(value);
+    PointerRelease {
+        x: p.x,
+        y: p.y,
+        button: p.button,
+        pointer: p.pointer,
+        finger: p.finger,
+        modifiers: p.modifiers,
+    }
+}
+
+fn parse_pointer_move(value: &Value) -> PointerMove {
+    let obj = value.as_object();
+    let get_f32 = |k: &str| -> f32 {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as f32
+    };
+    let get_str = |k: &str| -> &str {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    };
+    PointerMove {
+        x: get_f32("x"),
+        y: get_f32("y"),
+        pointer: PointerKind::from(get_str("pointer")),
+        finger: obj.and_then(|o| o.get("finger")).and_then(|v| v.as_u64()),
+        modifiers: parse_modifiers(obj),
+    }
+}
+
+fn parse_pointer_scroll(value: &Value) -> PointerScroll {
+    let obj = value.as_object();
+    let get_f32 = |k: &str| -> f32 {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as f32
+    };
+    let get_str = |k: &str| -> &str {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    };
+    PointerScroll {
+        x: get_f32("x"),
+        y: get_f32("y"),
+        delta_x: get_f32("delta_x"),
+        delta_y: get_f32("delta_y"),
+        pointer: PointerKind::from(get_str("pointer")),
+        modifiers: parse_modifiers(obj),
+    }
+}
+
+fn parse_pointer_drag(value: &Value) -> PointerDrag {
+    let obj = value.as_object();
+    let get_f32 = |k: &str| -> f32 {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as f32
+    };
+    let get_str = |k: &str| -> &str {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    };
+    PointerDrag {
+        x: get_f32("x"),
+        y: get_f32("y"),
+        pointer: PointerKind::from(get_str("pointer")),
+        modifiers: parse_modifiers(obj),
+    }
+}
+
+fn parse_modifiers(obj: Option<&serde_json::Map<String, Value>>) -> KeyModifiers {
+    let mods = obj.and_then(|o| o.get("modifiers"));
+    KeyModifiers {
+        shift: mods
+            .and_then(|m| m.get("shift"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        ctrl: mods
+            .and_then(|m| m.get("ctrl"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        alt: mods
+            .and_then(|m| m.get("alt"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        logo: mods
+            .and_then(|m| m.get("logo"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        command: mods
+            .and_then(|m| m.get("command"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Top-level Event enum
@@ -229,15 +414,15 @@ impl WidgetEvent {
             Slide => WidgetMatch::Slide(id, self.value.as_f64().unwrap_or_default()),
             SlideRelease => WidgetMatch::SlideRelease(id, self.value.as_f64().unwrap_or_default()),
             Paste => WidgetMatch::Paste(id, self.value.as_str().unwrap_or_default()),
-            Press => WidgetMatch::Press(id, self.value.as_str().unwrap_or("Left")),
-            Release => WidgetMatch::Release(id, self.value.as_str().unwrap_or("Left")),
-            Move => WidgetMatch::Move(id, &self.value),
-            Scroll => WidgetMatch::Scroll(id, &self.value),
-            Scrolled => WidgetMatch::Scrolled(id, &self.value),
+            Press => WidgetMatch::Press(id, parse_pointer_press(&self.value)),
+            Release => WidgetMatch::Release(id, parse_pointer_release(&self.value)),
+            Move => WidgetMatch::Move(id, parse_pointer_move(&self.value)),
+            Scroll => WidgetMatch::Scroll(id, parse_pointer_scroll(&self.value)),
+            Scrolled => WidgetMatch::Scrolled(id, parse_pointer_scroll(&self.value)),
             Enter => WidgetMatch::Enter(id),
             Exit => WidgetMatch::Exit(id),
-            Drag => WidgetMatch::Drag(id, &self.value),
-            DragEnd => WidgetMatch::DragEnd(id, &self.value),
+            Drag => WidgetMatch::Drag(id, parse_pointer_drag(&self.value)),
+            DragEnd => WidgetMatch::DragEnd(id, parse_pointer_drag(&self.value)),
             Focused => WidgetMatch::Focused(id),
             Blurred => WidgetMatch::Blurred(id),
             Resize => WidgetMatch::Resize(id, &self.value),
@@ -295,15 +480,15 @@ pub enum WidgetMatch<'a> {
     Slide(&'a str, f64),
     SlideRelease(&'a str, f64),
     Paste(&'a str, &'a str),
-    Press(&'a str, &'a str),
-    Release(&'a str, &'a str),
-    Move(&'a str, &'a Value),
-    Scroll(&'a str, &'a Value),
-    Scrolled(&'a str, &'a Value),
+    Press(&'a str, PointerPress),
+    Release(&'a str, PointerRelease),
+    Move(&'a str, PointerMove),
+    Scroll(&'a str, PointerScroll),
+    Scrolled(&'a str, PointerScroll),
     Enter(&'a str),
     Exit(&'a str),
-    Drag(&'a str, &'a Value),
-    DragEnd(&'a str, &'a Value),
+    Drag(&'a str, PointerDrag),
+    DragEnd(&'a str, PointerDrag),
     Focused(&'a str),
     Blurred(&'a str),
     Resize(&'a str, &'a Value),

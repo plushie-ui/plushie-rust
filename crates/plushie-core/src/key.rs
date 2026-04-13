@@ -415,6 +415,8 @@ pub enum MouseButton {
     Left,
     Right,
     Middle,
+    Back,
+    Forward,
 }
 
 impl MouseButton {
@@ -423,21 +425,76 @@ impl MouseButton {
             Self::Left => "left",
             Self::Right => "right",
             Self::Middle => "middle",
+            Self::Back => "back",
+            Self::Forward => "forward",
+        }
+    }
+
+    /// Parse from a wire string. Returns `None` for unrecognized values.
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match normalize(s).as_str() {
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            "middle" | "center" => Some(Self::Middle),
+            "back" => Some(Self::Back),
+            "forward" => Some(Self::Forward),
+            _ => None,
         }
     }
 }
 
 impl From<&str> for MouseButton {
     fn from(s: &str) -> Self {
-        match normalize(s).as_str() {
-            "right" => Self::Right,
-            "middle" | "center" => Self::Middle,
-            _ => Self::Left,
-        }
+        Self::from_wire(s).unwrap_or(Self::Left)
     }
 }
 
 impl fmt::Display for MouseButton {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.wire_name())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PointerKind
+// ---------------------------------------------------------------------------
+
+/// The type of pointing device that generated an event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PointerKind {
+    #[default]
+    Mouse,
+    Touch,
+    Pen,
+}
+
+impl PointerKind {
+    pub fn wire_name(&self) -> &'static str {
+        match self {
+            Self::Mouse => "mouse",
+            Self::Touch => "touch",
+            Self::Pen => "pen",
+        }
+    }
+
+    /// Parse from a wire string. Returns `None` for unrecognized values.
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match normalize(s).as_str() {
+            "mouse" => Some(Self::Mouse),
+            "touch" => Some(Self::Touch),
+            "pen" => Some(Self::Pen),
+            _ => None,
+        }
+    }
+}
+
+impl From<&str> for PointerKind {
+    fn from(s: &str) -> Self {
+        Self::from_wire(s).unwrap_or(Self::Mouse)
+    }
+}
+
+impl fmt::Display for PointerKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.wire_name())
     }

@@ -20,7 +20,7 @@ pub mod spec;
 pub mod types;
 pub mod widget_builder;
 
-pub use key::{EffectKind, InteractAction, Key, KeyPress, MouseButton};
+pub use key::{EffectKind, InteractAction, Key, KeyPress, MouseButton, PointerKind};
 pub use scoped_id::ScopedId;
 pub use selector::Selector;
 pub use spec::{CommandSpec, EventSpec, PayloadSpec, ValueType, WidgetCommandEncode};

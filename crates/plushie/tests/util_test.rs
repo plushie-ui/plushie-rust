@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use plushie::util::{Query, Route, Selection, SelectionMode, UndoStack};
+use plushie::util::{Query, Route, Selection, SelectionMode, UndoCommand, UndoStack};
 
 // ---------------------------------------------------------------------------
 // Selection
@@ -219,6 +219,137 @@ fn current_mut_allows_in_place_edit() {
     let mut stack = UndoStack::new(vec![1, 2, 3]);
     stack.current_mut().push(4);
     assert_eq!(stack.current(), &vec![1, 2, 3, 4]);
+}
+
+#[test]
+fn apply_calls_apply_fn() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(UndoCommand::new(|n| n + 10, |n| n - 10));
+    assert_eq!(*stack.current(), 10);
+    assert!(stack.can_undo());
+}
+
+#[test]
+fn undo_calls_undo_fn() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(UndoCommand::new(|n| n + 10, |n| n - 10));
+    stack.apply(UndoCommand::new(|n| n + 5, |n| n - 5));
+    assert_eq!(*stack.current(), 15);
+
+    assert!(stack.undo());
+    assert_eq!(*stack.current(), 10);
+    assert!(stack.undo());
+    assert_eq!(*stack.current(), 0);
+}
+
+#[test]
+fn redo_calls_apply_fn() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(UndoCommand::new(|n| n + 10, |n| n - 10));
+    stack.undo();
+    assert_eq!(*stack.current(), 0);
+
+    assert!(stack.redo());
+    assert_eq!(*stack.current(), 10);
+}
+
+#[test]
+fn apply_with_label_appears_in_history() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1).label("increment"));
+    stack.apply(UndoCommand::new(|n| n * 2, |n| n / 2).label("double"));
+    let history = stack.history();
+    assert_eq!(history, vec![Some("double"), Some("increment")]);
+}
+
+#[test]
+fn coalesce_merges_entries() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1).coalesce("typing", 500));
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1).coalesce("typing", 500));
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1).coalesce("typing", 500));
+    assert_eq!(*stack.current(), 3);
+    assert_eq!(stack.undo_count(), 1);
+
+    // One undo reverses all three coalesced changes
+    assert!(stack.undo());
+    assert_eq!(*stack.current(), 0);
+}
+
+#[test]
+fn coalesce_redo_reapplies_all() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1).coalesce("typing", 500));
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1).coalesce("typing", 500));
+    assert_eq!(*stack.current(), 2);
+
+    stack.undo();
+    assert_eq!(*stack.current(), 0);
+
+    stack.redo();
+    assert_eq!(*stack.current(), 2);
+}
+
+#[test]
+fn apply_clears_redo_stack() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1));
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1));
+    stack.undo();
+    assert!(stack.can_redo());
+
+    stack.apply(UndoCommand::new(|n| n + 100, |n| n - 100));
+    assert!(!stack.can_redo());
+    assert_eq!(*stack.current(), 101);
+}
+
+#[test]
+fn undo_count_and_redo_count() {
+    let mut stack = UndoStack::new(0);
+    assert_eq!(stack.undo_count(), 0);
+    assert_eq!(stack.redo_count(), 0);
+
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1));
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1));
+    assert_eq!(stack.undo_count(), 2);
+
+    stack.undo();
+    assert_eq!(stack.undo_count(), 1);
+    assert_eq!(stack.redo_count(), 1);
+}
+
+#[test]
+fn coalesce_preserves_original_label() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(
+        UndoCommand::new(|n| n + 1, |n| n - 1)
+            .label("first edit")
+            .coalesce("typing", 500),
+    );
+    stack.apply(
+        UndoCommand::new(|n| n + 1, |n| n - 1)
+            .label("second edit")
+            .coalesce("typing", 500),
+    );
+    let history = stack.history();
+    assert_eq!(history, vec![Some("first edit")]);
+}
+
+#[test]
+fn coalesce_different_keys_do_not_merge() {
+    let mut stack = UndoStack::new(0);
+    stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1).coalesce("a", 500));
+    stack.apply(UndoCommand::new(|n| n + 10, |n| n - 10).coalesce("b", 500));
+    assert_eq!(*stack.current(), 11);
+    assert_eq!(stack.undo_count(), 2);
+}
+
+#[test]
+fn push_labeled_appears_in_history() {
+    let mut stack = UndoStack::new("a".to_string());
+    stack.push_labeled("b".to_string(), "change to b");
+    let history = stack.history();
+    assert_eq!(history, vec![Some("change to b")]);
 }
 
 // ---------------------------------------------------------------------------

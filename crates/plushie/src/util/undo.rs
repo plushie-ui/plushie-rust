@@ -1,67 +1,83 @@
 //! Undo/redo stack with bounded size, labels, and coalescing.
 //!
-//! Supports two usage patterns:
+//! Uses **function-based** undo: each command provides an `apply`
+//! function to move forward and an `undo` function to reverse the
+//! change. Undo and redo invoke these functions on the current state
+//! rather than restoring snapshots.
 //!
-//! 1. **Snapshot-based**: Push state snapshots before edits.
-//! 2. **Command-based**: Push reversible commands with apply/undo
-//!    function pairs, optional labels, and time-based coalescing.
+//! Two usage patterns:
+//!
+//! 1. **Command-based** (primary): push reversible commands with
+//!    apply/undo function pairs, optional labels, and time-based
+//!    coalescing.
+//! 2. **Snapshot convenience**: `push(state)` captures the current
+//!    and new states as closures (sugar over the command pattern).
 //!
 //! ```ignore
-//! // Snapshot pattern
-//! let mut stack = UndoStack::new("initial".to_string());
-//! stack.push("after edit".to_string());
-//! stack.undo();
-//! assert_eq!(stack.current(), "initial");
-//!
-//! // Command pattern with coalescing
+//! // Command pattern
 //! let mut stack = UndoStack::new(0);
 //! stack.apply(UndoCommand::new(|n| n + 1, |n| n - 1)
 //!     .label("increment")
 //!     .coalesce("typing", 500));
+//! stack.undo();
+//! assert_eq!(*stack.current(), 0);
+//!
+//! // Snapshot convenience
+//! let mut stack = UndoStack::new("initial".to_string());
+//! stack.push("after edit".to_string());
+//! stack.undo();
+//! assert_eq!(stack.current(), "initial");
 //! ```
 
+use std::fmt;
 use std::time::Instant;
 
-/// A bounded undo/redo stack storing state snapshots.
+/// A bounded undo/redo stack using function-based reversal.
+///
+/// Each entry stores apply and undo functions. Undo calls the stored
+/// undo function on the current state; redo re-applies the stored
+/// apply function. This matches the Elixir implementation.
 ///
 /// Entries beyond `max_size` are dropped (oldest first). Pushing
 /// a new entry clears the redo stack (new edits fork the timeline).
-#[derive(Debug, Clone)]
-pub struct UndoStack<T: Clone> {
+pub struct UndoStack<T: Clone + Send + 'static> {
     current: T,
     max_size: usize,
     undo_stack: Vec<UndoEntry<T>>,
     redo_stack: Vec<UndoEntry<T>>,
 }
 
-/// A single undo history entry.
-#[derive(Debug, Clone)]
+/// A single undo history entry (internal).
 struct UndoEntry<T> {
-    /// The state snapshot at this point.
-    snapshot: T,
+    /// Function to re-apply this change (for redo).
+    apply_fn: Box<dyn Fn(&T) -> T + Send>,
+    /// Function to reverse this change (for undo).
+    undo_fn: Box<dyn Fn(&T) -> T + Send>,
     /// Human-readable label for this entry.
     label: Option<String>,
     /// Coalescing key. Entries with the same key within the
-    /// coalescing window are merged.
+    /// coalescing window are merged by composing their functions.
     coalesce_key: Option<String>,
-    /// When this entry was created.
+    /// When this entry was created (or last coalesced).
     timestamp: Instant,
 }
 
-/// A reversible command for the command-based undo pattern.
+/// A reversible command for the undo stack.
+///
+/// Both functions must be callable multiple times (redo re-invokes
+/// `apply`, repeated undo/redo cycles call both repeatedly).
 ///
 /// ```ignore
 /// UndoCommand::new(
-///     |model| { model.count += 1; model.clone() },
-///     |model| { model.count -= 1; model.clone() },
+///     |model| { let mut m = model.clone(); m.count += 1; m },
+///     |model| { let mut m = model.clone(); m.count -= 1; m },
 /// )
 /// .label("increment")
 /// .coalesce("counter", 300)
 /// ```
 pub struct UndoCommand<T> {
-    apply_fn: Box<dyn FnOnce(&T) -> T>,
-    #[allow(dead_code)] // Reserved for future inverse-command undo
-    undo_fn: Box<dyn FnOnce(&T) -> T>,
+    apply_fn: Box<dyn Fn(&T) -> T + Send>,
+    undo_fn: Box<dyn Fn(&T) -> T + Send>,
     label: Option<String>,
     coalesce_key: Option<String>,
     coalesce_window_ms: u64,
@@ -69,9 +85,12 @@ pub struct UndoCommand<T> {
 
 impl<T> UndoCommand<T> {
     /// Create a reversible command with apply and undo functions.
+    ///
+    /// `apply` transforms the current state forward. `undo` reverses
+    /// it. Both must be pure functions of the state they receive.
     pub fn new(
-        apply: impl FnOnce(&T) -> T + 'static,
-        undo: impl FnOnce(&T) -> T + 'static,
+        apply: impl Fn(&T) -> T + Send + 'static,
+        undo: impl Fn(&T) -> T + Send + 'static,
     ) -> Self {
         Self {
             apply_fn: Box::new(apply),
@@ -89,7 +108,8 @@ impl<T> UndoCommand<T> {
     }
 
     /// Enable coalescing: commands with the same key within
-    /// `window_ms` milliseconds are merged into a single undo entry.
+    /// `window_ms` milliseconds are merged into a single undo entry
+    /// by composing their apply/undo functions.
     pub fn coalesce(mut self, key: &str, window_ms: u64) -> Self {
         self.coalesce_key = Some(key.to_string());
         self.coalesce_window_ms = window_ms;
@@ -97,7 +117,7 @@ impl<T> UndoCommand<T> {
     }
 }
 
-impl<T: Clone> UndoStack<T> {
+impl<T: Clone + Send + 'static> UndoStack<T> {
     /// Create a new stack with the given initial state.
     /// Default max size is 100.
     pub fn new(initial: T) -> Self {
@@ -114,53 +134,117 @@ impl<T: Clone> UndoStack<T> {
         }
     }
 
-    /// Save the current state and set a new one (snapshot pattern).
+    /// Snapshot convenience: save the current state and set a new one.
     ///
-    /// Clears the redo stack (new edits fork the timeline).
-    /// Drops the oldest entry if the stack exceeds max size.
+    /// Internally creates closures that capture the old and new
+    /// states, so undo/redo restore exact values regardless of
+    /// intermediate mutations.
+    ///
+    /// Clears the redo stack. Drops the oldest entry if the stack
+    /// exceeds max size.
     pub fn push(&mut self, state: T) {
-        self.push_entry(state, None, None);
+        let old = self.current.clone();
+        let new = state;
+        let new_for_apply = new.clone();
+        let old_for_undo = old;
+        self.push_entry(
+            new,
+            Box::new(move |_| new_for_apply.clone()),
+            Box::new(move |_| old_for_undo.clone()),
+            None,
+            None,
+        );
     }
 
-    /// Save the current state with a label.
+    /// Snapshot convenience with a label.
     pub fn push_labeled(&mut self, state: T, label: &str) {
-        self.push_entry(state, Some(label.to_string()), None);
+        let old = self.current.clone();
+        let new = state;
+        let new_for_apply = new.clone();
+        let old_for_undo = old;
+        self.push_entry(
+            new,
+            Box::new(move |_| new_for_apply.clone()),
+            Box::new(move |_| old_for_undo.clone()),
+            Some(label.to_string()),
+            None,
+        );
     }
 
-    /// Apply a reversible command (command pattern).
+    /// Apply a reversible command.
     ///
-    /// The command's apply function transforms the current state.
+    /// The command's apply function is called immediately to compute
+    /// the new state. Both functions are stored for future undo/redo.
+    ///
     /// If coalescing is enabled and the previous entry has the same
-    /// key within the time window, the entries are merged (one undo
-    /// reverses both).
+    /// key within the time window, the functions are composed: a
+    /// single undo reverses all coalesced changes.
     pub fn apply(&mut self, cmd: UndoCommand<T>) {
         let new_state = (cmd.apply_fn)(&self.current);
 
-        // Check for coalescing: if the previous entry has the same
-        // coalesce key within the time window, merge by updating
-        // current without pushing a new undo entry.
+        // Try coalescing with the top entry.
         if let Some(ref key) = cmd.coalesce_key
             && cmd.coalesce_window_ms > 0
-            && let Some(last) = self.undo_stack.last()
-            && last.coalesce_key.as_deref() == Some(key)
-            && last.timestamp.elapsed().as_millis() < cmd.coalesce_window_ms as u128
+            && let Some(top) = self.undo_stack.last()
+            && top.coalesce_key.as_deref() == Some(key)
+            && top.timestamp.elapsed().as_millis() < cmd.coalesce_window_ms as u128
         {
+            let top = self.undo_stack.pop().unwrap();
+
+            // Compose: composed_apply(m) = cmd.apply(top.apply(m))
+            let top_apply = top.apply_fn;
+            let cmd_apply = cmd.apply_fn;
+            let composed_apply: Box<dyn Fn(&T) -> T + Send> = Box::new(move |model| {
+                let intermediate = top_apply(model);
+                cmd_apply(&intermediate)
+            });
+
+            // Compose: composed_undo(m) = top.undo(cmd.undo(m))
+            let top_undo = top.undo_fn;
+            let cmd_undo = cmd.undo_fn;
+            let composed_undo: Box<dyn Fn(&T) -> T + Send> = Box::new(move |model| {
+                let intermediate = cmd_undo(model);
+                top_undo(&intermediate)
+            });
+
+            self.undo_stack.push(UndoEntry {
+                apply_fn: composed_apply,
+                undo_fn: composed_undo,
+                label: top.label,
+                coalesce_key: top.coalesce_key,
+                timestamp: Instant::now(),
+            });
+
             self.current = new_state;
             self.redo_stack.clear();
             return;
         }
 
-        self.push_entry(new_state, cmd.label, cmd.coalesce_key);
+        self.push_entry(
+            new_state,
+            cmd.apply_fn,
+            cmd.undo_fn,
+            cmd.label,
+            cmd.coalesce_key,
+        );
     }
 
-    fn push_entry(&mut self, state: T, label: Option<String>, coalesce_key: Option<String>) {
+    fn push_entry(
+        &mut self,
+        new_state: T,
+        apply_fn: Box<dyn Fn(&T) -> T + Send>,
+        undo_fn: Box<dyn Fn(&T) -> T + Send>,
+        label: Option<String>,
+        coalesce_key: Option<String>,
+    ) {
         self.undo_stack.push(UndoEntry {
-            snapshot: self.current.clone(),
+            apply_fn,
+            undo_fn,
             label,
             coalesce_key,
             timestamp: Instant::now(),
         });
-        self.current = state;
+        self.current = new_state;
         self.redo_stack.clear();
 
         if self.undo_stack.len() > self.max_size {
@@ -168,34 +252,28 @@ impl<T: Clone> UndoStack<T> {
         }
     }
 
-    /// Restore the previous state. Returns `false` if at the bottom.
+    /// Reverse the last change by calling its undo function.
+    /// Returns `false` if at the bottom of the history.
     pub fn undo(&mut self) -> bool {
         match self.undo_stack.pop() {
             Some(entry) => {
-                self.redo_stack.push(UndoEntry {
-                    snapshot: self.current.clone(),
-                    label: entry.label.clone(),
-                    coalesce_key: entry.coalesce_key.clone(),
-                    timestamp: entry.timestamp,
-                });
-                self.current = entry.snapshot;
+                let old_state = (entry.undo_fn)(&self.current);
+                self.redo_stack.push(entry);
+                self.current = old_state;
                 true
             }
             None => false,
         }
     }
 
-    /// Re-apply a previously undone state. Returns `false` if at the top.
+    /// Re-apply a previously undone change by calling its apply function.
+    /// Returns `false` if at the top of the history.
     pub fn redo(&mut self) -> bool {
         match self.redo_stack.pop() {
             Some(entry) => {
-                self.undo_stack.push(UndoEntry {
-                    snapshot: self.current.clone(),
-                    label: entry.label.clone(),
-                    coalesce_key: entry.coalesce_key.clone(),
-                    timestamp: entry.timestamp,
-                });
-                self.current = entry.snapshot;
+                let new_state = (entry.apply_fn)(&self.current);
+                self.undo_stack.push(entry);
+                self.current = new_state;
                 true
             }
             None => false,
@@ -208,6 +286,9 @@ impl<T: Clone> UndoStack<T> {
     }
 
     /// Mutable reference to the current state.
+    ///
+    /// Mutations through this reference are invisible to the undo
+    /// system. Use `apply` or `push` to track changes.
     pub fn current_mut(&mut self) -> &mut T {
         &mut self.current
     }
@@ -239,5 +320,26 @@ impl<T: Clone> UndoStack<T> {
             .rev()
             .map(|e| e.label.as_deref())
             .collect()
+    }
+}
+
+impl<T: Clone + Send + fmt::Debug + 'static> fmt::Debug for UndoStack<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UndoStack")
+            .field("current", &self.current)
+            .field("undo_count", &self.undo_stack.len())
+            .field("redo_count", &self.redo_stack.len())
+            .field("max_size", &self.max_size)
+            .finish()
+    }
+}
+
+impl<T> fmt::Debug for UndoCommand<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UndoCommand")
+            .field("label", &self.label)
+            .field("coalesce_key", &self.coalesce_key)
+            .field("coalesce_window_ms", &self.coalesce_window_ms)
+            .finish()
     }
 }

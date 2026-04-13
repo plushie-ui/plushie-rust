@@ -854,6 +854,19 @@ pub fn build_interact_response(
                 vec![]
             }
         }
+        // Unknown action (check before selector_not_found so the
+        // diagnostic correctly identifies the root cause).
+        (action, _) if plushie_core::InteractAction::from_wire(action).is_none() => {
+            log::warn!("interact: unknown action '{action}'");
+            vec![OutgoingEvent::diagnostic(
+                String::new(),
+                None,
+                "warning",
+                "unknown_action",
+                &format!("unknown interact action: {action}"),
+            )]
+        }
+        // Known action but selector didn't resolve to a widget.
         (action, None) => {
             log::warn!("interact: widget not found for action '{action}'");
             vec![OutgoingEvent::diagnostic(
@@ -864,15 +877,11 @@ pub fn build_interact_response(
                 &format!("interact {action}: no widget matched the selector"),
             )]
         }
+        // Known action, selector resolved, but not handled above
+        // (shouldn't happen if all InteractAction variants are covered).
         (action, _) => {
-            log::warn!("interact: unknown action '{action}'");
-            vec![OutgoingEvent::diagnostic(
-                String::new(),
-                None,
-                "warning",
-                "unknown_action",
-                &format!("unknown interact action: {action}"),
-            )]
+            log::warn!("interact: unhandled action '{action}'");
+            vec![]
         }
     };
 

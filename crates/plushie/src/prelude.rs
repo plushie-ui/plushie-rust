@@ -23,8 +23,10 @@ pub use crate::event::{Event, EventType, WidgetMatch};
 // Scoped IDs
 pub use plushie_core::ScopedId;
 
-// Commands
-pub use crate::command::Command;
+// Commands and operation types
+pub use crate::command::{
+    Command, FileDialogOpts, NotificationOpts, NotificationUrgency, WindowMode,
+};
 
 // Subscriptions
 pub use crate::subscription::Subscription;

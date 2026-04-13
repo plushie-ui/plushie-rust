@@ -367,11 +367,7 @@ fn table_data_row_shorthand() {
 
 #[test]
 fn table_sort_props() {
-    let v = view_json(
-        table("t")
-            .sort_by("name")
-            .sort_order(SortOrder::Desc),
-    );
+    let v = view_json(table("t").sort_by("name").sort_order(SortOrder::Desc));
     assert_eq!(get_prop(&v, "sort_by"), "name");
     assert_eq!(get_prop(&v, "sort_order"), "desc");
 }

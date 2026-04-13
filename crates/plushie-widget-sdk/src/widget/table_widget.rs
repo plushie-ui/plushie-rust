@@ -1,5 +1,5 @@
-use iced::widget::{button, column, container, scrollable, text};
 use iced::widget::table as iced_table;
+use iced::widget::{button, column, container, scrollable, text};
 use iced::{Element, Length, Theme, alignment};
 use serde_json::Value;
 

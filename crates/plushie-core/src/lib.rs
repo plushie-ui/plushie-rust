@@ -12,6 +12,7 @@ pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent};
 pub mod animation;
 pub mod ops;
 pub mod protocol;
+pub mod scoped_id;
 pub mod settings;
 pub mod spec;
 pub mod types;

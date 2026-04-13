@@ -27,7 +27,7 @@ use serde_json::Value;
 
 use crate::automation::Element;
 use crate::App;
-use crate::event::{Event, EventType, WidgetEvent};
+use crate::event::{Event, EventType, KeyEventType, WidgetEvent};
 use crate::runtime;
 use crate::widget::{EventResult, Interception, WidgetStateStore};
 
@@ -140,6 +140,98 @@ impl<A: App> TestSession<A> {
     pub fn slide(&mut self, selector: impl Into<Selector>, value: f64) {
         let id = self.resolve(selector).id.clone();
         self.dispatch(widget_event(EventType::Slide, &id, serde_json::json!(value)));
+    }
+
+    /// Simulate a paste event on a widget.
+    pub fn paste(&mut self, selector: impl Into<Selector>, text: &str) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Paste,
+            &id,
+            Value::String(text.to_string()),
+        ));
+    }
+
+    /// Simulate scrolling a widget by the given delta.
+    pub fn scroll(&mut self, selector: impl Into<Selector>, delta_x: f32, delta_y: f32) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Scroll,
+            &id,
+            serde_json::json!({"delta_x": delta_x, "delta_y": delta_y}),
+        ));
+    }
+
+    /// Simulate a table column sort click.
+    pub fn sort(&mut self, selector: impl Into<Selector>, column: &str) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Sort,
+            &id,
+            Value::String(column.to_string()),
+        ));
+    }
+
+    /// Simulate a pane grid focus cycle.
+    pub fn pane_focus_cycle(&mut self, selector: impl Into<Selector>) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(EventType::PaneFocusCycle, &id, Value::Null));
+    }
+
+    // -- Keyboard interactions --
+
+    /// Simulate a key press (key down, no release).
+    ///
+    /// ```ignore
+    /// session.press("a", KeyModifiers::default());
+    /// session.press("Enter", KeyModifiers::default());
+    /// session.press("s", KeyModifiers { ctrl: true, ..Default::default() });
+    /// ```
+    pub fn press(&mut self, key: &str, modifiers: crate::types::KeyModifiers) {
+        self.dispatch(key_event(KeyEventType::Press, key, modifiers));
+    }
+
+    /// Simulate a key release.
+    pub fn release(&mut self, key: &str, modifiers: crate::types::KeyModifiers) {
+        self.dispatch(key_event(KeyEventType::Release, key, modifiers));
+    }
+
+    /// Simulate a complete key press and release.
+    pub fn type_key(&mut self, key: &str, modifiers: crate::types::KeyModifiers) {
+        self.dispatch(key_event(KeyEventType::Press, key, modifiers));
+        self.dispatch(key_event(KeyEventType::Release, key, modifiers));
+    }
+
+    // -- Canvas interactions --
+
+    /// Simulate a mouse press on a canvas at the given coordinates.
+    pub fn canvas_press(&mut self, selector: impl Into<Selector>, x: f32, y: f32) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Press,
+            &id,
+            serde_json::json!({"x": x, "y": y, "button": "left"}),
+        ));
+    }
+
+    /// Simulate a mouse release on a canvas at the given coordinates.
+    pub fn canvas_release(&mut self, selector: impl Into<Selector>, x: f32, y: f32) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Release,
+            &id,
+            serde_json::json!({"x": x, "y": y, "button": "left"}),
+        ));
+    }
+
+    /// Simulate mouse movement on a canvas to the given coordinates.
+    pub fn canvas_move(&mut self, selector: impl Into<Selector>, x: f32, y: f32) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Move,
+            &id,
+            serde_json::json!({"x": x, "y": y}),
+        ));
     }
 
     /// Dispatch a raw event through the widget interception layer
@@ -274,5 +366,28 @@ fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
         event_type,
         scoped_id: plushie_core::ScopedId::parse(id),
         value,
+    })
+}
+
+fn key_event(
+    event_type: KeyEventType,
+    key: &str,
+    modifiers: crate::types::KeyModifiers,
+) -> Event {
+    Event::Key(crate::event::KeyEvent {
+        event_type,
+        key: key.to_string(),
+        modified_key: None,
+        physical_key: None,
+        location: crate::event::KeyLocation::Standard,
+        modifiers,
+        text: if event_type == KeyEventType::Press && key.len() == 1 {
+            Some(key.to_string())
+        } else {
+            None
+        },
+        repeat: false,
+        captured: false,
+        window_id: Some("main".to_string()),
     })
 }

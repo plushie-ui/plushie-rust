@@ -1,6 +1,6 @@
 //! Easing resolution: maps wire-format strings to lilt::Easing variants.
 //!
-//! Cubic bezier is handled separately in `timed.rs` -- this module only
+//! Cubic bezier is handled separately in `timed.rs`; this module only
 //! resolves named easings.
 
 use iced::animation::Easing;

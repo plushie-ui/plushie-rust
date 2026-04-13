@@ -23,7 +23,7 @@ pub(crate) static STDIN_RX: Mutex<Option<tokio::sync::mpsc::Receiver<StdinEvent>
 
 /// Async stream that yields StdinEvents. Bridges the background stdin reader
 /// thread into iced's subscription system. Only wakes iced when data arrives
-/// -- zero CPU when idle.
+/// (zero CPU when idle).
 pub(crate) fn stdin_subscription() -> impl iced::futures::Stream<Item = StdinEvent> {
     stream::channel(32, async |mut sender| {
         let mut rx = STDIN_RX

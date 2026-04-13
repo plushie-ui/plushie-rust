@@ -300,7 +300,7 @@ fn canvas_fill_rule_explicit_non_zero() {
     assert_eq!(fill.rule, canvas::fill::Rule::NonZero);
 }
 
-// Standalone clip tests removed -- clips are now a group-level field.
+// Standalone clip tests removed; clips are now a group-level field.
 // See draw_with_group_clip() and the "clip" field on group JSON.
 
 // -- Text alignment tests --
@@ -493,7 +493,7 @@ fn hit_test_line_endpoint() {
         y2: 10.0,
         half_width: 5.0,
     };
-    // Degenerate line (zero length) -- treated as point.
+    // Degenerate line (zero length): treated as point.
     assert!(interaction::hit_test(Point::new(12.0, 10.0), &region));
     assert!(!interaction::hit_test(Point::new(20.0, 10.0), &region));
 }
@@ -885,7 +885,7 @@ fn interactive_group_with_path_child_gets_hit_region() {
 
 #[test]
 fn hit_rect_on_group_is_local_coordinates() {
-    // hit_rect is in local coordinates -- no transform offset applied.
+    // hit_rect is in local coordinates: no transform offset applied.
     // Transform offsets are handled by the transform matrix during hit testing.
     let shape = json!({
         "type": "group",

@@ -31,7 +31,7 @@ impl Tree {
     /// The caller should emit a protocol error so the host can fix the bug.
     pub fn snapshot(&mut self, root: TreeNode) -> Result<(), Vec<String>> {
         self.root = Some(root);
-        // Validate after setting -- the tree is accepted regardless, but
+        // Validate after setting: the tree is accepted regardless, but
         // duplicates are reported as errors.
         if let Some(root) = self.root.as_ref() {
             validate_unique_ids(root)
@@ -594,7 +594,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // apply_patch -- replace_node
+    // apply_patch: replace_node
     // -----------------------------------------------------------------------
 
     #[test]
@@ -683,7 +683,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // apply_patch -- update_props
+    // apply_patch: update_props
     // -----------------------------------------------------------------------
 
     #[test]
@@ -758,7 +758,7 @@ mod tests {
             }),
         );
         tree.apply_patch(vec![op]);
-        // Props unchanged -- the merge was skipped
+        // Props unchanged: the merge was skipped
         assert_eq!(
             tree.root().unwrap().props,
             plushie_core::protocol::Props::Wire(json!("not an object"))
@@ -778,12 +778,12 @@ mod tests {
             }),
         );
         tree.apply_patch(vec![op]);
-        // Props unchanged -- the merge was skipped
+        // Props unchanged: the merge was skipped
         assert_eq!(tree.root().unwrap().props.to_value()["content"], "hi");
     }
 
     // -----------------------------------------------------------------------
-    // apply_patch -- insert_child
+    // apply_patch: insert_child
     // -----------------------------------------------------------------------
 
     #[test]
@@ -869,7 +869,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // apply_patch -- remove_child
+    // apply_patch: remove_child
     // -----------------------------------------------------------------------
 
     #[test]
@@ -929,7 +929,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // apply_patch -- unknown op
+    // apply_patch: unknown op
     // -----------------------------------------------------------------------
 
     #[test]
@@ -943,7 +943,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // apply_patch -- multiple ops in sequence
+    // apply_patch: multiple ops in sequence
     // -----------------------------------------------------------------------
 
     #[test]
@@ -1000,7 +1000,7 @@ mod tests {
             }),
         );
         tree.apply_patch(vec![op]);
-        // Still empty -- the op should fail gracefully
+        // Still empty: the op should fail gracefully
         assert!(tree.root().is_none());
     }
 
@@ -1084,7 +1084,7 @@ mod tests {
         let _ = tree.snapshot(node_with_props("root", "text", json!({"content": "hi"})));
         let op = make_patch_op("update_props", vec![], json!({}));
         tree.apply_patch(vec![op]);
-        // Props unchanged -- the missing "props" field is handled gracefully
+        // Props unchanged: the missing "props" field is handled gracefully
         assert_eq!(tree.root().unwrap().props.to_value()["content"], "hi");
     }
 
@@ -1120,7 +1120,7 @@ mod tests {
         let _ = tree.snapshot(root);
         let op = make_patch_op("remove_child", vec![], json!({}));
         tree.apply_patch(vec![op]);
-        // Child should still be present -- the op failed gracefully
+        // Child should still be present: the op failed gracefully
         assert_eq!(tree.root().unwrap().children.len(), 1);
     }
 

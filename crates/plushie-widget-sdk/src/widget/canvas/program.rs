@@ -618,7 +618,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
     /// Handle a key release event. Mirrors `handle_keyboard` but only
     /// forwards nav keys as `CanvasElementKeyRelease` when `arrow_mode`
     /// is `"none"`. Focus management (Tab, Escape) is handled on press
-    /// only -- release doesn't change focus.
+    /// only; release doesn't change focus.
     fn handle_key_release(
         &self,
         state: &mut CanvasState,
@@ -676,7 +676,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
 // ---------------------------------------------------------------------------
 
 /// Merge style overrides into a shape's JSON. The override object can
-/// contain `fill`, `stroke`, `stroke_width`, `opacity` -- these replace
+/// contain `fill`, `stroke`, `stroke_width`, `opacity`, which replace
 /// the corresponding fields on the shape.
 #[cfg(test)]
 pub(crate) fn merge_shape_style(
@@ -747,7 +747,7 @@ fn draw_focus_ring<R: PlushieRenderer>(
             let dy = y2 - y1;
             let len = (dx * dx + dy * dy).sqrt();
             if len < 0.01 {
-                // Degenerate line -- draw a circle at the midpoint.
+                // Degenerate line: draw a circle at the midpoint.
                 let path = canvas::Path::circle(
                     Point::new((x1 + x2) / 2.0, (y1 + y2) / 2.0),
                     half_width + inflate,
@@ -857,7 +857,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
             state.current_modifiers = *mods;
         }
 
-        // Keyboard events don't depend on cursor position -- handle them
+        // Keyboard events don't depend on cursor position; handle them
         // before the cursor check so they work when the mouse is outside.
         if matches!(event, iced::Event::Keyboard(..)) {
             if !self.interactive_elements.is_empty() {
@@ -992,7 +992,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         // keeps Enter when both fire (direct A -> B transition).
                         // The host can infer leave from receiving enter for a
                         // different shape. Losing Enter is worse than losing
-                        // Leave -- Enter tells the host WHAT is hovered.
+                        // Leave: Enter tells the host WHAT is hovered.
                         if let Some(ref old_id) = old_hovered {
                             let msg = Message::Event {
                                 window_id: self.window_id.clone(),
@@ -1012,7 +1012,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                                     "y": sanitize_f32(position.y),
                                 }),
                             };
-                            // Override any previous action -- Enter takes
+                            // Override any previous action: Enter takes
                             // priority over Leave and raw canvas move.
                             action = Some(iced::widget::Action::publish(msg));
                         }
@@ -1075,7 +1075,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                             state.pressed_element = Some(shape.id.clone());
                         }
                     } else if state.focused_id.is_some() {
-                        // Click on empty area -- clear focus and group context.
+                        // Click on empty area: clear focus and group context.
                         state.focused_group = None;
                         if let Some(msg) = self.set_focus(state, None) {
                             action = Some(pick_action(action, iced::widget::Action::publish(msg)));
@@ -1374,7 +1374,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
     ) -> Vec<canvas::Geometry<R>> {
         let mut geometries = Vec::new();
 
-        // Background fill -- cheap single rect, not cached.
+        // Background fill: cheap single rect, not cached.
         if let Some(bg) = self.background {
             let mut frame = canvas::Frame::new(renderer, bounds.size());
             frame.fill_rectangle(Point::ORIGIN, bounds.size(), bg);

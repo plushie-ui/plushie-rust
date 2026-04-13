@@ -87,7 +87,7 @@ pub fn parse_selector(selector: &Value) -> Option<Selector> {
 ///
 /// Supports two formats:
 /// 1. Explicit modifiers map: `{"key": "s", "modifiers": {"ctrl": true, ...}}`
-/// 2. Combined key string: `{"key": "ctrl+s"}` -- splits on `+` and extracts
+/// 2. Combined key string: `{"key": "ctrl+s"}`, which splits on `+` and extracts
 ///    modifier prefixes (ctrl/command, shift, alt, logo/super/meta).
 pub fn parse_key_and_modifiers(
     payload: Option<&serde_json::Map<String, Value>>,
@@ -1567,7 +1567,7 @@ mod tests {
 
     #[test]
     fn search_by_role_prefers_a11y_over_type() {
-        // a11y role "heading" on a "container" type -- should match "heading", not "container"
+        // a11y role "heading" on a "container" type: should match "heading", not "container"
         let node = make_a11y_node("h1", "container", json!({"role": "heading"}));
         assert!(search_tree(&node, 0, &|n| matches_role(n, "heading"), &node_to_value).is_some());
         assert!(search_tree(&node, 0, &|n| matches_role(n, "container"), &node_to_value).is_none());

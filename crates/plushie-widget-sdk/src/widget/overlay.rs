@@ -2,7 +2,7 @@
 //! overlay positioned relative to the anchor bounds.
 //!
 //! Modelled after iced's tooltip widget but without hover delay or container
-//! styling -- the overlay is always visible and the caller controls content.
+//! styling; the overlay is always visible and the caller controls content.
 
 use crate::PlushieRenderer;
 use crate::message::Message;
@@ -51,7 +51,7 @@ pub(crate) enum Align {
 /// responsible for focus trapping (restricting Tab navigation to the
 /// overlay content). plushie does not implement iced-level focus
 /// interception, so modal overlays rely on the host SDK to manage
-/// focus boundaries -- typically by intercepting focus_next/focus_previous
+/// focus boundaries, typically by intercepting focus_next/focus_previous
 /// events and redirecting focus back into the overlay.
 pub(crate) struct OverlayWrapper<'a, R: PlushieRenderer = iced::Renderer> {
     anchor: Element<'a, Message, iced::Theme, R>,
@@ -518,14 +518,14 @@ mod tests {
 
     #[test]
     fn clamp_content_larger_than_viewport() {
-        // Content bigger than viewport -- best we can do is pin to origin.
+        // Content bigger than viewport: best we can do is pin to origin.
         let (x, y) = clamp_position(100.0, 100.0, 900.0, 700.0, 800.0, 600.0);
         assert_eq!((x, y), (0.0, 0.0));
     }
 
     #[test]
     fn clamp_exact_fit() {
-        // Content exactly fills viewport -- only valid position is (0, 0).
+        // Content exactly fills viewport: only valid position is (0, 0).
         let (x, y) = clamp_position(50.0, 50.0, 800.0, 600.0, 800.0, 600.0);
         assert_eq!((x, y), (0.0, 0.0));
     }

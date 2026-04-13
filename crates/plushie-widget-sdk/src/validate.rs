@@ -518,7 +518,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("description", Str),
             ("style", Any),
         ],
-        _ => return Vec::new(), // Unknown widget type -- skip validation
+        _ => return Vec::new(), // Unknown widget type, skip validation
     };
 
     let props_cow = node.props.as_value_cow();

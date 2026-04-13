@@ -336,7 +336,7 @@ impl App {
             }
             // Platform: X11 uses SHAPE extension, Windows uses
             // WS_EX_TRANSPARENT, macOS uses ignoresMouseEvents. On Wayland,
-            // support depends on the compositor -- may silently no-op.
+            // support depends on the compositor and may silently no-op.
             "mouse_passthrough" => {
                 if let Some(&iced_id) = self.windows.get_iced(window_id) {
                     let enabled = settings

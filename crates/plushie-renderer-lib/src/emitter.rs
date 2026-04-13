@@ -192,7 +192,7 @@ impl EventEmitter {
         self.widget_rates.insert(widget_id.to_string(), rate);
     }
 
-    /// Clear all widget rates (called on Snapshot -- tree replaced).
+    /// Clear all widget rates (called on Snapshot, tree replaced).
     pub fn clear_widget_rates(&mut self) {
         self.widget_rates.clear();
     }
@@ -230,12 +230,12 @@ impl EventEmitter {
     /// not elapsed. The coalescing strategy is read from the event's
     /// [`CoalesceHint`]. Returns a Task if a flush timer needs scheduling.
     pub fn coalesce(&mut self, key: CoalesceKey, mut event: OutgoingEvent) -> Task<Message> {
-        // Take the hint out of the event -- it's consumed by the emitter
+        // Take the hint out of the event: it's consumed by the emitter
         // and not needed downstream (not serialized to the wire).
         let hint = match event.coalesce.take() {
             Some(h) => h,
             None => {
-                // No hint -- treat as non-coalescable (immediate delivery).
+                // No hint: treat as non-coalescable (immediate delivery).
                 return self.emit_immediate(event);
             }
         };
@@ -344,7 +344,7 @@ impl EventEmitter {
                 existing.merge(event);
                 return;
             }
-            // Strategy changed -- flush the old entry and start fresh.
+            // Strategy changed; flush the old entry and start fresh.
             self.flush_key(key);
         }
         self.pending
@@ -805,7 +805,7 @@ mod tests {
         emitter.buffer_event(&key, ev1, &CoalesceHint::Replace);
         assert_eq!(emitter.pending.len(), 1);
 
-        // Buffer an Accumulate event with the same key -- strategy mismatch.
+        // Buffer an Accumulate event with the same key (strategy mismatch).
         // The old Replace entry should be flushed and a new Accumulate started.
         let ev2 = make_event_with_data("update", "w1", json!({"dx": 5.0}));
         let acc_hint = CoalesceHint::Accumulate(vec!["dx".into()]);

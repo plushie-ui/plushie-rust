@@ -130,7 +130,7 @@ pub(crate) fn hash_json_value(v: &serde_json::Value, h: &mut impl std::hash::Has
 fn hash_json_value_inner(v: &serde_json::Value, h: &mut impl std::hash::Hasher, depth: usize) {
     if depth > MAX_HASH_DEPTH {
         // Treat excessively nested values as opaque. This changes the
-        // hash (vs. recursing further) but is safe -- worst case is an
+        // hash (vs. recursing further) but is safe; worst case is an
         // unnecessary cache invalidation.
         6u8.hash(h);
         return;

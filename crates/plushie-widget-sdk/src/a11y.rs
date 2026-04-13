@@ -492,7 +492,7 @@ impl widget::Operation for A11yInterceptor<'_, '_> {
         accessible: &Accessible<'_>,
     ) {
         if self.overrides.hidden() {
-            return; // Drop -- hidden from AT.
+            return; // Hidden from AT.
         }
         let overridden = self.overrides.apply_to(accessible);
         self.inner.accessible(id, bounds, &overridden);
@@ -500,7 +500,7 @@ impl widget::Operation for A11yInterceptor<'_, '_> {
 
     fn container(&mut self, id: Option<&widget::Id>, bounds: Rectangle) {
         if self.overrides.hidden() {
-            return; // Drop -- hidden from AT.
+            return; // Hidden from AT.
         }
         if self.overrides.has_overrides() {
             // Upgrade container to accessible node so overrides take
@@ -516,7 +516,7 @@ impl widget::Operation for A11yInterceptor<'_, '_> {
 
     fn text(&mut self, id: Option<&widget::Id>, bounds: Rectangle, text: &str) {
         if self.overrides.hidden() {
-            return; // Drop -- hidden from AT.
+            return; // Hidden from AT.
         }
         self.inner.text(id, bounds, text);
     }

@@ -259,7 +259,7 @@ fn multiplexed_sessions_are_isolated() {
         }),
     );
 
-    // Query tree from each session -- they should have different content.
+    // Query tree from each session: they should have different content.
     send(
         &mut stdin,
         &serde_json::json!({
@@ -349,7 +349,7 @@ fn reset_tears_down_session() {
     assert_eq!(r2["type"], "event");
     assert_eq!(r2["family"], "session_closed");
 
-    // Reuse the same session ID -- should get a fresh session.
+    // Reuse the same session ID: should get a fresh session.
     send(
         &mut stdin,
         &serde_json::json!({

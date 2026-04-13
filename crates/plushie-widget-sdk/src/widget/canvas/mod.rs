@@ -1,4 +1,4 @@
-//! Canvas widget -- 2D drawing surface with per-layer caching.
+//! Canvas widget: 2D drawing surface with per-layer caching.
 //!
 //! Renders shapes from tree children onto an iced canvas. Supports:
 //!

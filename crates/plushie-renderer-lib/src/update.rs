@@ -152,12 +152,12 @@ impl App {
                     }
                     log::info!("window closed: {window_id}");
                 }
-                // All managed windows gone -- notify the host.
+                // All managed windows gone: notify the host.
                 // The host can choose to exit, send a new Snapshot, or take other action.
                 // We do NOT call iced::exit() here because the daemon should stay alive
                 // to receive new tree snapshots (e.g. after a Reset or window re-creation).
                 if self.windows.is_empty() && self.core.tree.root().is_some() {
-                    log::info!("all windows closed -- notifying host");
+                    log::info!("all windows closed, notifying host");
                     return self.emitter.emit_direct(OutgoingEvent::generic(
                         "all_windows_closed".to_string(),
                         String::new(),
@@ -377,7 +377,7 @@ impl App {
                 Task::none()
             }
             StdinEvent::Closed => {
-                log::info!("stdin closed -- exiting");
+                log::info!("stdin closed, exiting");
                 iced::exit()
             }
         }

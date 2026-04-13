@@ -243,7 +243,7 @@ impl App {
     //
     // Platform support: Windows (Microsoft IME, Google Japanese, etc.),
     // macOS (built-in input methods), Linux/X11 (XIM/IBus), Linux/Wayland
-    // (text-input-v3 protocol -- compositor support varies). The preedit
+    // (text-input-v3 protocol; compositor support varies). The preedit
     // cursor range may be None on some older X11 IME implementations.
     pub fn handle_ime_opened(&self, iced_id: window::Id, captured: bool) -> Task<Message> {
         let window_id = match self.resolve_window_id(&iced_id) {

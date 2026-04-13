@@ -336,7 +336,7 @@ pub(super) fn build_path_from_commands(commands: &[canvas_types::PathCommand]) -
 
 /// Draw a sequence of shapes.
 ///
-/// Clips and transforms are handled at the group level -- each group
+/// Clips and transforms are handled at the group level; each group
 /// carries its own transforms and clip fields, applied in
 /// [`draw_canvas_shape`] when rendering groups.
 pub(super) fn draw_canvas_shapes<R: PlushieRenderer>(

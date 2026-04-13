@@ -10,11 +10,11 @@ A reusable widget is two crates:
 
 ```
 my-gauge/               depends on iced (via plushie-iced)
-  src/lib.rs            the Widget impl -- rendering, layout, events, a11y
+  src/lib.rs            the Widget impl (rendering, layout, events, a11y)
   Cargo.toml
 
 my-gauge-plushie/         depends on plushie-widget-sdk + my-gauge
-  src/lib.rs            PlushieWidget wrapper -- prop parsing, event bridging
+  src/lib.rs            PlushieWidget wrapper (prop parsing, event bridging)
   Cargo.toml
 ```
 
@@ -36,7 +36,7 @@ fn view(&self) -> Element<Message> {
 **The widget crate** (`my-gauge-plushie`) wraps the widget for
 plushie's protocol. It parses JSON props, constructs the widget, and
 bridges events. Every host SDK gets the widget through this single
-wrapper -- no per-language duplication:
+wrapper, no per-language duplication:
 
 ```rust
 use plushie_widget_sdk::prelude::*;
@@ -118,7 +118,7 @@ for plushie ecosystem widgets, `plushie-iced` is the standard.
 Every iced widget implements the `Widget` trait:
 
 ```rust
-// Simplified signatures -- see iced::advanced::widget::Widget
+// Simplified signatures; see iced::advanced::widget::Widget
 // for the full trait with all type parameters.
 pub trait Widget<Message, Theme, Renderer> {
     fn size(&self) -> Size<Length>;           // size hint
@@ -313,7 +313,7 @@ fn layout(&mut self, tree, renderer, limits) -> layout::Node {
 
 ### Drawing
 
-Use `renderer.fill_quad()` for rectangles -- it's batched (hundreds
+Use `renderer.fill_quad()` for rectangles; it's batched (hundreds
 of quads in one GPU draw call). For text, use `renderer.fill_text()`.
 For complex paths or gradients, use `canvas::Frame`.
 
@@ -372,7 +372,7 @@ state that implements the `Focusable` trait.
 ## Part 2: The plushie widget wrapper
 
 The wrapper crate bridges your iced widget to plushie's protocol.
-It's intentionally thin -- just prop parsing and event bridging.
+It's intentionally thin: just prop parsing and event bridging.
 
 ### Dependencies
 
@@ -636,8 +636,8 @@ developers directly. The plushie wrapper crate is used by host SDKs:
 
 ```
 crates.io:
-  my-gauge         -- the iced widget (Rust developers use this)
-  my-gauge-plushie   -- the plushie wrapper (SDKs reference this)
+  my-gauge           the iced widget (Rust developers use this)
+  my-gauge-plushie   the plushie wrapper (SDKs reference this)
 ```
 
 Host SDK authors add the plushie wrapper to their widget list.

@@ -12,7 +12,7 @@ use serde_json::Value;
 /// Set by event constructors or widget authors via
 /// [`OutgoingEvent::with_coalesce`]. The renderer uses this to decide
 /// whether and how to buffer events during rate-limited delivery. Not
-/// serialized to the wire -- renderer-internal metadata.
+/// serialized to the wire (renderer-internal metadata).
 ///
 /// # For widget authors
 ///
@@ -33,7 +33,7 @@ pub enum CoalesceHint {
     Replace,
     /// Sum the named `value` fields across coalesced events.
     /// Other fields keep the latest event's values.
-    /// Use for: scroll deltas, velocity changes, counters -- anything
+    /// Use for: scroll deltas, velocity changes, counters, anything
     /// where intermediate values carry magnitude that would be lost
     /// if only the latest were kept.
     Accumulate(Vec<String>),
@@ -79,7 +79,7 @@ pub struct OutgoingEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub captured: Option<bool>,
     /// Coalescing hint for rate-limited delivery.
-    /// Not serialized to the wire -- renderer-internal metadata.
+    /// Not serialized to the wire (renderer-internal metadata).
     #[serde(skip)]
     pub coalesce: Option<CoalesceHint>,
 }
@@ -186,7 +186,7 @@ impl OutgoingEvent {
 
     /// Convenience constructor for widget-emitted events.
     ///
-    /// Identical to [`generic`](Self::generic) -- exists for discoverability
+    /// Identical to [`generic`](Self::generic); exists for discoverability
     /// so widget authors searching docs for "widget" find it.
     pub fn widget_event(
         family: impl Into<String>,
@@ -908,7 +908,7 @@ impl EffectResponse {
     }
 
     /// The requested effect kind is not supported by this backend.
-    /// Distinct from `error` -- unsupported means the renderer can't
+    /// Distinct from `error`: unsupported means the renderer can't
     /// handle this effect at all (e.g. file dialogs in headless mode),
     /// not that it tried and failed. The SDK uses this to trigger
     /// registered effect stubs or propagate to the app.
@@ -924,7 +924,7 @@ impl EffectResponse {
     }
 
     /// The user cancelled the operation (e.g. closed a file dialog).
-    /// Distinct from `error` -- cancellation is a normal user action,
+    /// Distinct from `error`: cancellation is a normal user action,
     /// not a failure.
     pub fn cancelled(id: String) -> Self {
         Self {

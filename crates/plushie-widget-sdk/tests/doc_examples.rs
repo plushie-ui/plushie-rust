@@ -4,7 +4,7 @@
 //! compile against the real plushie-core and iced APIs. If the API
 //! changes, these tests fail, signaling that the docs need updating.
 //!
-//! The tests don't render pixels -- they exercise the type system and verify
+//! The tests don't render pixels; they exercise the type system and verify
 //! that method calls, field access, and trait implementations are correct.
 
 use plushie_core::protocol::Props;

@@ -33,8 +33,8 @@ matters at high update rates.
 
 The renderer auto-detects the format from the first byte of stdin:
 
-- `0x7B` (`{`) -- JSON
-- Anything else -- MessagePack
+- `0x7B` (`{`) - JSON
+- Anything else - MessagePack
 
 Override with `--json` or `--msgpack` CLI flags.
 
@@ -54,7 +54,7 @@ in separate threads, each with fully isolated state.
 
 The renderer echoes the `session` value from each incoming message
 back on the corresponding outgoing message(s). This is routing
-metadata, not message content -- the renderer does not interpret the
+metadata, not message content; the renderer does not interpret the
 session value beyond using it for dispatch.
 
 ```json
@@ -67,7 +67,7 @@ session value beyond using it for dispatch.
 - A session is created implicitly when the first message with a new
   session value arrives.
 - A `Reset` message tears down the session (thread exits, all state
-  freed). The session value can be reused -- a new session is created
+  freed). The session value can be reused; a new session is created
   on the next message.
 - The `--max-sessions` flag limits concurrent sessions. Messages for
   new sessions beyond the limit are dropped with a log error.
@@ -144,8 +144,8 @@ All fields are required. The host should check that `protocol` matches the versi
 The `mode` field tells the SDK what capabilities are available (e.g.
 headless mode supports `interact_step` round-trips and real
 screenshots; mock mode returns stubs). The `session` field on
-`hello` is always empty -- it is a process-level message, not
-scoped to any session.
+`hello` is always empty (it is a process-level message, not
+scoped to any session).
 
 ---
 
@@ -153,7 +153,7 @@ scoped to any session.
 
 **Colors** are canonical hex strings: `"#rrggbb"` (6-char) or
 `"#rrggbbaa"` (8-char with alpha). Short forms (`#rgb`, `#rgba`)
-are not accepted -- the host must normalize before sending.
+are not accepted; the host must normalize before sending.
 
 **Lengths** are numbers (pixels), `"fill"`, `"shrink"`, or
 `{"fill_portion": n}`.
@@ -189,7 +189,7 @@ that window. For example, `"main#form/email"` refers to the widget
 `email` inside the `form` scope in the `main` window. Window nodes
 themselves use bare IDs without the `#` prefix (e.g. `"main"`).
 
-Window nodes (`"type": "window"`) are special -- they map to native
+Window nodes (`"type": "window"`) are special: they map to native
 windows. Place them at the top level of the tree (root or direct
 children of root).
 
@@ -252,7 +252,7 @@ The renderer's built-in default level is `warn`. Examples:
 
 ### Snapshot
 
-Replace the entire tree. The simplest way to update the UI -- no
+Replace the entire tree. The simplest way to update the UI, no
 diffing required on the host side.
 
 ```json
@@ -839,7 +839,7 @@ directly without widget processing.
 | `type_key` | `key` (string, required) | Key to press and release (see Key format below) |
 | `press` | `key` (string, required) | Key to press (key down only) |
 | `release` | `key` (string, required) | Key to release (key up only) |
-| `submit` | `value` (string) | Submit value. Defaults to `""` if omitted. The renderer does not read from the tree -- SDKs should read the widget's current `props.value` and provide it. |
+| `submit` | `value` (string) | Submit value. Defaults to `""` if omitted. The renderer does not read from the tree; SDKs should read the widget's current `props.value` and provide it. |
 | `scroll` | `delta_x` (number), `delta_y` (number) | Scroll deltas in lines |
 | `move_to` | `x` (number), `y` (number) | Cursor position in logical pixels |
 | `slide` | `value` (number, required) | Slider value |
@@ -912,7 +912,7 @@ and all events are in the final response.
 #### Mock mode: synthetic events
 
 In `--mock` mode, there is no iced renderer. All events are
-synthetic -- constructed from the action name and selector without
+synthetic, constructed from the action name and selector without
 widget processing. No `interact_step` messages are emitted. All
 events are in the final `interact_response`.
 
@@ -939,8 +939,8 @@ Response: `tree_hash_response`.
 
 **Scope.** The hash covers tree structure and props only (the
 serialized JSON representation of the node tree). Mutable widget
-state -- editor content, scroll position, slider value, canvas
-cache state, etc. -- is not included. Two trees with identical
+state (editor content, scroll position, slider value, canvas
+cache state, etc.) is not included. Two trees with identical
 structure and props will produce the same hash even if their
 runtime widget state differs.
 
@@ -1156,7 +1156,7 @@ Current renderer error payloads include:
 
 All pointer interactions (from `pointer_area`, canvas, and touch
 input) use a unified set of event families. The same families are
-emitted regardless of widget type -- the `pointer` field in the
+emitted regardless of widget type; the `pointer` field in the
 value distinguishes the input device.
 
 | Family | Value fields | Coalescable | Description |
@@ -1189,11 +1189,11 @@ identifies the button: `"left"`, `"right"`, or `"middle"`.
 `{shift, ctrl, alt, logo, command}` (all booleans).
 
 These families are emitted by:
-- `pointer_area` widget -- mouse/touch/pen interactions on an
+- `pointer_area` widget - mouse/touch/pen interactions on an
   invisible overlay area.
-- `canvas` widget -- pointer interactions on the canvas surface.
+- `canvas` widget - pointer interactions on the canvas surface.
   The `id` field is the canvas node ID.
-- Canvas interactive elements -- pointer interactions on canvas
+- Canvas interactive elements - pointer interactions on canvas
   elements. The `id` field is the element's scoped wire ID.
 
 Note: `scrolled` (scrollable container viewport change) is a
@@ -1246,7 +1246,7 @@ tag from the subscription registration.
 pointer events (`cursor_moved`, `button_pressed`, `finger_pressed`,
 etc.) use iced-native family names and data shapes. Widget pointer
 events (`press`, `release`, `move`, `scroll`, etc.) use the unified
-pointer model documented above. Both coexist on the wire -- the SDK
+pointer model documented above. Both coexist on the wire; the SDK
 is responsible for merging them into a consistent event model on the
 host side. For example, a `button_pressed` subscription event and a
 `press` widget event represent the same physical action at different
@@ -1283,11 +1283,11 @@ abstraction levels.
 |--------|--------|
 | `animation_frame` | tag, value: {timestamp} |
 | `theme_changed` | tag, value (light/dark) |
-| `all_windows_closed` | -- (emitted when last window closes) |
+| `all_windows_closed` | (none; emitted when last window closes) |
 
 **`animation_frame` timing.** In windowed mode, timestamps are
 monotonic milliseconds since the first animation frame after startup
-(or since the last Reset -- the epoch resets so animations restart
+(or since the last Reset; the epoch resets so animations restart
 from zero). In headless/mock mode, `AdvanceFrame` passes timestamps
 through directly and the renderer does not apply any epoch offset.
 
@@ -1640,7 +1640,7 @@ Limits protect against OOM and excessive computation from untrusted or
 buggy input. Most limits return errors to the host; content limits
 (markdown, text editor) truncate with warnings logged to stderr.
 
-Image and font limits are per-process -- resetting a session does not
+Image and font limits are per-process; resetting a session does not
 reset them. This prevents a misbehaving session from exhausting
 process-wide resources that would affect other sessions in multiplexed
 mode.
@@ -1677,7 +1677,7 @@ Unsubscribe, WidgetOp, WindowOp, ImageOp, WidgetCommand,
 WidgetCommands, AdvanceFrame) can be sent freely at any time.
 
 Request messages (Query, Interact, TreeHash, Screenshot, Reset,
-Effect) can also be pipelined -- the renderer queues them and
+Effect) can also be pipelined; the renderer queues them and
 responds in order.
 
 **Exception: interact steps.** During an Interact in headless mode,
@@ -1685,7 +1685,7 @@ the renderer may emit `interact_step` messages. When this happens,
 the host **must** send a Snapshot or Patch back before the renderer
 will continue to the next iced event. Do not send other messages
 to the same session between an `interact_step` and the
-corresponding Snapshot -- the renderer is blocked waiting for the
+corresponding Snapshot; the renderer is blocked waiting for the
 tree update.
 
 ---
@@ -1910,7 +1910,7 @@ state (e.g. mouse position) before the discrete event (e.g. click)
 that follows.
 
 Incoming stdin messages also flush the buffer, providing adaptive
-throughput matching -- when the host sends a message, it gets all
+throughput matching: when the host sends a message, it gets all
 pending coalesced events immediately.
 
 ### Custom widget events
@@ -1922,7 +1922,7 @@ outgoing events via `.with_coalesce(CoalesceHint::Replace)` or
 `Replace` uses the standard latest-value-wins strategy.
 `Accumulate(fields)` sums the named data fields across coalesced
 events; other fields keep the latest values. Events returned without
-a hint are never coalesced -- they are delivered immediately
+a hint are never coalesced; they are delivered immediately
 regardless of any `event_rate` setting.
 
 ### Headless and mock modes
@@ -1946,7 +1946,7 @@ thousands of nodes). Practical considerations for large trees:
 - **Tree depth.** Rendering and tree search are bounded to 256 levels
   of nesting. Deeply nested trees also increase layout cost.
 - **Canvas caching.** Canvas widgets cache per-layer tessellation.
-  Avoid unnecessary shape changes -- only layers whose content hash
+  Avoid unnecessary shape changes; only layers whose content hash
   changes are re-tessellated.
 - **Screenshot size.** Large screenshots allocate proportional RGBA
   buffers (width * height * 4 bytes). The maximum dimension is
@@ -1992,7 +1992,7 @@ sibling. It takes exactly two children: the first is the anchor
 **Focus and accessibility.** Both children participate in focus cycling
 (Tab/Shift+Tab) and the accessibility tree. Setting `a11y.modal = true`
 on the overlay node signals a modal popup, but focus trapping is the
-host SDK's responsibility -- plushie does not intercept focus navigation
+host SDK's responsibility; plushie does not intercept focus navigation
 at the iced level.
 
 ---
@@ -2005,7 +2005,7 @@ vocabulary) responds to pointer events, keyboard navigation, drag
 gestures, tooltips, and participates in the accessibility tree.
 
 Only groups can be interactive. Leaf shapes (rect, circle, line, path,
-text, image, svg) are never interactive on their own -- wrap them in a
+text, image, svg) are never interactive on their own; wrap them in a
 group to add interaction.
 
 ### Terminology
@@ -2270,7 +2270,7 @@ text is drawn as an overlay within the canvas.
 - Keyboard-driven drag not yet supported (drag operations have no
   keyboard equivalent).
 - Nested focusable groups (focusable inside focusable) are not fully
-  supported -- the inner group appears as an arrow-navigable child but
+  supported; the inner group appears as an arrow-navigable child but
   cannot be "drilled into" via keyboard.
 - Role-specific keyboard patterns (slider value adjustment, tree
   expand/collapse) are not implemented.

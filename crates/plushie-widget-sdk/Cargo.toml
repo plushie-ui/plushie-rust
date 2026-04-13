@@ -9,7 +9,7 @@ repository.workspace = true
 authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
-readme = "../README.md"
+readme = "README.md"
 
 [lib]
 name = "plushie_widget_sdk"

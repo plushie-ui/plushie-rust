@@ -409,7 +409,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                     // hint if it looks accidental (has modifiers but no key).
                     if !modifiers.is_empty() {
                         log::warn!(
-                            "text_editor key_binding rule has modifiers but no `key` or `named` -- \
+                            "text_editor key_binding rule has modifiers but no `key` or `named`, \
                              this will match ANY key with those modifiers [id={}]",
                             node.id
                         );
@@ -462,7 +462,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                     {
                         continue;
                     }
-                    // else: no key/named constraint -- matches any key (catch-all rule)
+                    // else: no key/named constraint, matches any key (catch-all rule)
 
                     // Default binding: delegate to iced's built-in handler
                     if rule.is_default {
@@ -472,7 +472,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                     // Parse the specific binding
                     return parse_binding(&rule.binding_val, &editor_id, ctx.window_id);
                 }
-                // No rule matched -- no binding
+                // No rule matched: no binding
                 None
             });
         }
@@ -608,7 +608,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
             Some("inspired_github") => iced::highlighter::Theme::InspiredGitHub,
             _ => iced::highlighter::Theme::SolarizedDark,
         };
-        // Set ID before highlight() -- .id() is only available on PlainText variant
+        // Set ID before highlight() since .id() is only available on PlainText variant
         te = te.id(wid);
         let mut hl = te.highlight(&syntax, theme);
         if let Some(sf) = style_fn {

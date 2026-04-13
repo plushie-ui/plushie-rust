@@ -134,7 +134,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Canvas group redesign.** Interactive elements are now groups with
   top-level fields (`id`, `on_click`, `a11y`, etc.) instead of a nested
-  `"interactive"` sub-object. Only groups can be interactive -- leaf
+  `"interactive"` sub-object. Only groups can be interactive; leaf
   shapes (rect, circle, etc.) are no longer interactive on their own.
 - **Standalone transform/clip commands removed.** `push_transform`,
   `pop_transform`, `translate`, `rotate`, `scale`, `push_clip`,

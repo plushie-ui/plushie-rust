@@ -701,14 +701,14 @@ mod tests {
 
     #[test]
     fn test_prop_f32_string_nan() {
-        // "NaN" strings are rejected -- non-finite values return None.
+        // "NaN" strings are rejected: non-finite values return None.
         let p = make_props(json!({"size": "NaN"}));
         assert!(prop_f32(&p, "size").is_none());
     }
 
     #[test]
     fn test_prop_f32_string_infinity() {
-        // "Infinity" strings are rejected -- non-finite values return None.
+        // "Infinity" strings are rejected: non-finite values return None.
         let p = make_props(json!({"size": "Infinity"}));
         assert!(prop_f32(&p, "size").is_none());
     }
@@ -803,7 +803,7 @@ mod tests {
                     prop_assert!(f.is_finite(), "expected finite f32 for finite input {val}");
                 } else {
                     // NaN and Infinity become JSON null via serde_json,
-                    // so prop_f32 returns None -- that's correct.
+                    // so prop_f32 returns None, which is correct.
                 }
             }
         }

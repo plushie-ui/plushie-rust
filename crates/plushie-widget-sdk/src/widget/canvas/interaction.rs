@@ -41,7 +41,7 @@ pub(super) fn hit_test(point: Point, region: &HitRegion) -> bool {
             let dy = y2 - y1;
             let len_sq = dx * dx + dy * dy;
             if len_sq < f32::EPSILON {
-                // Degenerate line (zero length) -- treat as point.
+                // Degenerate line (zero length): treat as point.
                 let d = ((point.x - x1).powi(2) + (point.y - y1).powi(2)).sqrt();
                 return d <= half_width;
             }
@@ -85,7 +85,7 @@ pub(super) fn find_hit_element(
                 let (lx, ly) = inv.transform_point(point.x, point.y);
                 Point::new(lx, ly)
             }
-            // Singular transform -- element can't be hit.
+            // Singular transform: element can't be hit.
             None => return false,
         };
         hit_test(local, &e.hit_region)
@@ -547,7 +547,7 @@ pub(crate) fn validate_interactive_elements(
 ///
 /// Scans for `{"type": "translate", "x": ..., "y": ...}` entries and
 /// sums their x/y components. Non-translate transforms (rotate, scale)
-/// are ignored for this purpose -- they affect hit testing via the
+/// are ignored for this purpose; they affect hit testing via the
 /// transform matrix in Phase 2.5, not via this simple offset.
 /// Compute the translation offset from a group's transforms.
 fn group_translation(transforms: &[Transform]) -> (f32, f32) {

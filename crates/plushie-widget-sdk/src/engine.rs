@@ -3,7 +3,7 @@
 //! [`Core`] owns the UI tree, widget caches, and subscription state.
 //! It processes [`IncomingMessage`]s and returns [`CoreEffect`]s that
 //! the host (the iced `App` or the headless runner) must execute.
-//! Core never touches iced directly -- it's pure state management.
+//! Core never touches iced directly; it's pure state management.
 
 use std::collections::HashMap;
 
@@ -27,7 +27,7 @@ use crate::tree::Tree;
 /// from the same `apply` call.
 #[derive(Debug)]
 pub enum CoreEffect {
-    /// The window set may have changed -- re-sync with renderer.
+    /// The window set may have changed; re-sync with renderer.
     ///
     /// Produced after every Snapshot and Patch that succeeds. The host
     /// should compare `tree.window_ids()` against its open window set
@@ -46,7 +46,7 @@ pub enum CoreEffect {
 
     /// Handle a platform effect (file dialog, clipboard, notification).
     ///
-    /// Core does not execute effects -- it passes the raw request through
+    /// Core does not execute effects; it passes the raw request through
     /// for the host to dispatch. The host decides whether to run the
     /// effect synchronously, asynchronously (via Task::perform), or
     /// return unsupported (e.g. in headless mode where file dialogs
@@ -117,7 +117,7 @@ pub enum CoreEffect {
     /// `theme_follows_system = false`.
     ThemeChanged(iced::Theme),
 
-    /// The root theme was set to `"system"` -- the app-level theme
+    /// The root theme was set to `"system"`: the app-level theme
     /// should follow the OS preference.
     ThemeFollowsSystem,
 
@@ -313,7 +313,7 @@ impl Core {
         let hash = hasher.finish();
 
         if self.cached_theme_hash == Some(hash) {
-            // Theme prop unchanged -- skip resolution.
+            // Theme prop unchanged, skip resolution.
             return;
         }
         self.cached_theme_hash = Some(hash);
@@ -470,7 +470,7 @@ impl Core {
 
                 // Startup-only fields are extracted by run.rs before the
                 // daemon starts. Subsequent Settings messages can't change
-                // them -- warn so hosts notice the no-op.
+                // them, so warn if the host sends them again.
                 if self.settings_applied {
                     for field in &["antialiasing", "vsync", "fonts", "scale_factor"] {
                         if settings.get(*field).is_some() {
@@ -974,7 +974,7 @@ mod tests {
     #[test]
     fn unhandled_message_returns_empty_effects() {
         let mut core: Core = Core::new();
-        // Query is handled by the scripting layer, not Core -- hits the catch-all
+        // Query is handled by the scripting layer, not Core; hits the catch-all
         let msg = IncomingMessage::Query {
             id: "q1".to_string(),
             target: "tree".to_string(),

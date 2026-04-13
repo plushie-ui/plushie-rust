@@ -232,7 +232,7 @@ fn get_color(obj: &serde_json::Map<String, Value>, key: &str) -> Option<Color> {
 ///
 /// Accepts 6-char (`#rrggbb`) and 8-char (`#rrggbbaa`) hex strings
 /// with or without leading `#`. Short forms (`#rgb`, `#rgba`) are not
-/// accepted -- the host normalizes to canonical hex before sending.
+/// accepted; the host normalizes to canonical hex before sending.
 pub fn parse_hex_color(hex: &str) -> Option<Color> {
     let hex = hex.trim_start_matches('#');
     match hex.len() {
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn custom_theme_without_shades_uses_standard() {
-        // No shade keys -- should use Theme::custom (standard generation).
+        // No shade keys: should use Theme::custom (standard generation).
         let val = json!({"primary": "#ff0000"});
         let result = resolve_theme(&val);
         let pal = result.palette();

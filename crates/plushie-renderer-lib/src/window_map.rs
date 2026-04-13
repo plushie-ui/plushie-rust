@@ -2,7 +2,7 @@
 //!
 //! Wraps the window ID <-> iced window::Id relationship and any
 //! per-window state (decoration, theme cache) in a single type.
-//! Insertions and removals are atomic -- it's impossible to update
+//! Insertions and removals are atomic: it's impossible to update
 //! one side without the other.
 
 use iced::{Theme, window};
@@ -31,7 +31,7 @@ impl Default for WindowState {
 }
 
 /// Bidirectional window ID <-> iced window::Id mapping with per-window
-/// state. All mutations keep both maps in sync -- callers cannot
+/// state. All mutations keep both maps in sync; callers cannot
 /// accidentally desync the forward and reverse maps.
 pub struct WindowMap {
     /// Window ID -> (iced window ID, per-window state).

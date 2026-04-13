@@ -273,7 +273,7 @@ pub fn apply_text_input_fields(style: &mut text_input::Style, fields: &StyleMapF
 }
 
 /// Apply style map fields to a text_editor style. Mirrors
-/// [`apply_text_input_fields`] -- both style types have the same
+/// [`apply_text_input_fields`]; both style types have the same
 /// background/border/value fields but are distinct iced types.
 pub fn apply_text_editor_fields(style: &mut text_editor::Style, fields: &StyleMapFields) {
     if let Some(iced::Background::Color(c)) = fields.background {

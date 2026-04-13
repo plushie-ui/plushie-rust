@@ -18,7 +18,7 @@ pub struct WebOutputWriter {
 
 // SAFETY: WebOutputWriter holds a js_sys::Function which contains a
 // raw pointer (JsValue). On wasm32-unknown-unknown, there is only one
-// thread, so Send is trivially satisfied -- the value is never actually
+// thread, so Send is trivially satisfied; the value is never actually
 // transferred between threads. This impl must NOT be used on multi-
 // threaded WASM targets (e.g. wasm32-unknown-unknown with shared memory).
 #[allow(unsafe_code)]

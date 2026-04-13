@@ -2,12 +2,12 @@
 //!
 //! Native GUI renderer binary. Three execution modes:
 //!
-//! - **Windowed (default):** `plushie` -- Full iced rendering with real
+//! - **Windowed (default):** `plushie` - full iced rendering with real
 //!   windows and GPU. Production mode. Reports `"mode": "windowed"`.
-//! - **Headless:** `plushie --headless` -- No display server. Real
+//! - **Headless:** `plushie --headless` - no display server. Real
 //!   rendering via tiny-skia with persistent widget state. Accurate
 //!   screenshots after interactions. For CI with visual verification.
-//! - **Mock:** `plushie --mock` -- No rendering. Core + wire protocol
+//! - **Mock:** `plushie --mock` - no rendering. Core + wire protocol
 //!   only. Stub screenshots. For fast protocol-level testing from
 //!   any language.
 //!

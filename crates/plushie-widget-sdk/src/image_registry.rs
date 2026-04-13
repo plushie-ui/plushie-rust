@@ -235,9 +235,9 @@ impl ImageRegistry {
     /// Dispatch an image operation by name.
     ///
     /// Supported ops:
-    /// - `"create_image"` / `"update_image"` -- create or replace an image
+    /// - `"create_image"` / `"update_image"` - create or replace an image
     ///   from raw RGBA `pixels` or encoded `data` (PNG, JPEG, etc.).
-    /// - `"delete_image"` -- remove the named image.
+    /// - `"delete_image"` - remove the named image.
     pub fn apply_op(
         &mut self,
         op: &str,

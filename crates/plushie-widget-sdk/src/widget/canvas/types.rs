@@ -11,7 +11,7 @@ use crate::PlushieRenderer;
 pub(crate) const MAX_SHAPES_PER_LAYER: usize = 10_000;
 
 // ---------------------------------------------------------------------------
-// Interactive elements -- hit testing and interaction state
+// Interactive elements: hit testing and interaction state
 // ---------------------------------------------------------------------------
 
 /// Geometric region for hit testing an interactive element.
@@ -386,7 +386,7 @@ pub(crate) struct InteractiveElement {
     pub tooltip: Option<String>,
     /// Accessibility overrides for this element. Parsed from the `a11y`
     /// field on the group using the same [`A11yOverrides`] struct that
-    /// all other widgets use -- same fields, same parsing, same validation.
+    /// all other widgets use (same fields, same parsing, same validation).
     ///
     /// [`A11yOverrides`]: crate::a11y::A11yOverrides
     pub a11y: Option<crate::a11y::A11yOverrides>,

@@ -126,7 +126,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Render smoke tests -- verify render() doesn't panic for common types
+    // Render smoke tests: verify render() doesn't panic for common types
     // -----------------------------------------------------------------------
 
     use crate::testing::{
@@ -331,7 +331,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Error path tests -- unknown type and missing props
+    // Error path tests: unknown type and missing props
     // -----------------------------------------------------------------------
 
     #[test]

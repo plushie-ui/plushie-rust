@@ -142,7 +142,7 @@ impl PlushieApp {
         // Load inline fonts directly into the global font system so they're
         // available before the first render. On WASM there are no system fonts,
         // so without this all text renders blank. Also set the sans-serif
-        // family mapping -- the default Family::SansSerif won't resolve to
+        // family mapping, since the default Family::SansSerif won't resolve to
         // anything unless this mapping exists.
         if !font_bytes.is_empty() {
             let font_system = iced::advanced::graphics::text::font_system();
@@ -295,7 +295,7 @@ fn message_subscription() -> impl iced::futures::Stream<Item = StdinEvent> {
             }
         }
 
-        // Channel closed (PlushieApp dropped) -- signal the daemon.
+        // Channel closed (PlushieApp dropped); signal the daemon.
         let _ = sender.send(StdinEvent::Closed).await;
     })
 }

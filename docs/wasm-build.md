@@ -145,12 +145,12 @@ transfer size for production deployments.
 
 The largest contributors (approximate, based on feature analysis):
 
-- **iced renderer** (wgpu shaders, layout, text) -- unavoidable core
-- **cosmic-text** (text shaping, fontdb) -- unavoidable for text
-- **markdown + highlighter** -- pulldown-cmark, syntect, themes
-- **image** -- PNG/JPEG/etc. decoding
-- **svg** -- resvg/usvg vector rendering
-- **canvas** -- 2D drawing, hit testing, tessellation
+- **iced renderer** (wgpu shaders, layout, text) - unavoidable core
+- **cosmic-text** (text shaping, fontdb) - unavoidable for text
+- **markdown + highlighter** - pulldown-cmark, syntect, themes
+- **image** - PNG/JPEG/etc. decoding
+- **svg** - resvg/usvg vector rendering
+- **canvas** - 2D drawing, hit testing, tessellation
 
 Feature-gating `markdown`, `highlighter`, `image`, and `svg` in
 plushie-core would let WASM builds exclude unused capabilities. This

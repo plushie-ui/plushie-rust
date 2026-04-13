@@ -24,7 +24,7 @@
 //!
 //! **Clipboard (arboard):** The clipboard instance is lazily initialized
 //! in a static Mutex and may be created from a worker thread. On Wayland,
-//! arboard spawns a background thread for clipboard serving -- dropping the
+//! arboard spawns a background thread for clipboard serving. Dropping the
 //! Clipboard would lose served data, so it persists for process lifetime.
 //! On Linux, primary selection is routed via `LinuxClipboardKind::Primary`.
 //!
@@ -43,7 +43,7 @@ use plushie_widget_sdk::protocol::EffectResponse;
 ///
 /// **Platform notes:** Windows UNC paths (`\\?\C:\...`) are valid UTF-8 and
 /// pass through cleanly. macOS HFS+ paths may arrive in NFD (decomposed
-/// Unicode) form -- this is valid UTF-8 but the host should normalize for
+/// Unicode) form. This is valid UTF-8 but the host should normalize for
 /// comparison. Non-UTF-8 filenames are rare on modern systems (NTFS is
 /// UTF-16, HFS+ is UTF-8, ext4 allows arbitrary bytes but tooling
 /// discourages it).
@@ -144,7 +144,7 @@ pub(crate) fn is_async_effect(kind: &str) -> bool {
 /// Dispatch an effect synchronously and return the response.
 ///
 /// File dialog effects use `rfd::FileDialog` (blocking). On macOS, sync
-/// dialogs may deadlock if called on the main thread -- prefer
+/// dialogs may deadlock if called on the main thread; prefer
 /// [`handle_async_effect`] when a tokio runtime is available.
 ///
 /// Clipboard and notification effects are always synchronous regardless
@@ -172,7 +172,7 @@ pub(crate) fn handle_effect(id: String, kind: &str, payload: &Value) -> EffectRe
 /// matches [`handle_effect`] exactly so the host can deserialize uniformly.
 ///
 /// Only file dialog effects have async implementations (via
-/// `rfd::AsyncFileDialog`). Other kinds are not routed here -- see
+/// `rfd::AsyncFileDialog`). Other kinds are not routed here; see
 /// [`is_async_effect`].
 ///
 /// Note: on X11-only Linux desktops without a portal (e.g. minimal WMs),
@@ -304,7 +304,7 @@ fn handle_directory_select_multiple(id: String, payload: &Value) -> EffectRespon
 //
 // A single Clipboard instance is kept alive for the process lifetime.
 // On Wayland, arboard serves clipboard data from a background thread
-// tied to the Clipboard instance -- dropping it loses the data.
+// tied to the Clipboard instance; dropping it loses the data.
 // ---------------------------------------------------------------------------
 
 fn with_clipboard(
@@ -506,7 +506,7 @@ fn handle_notification(id: String, payload: &Value) -> EffectResponse {
 }
 
 // ---------------------------------------------------------------------------
-// NativeEffectHandler -- EffectHandler trait impl for the native binary
+// NativeEffectHandler: EffectHandler trait impl for the native binary
 // ---------------------------------------------------------------------------
 
 /// Native effect handler wrapping the platform-specific implementations
@@ -610,7 +610,7 @@ mod tests {
         }
     }
 
-    /// Verify that empty payloads don't cause panics -- handlers should
+    /// Verify that empty payloads don't cause panics; handlers should
     /// defensively unwrap_or on missing fields.
     #[test]
     fn handlers_tolerate_empty_payloads() {

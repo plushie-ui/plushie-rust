@@ -10,7 +10,7 @@
 //! Both modes read framed messages from stdin, process them through
 //! [`Core`](plushie_widget_sdk::engine::Core), and write responses to stdout.
 //! No iced daemon, no windows, no GPU. Both modes maintain a persistent
-//! renderer and UI cache -- headless uses `iced::Renderer` (tiny-skia)
+//! renderer and UI cache. Headless uses `iced::Renderer` (tiny-skia)
 //! for real screenshots, mock uses the null renderer `()` for speed.
 //!
 //! # Session multiplexing
@@ -64,7 +64,7 @@ pub(crate) enum Mode {
 }
 
 // ---------------------------------------------------------------------------
-// WireWriter -- abstracts output destination
+// WireWriter: abstracts output destination
 // ---------------------------------------------------------------------------
 
 /// Encodes and writes wire messages. Each session owns one.
@@ -1267,7 +1267,7 @@ fn run_multiplexed<R: PlushieRenderer>(
 
                 let session_id = sm.session.clone();
 
-                // Check if this is a Reset -- if so, tear down the session.
+                // Check if this is a Reset; if so, tear down the session.
                 let is_reset = matches!(sm.message, IncomingMessage::Reset { .. });
 
                 // Get or create the session thread.
@@ -1387,7 +1387,7 @@ fn run_multiplexed<R: PlushieRenderer>(
 
                 // If this was a Reset, tear down the session after it processes.
                 // The host must wait for reset_response before sending new
-                // messages to this session ID -- otherwise stale responses
+                // messages to this session ID, otherwise stale responses
                 // from the old session thread may interleave with the new one.
                 if is_reset {
                     // Drop the sender so the session thread exits after

@@ -3,10 +3,10 @@
 //! The renderer communicates with the host process over stdin (incoming
 //! messages) and stdout (outgoing events). Two wire formats are supported:
 //!
-//! - **JSON** -- newline-delimited JSON (JSONL). Each message is a UTF-8
+//! - **JSON** - newline-delimited JSON (JSONL). Each message is a UTF-8
 //!   JSON object terminated by `\n`. Human-readable, easy to debug.
 //!
-//! - **MsgPack** -- 4-byte big-endian length-prefixed MessagePack. Each
+//! - **MsgPack** - 4-byte big-endian length-prefixed MessagePack. Each
 //!   message is `[u32 BE length][msgpack payload]`. Compact, faster to
 //!   parse, supports native binary fields (e.g. pixel data).
 //!
@@ -538,7 +538,7 @@ fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> serde_json::Value {
                 serde_json::Value::Number(serde_json::Number::from_f64(0.0).unwrap())
             }),
         rmpv::Value::String(s) => {
-            // rmpv::Utf8String -- may or may not be valid UTF-8.
+            // rmpv::Utf8String: may or may not be valid UTF-8.
             // Use lossy conversion so invalid bytes become U+FFFD instead of
             // silently mapping to null (which breaks tag dispatch on "type").
             serde_json::Value::String(String::from_utf8_lossy(s.as_bytes()).into_owned())
@@ -804,8 +804,8 @@ mod tests {
         let long_line: Vec<u8> = vec![b'x'; small_limit + 10];
         let mut reader = io::BufReader::new(&long_line[..]);
 
-        // Read using Take with the small limit -- simulates what
-        // read_message does, just with a smaller limit.
+        // Read using Take with the small limit (simulates what
+        // read_message does, just with a smaller limit).
         let mut line = String::new();
         let limit = (small_limit + 1) as u64;
         let _n = (&mut reader).take(limit).read_line(&mut line).unwrap();
@@ -820,7 +820,7 @@ mod tests {
         let len = (MAX_MESSAGE_SIZE + 1) as u32;
         let mut data = Vec::new();
         data.extend_from_slice(&len.to_be_bytes());
-        // Don't need the actual payload -- the size check fires first.
+        // Don't need the actual payload; the size check fires first.
         data.extend_from_slice(&[0u8; 64]); // just enough to not EOF
 
         let mut reader = io::BufReader::new(&data[..]);
@@ -1364,7 +1364,7 @@ mod tests {
         let payload = &bytes[4..];
         let rmpv_val: rmpv::Value = rmpv::decode::read_value(&mut &payload[..]).unwrap();
 
-        // Find the rgba field -- should be native Binary, not a string
+        // Find the rgba field: should be native Binary, not a string
         match rmpv_val {
             rmpv::Value::Map(entries) => {
                 let rgba_entry = entries

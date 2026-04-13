@@ -12,13 +12,13 @@
 //! ## Module guide
 //!
 //! **Widget SDK (stable API):**
-//! - [`prelude`] -- common re-exports for widget authors
-//! - [`registry`] -- `PlushieWidget` trait, `WidgetRegistry`, `WidgetSet`,
+//! - [`prelude`] - common re-exports for widget authors
+//! - [`registry`] - `PlushieWidget` trait, `WidgetRegistry`, `WidgetSet`,
 //!   `InitCtx`, `GenerationCounter`
-//! - [`app`] -- `PlushieAppBuilder` for registering widgets
-//! - [`prop_helpers`] -- public prop extraction helpers
-//! - [`render_ctx`] -- `RenderCtx`, the core rendering context for all widgets
-//! - [`testing`] -- test factory helpers
+//! - [`app`] - `PlushieAppBuilder` for registering widgets
+//! - [`prop_helpers`] - public prop extraction helpers
+//! - [`render_ctx`] - `RenderCtx`, the core rendering context for all widgets
+//! - [`testing`] - test factory helpers
 //!
 //! **Internal modules** (used by the plushie binary, not part of the SDK):
 //! `engine`, `tree`, `message`, `widget`, `protocol`, `codec`,

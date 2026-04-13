@@ -56,6 +56,9 @@ pub struct TestSession<A: App> {
     async_results: HashMap<String, Result<Value, Value>>,
     /// Stubbed effect responses keyed by effect kind.
     effect_stubs: HashMap<String, EffectResult>,
+    /// Accumulated view normalization warnings (duplicate IDs,
+    /// reserved characters). Collected on every view render cycle.
+    diagnostics: Vec<String>,
 }
 
 impl<A: App> TestSession<A> {
@@ -63,13 +66,14 @@ impl<A: App> TestSession<A> {
     pub fn start() -> Self {
         let (model, init_cmd) = A::init();
         let mut widget_store = WidgetStateStore::new();
-        let (tree, _) = runtime::prepare_tree::<A>(&model, &mut widget_store);
+        let (tree, warnings) = runtime::prepare_tree::<A>(&model, &mut widget_store);
         let mut session = Self {
             model,
             tree,
             widget_store,
             async_results: HashMap::new(),
             effect_stubs: HashMap::new(),
+            diagnostics: warnings,
         };
         session.execute_command(init_cmd);
         session
@@ -323,8 +327,9 @@ impl<A: App> TestSession<A> {
         self.execute_command(cmd);
 
         // Re-render and expand widgets.
-        let (tree, _) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
+        let (tree, warnings) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
         self.tree = tree;
+        self.diagnostics.extend(warnings);
     }
 
     // -----------------------------------------------------------------------
@@ -456,8 +461,9 @@ impl<A: App> TestSession<A> {
         self.widget_store = WidgetStateStore::new();
         self.async_results.clear();
         self.effect_stubs.clear();
-        let (tree, _) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
+        let (tree, warnings) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
         self.tree = tree;
+        self.diagnostics = warnings;
         self.execute_command(init_cmd);
     }
 
@@ -472,6 +478,23 @@ impl<A: App> TestSession<A> {
     pub fn find(&self, selector: impl Into<Selector>) -> Option<Element<'_>> {
         let sel = selector.into();
         sel.find(&self.tree).map(Element::new)
+    }
+
+    /// Find all widgets matching the selector.
+    ///
+    /// Returns an empty Vec if no matches. Useful for counting
+    /// elements or iterating over a group.
+    pub fn find_all(&self, selector: impl Into<Selector>) -> Vec<Element<'_>> {
+        let sel = selector.into();
+        sel.find_all(&self.tree)
+            .into_iter()
+            .map(Element::new)
+            .collect()
+    }
+
+    /// Find the currently focused widget, if any.
+    pub fn find_focused(&self) -> Option<Element<'_>> {
+        self.find(Selector::focused())
     }
 
     /// Get the text content of a widget.
@@ -492,6 +515,43 @@ impl<A: App> TestSession<A> {
     /// Get the current normalized view tree.
     pub fn tree(&self) -> &TreeNode {
         &self.tree
+    }
+
+    /// Compute a stable hash of the current view tree.
+    ///
+    /// Uses FNV-1a on the tree's JSON serialization. The hash is
+    /// deterministic across builds, so it can be stored as a constant
+    /// in tests for regression detection.
+    pub fn tree_hash(&self) -> u64 {
+        let json = serde_json::to_string(&self.tree).expect("tree serialization failed");
+        fnv1a(json.as_bytes())
+    }
+
+    /// Pretty-printed JSON representation of the current view tree.
+    ///
+    /// Useful for snapshot testing (e.g., with insta) or manual
+    /// inspection. Deterministic within the same tree structure.
+    pub fn tree_snapshot(&self) -> String {
+        serde_json::to_string_pretty(&self.tree).expect("tree serialization failed")
+    }
+
+    // -----------------------------------------------------------------------
+    // Diagnostics
+    // -----------------------------------------------------------------------
+
+    /// View normalization diagnostics accumulated since session start
+    /// (or the last `drain_diagnostics` / `reset` call).
+    ///
+    /// Diagnostics include duplicate ID warnings and reserved
+    /// character warnings from the view normalization pass.
+    pub fn diagnostics(&self) -> &[String] {
+        &self.diagnostics
+    }
+
+    /// Take ownership of accumulated diagnostics, clearing the
+    /// internal buffer.
+    pub fn drain_diagnostics(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     // -----------------------------------------------------------------------
@@ -539,11 +599,107 @@ impl<A: App> TestSession<A> {
             "expected widget {sel} prop \"{key}\" to be {expected}, got {actual:?}"
         );
     }
+
+    /// Assert that a widget has the expected accessibility role.
+    ///
+    /// Checks the [`Element::inferred_role`], which reads the
+    /// explicit a11y role or falls back to a widget-type mapping.
+    pub fn assert_role(&self, selector: impl Into<Selector>, expected: &str) {
+        let sel = selector.into();
+        let elem = self
+            .find(sel.clone())
+            .unwrap_or_else(|| panic!("assert_role: element not found: {sel}"));
+        let actual = elem.inferred_role();
+        assert_eq!(actual, expected, "role mismatch for {sel}");
+    }
+
+    /// Assert that a widget's accessibility properties contain all
+    /// expected key-value pairs.
+    ///
+    /// `expected` must be a JSON object. Each key in it is checked
+    /// against the widget's a11y props; missing keys or value
+    /// mismatches panic with a detailed message.
+    ///
+    /// ```ignore
+    /// session.assert_a11y("heading", &serde_json::json!({"role": "heading", "level": 1}));
+    /// ```
+    pub fn assert_a11y(&self, selector: impl Into<Selector>, expected: &Value) {
+        let sel = selector.into();
+        let elem = self
+            .find(sel.clone())
+            .unwrap_or_else(|| panic!("assert_a11y: element not found: {sel}"));
+        let a11y = elem
+            .a11y()
+            .unwrap_or_else(|| panic!("assert_a11y: no a11y props on element: {sel}"));
+        let expected_obj = expected
+            .as_object()
+            .expect("assert_a11y: expected value must be a JSON object");
+        let actual_obj = a11y
+            .as_object()
+            .unwrap_or_else(|| panic!("assert_a11y: a11y is not an object on element: {sel}"));
+        for (key, expected_val) in expected_obj {
+            match actual_obj.get(key) {
+                Some(actual_val) if actual_val == expected_val => {}
+                Some(actual_val) => panic!(
+                    "assert_a11y: a11y.{key} mismatch for {sel}\n  expected: {expected_val}\n  actual: {actual_val}\n  full a11y: {a11y}"
+                ),
+                None => panic!(
+                    "assert_a11y: a11y.{key} not found on {sel}\n  expected: {expected_val}\n  full a11y: {a11y}"
+                ),
+            }
+        }
+    }
+
+    /// Assert that no diagnostics have been emitted.
+    ///
+    /// Checks the accumulated normalization warnings. Panics with
+    /// the diagnostic details if any warnings exist.
+    pub fn assert_no_diagnostics(&self) {
+        if !self.diagnostics.is_empty() {
+            let details: Vec<_> = self
+                .diagnostics
+                .iter()
+                .map(|d| format!("  - {d}"))
+                .collect();
+            panic!(
+                "expected no diagnostics, but found:\n{}",
+                details.join("\n")
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// assert_model (requires PartialEq + Debug on the model type)
+// ---------------------------------------------------------------------------
+
+impl<A: App> TestSession<A>
+where
+    A::Model: PartialEq + std::fmt::Debug,
+{
+    /// Assert that the current model equals the expected value.
+    ///
+    /// Requires `PartialEq + Debug` on the model type. Uses
+    /// `assert_eq!` for rich diff output on mismatch.
+    pub fn assert_model(&self, expected: &A::Model) {
+        assert_eq!(self.model(), expected, "model mismatch");
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// FNV-1a hash for stable tree hashing. Deterministic across builds
+/// (unlike DefaultHasher which is randomized).
+fn fnv1a(data: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &byte in data {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
 
 fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
     Event::Widget(WidgetEvent {

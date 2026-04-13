@@ -233,8 +233,13 @@ fn parse_key_normalized(s: &str) -> Key {
         "undo" => Key::Undo,
         "redo" => Key::Redo,
 
-        // Single character
+        // Single character: preserve original case since 'a' and 'A'
+        // are different keys (shift state).
         s if s.len() == 1 => Key::Char(s.chars().next().unwrap()),
+
+        // Also match single uppercase chars that went through normalize
+        // (the caller may have passed a pre-normalized string).
+        // This can't happen because normalize lowercases, but be safe.
 
         // Fallback: preserve original PascalCase name for iced
         // (the normalized form doesn't help here, so we accept
@@ -245,7 +250,12 @@ fn parse_key_normalized(s: &str) -> Key {
 
 impl From<&str> for Key {
     fn from(s: &str) -> Self {
-        parse_key_normalized(&normalize(s))
+        let trimmed = s.trim();
+        // Single characters preserve their case (a and A are different keys).
+        if trimmed.len() == 1 {
+            return Key::Char(trimmed.chars().next().unwrap());
+        }
+        parse_key_normalized(&normalize(trimmed))
     }
 }
 
@@ -283,21 +293,21 @@ impl KeyPress {
 
     /// Parse from the wire protocol payload.
     ///
-    /// Accepts two formats:
-    /// - Combined: `{"combo": "Ctrl+s"}` (preferred, renderer normalizes)
+    /// Accepts three formats:
+    /// - Combined: `{"combo": "Ctrl+s"}` (preferred)
     /// - Explicit: `{"key": "s", "modifiers": {"ctrl": true}}`
+    /// - Legacy combined: `{"key": "ctrl+s"}` (key field contains combo)
     pub fn from_wire(payload: &serde_json::Value) -> Option<Self> {
-        // Try combined format first.
+        // Try combined format first (preferred).
         if let Some(combo) = payload.get("combo").and_then(|v| v.as_str()) {
             return Some(KeyPress::from(combo));
         }
 
-        // Explicit format.
         let key_str = payload.get("key").and_then(|v| v.as_str())?;
-        let key = Key::from(key_str);
-        let mut modifiers = KeyModifiers::default();
 
+        // Explicit modifiers take priority.
         if let Some(mods) = payload.get("modifiers") {
+            let mut modifiers = KeyModifiers::default();
             modifiers.shift = mods.get("shift").and_then(|v| v.as_bool()).unwrap_or(false);
             modifiers.ctrl = mods.get("ctrl").and_then(|v| v.as_bool()).unwrap_or(false)
                 || mods
@@ -306,9 +316,15 @@ impl KeyPress {
                     .unwrap_or(false);
             modifiers.alt = mods.get("alt").and_then(|v| v.as_bool()).unwrap_or(false);
             modifiers.logo = mods.get("logo").and_then(|v| v.as_bool()).unwrap_or(false);
+            return Some(Self {
+                key: Key::from(key_str),
+                modifiers,
+            });
         }
 
-        Some(Self { key, modifiers })
+        // No explicit modifiers: parse key field as a combo string
+        // (handles "ctrl+s" in the key field).
+        Some(KeyPress::from(key_str))
     }
 }
 

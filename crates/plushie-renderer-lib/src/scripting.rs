@@ -43,111 +43,115 @@ pub fn parse_selector(selector: &Value) -> Option<Selector> {
 }
 
 // ---------------------------------------------------------------------------
-// Key / modifier parsing
+// Key / modifier parsing (delegates to plushie-core)
 // ---------------------------------------------------------------------------
 
 /// Parse key and modifiers from an interact payload.
 ///
-/// Supports two formats:
-/// 1. Explicit modifiers map: `{"key": "s", "modifiers": {"ctrl": true, ...}}`
-/// 2. Combined key string: `{"key": "ctrl+s"}`, which splits on `+` and extracts
-///    modifier prefixes (ctrl/command, shift, alt, logo/super/meta).
+/// Supports three formats via [`KeyPress::from_wire`]:
+/// 1. Combined combo string: `{"combo": "Ctrl+s"}`
+/// 2. Explicit key + modifiers: `{"key": "s", "modifiers": {"ctrl": true}}`
+/// 3. Combined key field: `{"key": "ctrl+s"}`
+///
+/// All key names and modifiers are normalized (case-insensitive,
+/// underscores/hyphens stripped, aliases resolved).
 pub fn parse_key_and_modifiers(
     payload: Option<&serde_json::Map<String, Value>>,
 ) -> (String, Value) {
-    let empty_map = serde_json::Map::new();
-    let map = payload.unwrap_or(&empty_map);
+    let payload_value = payload
+        .map(|m| Value::Object(m.clone()))
+        .unwrap_or(Value::Null);
 
-    let raw_key = map
+    // Try the shared KeyPress parser first.
+    if let Some(kp) = plushie_core::KeyPress::from_wire(&payload_value) {
+        let modifiers = serde_json::json!({
+            "shift": kp.modifiers.shift,
+            "ctrl": kp.modifiers.ctrl,
+            "alt": kp.modifiers.alt,
+            "logo": kp.modifiers.logo,
+        });
+        return (kp.key.wire_name(), modifiers);
+    }
+
+    // Fallback: try parsing just the "key" field as a combo string.
+    let raw_key = payload_value
         .get("key")
         .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    // Explicit modifiers map takes priority
-    if let Some(mods) = map.get("modifiers").and_then(|v| v.as_object()) {
-        let modifiers = serde_json::json!({
-            "shift": mods.get("shift").and_then(|v| v.as_bool()).unwrap_or(false),
-            "ctrl": mods.get("ctrl").and_then(|v| v.as_bool()).unwrap_or(false),
-            "alt": mods.get("alt").and_then(|v| v.as_bool()).unwrap_or(false),
-            "logo": mods.get("logo").and_then(|v| v.as_bool()).unwrap_or(false),
-        });
-        return (raw_key, modifiers);
-    }
-
-    // Parse "ctrl+s" style combined key strings
-    let parts: Vec<&str> = raw_key.split('+').collect();
-    if parts.len() > 1 {
-        let key = parts.last().unwrap().to_string();
-        let mut shift = false;
-        let mut ctrl = false;
-        let mut alt = false;
-        let mut logo = false;
-        for &part in &parts[..parts.len() - 1] {
-            match part {
-                "ctrl" | "command" => ctrl = true,
-                "shift" => shift = true,
-                "alt" => alt = true,
-                "logo" | "super" | "meta" => logo = true,
-                _ => {}
-            }
-        }
-        let modifiers = serde_json::json!({
-            "shift": shift, "ctrl": ctrl, "alt": alt, "logo": logo,
-        });
-        (key, modifiers)
-    } else {
-        let modifiers = serde_json::json!({
-            "shift": false, "ctrl": false, "alt": false, "logo": false,
-        });
-        (raw_key, modifiers)
-    }
+        .unwrap_or("");
+    let kp = plushie_core::KeyPress::from(raw_key);
+    let modifiers = serde_json::json!({
+        "shift": kp.modifiers.shift,
+        "ctrl": kp.modifiers.ctrl,
+        "alt": kp.modifiers.alt,
+        "logo": kp.modifiers.logo,
+    });
+    (kp.key.wire_name(), modifiers)
 }
 
 // ---------------------------------------------------------------------------
 // Key string -> iced Key conversion
 // ---------------------------------------------------------------------------
 
-/// Convert a key name string (as sent by the scripting protocol) to an iced
-/// `keyboard::Key`. Named keys use their Debug format (e.g. "Enter",
-/// "Tab", "ArrowUp"); single characters become `Key::Character`.
+/// Convert a key name string to an iced `keyboard::Key`.
+///
+/// Uses plushie-core's [`Key`](plushie_core::Key) normalization for
+/// forgiving input, then maps to the iced Key type.
 pub fn parse_iced_key(name: &str) -> Key {
-    match name {
-        "Enter" | "enter" | "Return" | "return" => Key::Named(keyboard::key::Named::Enter),
-        "Tab" | "tab" => Key::Named(keyboard::key::Named::Tab),
-        "Space" | "space" | " " => Key::Named(keyboard::key::Named::Space),
-        "Backspace" | "backspace" => Key::Named(keyboard::key::Named::Backspace),
-        "Delete" | "delete" => Key::Named(keyboard::key::Named::Delete),
-        "Escape" | "escape" | "Esc" | "esc" => Key::Named(keyboard::key::Named::Escape),
-        "ArrowUp" | "Up" | "up" => Key::Named(keyboard::key::Named::ArrowUp),
-        "ArrowDown" | "Down" | "down" => Key::Named(keyboard::key::Named::ArrowDown),
-        "ArrowLeft" | "Left" | "left" => Key::Named(keyboard::key::Named::ArrowLeft),
-        "ArrowRight" | "Right" | "right" => Key::Named(keyboard::key::Named::ArrowRight),
-        "Home" | "home" => Key::Named(keyboard::key::Named::Home),
-        "End" | "end" => Key::Named(keyboard::key::Named::End),
-        "PageUp" | "pageup" => Key::Named(keyboard::key::Named::PageUp),
-        "PageDown" | "pagedown" => Key::Named(keyboard::key::Named::PageDown),
-        "F1" => Key::Named(keyboard::key::Named::F1),
-        "F2" => Key::Named(keyboard::key::Named::F2),
-        "F3" => Key::Named(keyboard::key::Named::F3),
-        "F4" => Key::Named(keyboard::key::Named::F4),
-        "F5" => Key::Named(keyboard::key::Named::F5),
-        "F6" => Key::Named(keyboard::key::Named::F6),
-        "F7" => Key::Named(keyboard::key::Named::F7),
-        "F8" => Key::Named(keyboard::key::Named::F8),
-        "F9" => Key::Named(keyboard::key::Named::F9),
-        "F10" => Key::Named(keyboard::key::Named::F10),
-        "F11" => Key::Named(keyboard::key::Named::F11),
-        "F12" => Key::Named(keyboard::key::Named::F12),
-        s if s.len() == 1 => Key::Character(SmolStr::new(s)),
-        s => {
-            // Try lowercase single char
-            let lower = s.to_lowercase();
-            if lower.chars().count() == 1 {
-                Key::Character(SmolStr::new(&lower))
-            } else {
-                Key::Character(SmolStr::new(s))
-            }
+    let core_key = plushie_core::Key::from(name);
+    core_key_to_iced(&core_key)
+}
+
+/// Convert a plushie-core Key to an iced Key.
+fn core_key_to_iced(key: &plushie_core::Key) -> Key {
+    use plushie_core::Key as CK;
+    match key {
+        CK::ArrowUp => Key::Named(keyboard::key::Named::ArrowUp),
+        CK::ArrowDown => Key::Named(keyboard::key::Named::ArrowDown),
+        CK::ArrowLeft => Key::Named(keyboard::key::Named::ArrowLeft),
+        CK::ArrowRight => Key::Named(keyboard::key::Named::ArrowRight),
+        CK::Home => Key::Named(keyboard::key::Named::Home),
+        CK::End => Key::Named(keyboard::key::Named::End),
+        CK::PageUp => Key::Named(keyboard::key::Named::PageUp),
+        CK::PageDown => Key::Named(keyboard::key::Named::PageDown),
+        CK::Enter => Key::Named(keyboard::key::Named::Enter),
+        CK::Tab => Key::Named(keyboard::key::Named::Tab),
+        CK::Space => Key::Named(keyboard::key::Named::Space),
+        CK::Backspace => Key::Named(keyboard::key::Named::Backspace),
+        CK::Delete => Key::Named(keyboard::key::Named::Delete),
+        CK::Insert => Key::Named(keyboard::key::Named::Insert),
+        CK::Escape => Key::Named(keyboard::key::Named::Escape),
+        CK::Shift => Key::Named(keyboard::key::Named::Shift),
+        CK::Control => Key::Named(keyboard::key::Named::Control),
+        CK::Alt => Key::Named(keyboard::key::Named::Alt),
+        CK::Super => Key::Named(keyboard::key::Named::Super),
+        CK::F1 => Key::Named(keyboard::key::Named::F1),
+        CK::F2 => Key::Named(keyboard::key::Named::F2),
+        CK::F3 => Key::Named(keyboard::key::Named::F3),
+        CK::F4 => Key::Named(keyboard::key::Named::F4),
+        CK::F5 => Key::Named(keyboard::key::Named::F5),
+        CK::F6 => Key::Named(keyboard::key::Named::F6),
+        CK::F7 => Key::Named(keyboard::key::Named::F7),
+        CK::F8 => Key::Named(keyboard::key::Named::F8),
+        CK::F9 => Key::Named(keyboard::key::Named::F9),
+        CK::F10 => Key::Named(keyboard::key::Named::F10),
+        CK::F11 => Key::Named(keyboard::key::Named::F11),
+        CK::F12 => Key::Named(keyboard::key::Named::F12),
+        CK::CapsLock => Key::Named(keyboard::key::Named::CapsLock),
+        CK::NumLock => Key::Named(keyboard::key::Named::NumLock),
+        CK::ScrollLock => Key::Named(keyboard::key::Named::ScrollLock),
+        CK::PrintScreen => Key::Named(keyboard::key::Named::PrintScreen),
+        CK::Pause => Key::Named(keyboard::key::Named::Pause),
+        CK::ContextMenu => Key::Named(keyboard::key::Named::ContextMenu),
+        CK::Copy => Key::Named(keyboard::key::Named::Copy),
+        CK::Cut => Key::Named(keyboard::key::Named::Cut),
+        CK::Paste => Key::Named(keyboard::key::Named::Paste),
+        CK::Undo => Key::Named(keyboard::key::Named::Undo),
+        CK::Redo => Key::Named(keyboard::key::Named::Redo),
+        CK::Char(c) => Key::Character(SmolStr::new(&c.to_string())),
+        CK::Named(name) => {
+            // Try to match against iced's Named enum by the wire name.
+            // This handles rare keys (MediaPlay, BrowserBack, etc.).
+            Key::Character(SmolStr::new(name))
         }
     }
 }

@@ -36,7 +36,8 @@
 //! - `ctrl` / `control`
 //! - `shift`
 //! - `alt` / `option` / `opt`
-//! - `logo` / `super` / `win` / `meta` / `command` / `cmd`
+//! - `command` / `cmd` - platform shortcut key (maps to Ctrl)
+//! - `logo` / `super` / `win` / `meta` - physical Logo/Super key
 
 use std::fmt;
 
@@ -347,7 +348,13 @@ impl From<&str> for KeyPress {
                 "ctrl" | "control" => modifiers.ctrl = true,
                 "shift" => modifiers.shift = true,
                 "alt" | "option" | "opt" => modifiers.alt = true,
-                "logo" | "super" | "win" | "meta" | "command" | "cmd" => modifiers.logo = true,
+                "logo" | "super" | "win" | "meta" => modifiers.logo = true,
+                // "command"/"cmd" is the platform shortcut key:
+                // Ctrl on Linux/Windows, Cmd on macOS. We map to
+                // ctrl since that's the common case and matches
+                // the Elixir SDK's historic behavior. Use "super"
+                // or "logo" for the physical Logo/Command key.
+                "command" | "cmd" => modifiers.ctrl = true,
                 _ => {} // Unknown modifier segment ignored
             }
         }
@@ -712,13 +719,18 @@ mod tests {
 
     #[test]
     fn keypress_from_str_modifier_aliases() {
+        // "command"/"cmd" maps to ctrl (platform shortcut key)
         let kp = KeyPress::from("Command+s");
-        assert!(kp.modifiers.logo);
+        assert!(kp.modifiers.ctrl);
 
         let kp = KeyPress::from("Option+a");
         assert!(kp.modifiers.alt);
 
+        // "super"/"logo"/"win"/"meta" map to logo (physical key)
         let kp = KeyPress::from("Win+e");
+        assert!(kp.modifiers.logo);
+
+        let kp = KeyPress::from("Super+e");
         assert!(kp.modifiers.logo);
     }
 

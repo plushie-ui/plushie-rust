@@ -187,6 +187,83 @@ impl Bridge {
         self.send(&msg)
     }
 
+    /// Send an interact message for automation.
+    ///
+    /// The renderer resolves the selector against its tree, performs
+    /// the interaction, and sends back an `interact_response` with
+    /// the resulting events.
+    pub fn send_interact(
+        &mut self,
+        id: &str,
+        action: &str,
+        selector: &Value,
+        payload: &Value,
+    ) -> io::Result<()> {
+        let msg = serde_json::json!({
+            "type": "interact",
+            "session": "",
+            "id": id,
+            "action": action,
+            "selector": selector,
+            "payload": payload,
+        });
+        self.send(&msg)
+    }
+
+    /// Send a query message.
+    pub fn send_query(
+        &mut self,
+        id: &str,
+        target: &str,
+        selector: Option<&Value>,
+    ) -> io::Result<()> {
+        let mut msg = serde_json::json!({
+            "type": "query",
+            "session": "",
+            "id": id,
+            "target": target,
+        });
+        if let Some(sel) = selector {
+            msg["selector"] = sel.clone();
+        }
+        self.send(&msg)
+    }
+
+    /// Send a reset message to reinitialize the renderer session.
+    pub fn send_reset(&mut self, id: &str) -> io::Result<()> {
+        let msg = serde_json::json!({
+            "type": "reset",
+            "session": "",
+            "id": id,
+        });
+        self.send(&msg)
+    }
+
+    /// Register a stub effect response for testing/automation.
+    pub fn send_register_effect_stub(
+        &mut self,
+        kind: &str,
+        response: &Value,
+    ) -> io::Result<()> {
+        let msg = serde_json::json!({
+            "type": "register_effect_stub",
+            "session": "",
+            "kind": kind,
+            "response": response,
+        });
+        self.send(&msg)
+    }
+
+    /// Remove a previously registered effect stub.
+    pub fn send_unregister_effect_stub(&mut self, kind: &str) -> io::Result<()> {
+        let msg = serde_json::json!({
+            "type": "unregister_effect_stub",
+            "session": "",
+            "kind": kind,
+        });
+        self.send(&msg)
+    }
+
     /// Read the next message from the renderer's stdout.
     pub fn receive(&mut self) -> io::Result<Value> {
         let stdout = self

@@ -21,13 +21,18 @@
 //! assert_eq!(btn.widget_type(), "button");
 //! ```
 
+use std::collections::HashMap;
+
 use plushie_core::protocol::TreeNode;
 use plushie_core::Selector;
 use serde_json::Value;
 
 use crate::automation::Element;
+use crate::command::Command;
 use crate::App;
-use crate::event::{Event, EventType, KeyEventType, WidgetEvent};
+use crate::event::{
+    AsyncEvent, EffectEvent, EffectResult, Event, EventType, KeyEventType, WidgetEvent,
+};
 use crate::runtime;
 use crate::widget::{EventResult, Interception, WidgetStateStore};
 
@@ -48,19 +53,27 @@ pub struct TestSession<A: App> {
     model: A::Model,
     tree: TreeNode,
     widget_store: WidgetStateStore,
+    /// Completed async task results keyed by tag.
+    async_results: HashMap<String, Result<Value, Value>>,
+    /// Stubbed effect responses keyed by effect kind.
+    effect_stubs: HashMap<String, EffectResult>,
 }
 
 impl<A: App> TestSession<A> {
     /// Start a new test session by calling `App::init()`.
     pub fn start() -> Self {
-        let (model, _cmd) = A::init();
+        let (model, init_cmd) = A::init();
         let mut widget_store = WidgetStateStore::new();
         let (tree, _) = runtime::prepare_tree::<A>(&model, &mut widget_store);
-        Self {
+        let mut session = Self {
             model,
             tree,
             widget_store,
-        }
+            async_results: HashMap::new(),
+            effect_stubs: HashMap::new(),
+        };
+        session.execute_command(init_cmd);
+        session
     }
 
     /// Access the current model state.
@@ -237,7 +250,7 @@ impl<A: App> TestSession<A> {
     /// Dispatch a raw event through the widget interception layer
     /// and then to the app's update function.
     pub fn dispatch(&mut self, event: Event) {
-        match self.widget_store.intercept_event(&event) {
+        let cmd = match self.widget_store.intercept_event(&event) {
             Some(Interception {
                 result: EventResult::Consumed,
                 ..
@@ -247,6 +260,7 @@ impl<A: App> TestSession<A> {
                 ..
             }) => {
                 // Widget handled it; don't deliver to app.
+                Command::None
             }
             Some(Interception {
                 result: EventResult::Emit { family, value },
@@ -259,20 +273,149 @@ impl<A: App> TestSession<A> {
                     scoped_id: plushie_core::ScopedId::new(widget_id, outer_scope, Some(window_id)),
                     value,
                 });
-                let _cmd = A::update(&mut self.model, new_event);
+                A::update(&mut self.model, new_event)
             }
             Some(Interception {
                 result: EventResult::Ignored,
                 ..
             })
-            | None => {
-                let _cmd = A::update(&mut self.model, event);
-            }
-        }
+            | None => A::update(&mut self.model, event),
+        };
+
+        self.execute_command(cmd);
 
         // Re-render and expand widgets.
         let (tree, _) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
         self.tree = tree;
+    }
+
+    // -----------------------------------------------------------------------
+    // Command execution
+    // -----------------------------------------------------------------------
+
+    /// Process a command returned from update.
+    ///
+    /// Async tasks are executed synchronously and their results
+    /// stored for `await_async`. Effects with stubs get immediate
+    /// responses. Other commands are logged and ignored.
+    fn execute_command(&mut self, cmd: Command) {
+        match cmd {
+            Command::None | Command::Exit => {}
+            Command::Batch(cmds) => {
+                for c in cmds {
+                    self.execute_command(c);
+                }
+            }
+            Command::Async { tag, task } => {
+                // Execute the async task synchronously. TestSession
+                // runs without a persistent runtime, so each task
+                // gets a minimal current-thread runtime.
+                let result = run_async_sync(task);
+                self.async_results.insert(tag.clone(), result.clone());
+                // Deliver the result as an event immediately.
+                let event = Event::Async(AsyncEvent { tag, result });
+                let cmd = A::update(&mut self.model, event);
+                self.execute_command(cmd);
+            }
+            Command::SendAfter { event, .. } => {
+                // In tests, deliver immediately (ignore delay).
+                let cmd = A::update(&mut self.model, *event);
+                self.execute_command(cmd);
+            }
+            Command::Cancel { .. } => {
+                // Nothing to cancel in synchronous test mode.
+            }
+            Command::Renderer(ref op) => {
+                // Check for effect requests with stubs.
+                if let crate::command::RendererOp::Effect { ref tag, ref request, .. } = *op {
+                    let kind = request.kind();
+                    if let Some(result) = self.effect_stubs.get(kind).cloned() {
+                        let event = Event::Effect(EffectEvent {
+                            tag: tag.clone(),
+                            result,
+                        });
+                        let cmd = A::update(&mut self.model, event);
+                        self.execute_command(cmd);
+                        return;
+                    }
+                }
+                // Other renderer ops are not executed in test mode.
+                log::trace!("TestSession: ignoring renderer op: {op:?}");
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Utilities
+    // -----------------------------------------------------------------------
+
+    /// Check whether an async task with the given tag has completed.
+    ///
+    /// In TestSession, async tasks are executed synchronously during
+    /// dispatch, so this always returns the result if the task was
+    /// triggered. Returns `None` if no task with that tag has run.
+    pub fn await_async(&self, tag: &str) -> Option<&Result<Value, Value>> {
+        self.async_results.get(tag)
+    }
+
+    /// Advance the animation frame to the given timestamp.
+    ///
+    /// Dispatches a system event that the renderer's animation
+    /// engine uses to advance timed transitions and springs.
+    pub fn advance_frame(&mut self, timestamp: u64) {
+        self.dispatch(Event::System(crate::event::SystemEvent {
+            event_type: crate::event::SystemEventType::AnimationFrame,
+            tag: None,
+            value: Some(serde_json::json!(timestamp)),
+            id: None,
+            window_id: None,
+        }));
+    }
+
+    /// Advance the animation clock by 10 seconds to force all
+    /// timed transitions and springs to settle.
+    pub fn skip_transitions(&mut self) {
+        self.advance_frame(10_000);
+    }
+
+    /// Register a stub response for a platform effect kind.
+    ///
+    /// When the app issues a command with a matching effect kind
+    /// (e.g. "file_open", "clipboard_read"), the stub response is
+    /// delivered immediately instead of invoking the real platform
+    /// API.
+    ///
+    /// ```ignore
+    /// use plushie::event::EffectResult;
+    ///
+    /// session.register_effect_stub(
+    ///     "file_open",
+    ///     EffectResult::FileOpened { path: "/tmp/test.txt".into() },
+    /// );
+    /// session.click("open_file");
+    /// ```
+    pub fn register_effect_stub(&mut self, kind: &str, response: EffectResult) {
+        self.effect_stubs.insert(kind.to_string(), response);
+    }
+
+    /// Remove a previously registered effect stub.
+    pub fn unregister_effect_stub(&mut self, kind: &str) {
+        self.effect_stubs.remove(kind);
+    }
+
+    /// Reset the session to its initial state.
+    ///
+    /// Calls `App::init()` again, discarding the current model,
+    /// widget state, async results, and effect stubs.
+    pub fn reset(&mut self) {
+        let (model, init_cmd) = A::init();
+        self.model = model;
+        self.widget_store = WidgetStateStore::new();
+        self.async_results.clear();
+        self.effect_stubs.clear();
+        let (tree, _) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
+        self.tree = tree;
+        self.execute_command(init_cmd);
     }
 
     // -----------------------------------------------------------------------
@@ -367,6 +510,19 @@ fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
         scoped_id: plushie_core::ScopedId::parse(id),
         value,
     })
+}
+
+/// Execute an async task synchronously for test mode.
+///
+/// Creates a minimal tokio current-thread runtime to drive the
+/// future to completion. This handles tasks that use tokio
+/// primitives (timers, I/O, channels) internally.
+fn run_async_sync(task_fn: crate::command::AsyncTaskFn) -> Result<Value, Value> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to create test tokio runtime");
+    rt.block_on((task_fn)())
 }
 
 fn key_event(

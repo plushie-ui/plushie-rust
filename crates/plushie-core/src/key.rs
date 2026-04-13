@@ -307,15 +307,14 @@ impl KeyPress {
 
         // Explicit modifiers take priority.
         if let Some(mods) = payload.get("modifiers") {
-            let mut modifiers = KeyModifiers::default();
-            modifiers.shift = mods.get("shift").and_then(|v| v.as_bool()).unwrap_or(false);
-            modifiers.ctrl = mods.get("ctrl").and_then(|v| v.as_bool()).unwrap_or(false)
-                || mods
-                    .get("command")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-            modifiers.alt = mods.get("alt").and_then(|v| v.as_bool()).unwrap_or(false);
-            modifiers.logo = mods.get("logo").and_then(|v| v.as_bool()).unwrap_or(false);
+            let get_bool = |key| mods.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
+            let modifiers = KeyModifiers {
+                shift: get_bool("shift"),
+                ctrl: get_bool("ctrl") || get_bool("command"),
+                alt: get_bool("alt"),
+                logo: get_bool("logo"),
+                command: get_bool("command"),
+            };
             return Some(Self {
                 key: Key::from(key_str),
                 modifiers,
@@ -741,8 +740,7 @@ mod tests {
 
     #[test]
     fn keypress_from_wire_command_alias() {
-        let payload =
-            serde_json::json!({"key": "s", "modifiers": {"command": true}});
+        let payload = serde_json::json!({"key": "s", "modifiers": {"command": true}});
         let kp = KeyPress::from_wire(&payload).unwrap();
         assert!(kp.modifiers.ctrl);
     }
@@ -758,16 +756,28 @@ mod tests {
 
     #[test]
     fn interact_action_from_wire() {
-        assert_eq!(InteractAction::from_wire("click"), Some(InteractAction::Click));
-        assert_eq!(InteractAction::from_wire("type_text"), Some(InteractAction::TypeText));
-        assert_eq!(InteractAction::from_wire("canvas_press"), Some(InteractAction::CanvasPress));
+        assert_eq!(
+            InteractAction::from_wire("click"),
+            Some(InteractAction::Click)
+        );
+        assert_eq!(
+            InteractAction::from_wire("type_text"),
+            Some(InteractAction::TypeText)
+        );
+        assert_eq!(
+            InteractAction::from_wire("canvas_press"),
+            Some(InteractAction::CanvasPress)
+        );
         assert_eq!(InteractAction::from_wire("unknown"), None);
     }
 
     #[test]
     fn effect_kind_from_str() {
         assert_eq!(EffectKind::from("file_open"), EffectKind::FileOpen);
-        assert_eq!(EffectKind::from("clipboard_read"), EffectKind::ClipboardRead);
+        assert_eq!(
+            EffectKind::from("clipboard_read"),
+            EffectKind::ClipboardRead
+        );
         assert_eq!(EffectKind::from("FileOpen"), EffectKind::FileOpen);
     }
 }

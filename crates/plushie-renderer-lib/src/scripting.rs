@@ -147,7 +147,7 @@ fn core_key_to_iced(key: &plushie_core::Key) -> Key {
         CK::Paste => Key::Named(keyboard::key::Named::Paste),
         CK::Undo => Key::Named(keyboard::key::Named::Undo),
         CK::Redo => Key::Named(keyboard::key::Named::Redo),
-        CK::Char(c) => Key::Character(SmolStr::new(&c.to_string())),
+        CK::Char(c) => Key::Character(SmolStr::new(c.to_string())),
         CK::Named(name) => {
             // Try to match against iced's Named enum by the wire name.
             // This handles rare keys (MediaPlay, BrowserBack, etc.).

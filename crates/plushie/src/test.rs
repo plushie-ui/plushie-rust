@@ -23,14 +23,14 @@
 
 use std::collections::HashMap;
 
+use plushie_core::Selector;
 use plushie_core::key::{EffectKind, KeyPress, MouseButton};
 use plushie_core::protocol::TreeNode;
-use plushie_core::Selector;
 use serde_json::Value;
 
+use crate::App;
 use crate::automation::Element;
 use crate::command::Command;
-use crate::App;
 use crate::event::{AsyncEvent, EffectEvent, EffectResult, Event, EventType, WidgetEvent};
 use crate::runtime;
 use crate::widget::{EventResult, Interception, WidgetStateStore};
@@ -438,11 +438,7 @@ impl<A: App> TestSession<A> {
     /// // Also works with strings:
     /// session.register_effect_stub("clipboard_read", EffectResult::ClipboardText { text: "hello".into() });
     /// ```
-    pub fn register_effect_stub(
-        &mut self,
-        kind: impl Into<EffectKind>,
-        response: EffectResult,
-    ) {
+    pub fn register_effect_stub(&mut self, kind: impl Into<EffectKind>, response: EffectResult) {
         self.effect_stubs
             .insert(kind.into().wire_name().to_string(), response);
     }

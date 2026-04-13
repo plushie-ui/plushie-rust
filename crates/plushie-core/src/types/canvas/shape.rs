@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::protocol::TreeNode;
 
-use super::super::{PlushieType, Radius};
+use super::super::{Angle, PlushieType, Radius};
 use super::clip::ClipRect;
 use super::drag::{DragAxis, DragBounds};
 use super::fill::{CanvasFill, FillRule};
@@ -226,8 +226,8 @@ pub struct ImageShape {
     pub y: f32,
     pub w: f32,
     pub h: f32,
-    /// Rotation angle in radians (Elixir normalizes degrees to radians at cast time).
-    pub rotation: Option<f32>,
+    /// Rotation angle. Wire format is degrees.
+    pub rotation: Option<Angle>,
     pub opacity: Option<f32>,
 }
 
@@ -241,7 +241,7 @@ impl ImageShape {
             y: f32::extract(p, "y").unwrap_or(0.0),
             w: f32::extract(p, "w").unwrap_or(0.0),
             h: f32::extract(p, "h").unwrap_or(0.0),
-            rotation: f32::extract(p, "rotation"),
+            rotation: Angle::extract(p, "rotation"),
             opacity: f32::extract(p, "opacity"),
         }
     }

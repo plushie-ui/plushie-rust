@@ -3,6 +3,7 @@
 use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
+use crate::types::Angle;
 
 use super::super::PlushieType;
 
@@ -15,11 +16,13 @@ use super::super::PlushieType;
 /// ```json
 /// [
 ///   {"type": "translate", "x": 10.0, "y": 20.0},
-///   {"type": "rotate", "angle": 1.5708},
+///   {"type": "rotate", "angle": 45.0},
 ///   {"type": "scale", "x": 2.0, "y": 0.5},
 ///   {"type": "scale", "factor": 3.0}
 /// ]
 /// ```
+///
+/// Angles are in degrees on the wire (matching the cross-SDK convention).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Transform {
     /// Translation by (x, y) in logical pixels.
@@ -29,10 +32,10 @@ pub enum Transform {
         /// Vertical offset in pixels (positive = down).
         y: f32,
     },
-    /// Rotation around the origin.
+    /// Rotation around the origin. Positive = clockwise.
     Rotate {
-        /// Rotation angle in radians. Positive = clockwise.
-        angle: f32,
+        /// Rotation angle. Wire format is degrees.
+        angle: Angle,
     },
     /// Non-uniform scale.
     Scale {
@@ -58,7 +61,8 @@ impl PlushieType for Transform {
                 Some(Self::Translate { x, y })
             }
             "rotate" => {
-                let angle = obj.get("angle").and_then(|v| v.as_f64())? as f32;
+                let angle_val = obj.get("angle")?;
+                let angle = Angle::wire_decode(angle_val)?;
                 Some(Self::Rotate { angle })
             }
             "scale" => {
@@ -88,7 +92,7 @@ impl PlushieType for Transform {
             }
             Self::Rotate { angle } => {
                 m.insert("type", PropValue::Str("rotate".into()));
-                m.insert("angle", PropValue::F64(*angle as f64));
+                m.insert("angle", angle.wire_encode());
             }
             Self::Scale { x, y } => {
                 m.insert("type", PropValue::Str("scale".into()));
@@ -135,10 +139,10 @@ mod tests {
 
     #[test]
     fn rotate() {
-        let val = json!({"type": "rotate", "angle": std::f32::consts::FRAC_PI_2});
+        let val = json!({"type": "rotate", "angle": 90.0});
         let t = Transform::wire_decode(&val).unwrap();
         if let Transform::Rotate { angle } = t {
-            assert!((angle - std::f32::consts::FRAC_PI_2).abs() < 0.001);
+            assert_eq!(angle, Angle::deg(90.0));
         } else {
             panic!("expected Rotate");
         }
@@ -173,7 +177,7 @@ mod tests {
         assert!(decode_transforms(&json!(null)).is_empty());
         assert!(decode_transforms(&json!([])).is_empty());
         // invalid entries are silently skipped
-        let val = json!([{"type": "unknown"}, {"type": "rotate", "angle": 1.0}]);
+        let val = json!([{"type": "unknown"}, {"type": "rotate", "angle": 45.0}]);
         let transforms = decode_transforms(&val);
         assert_eq!(transforms.len(), 1);
     }

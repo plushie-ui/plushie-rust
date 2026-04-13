@@ -220,8 +220,8 @@ impl TransformMatrix {
                     m = m.translate(x, y);
                 }
                 "rotate" => {
-                    let angle = t.get("angle").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                    m = m.rotate(angle);
+                    let deg = t.get("angle").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                    m = m.rotate(deg.to_radians());
                 }
                 "scale" => {
                     if let Some(factor) = t.get("factor").and_then(|v| v.as_f64()) {
@@ -247,7 +247,7 @@ impl TransformMatrix {
         for t in transforms {
             match t {
                 Transform::Translate { x, y } => m = m.translate(*x, *y),
-                Transform::Rotate { angle } => m = m.rotate(*angle),
+                Transform::Rotate { angle } => m = m.rotate(angle.radians()),
                 Transform::Scale { x, y } => m = m.scale(*x, *y),
                 Transform::ScaleUniform { factor } => m = m.scale(*factor, *factor),
             }

@@ -322,8 +322,16 @@ impl GroupBuilder {
         self
     }
 
-    pub fn rotate(mut self, angle: f32) -> Self {
-        push_transform(&mut self.props, "rotate", &[("angle", angle)]);
+    /// Rotate the group by the given angle.
+    ///
+    /// Accepts degrees (bare number) or explicit `Angle::rad()`:
+    /// ```ignore
+    /// group.rotate(45.0)                    // 45 degrees
+    /// group.rotate(Angle::rad(PI / 4.0))    // same, explicit radians
+    /// ```
+    pub fn rotate(mut self, angle: impl Into<crate::types::Angle>) -> Self {
+        let a = angle.into();
+        push_transform(&mut self.props, "rotate", &[("angle", a.degrees())]);
         self
     }
 
@@ -883,9 +891,10 @@ impl CanvasImageBuilder {
         super::set_prop(&mut self.props, "h", h);
         self
     }
-    /// Rotation angle in radians.
-    pub fn rotation(mut self, angle: f32) -> Self {
-        super::set_prop(&mut self.props, "rotation", angle);
+    /// Rotation angle. Accepts degrees (bare number) or explicit radians.
+    pub fn rotation(mut self, angle: impl Into<crate::types::Angle>) -> Self {
+        let a = angle.into();
+        super::set_prop(&mut self.props, "rotation", a.degrees());
         self
     }
     pub fn opacity(mut self, o: f32) -> Self {

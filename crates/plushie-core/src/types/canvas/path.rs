@@ -2,7 +2,12 @@
 
 use serde_json::Value;
 
+use crate::types::Angle;
+
 /// A canvas path drawing command.
+///
+/// Angle fields use the [`Angle`] type. On the wire, angles are
+/// transmitted in degrees (matching the cross-SDK convention).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PathCommand {
     MoveTo {
@@ -31,8 +36,8 @@ pub enum PathCommand {
         cx: f32,
         cy: f32,
         radius: f32,
-        start_angle: f32,
-        end_angle: f32,
+        start_angle: Angle,
+        end_angle: Angle,
     },
     ArcTo {
         x1: f32,
@@ -46,9 +51,9 @@ pub enum PathCommand {
         cy: f32,
         rx: f32,
         ry: f32,
-        rotation: f32,
-        start_angle: f32,
-        end_angle: f32,
+        rotation: Angle,
+        start_angle: Angle,
+        end_angle: Angle,
     },
     RoundedRect {
         x: f32,
@@ -119,8 +124,8 @@ pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
                 cx: f(1),
                 cy: f(2),
                 radius: f(3),
-                start_angle: f(4),
-                end_angle: f(5),
+                start_angle: Angle::deg(f(4)),
+                end_angle: Angle::deg(f(5)),
             },
             "arc_to" => PathCommand::ArcTo {
                 x1: f(1),
@@ -134,9 +139,9 @@ pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
                 cy: f(2),
                 rx: f(3),
                 ry: f(4),
-                rotation: f(5),
-                start_angle: f(6),
-                end_angle: f(7),
+                rotation: Angle::deg(f(5)),
+                start_angle: Angle::deg(f(6)),
+                end_angle: Angle::deg(f(7)),
             },
             "rounded_rect" => PathCommand::RoundedRect {
                 x: f(1),
@@ -209,22 +214,15 @@ mod tests {
 
     #[test]
     fn decode_arc() {
-        let cmds = decode_commands(&json!([[
-            "arc",
-            50.0,
-            50.0,
-            25.0,
-            0.0,
-            std::f32::consts::PI
-        ]]));
+        let cmds = decode_commands(&json!([["arc", 50.0, 50.0, 25.0, 0.0, 180.0]]));
         assert_eq!(
             cmds,
             vec![PathCommand::Arc {
                 cx: 50.0,
                 cy: 50.0,
                 radius: 25.0,
-                start_angle: 0.0,
-                end_angle: std::f32::consts::PI,
+                start_angle: Angle::deg(0.0),
+                end_angle: Angle::deg(180.0),
             },]
         );
     }
@@ -247,14 +245,7 @@ mod tests {
     #[test]
     fn decode_ellipse() {
         let cmds = decode_commands(&json!([[
-            "ellipse",
-            50.0,
-            50.0,
-            30.0,
-            20.0,
-            0.5,
-            0.0,
-            std::f32::consts::TAU
+            "ellipse", 50.0, 50.0, 30.0, 20.0, 30.0, 0.0, 360.0
         ]]));
         assert_eq!(
             cmds,
@@ -263,9 +254,9 @@ mod tests {
                 cy: 50.0,
                 rx: 30.0,
                 ry: 20.0,
-                rotation: 0.5,
-                start_angle: 0.0,
-                end_angle: std::f32::consts::TAU,
+                rotation: Angle::deg(30.0),
+                start_angle: Angle::deg(0.0),
+                end_angle: Angle::deg(360.0),
             },]
         );
     }

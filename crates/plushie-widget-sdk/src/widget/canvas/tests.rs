@@ -1025,7 +1025,7 @@ fn find_hit_element_with_rotation() {
         "type": "group",
         "id": "rotated",
         "on_click": true,
-        "transforms": [{"type": "rotate", "angle": (std::f64::consts::FRAC_PI_4)}],
+        "transforms": [{"type": "rotate", "angle": 45.0}],
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 100, "h": 20}]
     })];
     let mut elements = Vec::new();

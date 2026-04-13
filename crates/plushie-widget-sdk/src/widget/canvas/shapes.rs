@@ -289,8 +289,8 @@ pub(super) fn build_path_from_commands(commands: &[canvas_types::PathCommand]) -
                     builder.arc(canvas::path::Arc {
                         center: Point::new(*cx, *cy),
                         radius: *radius,
-                        start_angle: Radians(*start_angle),
-                        end_angle: Radians(*end_angle),
+                        start_angle: Radians(start_angle.radians()),
+                        end_angle: Radians(end_angle.radians()),
                     });
                 }
                 PathCommand::ArcTo {
@@ -314,9 +314,9 @@ pub(super) fn build_path_from_commands(commands: &[canvas_types::PathCommand]) -
                     builder.ellipse(canvas::path::arc::Elliptical {
                         center: Point::new(*cx, *cy),
                         radii: Vector::new(*rx, *ry),
-                        rotation: Radians(*rotation),
-                        start_angle: Radians(*start_angle),
-                        end_angle: Radians(*end_angle),
+                        rotation: Radians(rotation.radians()),
+                        start_angle: Radians(start_angle.radians()),
+                        end_angle: Radians(end_angle.radians()),
                     });
                 }
                 PathCommand::RoundedRect { x, y, w, h, radius } => {
@@ -459,7 +459,7 @@ pub(super) fn apply_group_transforms<R: PlushieRenderer>(
                 frame.translate(Vector::new(*x, *y));
             }
             Transform::Rotate { angle } => {
-                frame.rotate(Radians(*angle));
+                frame.rotate(Radians(angle.radians()));
             }
             Transform::Scale { x, y } => {
                 frame.scale_nonuniform(Vector::new(*x, *y));
@@ -755,7 +755,10 @@ pub(super) fn draw_canvas_shape<R: PlushieRenderer>(
             } else {
                 iced::widget::image::Handle::from_path(&img_shape.source)
             };
-            let rotation = img_shape.rotation.map(Radians).unwrap_or(Radians(0.0));
+            let rotation = img_shape
+                .rotation
+                .map(|a| Radians(a.radians()))
+                .unwrap_or(Radians(0.0));
             let opacity = img_shape.opacity.unwrap_or(1.0);
             let img = iced::advanced::image::Image {
                 handle,

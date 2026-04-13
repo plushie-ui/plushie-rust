@@ -161,6 +161,8 @@ are not accepted; the host must normalize before sending.
 **Padding** is a number (uniform), `[vertical, horizontal]`, or
 `[top, right, bottom, left]`.
 
+**Angles** are numbers in degrees (rotations, arc sweeps, etc.).
+
 ---
 
 ## Tree nodes
@@ -2031,7 +2033,7 @@ sub-object).
 
   "transforms": [
     {"type": "translate", "x": 50, "y": 30},
-    {"type": "rotate", "angle": 0.785},
+    {"type": "rotate", "angle": 45},
     {"type": "scale", "x": 2.0, "y": 2.0}
   ],
   "clip": {"x": 0, "y": 0, "w": 200, "h": 200},
@@ -2090,7 +2092,7 @@ type-specific fields:
 | Transform | Fields | Description |
 |-----------|--------|-------------|
 | `translate` | `x`, `y` | Translate by (x, y) |
-| `rotate` | `angle` | Rotate by angle in radians |
+| `rotate` | `angle` | Rotate by angle in degrees |
 | `scale` | `x`, `y` or `factor` | Non-uniform or uniform scale |
 
 Groups without transforms or clips are pure nesting containers with

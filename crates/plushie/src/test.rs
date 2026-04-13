@@ -258,7 +258,7 @@ impl<A: App> TestSession<A> {
         self.dispatch(widget_event(
             EventType::Press,
             &id,
-            serde_json::json!({"x": x, "y": y, "button": btn.wire_name()}),
+            serde_json::json!({"x": x, "y": y, "button": btn.wire_name(), "pointer": "mouse"}),
         ));
     }
 
@@ -275,7 +275,7 @@ impl<A: App> TestSession<A> {
         self.dispatch(widget_event(
             EventType::Release,
             &id,
-            serde_json::json!({"x": x, "y": y, "button": btn.wire_name()}),
+            serde_json::json!({"x": x, "y": y, "button": btn.wire_name(), "pointer": "mouse"}),
         ));
     }
 
@@ -285,7 +285,57 @@ impl<A: App> TestSession<A> {
         self.dispatch(widget_event(
             EventType::Move,
             &id,
-            serde_json::json!({"x": x, "y": y}),
+            serde_json::json!({"x": x, "y": y, "pointer": "mouse"}),
+        ));
+    }
+
+    // -- Touch interactions --
+
+    /// Simulate a touch press on a canvas at the given coordinates.
+    pub fn canvas_touch_press(
+        &mut self,
+        selector: impl Into<Selector>,
+        x: f32,
+        y: f32,
+        finger: u64,
+    ) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Press,
+            &id,
+            serde_json::json!({"x": x, "y": y, "button": "left", "pointer": "touch", "finger": finger}),
+        ));
+    }
+
+    /// Simulate a touch release on a canvas at the given coordinates.
+    pub fn canvas_touch_release(
+        &mut self,
+        selector: impl Into<Selector>,
+        x: f32,
+        y: f32,
+        finger: u64,
+    ) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Release,
+            &id,
+            serde_json::json!({"x": x, "y": y, "button": "left", "pointer": "touch", "finger": finger}),
+        ));
+    }
+
+    /// Simulate a touch move on a canvas to the given coordinates.
+    pub fn canvas_touch_move(
+        &mut self,
+        selector: impl Into<Selector>,
+        x: f32,
+        y: f32,
+        finger: u64,
+    ) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Move,
+            &id,
+            serde_json::json!({"x": x, "y": y, "pointer": "touch", "finger": finger}),
         ));
     }
 

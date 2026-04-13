@@ -24,6 +24,8 @@ pub use plushie_core::types::{
     Color,
     ContentFit,
     CursorStyle,
+    // Theme
+    CustomTheme,
     // Layout
     Direction,
     Ellipsis,
@@ -61,7 +63,6 @@ pub use plushie_core::types::{
     // Style
     Style,
     StyleMap,
-    // Theme
     Theme,
     // Untyped props escape hatch
     UntypedProps,

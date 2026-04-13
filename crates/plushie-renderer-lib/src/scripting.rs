@@ -30,53 +30,16 @@ use plushie_widget_sdk::protocol::{
 const MAX_SEARCH_DEPTH: usize = 256;
 
 // ---------------------------------------------------------------------------
-// Selector
+// Selector (re-exported from plushie-core)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
-pub enum Selector {
-    Id {
-        widget_id: String,
-        window_id: Option<String>,
-    },
-    Text(String),
-    Role(String),
-    Label(String),
-    Focused,
-}
+pub use plushie_core::Selector;
 
+/// Parse a selector from wire protocol JSON.
+///
+/// Delegates to [`Selector::from_wire`].
 pub fn parse_selector(selector: &Value) -> Option<Selector> {
-    let by = selector.get("by")?.as_str()?;
-    match by {
-        "focused" => Some(Selector::Focused),
-        _ => {
-            let raw_value = selector.get("value")?.as_str()?.to_string();
-            // For ID selectors, extract window from # in the value.
-            // Fall back to separate window_id field for compatibility.
-            let explicit_window = selector
-                .get("window_id")
-                .and_then(|v| v.as_str())
-                .map(str::to_string);
-            match by {
-                "id" => {
-                    // Extract window for scoping but keep full wire ID for tree search.
-                    let window_id = raw_value
-                        .split_once('#')
-                        .filter(|(win, _)| !win.is_empty())
-                        .map(|(win, _)| win.to_string())
-                        .or(explicit_window);
-                    Some(Selector::Id {
-                        widget_id: raw_value,
-                        window_id,
-                    })
-                }
-                "text" => Some(Selector::Text(raw_value)),
-                "role" => Some(Selector::Role(raw_value)),
-                "label" => Some(Selector::Label(raw_value)),
-                _ => None,
-            }
-        }
-    }
+    Selector::from_wire(selector)
 }
 
 // ---------------------------------------------------------------------------

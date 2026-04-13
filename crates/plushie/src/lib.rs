@@ -54,6 +54,7 @@
 //!   higher latency.
 
 pub mod animation;
+pub mod automation;
 pub mod command;
 pub mod event;
 pub mod prelude;

@@ -7,6 +7,9 @@
 // Core trait
 pub use crate::App;
 
+// Automation
+pub use crate::automation::{Element, Selector};
+
 // Derive macros for widget authoring
 pub use crate::{WidgetCommand, WidgetEvent, WidgetProps};
 

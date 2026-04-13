@@ -184,6 +184,12 @@ impl From<String> for Selector {
 impl fmt::Display for Selector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Id {
+                widget_id,
+                window_id: Some(win),
+            } if !widget_id.starts_with(&format!("{win}#")) => {
+                write!(f, "{win}#{widget_id}")
+            }
             Self::Id { widget_id, .. } => write!(f, "{widget_id}"),
             Self::Text(text) => write!(f, "{{text: {text:?}}}"),
             Self::Role(role) => write!(f, "{{role: {role}}}"),

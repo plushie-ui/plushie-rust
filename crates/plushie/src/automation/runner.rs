@@ -75,7 +75,17 @@ fn execute_instruction<A: App>(
             Ok(())
         }
         Instruction::Toggle(sel, value) => {
-            let checked = value.unwrap_or(true);
+            let checked = match value {
+                Some(v) => *v,
+                None => {
+                    // No explicit value: read current state and invert.
+                    let current = session
+                        .find(sel.as_str())
+                        .and_then(|e| e.prop_bool("checked").or_else(|| e.prop_bool("is_toggled")))
+                        .unwrap_or(false);
+                    !current
+                }
+            };
             session.toggle(sel.as_str(), checked);
             Ok(())
         }

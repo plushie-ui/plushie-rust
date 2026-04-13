@@ -261,6 +261,11 @@ fn element_prop_accessors() {
 fn selector_display() {
     assert_eq!(Selector::id("save").to_string(), "save");
     assert_eq!(Selector::id("main#save").to_string(), "main#save");
+    // id_in_window shows window context even when widget_id lacks #
+    assert_eq!(
+        Selector::id_in_window("save", "main").to_string(),
+        "main#save"
+    );
     assert_eq!(Selector::text("Save").to_string(), "{text: \"Save\"}");
     assert_eq!(Selector::role("button").to_string(), "{role: button}");
     assert_eq!(Selector::focused().to_string(), "{focused}");

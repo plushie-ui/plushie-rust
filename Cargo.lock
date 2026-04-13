@@ -3207,6 +3207,7 @@ name = "plushie"
 version = "0.6.1"
 dependencies = [
  "arboard",
+ "base64",
  "log",
  "notify-rust",
  "plushie-core",

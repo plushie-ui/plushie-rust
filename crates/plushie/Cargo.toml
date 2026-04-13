@@ -13,7 +13,7 @@ categories = ["gui", "rendering"]
 [features]
 default = ["direct"]
 direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "plushie-widget-sdk/tokio"]
-wire = ["dep:tokio", "dep:rmp-serde"]
+wire = ["dep:tokio", "dep:rmp-serde", "dep:base64"]
 
 [dependencies]
 plushie-core = { version = "0.6.1", path = "../plushie-core" }
@@ -28,6 +28,7 @@ rfd = { version = "0.15", optional = true }
 arboard = { version = "3", optional = true }
 notify-rust = { version = "4", optional = true }
 log = "0.4"
+base64 = { version = "0.22.1", optional = true }
 
 [lints]
 workspace = true

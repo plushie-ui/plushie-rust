@@ -33,11 +33,11 @@
 //!
 //! # Modifier aliases
 //!
-//! - `ctrl` / `control`
+//! - `ctrl` / `control` - physical Ctrl key
 //! - `shift`
 //! - `alt` / `option` / `opt`
-//! - `command` / `cmd` - platform shortcut key (maps to Ctrl)
-//! - `logo` / `super` / `win` / `meta` - physical Logo/Super key
+//! - `command` / `cmd` - platform shortcut key (Ctrl on Linux/Windows, Cmd on macOS)
+//! - `logo` / `super` / `win` / `meta` - physical Logo/Super/Command key
 
 use std::fmt;
 
@@ -349,12 +349,11 @@ impl From<&str> for KeyPress {
                 "shift" => modifiers.shift = true,
                 "alt" | "option" | "opt" => modifiers.alt = true,
                 "logo" | "super" | "win" | "meta" => modifiers.logo = true,
-                // "command"/"cmd" is the platform shortcut key:
-                // Ctrl on Linux/Windows, Cmd on macOS. We map to
-                // ctrl since that's the common case and matches
-                // the Elixir SDK's historic behavior. Use "super"
-                // or "logo" for the physical Logo/Command key.
-                "command" | "cmd" => modifiers.ctrl = true,
+                // "command"/"cmd" sets the platform-aware command
+                // field. The renderer resolves this to the correct
+                // physical modifier at event time: Ctrl on Linux/
+                // Windows, Cmd (Logo) on macOS.
+                "command" | "cmd" => modifiers.command = true,
                 _ => {} // Unknown modifier segment ignored
             }
         }
@@ -719,19 +718,27 @@ mod tests {
 
     #[test]
     fn keypress_from_str_modifier_aliases() {
-        // "command"/"cmd" maps to ctrl (platform shortcut key)
+        // "command"/"cmd" sets the platform-aware command field.
+        // The renderer resolves it to ctrl or logo at event time.
         let kp = KeyPress::from("Command+s");
-        assert!(kp.modifiers.ctrl);
+        assert!(kp.modifiers.command);
+        assert!(!kp.modifiers.ctrl);
+        assert!(!kp.modifiers.logo);
 
         let kp = KeyPress::from("Option+a");
         assert!(kp.modifiers.alt);
 
-        // "super"/"logo"/"win"/"meta" map to logo (physical key)
+        // "super"/"logo"/"win"/"meta" set the physical logo key
         let kp = KeyPress::from("Win+e");
         assert!(kp.modifiers.logo);
 
         let kp = KeyPress::from("Super+e");
         assert!(kp.modifiers.logo);
+
+        // "ctrl" is always the physical Ctrl key
+        let kp = KeyPress::from("Ctrl+s");
+        assert!(kp.modifiers.ctrl);
+        assert!(!kp.modifiers.command);
     }
 
     #[test]

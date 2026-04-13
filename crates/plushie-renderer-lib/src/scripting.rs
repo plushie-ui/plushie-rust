@@ -64,13 +64,7 @@ pub fn parse_key_and_modifiers(
 
     // Try the shared KeyPress parser first.
     if let Some(kp) = plushie_core::KeyPress::from_wire(&payload_value) {
-        let modifiers = serde_json::json!({
-            "shift": kp.modifiers.shift,
-            "ctrl": kp.modifiers.ctrl,
-            "alt": kp.modifiers.alt,
-            "logo": kp.modifiers.logo,
-        });
-        return (kp.key.wire_name(), modifiers);
+        return (kp.key.wire_name(), resolve_modifiers(&kp.modifiers));
     }
 
     // Fallback: try parsing just the "key" field as a combo string.
@@ -79,13 +73,7 @@ pub fn parse_key_and_modifiers(
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let kp = plushie_core::KeyPress::from(raw_key);
-    let modifiers = serde_json::json!({
-        "shift": kp.modifiers.shift,
-        "ctrl": kp.modifiers.ctrl,
-        "alt": kp.modifiers.alt,
-        "logo": kp.modifiers.logo,
-    });
-    (kp.key.wire_name(), modifiers)
+    (kp.key.wire_name(), resolve_modifiers(&kp.modifiers))
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +87,21 @@ pub fn parse_key_and_modifiers(
 pub fn parse_iced_key(name: &str) -> Key {
     let core_key = plushie_core::Key::from(name);
     core_key_to_iced(&core_key)
+}
+
+/// Resolve the platform-aware `command` modifier to the correct
+/// physical modifier for the current platform.
+///
+/// On macOS, `command: true` maps to `logo` (the Cmd key).
+/// On Linux/Windows, `command: true` maps to `ctrl`.
+fn resolve_modifiers(mods: &plushie_core::protocol::KeyModifiers) -> Value {
+    let is_macos = cfg!(target_os = "macos");
+    serde_json::json!({
+        "shift": mods.shift,
+        "ctrl": mods.ctrl || (!is_macos && mods.command),
+        "alt": mods.alt,
+        "logo": mods.logo || (is_macos && mods.command),
+    })
 }
 
 /// Convert a plushie-core Key to an iced Key.

@@ -63,15 +63,15 @@ fn execute_instruction<A: App>(
             Ok(())
         }
         Instruction::TypeKey(key) => {
-            session.type_key(key, Default::default());
+            session.type_key(key.as_str());
             Ok(())
         }
         Instruction::Press(key) => {
-            session.press(key, Default::default());
+            session.press(key.as_str());
             Ok(())
         }
         Instruction::Release(key) => {
-            session.release(key, Default::default());
+            session.release(key.as_str());
             Ok(())
         }
         Instruction::Toggle(sel, value) => {

@@ -5,8 +5,8 @@
 //! rendering. Composite widgets are expanded and their events
 //! are intercepted, matching runtime behavior.
 //!
-//! Interactions accept any [`Selector`] type. Bare strings are
-//! automatically converted to ID selectors:
+//! Interactions accept [`Selector`] (or bare strings) for targeting
+//! and [`KeyPress`] (or combo strings) for keyboard input:
 //!
 //! ```ignore
 //! use plushie::prelude::*;
@@ -15,24 +15,23 @@
 //! let mut session = TestSession::<Counter>::start();
 //! session.click("inc");                         // by ID
 //! session.click(Selector::role("button"));      // by role
+//! session.press("Ctrl+s");                      // combo string
+//! session.press(Key::Enter);                    // typed key
+//! session.canvas_press("canvas", 10.0, 20.0, "right");  // mouse button
 //! assert_eq!(session.model().count, 1);
-//!
-//! let btn = session.find("inc").unwrap();
-//! assert_eq!(btn.widget_type(), "button");
 //! ```
 
 use std::collections::HashMap;
 
-use plushie_core::Selector;
+use plushie_core::key::{EffectKind, KeyPress, MouseButton};
 use plushie_core::protocol::TreeNode;
+use plushie_core::Selector;
 use serde_json::Value;
 
-use crate::App;
 use crate::automation::Element;
 use crate::command::Command;
-use crate::event::{
-    AsyncEvent, EffectEvent, EffectResult, Event, EventType, KeyEventType, WidgetEvent,
-};
+use crate::App;
+use crate::event::{AsyncEvent, EffectEvent, EffectResult, Event, EventType, WidgetEvent};
 use crate::runtime;
 use crate::widget::{EventResult, Interception, WidgetStateStore};
 
@@ -195,45 +194,84 @@ impl<A: App> TestSession<A> {
 
     /// Simulate a key press (key down, no release).
     ///
+    /// Accepts combo strings, Key enums, or (Key, KeyModifiers) tuples:
     /// ```ignore
-    /// session.press("a", KeyModifiers::default());
-    /// session.press("Enter", KeyModifiers::default());
-    /// session.press("s", KeyModifiers { ctrl: true, ..Default::default() });
+    /// session.press("Enter");
+    /// session.press("Ctrl+s");
+    /// session.press("Shift + Left_Arrow");
+    /// session.press(Key::Enter);
+    /// session.press((Key::Char('s'), KeyModifiers { ctrl: true, ..Default::default() }));
     /// ```
-    pub fn press(&mut self, key: &str, modifiers: crate::types::KeyModifiers) {
-        self.dispatch(key_event(KeyEventType::Press, key, modifiers));
+    pub fn press(&mut self, key: impl Into<KeyPress>) {
+        let kp = key.into();
+        self.dispatch(key_event(
+            crate::event::KeyEventType::Press,
+            &kp.key,
+            kp.modifiers,
+        ));
     }
 
     /// Simulate a key release.
-    pub fn release(&mut self, key: &str, modifiers: crate::types::KeyModifiers) {
-        self.dispatch(key_event(KeyEventType::Release, key, modifiers));
+    pub fn release(&mut self, key: impl Into<KeyPress>) {
+        let kp = key.into();
+        self.dispatch(key_event(
+            crate::event::KeyEventType::Release,
+            &kp.key,
+            kp.modifiers,
+        ));
     }
 
     /// Simulate a complete key press and release.
-    pub fn type_key(&mut self, key: &str, modifiers: crate::types::KeyModifiers) {
-        self.dispatch(key_event(KeyEventType::Press, key, modifiers));
-        self.dispatch(key_event(KeyEventType::Release, key, modifiers));
+    pub fn type_key(&mut self, key: impl Into<KeyPress>) {
+        let kp = key.into();
+        self.dispatch(key_event(
+            crate::event::KeyEventType::Press,
+            &kp.key,
+            kp.modifiers,
+        ));
+        self.dispatch(key_event(
+            crate::event::KeyEventType::Release,
+            &kp.key,
+            kp.modifiers,
+        ));
     }
 
     // -- Canvas interactions --
 
     /// Simulate a mouse press on a canvas at the given coordinates.
-    pub fn canvas_press(&mut self, selector: impl Into<Selector>, x: f32, y: f32) {
+    ///
+    /// Button accepts `"left"`, `"right"`, `"middle"`, or
+    /// [`MouseButton`] enum values.
+    pub fn canvas_press(
+        &mut self,
+        selector: impl Into<Selector>,
+        x: f32,
+        y: f32,
+        button: impl Into<MouseButton>,
+    ) {
         let id = self.resolve(selector).id.clone();
+        let btn = button.into();
         self.dispatch(widget_event(
             EventType::Press,
             &id,
-            serde_json::json!({"x": x, "y": y, "button": "left"}),
+            serde_json::json!({"x": x, "y": y, "button": btn.wire_name()}),
         ));
     }
 
     /// Simulate a mouse release on a canvas at the given coordinates.
-    pub fn canvas_release(&mut self, selector: impl Into<Selector>, x: f32, y: f32) {
+    pub fn canvas_release(
+        &mut self,
+        selector: impl Into<Selector>,
+        x: f32,
+        y: f32,
+        button: impl Into<MouseButton>,
+    ) {
         let id = self.resolve(selector).id.clone();
+        let btn = button.into();
         self.dispatch(widget_event(
             EventType::Release,
             &id,
-            serde_json::json!({"x": x, "y": y, "button": "left"}),
+            serde_json::json!({"x": x, "y": y, "button": btn.wire_name()}),
         ));
     }
 
@@ -385,27 +423,33 @@ impl<A: App> TestSession<A> {
 
     /// Register a stub response for a platform effect kind.
     ///
-    /// When the app issues a command with a matching effect kind
-    /// (e.g. "file_open", "clipboard_read"), the stub response is
-    /// delivered immediately instead of invoking the real platform
-    /// API.
+    /// When the app issues a command with a matching effect kind,
+    /// the stub response is delivered immediately instead of
+    /// invoking the real platform API.
     ///
     /// ```ignore
+    /// use plushie::prelude::*;
     /// use plushie::event::EffectResult;
     ///
     /// session.register_effect_stub(
-    ///     "file_open",
+    ///     EffectKind::FileOpen,
     ///     EffectResult::FileOpened { path: "/tmp/test.txt".into() },
     /// );
-    /// session.click("open_file");
+    /// // Also works with strings:
+    /// session.register_effect_stub("clipboard_read", EffectResult::ClipboardText { text: "hello".into() });
     /// ```
-    pub fn register_effect_stub(&mut self, kind: &str, response: EffectResult) {
-        self.effect_stubs.insert(kind.to_string(), response);
+    pub fn register_effect_stub(
+        &mut self,
+        kind: impl Into<EffectKind>,
+        response: EffectResult,
+    ) {
+        self.effect_stubs
+            .insert(kind.into().wire_name().to_string(), response);
     }
 
     /// Remove a previously registered effect stub.
-    pub fn unregister_effect_stub(&mut self, kind: &str) {
-        self.effect_stubs.remove(kind);
+    pub fn unregister_effect_stub(&mut self, kind: impl Into<EffectKind>) {
+        self.effect_stubs.remove(kind.into().wire_name());
     }
 
     /// Reset the session to its initial state.
@@ -528,19 +572,28 @@ fn run_async_sync(task_fn: crate::command::AsyncTaskFn) -> Result<Value, Value> 
     rt.block_on((task_fn)())
 }
 
-fn key_event(event_type: KeyEventType, key: &str, modifiers: crate::types::KeyModifiers) -> Event {
+fn key_event(
+    event_type: crate::event::KeyEventType,
+    key: &plushie_core::Key,
+    modifiers: crate::types::KeyModifiers,
+) -> Event {
+    let wire_name = key.wire_name();
+    let text = if event_type == crate::event::KeyEventType::Press {
+        match key {
+            plushie_core::Key::Char(c) => Some(c.to_string()),
+            _ => None,
+        }
+    } else {
+        None
+    };
     Event::Key(crate::event::KeyEvent {
         event_type,
-        key: key.to_string(),
+        key: wire_name,
         modified_key: None,
         physical_key: None,
         location: crate::event::KeyLocation::Standard,
         modifiers,
-        text: if event_type == KeyEventType::Press && key.len() == 1 {
-            Some(key.to_string())
-        } else {
-            None
-        },
+        text,
         repeat: false,
         captured: false,
         window_id: Some("main".to_string()),

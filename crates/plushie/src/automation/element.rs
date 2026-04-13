@@ -97,16 +97,16 @@ impl<'a> Element<'a> {
 
     /// The inferred accessibility role of this widget.
     ///
-    /// Returns the explicit `a11y.role` if set, otherwise falls
-    /// back to the widget type name. Returns an owned String
-    /// because the a11y role may be extracted from a temporary.
+    /// Returns the explicit `a11y.role` if set, otherwise maps the
+    /// widget type to an ARIA role using a built-in fallback table.
+    /// Returns the raw widget type if no mapping exists.
     pub fn inferred_role(&self) -> String {
         if let Some(a11y) = self.node.props.get_value("a11y")
             && let Some(role) = a11y.get("role").and_then(|v| v.as_str())
         {
             return role.to_string();
         }
-        self.node.type_name.clone()
+        widget_type_to_role(&self.node.type_name).to_string()
     }
 
     /// Whether this widget currently has keyboard focus.
@@ -131,5 +131,43 @@ impl<'a> Element<'a> {
 impl<'a> From<&'a TreeNode> for Element<'a> {
     fn from(node: &'a TreeNode) -> Self {
         Self::new(node)
+    }
+}
+
+/// Map a widget type name to its ARIA role.
+///
+/// This matches the Elixir SDK's `@role_map` in
+/// `Plushie.Automation.Element`. Widget types not in the map
+/// return the type name unchanged.
+fn widget_type_to_role(widget_type: &str) -> &str {
+    match widget_type {
+        "button" => "button",
+        "checkbox" => "check_box",
+        "toggler" => "switch",
+        "radio" => "radio_button",
+        "text_input" => "text_input",
+        "text_editor" => "multiline_text_input",
+        "text" => "label",
+        "rich_text" => "label",
+        "slider" => "slider",
+        "vertical_slider" => "slider",
+        "pick_list" => "combo_box",
+        "combo_box" => "combo_box",
+        "progress_bar" => "progress_indicator",
+        "image" => "image",
+        "svg" => "image",
+        "scrollable" => "scroll_view",
+        "container" => "group",
+        "column" => "group",
+        "row" => "group",
+        "stack" => "group",
+        "grid" => "group",
+        "pane_grid" => "group",
+        "table" => "table",
+        "canvas" => "canvas",
+        "tooltip" => "tooltip",
+        "space" => "separator",
+        "rule" => "separator",
+        other => other,
     }
 }

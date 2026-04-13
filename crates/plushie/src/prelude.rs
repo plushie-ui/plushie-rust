@@ -9,6 +9,7 @@ pub use crate::App;
 
 // Automation
 pub use crate::automation::{Element, Selector};
+pub use plushie_core::key::{EffectKind, Key, KeyPress, MouseButton};
 
 // Derive macros for widget authoring
 pub use crate::{WidgetCommand, WidgetEvent, WidgetProps};

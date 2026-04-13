@@ -439,7 +439,7 @@ fn assert_exists_finds_widget() {
 }
 
 #[test]
-#[should_panic(expected = "expected widget \"nonexistent\" to exist")]
+#[should_panic(expected = "expected widget nonexistent to exist")]
 fn assert_exists_panics_for_missing_widget() {
     let session = TestSession::<Counter>::start();
     session.assert_exists("nonexistent");
@@ -452,7 +452,7 @@ fn assert_not_exists_for_missing_widget() {
 }
 
 #[test]
-#[should_panic(expected = "expected widget \"inc\" to NOT exist")]
+#[should_panic(expected = "expected widget inc to NOT exist")]
 fn assert_not_exists_panics_for_existing_widget() {
     let session = TestSession::<Counter>::start();
     session.assert_not_exists("inc");
@@ -462,5 +462,5 @@ fn assert_not_exists_panics_for_existing_widget() {
 fn prop_reads_widget_property() {
     let session = TestSession::<Form>::start();
     let placeholder = session.prop_str("name", "placeholder");
-    assert_eq!(placeholder, Some("Your name"));
+    assert_eq!(placeholder.as_deref(), Some("Your name"));
 }

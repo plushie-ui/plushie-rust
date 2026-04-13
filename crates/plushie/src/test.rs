@@ -5,19 +5,27 @@
 //! rendering. Composite widgets are expanded and their events
 //! are intercepted, matching runtime behavior.
 //!
+//! Interactions accept any [`Selector`] type. Bare strings are
+//! automatically converted to ID selectors:
+//!
 //! ```ignore
 //! use plushie::prelude::*;
 //! use plushie::test::TestSession;
 //!
 //! let mut session = TestSession::<Counter>::start();
-//! session.click("inc");
-//! session.click("inc");
-//! assert_eq!(session.model().count, 2);
+//! session.click("inc");                         // by ID
+//! session.click(Selector::role("button"));      // by role
+//! assert_eq!(session.model().count, 1);
+//!
+//! let btn = session.find("inc").unwrap();
+//! assert_eq!(btn.widget_type(), "button");
 //! ```
 
 use plushie_core::protocol::TreeNode;
+use plushie_core::Selector;
 use serde_json::Value;
 
+use crate::automation::Element;
 use crate::App;
 use crate::event::{Event, EventType, WidgetEvent};
 use crate::runtime;
@@ -32,6 +40,10 @@ use crate::widget::{EventResult, Interception, WidgetStateStore};
 /// Runs the app's MVU loop without rendering. Composite widgets are
 /// expanded during each view cycle and their `handle_event` is called
 /// before events reach the app's `update`.
+///
+/// All interaction methods accept `impl Into<Selector>`, so you can
+/// pass bare `&str` (ID selector) or a typed `Selector` for richer
+/// matching (text, role, label, focused).
 pub struct TestSession<A: App> {
     model: A::Model,
     tree: TreeNode,
@@ -62,49 +74,72 @@ impl<A: App> TestSession<A> {
     }
 
     // -----------------------------------------------------------------------
+    // Selector resolution
+    // -----------------------------------------------------------------------
+
+    /// Resolve a selector to a tree node, panicking with a clear
+    /// message if the widget is not found.
+    fn resolve(&self, selector: impl Into<Selector>) -> &TreeNode {
+        let sel = selector.into();
+        sel.find(&self.tree).unwrap_or_else(|| {
+            panic!("widget not found: {sel}");
+        })
+    }
+
+    // -----------------------------------------------------------------------
     // Interactions
     // -----------------------------------------------------------------------
 
-    /// Simulate a click on a widget with the given ID.
-    pub fn click(&mut self, id: &str) {
-        self.dispatch(widget_event(EventType::Click, id, Value::Null));
+    /// Simulate a click on a widget.
+    pub fn click(&mut self, selector: impl Into<Selector>) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(EventType::Click, &id, Value::Null));
     }
 
     /// Simulate text input on a widget.
-    pub fn type_text(&mut self, id: &str, text: &str) {
+    pub fn type_text(&mut self, selector: impl Into<Selector>, text: &str) {
+        let id = self.resolve(selector).id.clone();
         self.dispatch(widget_event(
             EventType::Input,
-            id,
+            &id,
             Value::String(text.to_string()),
         ));
     }
 
     /// Simulate a toggle on a checkbox or toggler.
-    pub fn toggle(&mut self, id: &str, checked: bool) {
-        self.dispatch(widget_event(EventType::Toggle, id, Value::Bool(checked)));
+    pub fn toggle(&mut self, selector: impl Into<Selector>, checked: bool) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(
+            EventType::Toggle,
+            &id,
+            Value::Bool(checked),
+        ));
     }
 
     /// Simulate a selection on a pick list, combo box, or radio.
-    pub fn select(&mut self, id: &str, value: &str) {
+    pub fn select(&mut self, selector: impl Into<Selector>, value: &str) {
+        let id = self.resolve(selector).id.clone();
         self.dispatch(widget_event(
             EventType::Select,
-            id,
+            &id,
             Value::String(value.to_string()),
         ));
     }
 
     /// Simulate a form submission (text input Enter key).
-    pub fn submit(&mut self, id: &str, text: &str) {
+    pub fn submit(&mut self, selector: impl Into<Selector>, text: &str) {
+        let id = self.resolve(selector).id.clone();
         self.dispatch(widget_event(
             EventType::Submit,
-            id,
+            &id,
             Value::String(text.to_string()),
         ));
     }
 
     /// Simulate a slider value change.
-    pub fn slide(&mut self, id: &str, value: f64) {
-        self.dispatch(widget_event(EventType::Slide, id, serde_json::json!(value)));
+    pub fn slide(&mut self, selector: impl Into<Selector>, value: f64) {
+        let id = self.resolve(selector).id.clone();
+        self.dispatch(widget_event(EventType::Slide, &id, serde_json::json!(value)));
     }
 
     /// Dispatch a raw event through the widget interception layer
@@ -152,30 +187,28 @@ impl<A: App> TestSession<A> {
     // Queries
     // -----------------------------------------------------------------------
 
-    /// Find a node in the view tree by ID.
-    pub fn find(&self, id: &str) -> Option<&TreeNode> {
-        find_node(&self.tree, id)
+    /// Find a widget in the view tree by selector.
+    ///
+    /// Returns an [`Element`] wrapper with typed accessors, or
+    /// `None` if no matching widget exists.
+    pub fn find(&self, selector: impl Into<Selector>) -> Option<Element<'_>> {
+        let sel = selector.into();
+        sel.find(&self.tree).map(Element::new)
     }
 
-    /// Get the text content of a widget by ID.
-    pub fn text_content(&self, id: &str) -> Option<String> {
-        let node = self.find(id)?;
-        node.props
-            .get_str("content")
-            .or_else(|| node.props.get_str("label"))
-            .map(|s| s.to_string())
+    /// Get the text content of a widget.
+    pub fn text_content(&self, selector: impl Into<Selector>) -> Option<String> {
+        self.find(selector)?.text().map(|s| s.to_string())
     }
 
-    /// Get a string prop from a widget by ID and prop name.
-    pub fn prop_str(&self, id: &str, key: &str) -> Option<&str> {
-        let node = self.find(id)?;
-        node.props.get_str(key)
+    /// Get a string prop from a widget.
+    pub fn prop_str(&self, selector: impl Into<Selector>, key: &str) -> Option<String> {
+        self.find(selector)?.prop_str(key).map(|s| s.to_string())
     }
 
-    /// Get a prop value from a widget by ID and prop name (Wire mode only).
-    pub fn prop(&self, id: &str, key: &str) -> Option<&Value> {
-        let node = self.find(id)?;
-        node.props.get(key)
+    /// Get a prop value from a widget as an owned JSON Value.
+    pub fn prop(&self, selector: impl Into<Selector>, key: &str) -> Option<Value> {
+        self.find(selector)?.prop(key)
     }
 
     /// Get the current normalized view tree.
@@ -187,40 +220,47 @@ impl<A: App> TestSession<A> {
     // Assertions
     // -----------------------------------------------------------------------
 
-    /// Assert that a widget with the given ID exists in the view tree.
-    pub fn assert_exists(&self, id: &str) {
+    /// Assert that a matching widget exists in the view tree.
+    pub fn assert_exists(&self, selector: impl Into<Selector>) {
+        let sel = selector.into();
         assert!(
-            self.find(id).is_some(),
-            "expected widget \"{id}\" to exist in the view tree"
+            sel.find(&self.tree).is_some(),
+            "expected widget {sel} to exist in the view tree"
         );
     }
 
-    /// Assert that no widget with the given ID exists in the view tree.
-    pub fn assert_not_exists(&self, id: &str) {
+    /// Assert that no matching widget exists in the view tree.
+    pub fn assert_not_exists(&self, selector: impl Into<Selector>) {
+        let sel = selector.into();
         assert!(
-            self.find(id).is_none(),
-            "expected widget \"{id}\" to NOT exist in the view tree"
+            sel.find(&self.tree).is_none(),
+            "expected widget {sel} to NOT exist in the view tree"
         );
     }
 
-    /// Assert that a text widget displays the expected content.
-    pub fn assert_text(&self, id: &str, expected: &str) {
-        let actual = self.text_content(id);
+    /// Assert that a widget displays the expected text content.
+    pub fn assert_text(&self, selector: impl Into<Selector>, expected: &str) {
+        let sel = selector.into();
+        let actual = sel
+            .find(&self.tree)
+            .and_then(|n| Element::new(n).text().map(|s| s.to_string()));
         assert_eq!(
             actual.as_deref(),
             Some(expected),
-            "expected widget \"{id}\" to display \"{expected}\", got {:?}",
-            actual
+            "expected widget {sel} to display \"{expected}\", got {actual:?}",
         );
     }
 
-    /// Assert that a prop has the expected value.
-    pub fn assert_prop(&self, id: &str, key: &str, expected: &Value) {
-        let actual = self.prop(id, key);
+    /// Assert that a widget prop has the expected value.
+    pub fn assert_prop(&self, selector: impl Into<Selector>, key: &str, expected: &Value) {
+        let sel = selector.into();
+        let actual = sel
+            .find(&self.tree)
+            .and_then(|n| n.props.get_value(key));
         assert_eq!(
-            actual,
+            actual.as_ref(),
             Some(expected),
-            "expected widget \"{id}\" prop \"{key}\" to be {expected}, got {actual:?}"
+            "expected widget {sel} prop \"{key}\" to be {expected}, got {actual:?}"
         );
     }
 }
@@ -232,26 +272,7 @@ impl<A: App> TestSession<A> {
 fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
     Event::Widget(WidgetEvent {
         event_type,
-        scoped_id: plushie_core::ScopedId::new(id, vec![], Some("main".to_string())),
+        scoped_id: plushie_core::ScopedId::parse(id),
         value,
     })
-}
-
-fn find_node<'a>(node: &'a TreeNode, target_id: &str) -> Option<&'a TreeNode> {
-    // Extract local name: split on both # and /, take the last segment.
-    let local_id = node
-        .id
-        .rsplit_once('/')
-        .or_else(|| node.id.rsplit_once('#'))
-        .map(|(_, l)| l)
-        .unwrap_or(&node.id);
-    if local_id == target_id || node.id == target_id {
-        return Some(node);
-    }
-    for child in &node.children {
-        if let Some(found) = find_node(child, target_id) {
-            return Some(found);
-        }
-    }
-    None
 }

@@ -6,6 +6,7 @@
 
 pub mod a11y;
 mod alignment;
+mod angle;
 mod animatable;
 mod background;
 mod border;
@@ -58,6 +59,7 @@ impl FromNode for UntypedProps {
 
 pub use a11y::{A11y, HasPopup, Live, Orientation, Role};
 pub use alignment::{HorizontalAlignment, VerticalAlignment};
+pub use angle::Angle;
 pub use animatable::Animatable;
 pub use background::Background;
 pub use border::{Border, Radius};

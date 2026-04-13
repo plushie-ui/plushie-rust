@@ -13,6 +13,8 @@ pub use plushie_core::types::{
     // A11y
     A11y,
     Anchor,
+    // Angle
+    Angle,
     // Animation
     Animatable,
     ArrowMode,

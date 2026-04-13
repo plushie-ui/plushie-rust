@@ -63,6 +63,48 @@ impl Padding {
             left: horizontal,
         }
     }
+
+    /// Padding on the top side only.
+    pub fn top(value: f32) -> Self {
+        Self {
+            top: value,
+            ..Self::default()
+        }
+    }
+
+    /// Padding on the right side only.
+    pub fn right(value: f32) -> Self {
+        Self {
+            right: value,
+            ..Self::default()
+        }
+    }
+
+    /// Padding on the bottom side only.
+    pub fn bottom(value: f32) -> Self {
+        Self {
+            bottom: value,
+            ..Self::default()
+        }
+    }
+
+    /// Padding on the left side only.
+    pub fn left(value: f32) -> Self {
+        Self {
+            left: value,
+            ..Self::default()
+        }
+    }
+
+    /// Padding on the vertical sides (top and bottom).
+    pub fn vertical(value: f32) -> Self {
+        Self::axes(value, 0.0)
+    }
+
+    /// Padding on the horizontal sides (left and right).
+    pub fn horizontal(value: f32) -> Self {
+        Self::axes(0.0, value)
+    }
 }
 
 impl PlushieType for Padding {

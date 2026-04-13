@@ -27,7 +27,7 @@ rendering performance, complex state management, or access to iced's
 widget library beyond what canvas provides. Most custom Rust widgets
 use this path.
 
-See the `PlushieWidget` trait docs in `plushie-ext/src/registry.rs`.
+See the `PlushieWidget` trait docs in `crates/plushie-widget-sdk/src/registry.rs`.
 
 ## Reusable iced widgets
 

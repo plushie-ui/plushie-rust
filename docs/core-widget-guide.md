@@ -658,21 +658,21 @@ distribution path:
 | What | Where |
 |------|-------|
 | The iced widget (if new to iced) | `plushie-iced` fork |
-| The render function | `plushie-ext/src/widgets/` |
-| The validate schema | `plushie-ext/src/widgets/validate.rs` |
-| Message variants (if new) | `plushie-ext/src/message.rs` |
-| OutgoingEvent constructors | `plushie-ext/src/protocol/outgoing.rs` |
-| Message wiring | `plushie-renderer-lib/src/emitters.rs` |
-| Dispatch table entry | `plushie-ext/src/widgets/render.rs` |
+| The render function | `crates/plushie-widget-sdk/src/widget/` |
+| The validate schema | `crates/plushie-widget-sdk/src/widget/validate.rs` |
+| Message variants (if new) | `crates/plushie-widget-sdk/src/message.rs` |
+| OutgoingEvent constructors | `crates/plushie-widget-sdk/src/protocol/outgoing.rs` |
+| Message wiring | `crates/plushie-renderer-lib/src/emitters.rs` |
+| Dispatch table entry | `crates/plushie-widget-sdk/src/widget/render.rs` |
 
 The plushie-iced fork stays close to upstream iced. Only add to the
 fork for: new accessible roles, Widget trait extensions, or bug
 fixes not yet upstream. plushie-specific code (prop parsing, event
-emission, validation) belongs in plushie-ext.
+emission, validation) belongs in plushie-widget-sdk.
 
 ## Further reading
 
-- [PlushieWidget](../plushie-ext/src/registry.rs) trait docs for
+- [PlushieWidget](../crates/plushie-widget-sdk/src/registry.rs) trait docs for
   building application-specific widgets (simpler, no iced Widget trait)
 - [Widget Development](widget-development.md) for the decision
   framework

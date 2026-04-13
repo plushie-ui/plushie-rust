@@ -62,17 +62,18 @@ Use conventional commits:
 
 ## Widget Development
 
-plushie-ext is the public SDK for writing custom widgets. The quick path:
+plushie-widget-sdk is the public SDK for writing custom widgets. The quick path:
 
-1. Create a Rust crate that depends on `plushie-ext`.
-2. Import everything from `plushie_ext::prelude::*`.
+1. Create a Rust crate that depends on `plushie-widget-sdk`.
+2. Import everything from `plushie_widget_sdk::prelude::*`.
 3. Implement the `PlushieWidget` trait (three required methods:
    `type_names()`, `render()`, `clone_for_session()`).
-4. For iced types not in the prelude, use `plushie_ext::iced::*` instead
-   of adding a direct `iced` dependency -- this avoids version conflicts.
+4. For iced types not in the prelude, use `plushie_widget_sdk::iced::*`
+   instead of adding a direct `iced` dependency -- this avoids version
+   conflicts.
 
-See the `PlushieWidget` trait docs in `plushie-ext/src/registry.rs`
-for the full API reference.
+See the `PlushieWidget` trait docs in
+`crates/plushie-widget-sdk/src/registry.rs` for the full API reference.
 
 ## Pull Requests
 

@@ -1,5 +1,13 @@
 [workspace]
-members = ["plushie", "plushie-core", "plushie-core-macros", "plushie-widget-sdk", "plushie-renderer-lib", "plushie-renderer", "plushie-renderer-wasm"]
+members = [
+    "crates/plushie",
+    "crates/plushie-core",
+    "crates/plushie-core-macros",
+    "crates/plushie-widget-sdk",
+    "crates/plushie-renderer-lib",
+    "crates/plushie-renderer",
+    "crates/plushie-renderer-wasm",
+]
 resolver = "2"
 
 [workspace.package]

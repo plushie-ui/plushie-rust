@@ -141,8 +141,8 @@ overrides.
 notifications -- requested over the protocol, results delivered as
 events.
 
-**Custom widgets.** The widget SDK (plushie-ext) lets you write new
-widget types in Rust without forking the renderer. Custom widgets range
+**Custom widgets.** The widget SDK (plushie-widget-sdk) lets you write
+new widget types in Rust without forking the renderer. Custom widgets range
 from simple render-only widgets to full interactive components with
 their own state, event handling, and lifecycle management.
 
@@ -207,18 +207,25 @@ wait for further messages on stdin (snapshots, patches, etc.).
 
 ## Project structure
 
-This workspace contains four crates:
+All crates live under `crates/`:
 
-- **plushie-ext** -- Library crate and public SDK. Wire protocol,
-  tree management, widget rendering, theming, platform effects, and the
-  `PlushieWidget` trait for custom widgets. Widget authors depend on
-  this crate.
+- **plushie** -- Rust SDK for building plushie desktop apps. Elm
+  architecture (init/update/view), two rendering modes (in-process
+  and wire subprocess).
+
+- **plushie-core** -- Core types and wire protocol. No iced dependency,
+  shared by the SDK and renderer crates.
+
+- **plushie-core-macros** -- Procedural macros for types and widgets.
+
+- **plushie-widget-sdk** -- Public SDK for custom widget authors.
+  `PlushieWidget` trait, canvas engine, theming, and widget rendering.
 
 - **plushie-renderer-lib** -- Shared renderer logic that compiles to
   both native and wasm32. Contains the App struct, effect handler trait,
   event processing, and window management.
 
-- **plushie-renderer** -- Binary crate. Wires plushie-ext into an
+- **plushie-renderer** -- Binary crate. Wires the widget SDK into an
   `iced::daemon` application. Handles stdin/stdout I/O, window
   lifecycle, and the iced event loop.
 

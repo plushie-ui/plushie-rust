@@ -50,4 +50,4 @@ jobs:
           cargo check --target x86_64-pc-windows-msvc --release -p plushie-renderer
 
       - name: Check WASM
-        run: cargo check --target wasm32-unknown-unknown -p plushie-ext -p plushie-renderer-lib -p plushie-renderer-wasm
+        run: cargo check --target wasm32-unknown-unknown -p plushie-widget-sdk -p plushie-renderer-lib -p plushie-renderer-wasm

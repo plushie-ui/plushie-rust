@@ -106,21 +106,21 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binaryen
 
       - name: Build WASM
-        run: WASM_BINDGEN_EXTERNREF=0 wasm-pack build plushie-renderer-wasm --target web
+        run: WASM_BINDGEN_EXTERNREF=0 wasm-pack build crates/plushie-renderer-wasm --target web
 
       - name: Optimize with wasm-opt
         run: |
-          wasm-opt plushie-renderer-wasm/pkg/plushie_renderer_wasm_bg.wasm \
+          wasm-opt crates/plushie-renderer-wasm/pkg/plushie_renderer_wasm_bg.wasm \
             -Oz \
             --enable-bulk-memory \
             --enable-mutable-globals \
             --enable-nontrapping-float-to-int \
             --enable-sign-ext \
             --enable-multivalue \
-            -o plushie-renderer-wasm/pkg/plushie_renderer_wasm_bg.wasm
+            -o crates/plushie-renderer-wasm/pkg/plushie_renderer_wasm_bg.wasm
 
       - name: Package
-        run: tar czf plushie-renderer-wasm.tar.gz -C plushie-renderer-wasm/pkg .
+        run: tar czf plushie-renderer-wasm.tar.gz -C crates/plushie-renderer-wasm/pkg .
 
       - name: Generate checksum
         run: sha256sum plushie-renderer-wasm.tar.gz > plushie-renderer-wasm.tar.gz.sha256

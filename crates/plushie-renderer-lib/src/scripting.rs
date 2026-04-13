@@ -396,6 +396,7 @@ pub fn emit_wire<T: serde::Serialize>(
 
 /// Walk the tree depth-first, returning the first node matching the predicate.
 /// `extract` converts the matching node to the desired return type.
+#[cfg(test)]
 fn search_tree<R>(
     node: &TreeNode,
     depth: usize,
@@ -422,14 +423,11 @@ fn node_to_value(node: &TreeNode) -> Value {
     serde_json::to_value(node).unwrap_or(Value::Null)
 }
 
-fn node_id(node: &TreeNode) -> String {
-    node.id.clone()
-}
-
-// -- Predicates -------------------------------------------------------------
+// -- Predicates (test-only, production code uses plushie_core::Selector) -------------------------------------------------------------
 
 /// Match by explicit `a11y.role`, falling back to `type_name` only when no
 /// `a11y` prop is present at all.
+#[cfg(test)]
 fn matches_role(node: &TreeNode, role: &str) -> bool {
     if let Some(a11y) = node.props.get("a11y") {
         a11y.get("role").and_then(|v| v.as_str()) == Some(role)
@@ -439,6 +437,7 @@ fn matches_role(node: &TreeNode, role: &str) -> bool {
 }
 
 /// Match by explicit `a11y.label`, falling back to `label` and `content` props.
+#[cfg(test)]
 fn matches_label(node: &TreeNode, label: &str) -> bool {
     if let Some(a11y) = node.props.get("a11y")
         && let Some(node_label) = a11y.get("label").and_then(|v| v.as_str())
@@ -457,6 +456,7 @@ fn matches_label(node: &TreeNode, label: &str) -> bool {
 }
 
 /// Match against text content in `content`, `label`, `value`, and `placeholder` props.
+#[cfg(test)]
 fn matches_text(node: &TreeNode, text: &str) -> bool {
     for key in &["content", "label", "value", "placeholder"] {
         if let Some(val) = node.props.get(key)
@@ -469,6 +469,7 @@ fn matches_text(node: &TreeNode, text: &str) -> bool {
 }
 
 /// Match nodes with `props.focused == true` or `a11y.focused == true`.
+#[cfg(test)]
 fn is_focused(node: &TreeNode) -> bool {
     if node.props.get("focused").and_then(|v| v.as_bool()) == Some(true) {
         return true;
@@ -481,61 +482,57 @@ fn is_focused(node: &TreeNode) -> bool {
     false
 }
 
-// -- Public API (node as Value) ---------------------------------------------
+// -- Public API (delegates to Selector tree search) -------------------------
 
 pub fn find_node_by_id(core: &Core, widget_id: &str, window_id: Option<&str>) -> Value {
-    core.tree
-        .root()
-        .and_then(|root| {
-            find_tree_node_by_id_with_window(root, widget_id, window_id, None, 0).map(node_to_value)
-        })
-        .unwrap_or(Value::Null)
+    let selector = match window_id {
+        Some(win) => Selector::id_in_window(widget_id, win),
+        None => Selector::id(widget_id),
+    };
+    find_by_selector(core, &selector)
 }
 
 pub fn find_node_by_text(core: &Core, text: &str) -> Value {
-    core.tree
-        .root()
-        .and_then(|root| search_tree(root, 0, &|n| matches_text(n, text), &node_to_value))
-        .unwrap_or(Value::Null)
+    find_by_selector(core, &Selector::text(text))
 }
 
 pub fn find_node_by_role(core: &Core, role: &str) -> Value {
-    core.tree
-        .root()
-        .and_then(|root| search_tree(root, 0, &|n| matches_role(n, role), &node_to_value))
-        .unwrap_or(Value::Null)
+    find_by_selector(core, &Selector::role(role))
 }
 
 pub fn find_node_by_label(core: &Core, label: &str) -> Value {
-    core.tree
-        .root()
-        .and_then(|root| search_tree(root, 0, &|n| matches_label(n, label), &node_to_value))
-        .unwrap_or(Value::Null)
+    find_by_selector(core, &Selector::label(label))
 }
 
 pub fn find_focused_node(core: &Core) -> Value {
+    find_by_selector(core, &Selector::focused())
+}
+
+/// Find a node in the core tree using any Selector.
+pub fn find_by_selector(core: &Core, selector: &Selector) -> Value {
     core.tree
         .root()
-        .and_then(|root| search_tree(root, 0, &is_focused, &node_to_value))
+        .and_then(|root| selector.find(root))
+        .map(node_to_value)
         .unwrap_or(Value::Null)
 }
 
-// -- Public API (ID only) ---------------------------------------------------
+// -- Public API (ID only, delegates to Selector) ----------------------------
 
-pub fn find_id_by_text(node: &TreeNode, text: &str, depth: usize) -> Option<String> {
-    search_tree(node, depth, &|n| matches_text(n, text), &node_id)
+pub fn find_id_by_text(node: &TreeNode, text: &str, _depth: usize) -> Option<String> {
+    Selector::text(text).find(node).map(|n| n.id.clone())
 }
 
-pub fn find_id_by_role(node: &TreeNode, role: &str, depth: usize) -> Option<String> {
-    search_tree(node, depth, &|n| matches_role(n, role), &node_id)
+pub fn find_id_by_role(node: &TreeNode, role: &str, _depth: usize) -> Option<String> {
+    Selector::role(role).find(node).map(|n| n.id.clone())
 }
 
-pub fn find_id_by_label(node: &TreeNode, label: &str, depth: usize) -> Option<String> {
-    search_tree(node, depth, &|n| matches_label(n, label), &node_id)
+pub fn find_id_by_label(node: &TreeNode, label: &str, _depth: usize) -> Option<String> {
+    Selector::label(label).find(node).map(|n| n.id.clone())
 }
 
-pub fn find_id_focused(node: &TreeNode, depth: usize) -> Option<String> {
-    search_tree(node, depth, &is_focused, &node_id)
+pub fn find_id_focused(node: &TreeNode, _depth: usize) -> Option<String> {
+    Selector::focused().find(node).map(|n| n.id.clone())
 }
 
 // ---------------------------------------------------------------------------
@@ -592,31 +589,9 @@ pub fn handle_query(
 
 /// Resolve a selector to a widget ID without emitting anything.
 pub fn resolve_widget_id(core: &Core, selector: &Value) -> Option<String> {
-    match parse_selector(selector)? {
-        Selector::Id {
-            widget_id,
-            window_id,
-        } => {
-            if let Some(expected_window) = window_id.as_deref() {
-                let root = core.tree.root()?;
-                find_tree_node_by_id_with_window(root, &widget_id, Some(expected_window), None, 0)?;
-            }
-            Some(widget_id)
-        }
-        Selector::Text(text) => core
-            .tree
-            .root()
-            .and_then(|root| find_id_by_text(root, &text, 0)),
-        Selector::Role(role) => core
-            .tree
-            .root()
-            .and_then(|root| find_id_by_role(root, &role, 0)),
-        Selector::Label(label) => core
-            .tree
-            .root()
-            .and_then(|root| find_id_by_label(root, &label, 0)),
-        Selector::Focused => core.tree.root().and_then(|root| find_id_focused(root, 0)),
-    }
+    let sel = Selector::from_wire(selector)?;
+    let root = core.tree.root()?;
+    sel.find(root).map(|node| node.id.clone())
 }
 
 /// Build an InteractResponse without writing it anywhere.

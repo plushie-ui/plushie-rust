@@ -34,6 +34,8 @@
 use serde_json::Value;
 use std::fmt;
 
+use crate::protocol::TreeNode;
+
 /// A selector that identifies a widget in the UI tree.
 ///
 /// Used by the automation layer to target interactions (click,
@@ -182,18 +184,192 @@ impl From<String> for Selector {
 impl fmt::Display for Selector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Id {
-                widget_id,
-                window_id: Some(win),
-            } => write!(f, "{win}#{widget_id}"),
-            Self::Id {
-                widget_id,
-                window_id: None,
-            } => write!(f, "{widget_id}"),
+            Self::Id { widget_id, .. } => write!(f, "{widget_id}"),
             Self::Text(text) => write!(f, "{{text: {text:?}}}"),
             Self::Role(role) => write!(f, "{{role: {role}}}"),
             Self::Label(label) => write!(f, "{{label: {label:?}}}"),
             Self::Focused => write!(f, "{{focused}}"),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tree search
+// ---------------------------------------------------------------------------
+
+/// Maximum recursion depth for tree traversal.
+const MAX_SEARCH_DEPTH: usize = 256;
+
+impl Selector {
+    /// Find the first matching node in the tree.
+    ///
+    /// Returns a reference to the matching `TreeNode`, or `None` if
+    /// no node matches the selector criteria.
+    pub fn find<'a>(&self, root: &'a TreeNode) -> Option<&'a TreeNode> {
+        match self {
+            Self::Id {
+                widget_id,
+                window_id,
+            } => find_by_id(root, widget_id, window_id.as_deref(), None, 0),
+            Self::Text(text) => search(root, 0, &|n| matches_text(n, text)),
+            Self::Role(role) => search(root, 0, &|n| matches_role(n, role)),
+            Self::Label(label) => search(root, 0, &|n| matches_label(n, label)),
+            Self::Focused => search(root, 0, &is_focused),
+        }
+    }
+
+    /// Find all matching nodes in the tree.
+    ///
+    /// Returns a Vec of references to every `TreeNode` that matches.
+    pub fn find_all<'a>(&self, root: &'a TreeNode) -> Vec<&'a TreeNode> {
+        let mut results = Vec::new();
+        match self {
+            Self::Text(text) => search_all(root, 0, &|n| matches_text(n, text), &mut results),
+            Self::Role(role) => search_all(root, 0, &|n| matches_role(n, role), &mut results),
+            Self::Label(label) => search_all(root, 0, &|n| matches_label(n, label), &mut results),
+            Self::Focused => search_all(root, 0, &is_focused, &mut results),
+            Self::Id {
+                widget_id,
+                window_id,
+            } => {
+                // ID selectors match at most one node.
+                if let Some(node) = find_by_id(root, widget_id, window_id.as_deref(), None, 0) {
+                    results.push(node);
+                }
+            }
+        }
+        results
+    }
+}
+
+// -- Depth-first search helpers ----------------------------------------------
+
+fn search<'a>(
+    node: &'a TreeNode,
+    depth: usize,
+    predicate: &dyn Fn(&TreeNode) -> bool,
+) -> Option<&'a TreeNode> {
+    if depth > MAX_SEARCH_DEPTH {
+        return None;
+    }
+    if predicate(node) {
+        return Some(node);
+    }
+    node.children
+        .iter()
+        .find_map(|child| search(child, depth + 1, predicate))
+}
+
+fn search_all<'a>(
+    node: &'a TreeNode,
+    depth: usize,
+    predicate: &dyn Fn(&TreeNode) -> bool,
+    results: &mut Vec<&'a TreeNode>,
+) {
+    if depth > MAX_SEARCH_DEPTH {
+        return;
+    }
+    if predicate(node) {
+        results.push(node);
+    }
+    for child in &node.children {
+        search_all(child, depth + 1, predicate, results);
+    }
+}
+
+/// Find a node by ID, optionally scoped to a specific window.
+///
+/// Matches against the full scoped ID (`main#form/email`) and also
+/// against the local name (the segment after the last `/` or `#`).
+/// This lets callers use bare names like `"email"` without knowing
+/// the full scope path.
+fn find_by_id<'a>(
+    node: &'a TreeNode,
+    target_id: &str,
+    target_window: Option<&str>,
+    current_window: Option<&'a str>,
+    depth: usize,
+) -> Option<&'a TreeNode> {
+    if depth > MAX_SEARCH_DEPTH {
+        return None;
+    }
+
+    let current_window = if node.type_name == "window" {
+        Some(node.id.as_str())
+    } else {
+        current_window
+    };
+
+    let matches_id = node.id == target_id || local_name(&node.id) == target_id;
+    if matches_id && target_window.is_none_or(|win| current_window == Some(win)) {
+        return Some(node);
+    }
+
+    node.children
+        .iter()
+        .find_map(|child| find_by_id(child, target_id, target_window, current_window, depth + 1))
+}
+
+/// Extract the local name from a scoped ID.
+///
+/// `"main#form/email"` -> `"email"`
+/// `"form/email"` -> `"email"`
+/// `"email"` -> `"email"`
+fn local_name(id: &str) -> &str {
+    id.rsplit_once('/')
+        .or_else(|| id.rsplit_once('#'))
+        .map(|(_, local)| local)
+        .unwrap_or(id)
+}
+
+// -- Node predicates ---------------------------------------------------------
+
+/// Match against text content in `content`, `label`, `value`, and
+/// `placeholder` props.
+fn matches_text(node: &TreeNode, text: &str) -> bool {
+    for key in &["content", "label", "value", "placeholder"] {
+        if node.props.get_str(key) == Some(text) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Match by explicit `a11y.role`, falling back to `type_name` when
+/// no `a11y` prop is present.
+fn matches_role(node: &TreeNode, role: &str) -> bool {
+    if let Some(a11y) = node.props.get_value("a11y") {
+        a11y.get("role").and_then(|v| v.as_str()) == Some(role)
+    } else {
+        node.type_name == role
+    }
+}
+
+/// Match by explicit `a11y.label`, falling back to `label` and
+/// `content` props.
+fn matches_label(node: &TreeNode, label: &str) -> bool {
+    if let Some(a11y) = node.props.get_value("a11y")
+        && a11y.get("label").and_then(|v| v.as_str()) == Some(label)
+    {
+        return true;
+    }
+    for key in &["label", "content"] {
+        if node.props.get_str(key) == Some(label) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Match nodes with `props.focused == true` or `a11y.focused == true`.
+fn is_focused(node: &TreeNode) -> bool {
+    if node.props.get_bool("focused") == Some(true) {
+        return true;
+    }
+    if let Some(a11y) = node.props.get_value("a11y")
+        && a11y.get("focused").and_then(|v| v.as_bool()) == Some(true)
+    {
+        return true;
+    }
+    false
 }

@@ -240,11 +240,7 @@ impl Bridge {
     }
 
     /// Register a stub effect response for testing/automation.
-    pub fn send_register_effect_stub(
-        &mut self,
-        kind: &str,
-        response: &Value,
-    ) -> io::Result<()> {
+    pub fn send_register_effect_stub(&mut self, kind: &str, response: &Value) -> io::Result<()> {
         let msg = serde_json::json!({
             "type": "register_effect_stub",
             "session": "",

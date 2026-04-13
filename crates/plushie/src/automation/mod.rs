@@ -28,6 +28,8 @@
 //! ```
 
 mod element;
+pub mod file;
+pub mod runner;
 
 pub use element::Element;
 pub use plushie_core::Selector;

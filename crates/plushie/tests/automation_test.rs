@@ -1,7 +1,7 @@
 //! Tests for the automation module: Selector and Element.
 
-use plushie_core::protocol::{Props, TreeNode};
 use plushie_core::Selector;
+use plushie_core::protocol::{Props, TreeNode};
 
 use plushie::automation::Element;
 
@@ -102,10 +102,7 @@ fn find_by_full_scoped_id() {
 fn find_by_text() {
     let tree = container_node(
         "root",
-        vec![
-            text_node("a", "Hello"),
-            text_node("b", "World"),
-        ],
+        vec![text_node("a", "Hello"), text_node("b", "World")],
     );
     let found = Selector::text("World").find(&tree);
     assert!(found.is_some());
@@ -135,10 +132,7 @@ fn find_by_role_falls_back_to_type_name() {
 
 #[test]
 fn find_by_label() {
-    let tree = container_node(
-        "root",
-        vec![button_node("save", "Save Document")],
-    );
+    let tree = container_node("root", vec![button_node("save", "Save Document")]);
     let found = Selector::label("Save Document").find(&tree);
     assert!(found.is_some());
     assert_eq!(found.unwrap().id, "save");
@@ -233,10 +227,7 @@ fn element_inferred_role_from_type() {
 
 #[test]
 fn element_children() {
-    let tree = container_node(
-        "root",
-        vec![text_node("a", "A"), text_node("b", "B")],
-    );
+    let tree = container_node("root", vec![text_node("a", "A"), text_node("b", "B")]);
     let elem = Element::new(&tree);
     let children = elem.children();
     assert_eq!(children.len(), 2);

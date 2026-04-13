@@ -23,13 +23,13 @@
 
 use std::collections::HashMap;
 
-use plushie_core::protocol::TreeNode;
 use plushie_core::Selector;
+use plushie_core::protocol::TreeNode;
 use serde_json::Value;
 
+use crate::App;
 use crate::automation::Element;
 use crate::command::Command;
-use crate::App;
 use crate::event::{
     AsyncEvent, EffectEvent, EffectResult, Event, EventType, KeyEventType, WidgetEvent,
 };
@@ -122,11 +122,7 @@ impl<A: App> TestSession<A> {
     /// Simulate a toggle on a checkbox or toggler.
     pub fn toggle(&mut self, selector: impl Into<Selector>, checked: bool) {
         let id = self.resolve(selector).id.clone();
-        self.dispatch(widget_event(
-            EventType::Toggle,
-            &id,
-            Value::Bool(checked),
-        ));
+        self.dispatch(widget_event(EventType::Toggle, &id, Value::Bool(checked)));
     }
 
     /// Simulate a selection on a pick list, combo box, or radio.
@@ -152,7 +148,11 @@ impl<A: App> TestSession<A> {
     /// Simulate a slider value change.
     pub fn slide(&mut self, selector: impl Into<Selector>, value: f64) {
         let id = self.resolve(selector).id.clone();
-        self.dispatch(widget_event(EventType::Slide, &id, serde_json::json!(value)));
+        self.dispatch(widget_event(
+            EventType::Slide,
+            &id,
+            serde_json::json!(value),
+        ));
     }
 
     /// Simulate a paste event on a widget.
@@ -327,7 +327,12 @@ impl<A: App> TestSession<A> {
             }
             Command::Renderer(ref op) => {
                 // Check for effect requests with stubs.
-                if let crate::command::RendererOp::Effect { ref tag, ref request, .. } = *op {
+                if let crate::command::RendererOp::Effect {
+                    ref tag,
+                    ref request,
+                    ..
+                } = *op
+                {
                     let kind = request.kind();
                     if let Some(result) = self.effect_stubs.get(kind).cloned() {
                         let event = Event::Effect(EffectEvent {
@@ -489,9 +494,7 @@ impl<A: App> TestSession<A> {
     /// Assert that a widget prop has the expected value.
     pub fn assert_prop(&self, selector: impl Into<Selector>, key: &str, expected: &Value) {
         let sel = selector.into();
-        let actual = sel
-            .find(&self.tree)
-            .and_then(|n| n.props.get_value(key));
+        let actual = sel.find(&self.tree).and_then(|n| n.props.get_value(key));
         assert_eq!(
             actual.as_ref(),
             Some(expected),
@@ -525,11 +528,7 @@ fn run_async_sync(task_fn: crate::command::AsyncTaskFn) -> Result<Value, Value> 
     rt.block_on((task_fn)())
 }
 
-fn key_event(
-    event_type: KeyEventType,
-    key: &str,
-    modifiers: crate::types::KeyModifiers,
-) -> Event {
+fn key_event(event_type: KeyEventType, key: &str, modifiers: crate::types::KeyModifiers) -> Event {
     Event::Key(crate::event::KeyEvent {
         event_type,
         key: key.to_string(),

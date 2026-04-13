@@ -18,6 +18,7 @@ use super::PlushieType;
 ///
 /// let red = Color::red();
 /// let custom = Color::hex("#3498db");
+/// let short = Color::hex("#f0f");       // expands to #ff00ff
 /// let rgb = Color::rgb(0.5, 0.8, 1.0);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
@@ -26,14 +27,54 @@ pub struct Color(String);
 impl Color {
     /// Create a color from a hex string.
     ///
-    /// The string should be in `#rrggbb` or `#rrggbbaa` format.
-    /// No validation is performed; invalid formats will be
-    /// silently ignored by the renderer.
+    /// Accepts 3, 4, 6, or 8 hex digit formats (with or without
+    /// `#` prefix). Short forms are expanded automatically:
+    ///
+    /// - `#rgb` / `rgb` expands to `#rrggbb`
+    /// - `#rgba` / `rgba` expands to `#rrggbbaa`
+    /// - `#rrggbb` / `rrggbb` stored as `#rrggbb`
+    /// - `#rrggbbaa` / `rrggbbaa` stored as `#rrggbbaa`
+    ///
+    /// Panics on invalid hex characters or unsupported lengths.
+    /// Use [`try_hex`](Self::try_hex) for a fallible variant.
     pub fn hex(s: &str) -> Self {
-        Self(s.to_string())
+        match Self::try_hex(s) {
+            Some(c) => c,
+            None => panic!("invalid hex color: \"{s}\""),
+        }
+    }
+
+    /// Fallible version of [`hex`](Self::hex).
+    ///
+    /// Returns `None` for invalid hex characters, unsupported
+    /// lengths, or empty input.
+    pub fn try_hex(s: &str) -> Option<Self> {
+        let digits = s.strip_prefix('#').unwrap_or(s);
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        // Normalize to lowercase for consistent PartialEq behavior
+        // (rgb()/rgba() produce lowercase hex, so hex() should too).
+        let lower = digits.to_ascii_lowercase();
+        let canonical = match lower.len() {
+            3 | 4 => {
+                let mut out = String::with_capacity(1 + lower.len() * 2);
+                out.push('#');
+                for c in lower.chars() {
+                    out.push(c);
+                    out.push(c);
+                }
+                out
+            }
+            6 | 8 => format!("#{lower}"),
+            _ => return None,
+        };
+        Some(Self(canonical))
     }
 
     /// Create a color from RGB floats (0.0 to 1.0).
+    ///
+    /// Values outside the range are clamped.
     pub fn rgb(r: f32, g: f32, b: f32) -> Self {
         let r = (r.clamp(0.0, 1.0) * 255.0) as u8;
         let g = (g.clamp(0.0, 1.0) * 255.0) as u8;
@@ -42,6 +83,8 @@ impl Color {
     }
 
     /// Create a color from RGBA floats (0.0 to 1.0).
+    ///
+    /// Values outside the range are clamped.
     pub fn rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         let r = (r.clamp(0.0, 1.0) * 255.0) as u8;
         let g = (g.clamp(0.0, 1.0) * 255.0) as u8;
@@ -508,7 +551,7 @@ impl Color {
 
 impl PlushieType for Color {
     fn wire_decode(value: &Value) -> Option<Self> {
-        value.as_str().map(Color::hex)
+        value.as_str().and_then(Color::try_hex)
     }
 
     fn wire_encode(&self) -> PropValue {
@@ -516,7 +559,7 @@ impl PlushieType for Color {
     }
 
     fn extract(props: &Props, key: &str) -> Option<Self> {
-        props.get_str(key).map(Color::hex)
+        props.get_str(key).and_then(Color::try_hex)
     }
 
     fn type_name() -> &'static str {
@@ -532,7 +575,7 @@ impl From<&str> for Color {
 
 impl From<String> for Color {
     fn from(s: String) -> Self {
-        Self(s)
+        Self::hex(&s)
     }
 }
 

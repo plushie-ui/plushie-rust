@@ -572,10 +572,11 @@ mod tests {
     }
 
     #[test]
-    fn color_invalid_falls_back_to_transparent() {
-        let c = types::Color::hex("not-a-color");
-        let ic = color(&c);
-        assert_eq!(ic, iced::Color::TRANSPARENT);
+    fn color_invalid_hex_returns_none() {
+        // Color::hex() now validates, so invalid hex can't be
+        // constructed. Verify parse_hex_color handles it gracefully.
+        assert!(crate::theming::parse_hex_color("not-a-color").is_none());
+        assert!(crate::theming::parse_hex_color("#xyz").is_none());
     }
 
     #[test]

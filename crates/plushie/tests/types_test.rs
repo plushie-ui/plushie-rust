@@ -46,6 +46,51 @@ fn color_from_str() {
     assert_eq!(c.as_hex(), "#abcdef");
 }
 
+#[test]
+fn color_short_hex_rgb_expands() {
+    let c = Color::hex("#f0f");
+    assert_eq!(c.as_hex(), "#ff00ff");
+}
+
+#[test]
+fn color_short_hex_rgba_expands() {
+    let c = Color::hex("#f0fa");
+    assert_eq!(c.as_hex(), "#ff00ffaa");
+}
+
+#[test]
+fn color_short_hex_without_hash() {
+    let c = Color::hex("abc");
+    assert_eq!(c.as_hex(), "#aabbcc");
+}
+
+#[test]
+fn color_hex_normalizes_to_lowercase() {
+    let c = Color::hex("#AABBCC");
+    assert_eq!(c.as_hex(), "#aabbcc");
+    // Ensures hex() and rgb() produce comparable values
+    assert_eq!(Color::hex("#FF0000"), Color::rgb(1.0, 0.0, 0.0));
+}
+
+#[test]
+fn color_try_hex_returns_none_for_invalid() {
+    assert!(Color::try_hex("").is_none());
+    assert!(Color::try_hex("#").is_none());
+    assert!(Color::try_hex("#xyz").is_none());
+    assert!(Color::try_hex("#12345").is_none()); // 5 digits
+    assert!(Color::try_hex("#1234567").is_none()); // 7 digits
+    assert!(Color::try_hex("not-hex").is_none());
+}
+
+#[test]
+fn color_try_hex_returns_some_for_valid() {
+    assert!(Color::try_hex("#abc").is_some());
+    assert!(Color::try_hex("#abcd").is_some());
+    assert!(Color::try_hex("#aabbcc").is_some());
+    assert!(Color::try_hex("#aabbccdd").is_some());
+    assert!(Color::try_hex("aabbcc").is_some()); // no hash prefix
+}
+
 // ---------------------------------------------------------------------------
 // Length
 // ---------------------------------------------------------------------------
@@ -92,6 +137,23 @@ fn padding_four_sides_from_tuple() {
 #[test]
 fn padding_all_is_uniform() {
     assert_eq!(Padding::all(10.0), Padding::new(10.0, 10.0, 10.0, 10.0));
+}
+
+#[test]
+fn padding_per_side_constructors() {
+    assert_eq!(Padding::top(10.0), Padding::new(10.0, 0.0, 0.0, 0.0));
+    assert_eq!(Padding::right(10.0), Padding::new(0.0, 10.0, 0.0, 0.0));
+    assert_eq!(Padding::bottom(10.0), Padding::new(0.0, 0.0, 10.0, 0.0));
+    assert_eq!(Padding::left(10.0), Padding::new(0.0, 0.0, 0.0, 10.0));
+}
+
+#[test]
+fn padding_vertical_and_horizontal() {
+    assert_eq!(Padding::vertical(10.0), Padding::new(10.0, 0.0, 10.0, 0.0));
+    assert_eq!(
+        Padding::horizontal(10.0),
+        Padding::new(0.0, 10.0, 0.0, 10.0)
+    );
 }
 
 // ---------------------------------------------------------------------------

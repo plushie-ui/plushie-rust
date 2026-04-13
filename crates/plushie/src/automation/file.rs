@@ -1,8 +1,9 @@
 //! `.plushie` automation file parser.
 //!
-//! Parses `.plushie` files into a header and a list of instructions.
-//! The file format consists of a header section (key-value pairs)
-//! followed by a `-----` separator and instruction lines.
+//! Parses `.plushie` files into a typed header and a list of
+//! instructions. The file format consists of a header section
+//! (key-value pairs) followed by a `-----` separator and instruction
+//! lines.
 //!
 //! ```text
 //! app: Counter
@@ -12,62 +13,57 @@
 //! assert_text "#count" "Count: 1"
 //! ```
 
-use std::collections::HashMap;
+use plushie_core::Selector;
 
 /// Parsed header from a `.plushie` file.
-#[derive(Debug, Clone, Default)]
+///
+/// Header fields are validated at parse time. Unknown keys are
+/// silently ignored for forward compatibility.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
-    /// Key-value pairs from the header section.
-    pub fields: HashMap<String, String>,
+    /// Application module name (e.g. `"Counter"`).
+    pub app: Option<String>,
+    /// Viewport dimensions (width, height). Default: (800, 600).
+    pub viewport: (u32, u32),
+    /// Renderer backend name. Default: `"mock"`.
+    pub backend: String,
 }
 
-impl Header {
-    /// Get the app module name.
-    pub fn app(&self) -> Option<&str> {
-        self.fields.get("app").map(|s| s.as_str())
-    }
-
-    /// Get the viewport dimensions (width, height).
-    pub fn viewport(&self) -> (u32, u32) {
-        self.fields
-            .get("viewport")
-            .and_then(|s| {
-                let (w, h) = s.split_once('x')?;
-                Some((w.parse().ok()?, h.parse().ok()?))
-            })
-            .unwrap_or((800, 600))
-    }
-
-    /// Get the backend name.
-    pub fn backend(&self) -> &str {
-        self.fields
-            .get("backend")
-            .map(|s| s.as_str())
-            .unwrap_or("mock")
+impl Default for Header {
+    fn default() -> Self {
+        Self {
+            app: None,
+            viewport: (800, 600),
+            backend: "mock".to_string(),
+        }
     }
 }
 
 /// A single instruction from a `.plushie` file.
+///
+/// Selector fields are parsed into [`Selector`] at parse time,
+/// providing type-safe widget targeting throughout the automation
+/// pipeline.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
-    Click(String),
-    TypeText(String, String),
+    Click(Selector),
+    TypeText(Selector, String),
     TypeKey(String),
     Press(String),
     Release(String),
-    Toggle(String, Option<bool>),
-    Select(String, String),
-    Slide(String, f64),
+    Toggle(Selector, Option<bool>),
+    Select(Selector, String),
+    Slide(Selector, f64),
     MoveTo(f32, f32),
-    MoveToSelector(String),
-    Scroll(String, f32, f32),
+    MoveToSelector(Selector),
+    Scroll(Selector, f32, f32),
     Wait(u64),
 
     // Assertions
     Expect(String),
-    AssertText(String, String),
-    AssertExists(String),
-    AssertNotExists(String),
+    AssertText(Selector, String),
+    AssertExists(Selector),
+    AssertNotExists(Selector),
 
     // Capture
     Screenshot(String),
@@ -101,9 +97,17 @@ pub fn parse(content: &str) -> Result<PlushieFile, String> {
             break;
         }
         if let Some((key, value)) = trimmed.split_once(':') {
-            header
-                .fields
-                .insert(key.trim().to_string(), value.trim().to_string());
+            let key = key.trim();
+            let value = value.trim();
+            match key {
+                "app" => header.app = Some(value.to_string()),
+                "viewport" => {
+                    header.viewport = parse_viewport(value)
+                        .map_err(|e| format!("line {}: viewport: {e}", line_no + 1))?;
+                }
+                "backend" => header.backend = value.to_string(),
+                _ => {} // Unknown keys ignored for forward compatibility.
+            }
         } else {
             return Err(format!(
                 "line {}: expected 'key: value' or '-----'",
@@ -142,6 +146,24 @@ pub fn parse_file(path: &str) -> Result<PlushieFile, String> {
     let content =
         std::fs::read_to_string(path).map_err(|e| format!("failed to read {path}: {e}"))?;
     parse(&content)
+}
+
+fn parse_viewport(s: &str) -> Result<(u32, u32), String> {
+    let (w, h) = s
+        .split_once('x')
+        .ok_or_else(|| format!("expected 'WxH' format, got '{s}'"))?;
+    let w: u32 = w.parse().map_err(|_| format!("invalid width '{w}'"))?;
+    let h: u32 = h.parse().map_err(|_| format!("invalid height '{h}'"))?;
+    Ok((w, h))
+}
+
+/// Convert a token string to a Selector.
+///
+/// .plushie files express selectors as bare or quoted strings.
+/// These map to `Selector::Id` via the standard `From<&str>`
+/// conversion.
+fn sel(s: &str) -> Selector {
+    Selector::from(s)
 }
 
 /// Tokenize an instruction line.
@@ -189,14 +211,13 @@ fn parse_instruction(tokens: &[String]) -> Result<Instruction, String> {
     match cmd {
         "click" => {
             require_args(cmd, args, 1)?;
-            Ok(Instruction::Click(args[0].clone()))
+            Ok(Instruction::Click(sel(&args[0])))
         }
         "type" => {
             if args.len() == 1 {
-                // Special key: type enter, type escape, etc.
                 Ok(Instruction::TypeKey(args[0].clone()))
             } else if args.len() >= 2 {
-                Ok(Instruction::TypeText(args[0].clone(), args[1].clone()))
+                Ok(Instruction::TypeText(sel(&args[0]), args[1].clone()))
             } else {
                 Err("type requires 1 or 2 arguments".to_string())
             }
@@ -214,18 +235,18 @@ fn parse_instruction(tokens: &[String]) -> Result<Instruction, String> {
                 return Err("toggle requires at least 1 argument".to_string());
             }
             let value = args.get(1).map(|v| v == "true");
-            Ok(Instruction::Toggle(args[0].clone(), value))
+            Ok(Instruction::Toggle(sel(&args[0]), value))
         }
         "select" => {
             require_args(cmd, args, 2)?;
-            Ok(Instruction::Select(args[0].clone(), args[1].clone()))
+            Ok(Instruction::Select(sel(&args[0]), args[1].clone()))
         }
         "slide" => {
             require_args(cmd, args, 2)?;
             let value: f64 = args[1]
                 .parse()
                 .map_err(|_| format!("slide: invalid number '{}'", args[1]))?;
-            Ok(Instruction::Slide(args[0].clone(), value))
+            Ok(Instruction::Slide(sel(&args[0]), value))
         }
         "scroll" => {
             require_args(cmd, args, 3)?;
@@ -235,11 +256,10 @@ fn parse_instruction(tokens: &[String]) -> Result<Instruction, String> {
             let dy: f32 = args[2]
                 .parse()
                 .map_err(|_| format!("scroll: invalid dy '{}'", args[2]))?;
-            Ok(Instruction::Scroll(args[0].clone(), dx, dy))
+            Ok(Instruction::Scroll(sel(&args[0]), dx, dy))
         }
         "move" => {
             require_args(cmd, args, 1)?;
-            // Check for X,Y coordinate format.
             if let Some((x_str, y_str)) = args[0].split_once(',') {
                 let x: f32 = x_str
                     .parse()
@@ -249,7 +269,7 @@ fn parse_instruction(tokens: &[String]) -> Result<Instruction, String> {
                     .map_err(|_| format!("move: invalid y '{y_str}'"))?;
                 Ok(Instruction::MoveTo(x, y))
             } else {
-                Ok(Instruction::MoveToSelector(args[0].clone()))
+                Ok(Instruction::MoveToSelector(sel(&args[0])))
             }
         }
         "wait" => {
@@ -265,15 +285,15 @@ fn parse_instruction(tokens: &[String]) -> Result<Instruction, String> {
         }
         "assert_text" => {
             require_args(cmd, args, 2)?;
-            Ok(Instruction::AssertText(args[0].clone(), args[1].clone()))
+            Ok(Instruction::AssertText(sel(&args[0]), args[1].clone()))
         }
         "assert_exists" => {
             require_args(cmd, args, 1)?;
-            Ok(Instruction::AssertExists(args[0].clone()))
+            Ok(Instruction::AssertExists(sel(&args[0])))
         }
         "assert_not_exists" => {
             require_args(cmd, args, 1)?;
-            Ok(Instruction::AssertNotExists(args[0].clone()))
+            Ok(Instruction::AssertNotExists(sel(&args[0])))
         }
         "screenshot" => {
             require_args(cmd, args, 1)?;
@@ -306,8 +326,8 @@ mod tests {
     fn parse_header_and_instructions() {
         let content = "app: Counter\nviewport: 800x600\n-----\nclick \"#inc\"\nassert_text \"#count\" \"1\"\n";
         let file = parse(content).unwrap();
-        assert_eq!(file.header.app(), Some("Counter"));
-        assert_eq!(file.header.viewport(), (800, 600));
+        assert_eq!(file.header.app.as_deref(), Some("Counter"));
+        assert_eq!(file.header.viewport, (800, 600));
         assert_eq!(file.instructions.len(), 2);
     }
 
@@ -343,7 +363,7 @@ mod tests {
         let file = parse(content).unwrap();
         assert_eq!(
             file.instructions[0].1,
-            Instruction::Toggle("#cb".into(), Some(true))
+            Instruction::Toggle(Selector::id("#cb"), Some(true))
         );
     }
 
@@ -360,7 +380,7 @@ mod tests {
         let file = parse(content).unwrap();
         assert_eq!(
             file.instructions[0].1,
-            Instruction::Slide("#vol".into(), 0.75)
+            Instruction::Slide(Selector::id("#vol"), 0.75)
         );
     }
 
@@ -368,5 +388,28 @@ mod tests {
     fn missing_separator_is_error() {
         let result = parse("app: Test\nclick \"#btn\"\n");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn header_defaults() {
+        let content = "-----\nclick \"#a\"\n";
+        let file = parse(content).unwrap();
+        assert_eq!(file.header.app, None);
+        assert_eq!(file.header.viewport, (800, 600));
+        assert_eq!(file.header.backend, "mock");
+    }
+
+    #[test]
+    fn invalid_viewport_is_error() {
+        let result = parse("viewport: bad\n-----\n");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("viewport"));
+    }
+
+    #[test]
+    fn unknown_header_keys_ignored() {
+        let content = "app: T\ncustom_key: value\n-----\nclick \"#a\"\n";
+        let file = parse(content).unwrap();
+        assert_eq!(file.header.app.as_deref(), Some("T"));
     }
 }

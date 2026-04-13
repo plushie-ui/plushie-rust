@@ -55,11 +55,11 @@ fn execute_instruction<A: App>(
 ) -> Result<(), String> {
     match instruction {
         Instruction::Click(sel) => {
-            session.click(sel.as_str());
+            session.click(sel.clone());
             Ok(())
         }
         Instruction::TypeText(sel, text) => {
-            session.type_text(sel.as_str(), text);
+            session.type_text(sel.clone(), text);
             Ok(())
         }
         Instruction::TypeKey(key) => {
@@ -80,25 +80,25 @@ fn execute_instruction<A: App>(
                 None => {
                     // No explicit value: read current state and invert.
                     let current = session
-                        .find(sel.as_str())
+                        .find(sel.clone())
                         .and_then(|e| e.prop_bool("checked").or_else(|| e.prop_bool("is_toggled")))
                         .unwrap_or(false);
                     !current
                 }
             };
-            session.toggle(sel.as_str(), checked);
+            session.toggle(sel.clone(), checked);
             Ok(())
         }
         Instruction::Select(sel, value) => {
-            session.select(sel.as_str(), value);
+            session.select(sel.clone(), value);
             Ok(())
         }
         Instruction::Slide(sel, value) => {
-            session.slide(sel.as_str(), *value);
+            session.slide(sel.clone(), *value);
             Ok(())
         }
         Instruction::Scroll(sel, dx, dy) => {
-            session.scroll(sel.as_str(), *dx, *dy);
+            session.scroll(sel.clone(), *dx, *dy);
             Ok(())
         }
         Instruction::MoveTo(_x, _y) => {
@@ -123,25 +123,24 @@ fn execute_instruction<A: App>(
             }
         }
         Instruction::AssertText(sel, expected) => {
-            let actual = session.text_content(sel.as_str());
+            let actual = session.text_content(sel.clone());
             if actual.as_deref() == Some(expected.as_str()) {
                 Ok(())
             } else {
                 Err(format!(
-                    "expected {sel} text \"{expected}\", got {:?}",
-                    actual
+                    "expected {sel} text \"{expected}\", got {actual:?}"
                 ))
             }
         }
         Instruction::AssertExists(sel) => {
-            if session.find(sel.as_str()).is_some() {
+            if session.find(sel.clone()).is_some() {
                 Ok(())
             } else {
                 Err(format!("expected {sel} to exist"))
             }
         }
         Instruction::AssertNotExists(sel) => {
-            if session.find(sel.as_str()).is_none() {
+            if session.find(sel.clone()).is_none() {
                 Ok(())
             } else {
                 Err(format!("expected {sel} to NOT exist"))

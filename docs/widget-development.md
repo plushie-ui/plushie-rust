@@ -18,7 +18,7 @@ section in the protocol docs.
 
 ## Custom widgets
 
-A Rust crate that implements `PlushieWidget` from `plushie-ext`.
+A Rust crate that implements `PlushieWidget` from `plushie-widget-sdk`.
 Your host SDK handles compilation and binary generation. You write
 the widget logic.
 

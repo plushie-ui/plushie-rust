@@ -13,7 +13,7 @@ my-gauge/               depends on iced (via plushie-iced)
   src/lib.rs            the Widget impl -- rendering, layout, events, a11y
   Cargo.toml
 
-my-gauge-plushie/         depends on plushie-ext + my-gauge
+my-gauge-plushie/         depends on plushie-widget-sdk + my-gauge
   src/lib.rs            PlushieWidget wrapper -- prop parsing, event bridging
   Cargo.toml
 ```
@@ -39,7 +39,7 @@ bridges events. Every host SDK gets the widget through this single
 wrapper -- no per-language duplication:
 
 ```rust
-use plushie_ext::prelude::*;
+use plushie_widget_sdk::prelude::*;
 use my_gauge::gauge;
 
 pub struct GaugeWidget;
@@ -383,14 +383,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-plushie-ext = "0.3"
+plushie-widget-sdk = "0.6"
 my-gauge = { path = "../my-gauge" }
 ```
 
 ### The wrapper
 
 ```rust
-use plushie_ext::prelude::*;
+use plushie_widget_sdk::prelude::*;
 use my_gauge::gauge;
 
 pub struct GaugeWidget;
@@ -599,7 +599,7 @@ widget, verify it doesn't panic with various inputs.
 #[cfg(test)]
 mod tests {
     use super::*;
-    use plushie_ext::testing::*;
+    use plushie_widget_sdk::testing::*;
     use serde_json::json;
 
     #[test]
@@ -650,7 +650,7 @@ automatically.
 
 If your widget is general-purpose enough to ship with every plushie
 installation (like text_input, slider, or canvas), it can be added
-to plushie-ext instead of distributed as a separate crate.
+to plushie-widget-sdk instead of distributed as a separate crate.
 
 This is a contribution to the plushie project, not the normal
 distribution path:
@@ -678,4 +678,4 @@ emission, validation) belongs in plushie-widget-sdk.
   framework
 - iced widget examples in the
   [iced repository](https://github.com/iced-rs/iced)
-- plushie-ext rustdocs (`cargo doc --open` in the plushie-renderer workspace)
+- plushie-widget-sdk rustdocs (`cargo doc --open` in the plushie-rust workspace)

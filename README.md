@@ -1,10 +1,13 @@
-# plushie-renderer
+# plushie-rust
 
-A standalone native GUI renderer driven by a simple wire protocol over
-stdin/stdout. Send it a tree of UI nodes as MessagePack or JSON, get
-native desktop windows. Send updates, get events back.
+Rust workspace for [Plushie](https://github.com/plushie-ui): the Rust
+SDK for building plushie desktop apps, the widget SDK for custom
+widgets, and the standalone renderer binary.
 
-Built for the [Plushie Elixir toolkit](https://github.com/plushie-ui/plushie-elixir),
+The renderer is driven by a simple wire protocol over stdin/stdout.
+Send it a tree of UI nodes as MessagePack or JSON, get native desktop
+windows. Send updates, get events back. Built for the
+[Plushie Elixir toolkit](https://github.com/plushie-ui/plushie-elixir),
 but the renderer doesn't know or care what language is on the other
 end. Any language that can spawn a process and write bytes to its stdin
 can use it.

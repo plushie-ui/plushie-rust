@@ -483,36 +483,14 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
 
     // Theme (not handled by Core for initial settings).
     if let Some(theme) = settings.theme {
-        match theme {
-            plushie_core::settings::Theme::System => {
+        use plushie_core::types::{PlushieType, Theme};
+        match &theme {
+            Theme::System => {
                 renderer.theme_follows_system = true;
             }
-            plushie_core::settings::Theme::Named(name) => {
-                renderer.theme =
-                    plushie_widget_sdk::theming::resolve_theme(&serde_json::Value::String(name));
-            }
-            plushie_core::settings::Theme::Custom(palette) => {
-                let mut map = serde_json::Map::new();
-                if let Some(bg) = palette.background {
-                    map.insert("background".into(), bg.into());
-                }
-                if let Some(text) = palette.text {
-                    map.insert("text".into(), text.into());
-                }
-                if let Some(primary) = palette.primary {
-                    map.insert("primary".into(), primary.into());
-                }
-                if let Some(success) = palette.success {
-                    map.insert("success".into(), success.into());
-                }
-                if let Some(warning) = palette.warning {
-                    map.insert("warning".into(), warning.into());
-                }
-                if let Some(danger) = palette.danger {
-                    map.insert("danger".into(), danger.into());
-                }
-                renderer.theme =
-                    plushie_widget_sdk::theming::resolve_theme(&serde_json::Value::Object(map));
+            _ => {
+                let wire_val = serde_json::Value::from(theme.wire_encode());
+                renderer.theme = plushie_widget_sdk::theming::resolve_theme(&wire_val);
             }
         }
     }

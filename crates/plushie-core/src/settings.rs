@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+use crate::types::Theme;
+
 /// Application-level settings.
 ///
 /// All fields are optional. The renderer uses sensible defaults
@@ -28,34 +30,6 @@ pub struct Settings {
     pub default_event_rate: Option<u32>,
     /// Per-widget-type configuration passed to native widgets.
     pub widget_config: HashMap<String, Value>,
-}
-
-/// A theme specification.
-#[derive(Debug, Clone)]
-pub enum Theme {
-    /// Follow the OS light/dark preference.
-    System,
-    /// A built-in theme by name.
-    Named(String),
-    /// A custom palette.
-    Custom(ThemePalette),
-}
-
-/// Custom theme palette colors.
-#[derive(Debug, Clone, Default)]
-pub struct ThemePalette {
-    /// Background color for surfaces.
-    pub background: Option<String>,
-    /// Default text color.
-    pub text: Option<String>,
-    /// Primary accent color (buttons, links, highlights).
-    pub primary: Option<String>,
-    /// Success state color (confirmations, positive indicators).
-    pub success: Option<String>,
-    /// Warning state color (caution indicators).
-    pub warning: Option<String>,
-    /// Danger state color (errors, destructive actions).
-    pub danger: Option<String>,
 }
 
 /// Per-window defaults. Returned from [`App::window_config`](crate::App::window_config).

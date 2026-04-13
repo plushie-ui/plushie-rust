@@ -76,7 +76,7 @@ pub use range::Range;
 pub use shadow::Shadow;
 pub use style::{Style, StyleMap};
 pub use text::{Ellipsis, Shaping, Wrapping};
-pub use theme::Theme;
+pub use theme::{CustomTheme, Theme};
 
 /// Behaviour trait for Plushie property types.
 ///

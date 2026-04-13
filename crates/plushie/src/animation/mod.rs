@@ -24,4 +24,4 @@ mod tween;
 pub use plushie_core::animation::*;
 
 // SDK-only: client-side interpolation.
-pub use tween::Tween;
+pub use tween::{RedirectOpts, SpringConfig, Tween};

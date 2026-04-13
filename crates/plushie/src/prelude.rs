@@ -52,4 +52,6 @@ pub use crate::types::{
 pub use plushie_core::types::a11y::{Live, Role};
 
 // Animation
-pub use crate::animation::{AnimationStep, Easing, Repeat, Sequence, Spring, Transition};
+pub use crate::animation::{
+    AnimationStep, Easing, Repeat, Sequence, Spring, SpringConfig, Transition, Tween,
+};

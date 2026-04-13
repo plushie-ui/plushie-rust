@@ -32,8 +32,9 @@ pub type AsyncTaskFn =
 
 /// A side effect returned from the update function.
 ///
-/// Use the builder methods (`Command::focus`, `Command::async_task`,
-/// `Command::close_window`, etc.) for ergonomic construction.
+/// Every operation has a builder method for ergonomic construction
+/// (focus, scroll, window ops/queries, effects, images, pane grid,
+/// system, async tasks, etc.).
 ///
 /// Commands that go to the renderer are wrapped in
 /// [`Command::Renderer`]. SDK-local commands (async tasks, timers)
@@ -157,6 +158,53 @@ impl Command {
         Self::Renderer(RendererOp::FocusPrevious)
     }
 
+    // -- Text cursor --
+
+    /// Select all text in a text input or editor.
+    pub fn select_all(target: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "select_all".to_string(),
+            value: Value::Null,
+        })
+    }
+
+    /// Move the cursor to the front of a text input or editor.
+    pub fn move_cursor_to_front(target: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "move_cursor_to_front".to_string(),
+            value: Value::Null,
+        })
+    }
+
+    /// Move the cursor to the end of a text input or editor.
+    pub fn move_cursor_to_end(target: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "move_cursor_to_end".to_string(),
+            value: Value::Null,
+        })
+    }
+
+    /// Move the cursor to a specific position in a text input.
+    pub fn move_cursor_to(target: &str, position: usize) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "move_cursor_to".to_string(),
+            value: serde_json::json!({"position": position}),
+        })
+    }
+
+    /// Select a range of text in a text input.
+    pub fn select_range(target: &str, start: usize, end: usize) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "select_range".to_string(),
+            value: serde_json::json!({"start": start, "end": end}),
+        })
+    }
+
     // -- Scroll --
 
     /// Scroll a scrollable widget to an absolute position.
@@ -165,6 +213,33 @@ impl Command {
             id: target.to_string(),
             family: "scroll_to".to_string(),
             value: serde_json::json!({"x": x, "y": y}),
+        })
+    }
+
+    /// Scroll a scrollable widget by a relative offset.
+    pub fn scroll_by(target: &str, x: f32, y: f32) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "scroll_by".to_string(),
+            value: serde_json::json!({"x": x, "y": y}),
+        })
+    }
+
+    /// Snap a scrollable widget to a position (no animation).
+    pub fn snap_to(target: &str, x: f32, y: f32) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "snap_to".to_string(),
+            value: serde_json::json!({"x": x, "y": y}),
+        })
+    }
+
+    /// Snap a scrollable widget to the end of its content.
+    pub fn snap_to_end(target: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "snap_to_end".to_string(),
+            value: Value::Null,
         })
     }
 
@@ -191,6 +266,374 @@ impl Command {
             x,
             y,
         }))
+    }
+
+    /// Set or unset the maximized state of a window.
+    pub fn maximize_window(id: &str, maximized: bool) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::Maximize {
+            window_id: id.to_string(),
+            maximized,
+        }))
+    }
+
+    /// Set or unset the minimized state of a window.
+    pub fn minimize_window(id: &str, minimized: bool) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::Minimize {
+            window_id: id.to_string(),
+            minimized,
+        }))
+    }
+
+    /// Set the window display mode.
+    pub fn set_window_mode(id: &str, mode: WindowMode) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::SetMode {
+            window_id: id.to_string(),
+            mode,
+        }))
+    }
+
+    /// Toggle a window between maximized and restored states.
+    pub fn toggle_maximize(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::ToggleMaximize(id.to_string())))
+    }
+
+    /// Toggle window decorations (title bar, borders).
+    pub fn toggle_decorations(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::ToggleDecorations(
+            id.to_string(),
+        )))
+    }
+
+    /// Bring a window to the front and give it input focus.
+    pub fn focus_window(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::FocusWindow(id.to_string())))
+    }
+
+    /// Set the window stacking level.
+    pub fn set_window_level(id: &str, level: WindowLevel) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::SetLevel {
+            window_id: id.to_string(),
+            level,
+        }))
+    }
+
+    /// Begin an interactive window drag.
+    pub fn drag_window(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::DragWindow(id.to_string())))
+    }
+
+    /// Begin an interactive window resize from the given direction.
+    pub fn drag_resize_window(id: &str, direction: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::DragResize {
+            window_id: id.to_string(),
+            direction: direction.to_string(),
+        }))
+    }
+
+    /// Request user attention (taskbar flash or similar).
+    pub fn request_attention(id: &str, urgency: Option<&str>) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::RequestAttention {
+            window_id: id.to_string(),
+            urgency: urgency.map(|s| s.to_string()),
+        }))
+    }
+
+    /// Take a screenshot of a window. Result delivered as a system event.
+    pub fn screenshot(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::Screenshot {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Set whether a window is user-resizable.
+    pub fn set_resizable(id: &str, resizable: bool) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::SetResizable {
+            window_id: id.to_string(),
+            resizable,
+        }))
+    }
+
+    /// Set the minimum window size.
+    pub fn set_min_size(id: &str, width: f32, height: f32) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::SetMinSize {
+            window_id: id.to_string(),
+            width,
+            height,
+        }))
+    }
+
+    /// Set the maximum window size.
+    pub fn set_max_size(id: &str, width: f32, height: f32) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::SetMaxSize {
+            window_id: id.to_string(),
+            width,
+            height,
+        }))
+    }
+
+    /// Allow mouse events to pass through a window.
+    pub fn enable_mouse_passthrough(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::EnableMousePassthrough(
+            id.to_string(),
+        )))
+    }
+
+    /// Stop mouse events from passing through a window.
+    pub fn disable_mouse_passthrough(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::DisableMousePassthrough(
+            id.to_string(),
+        )))
+    }
+
+    /// Show the native system menu for a window.
+    pub fn show_system_menu(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::ShowSystemMenu(id.to_string())))
+    }
+
+    /// Set the window icon from raw RGBA pixel data.
+    pub fn set_icon(id: &str, rgba_data: Vec<u8>, width: u32, height: u32) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::SetIcon {
+            window_id: id.to_string(),
+            data: rgba_data,
+            width,
+            height,
+        }))
+    }
+
+    /// Set window resize increment constraints.
+    pub fn set_resize_increments(id: &str, width: f32, height: f32) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::SetResizeIncrements {
+            window_id: id.to_string(),
+            width,
+            height,
+        }))
+    }
+
+    // -- Window queries --
+
+    /// Query the size of a window. Result delivered as a system event.
+    pub fn get_window_size(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetSize {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Query the position of a window.
+    pub fn get_window_position(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetPosition {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Query whether a window is maximized.
+    pub fn is_maximized(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::WindowQuery(WindowQuery::IsMaximized {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Query whether a window is minimized.
+    pub fn is_minimized(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::WindowQuery(WindowQuery::IsMinimized {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Query the display mode of a window.
+    pub fn get_mode(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetMode {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Query the scale factor of a window.
+    pub fn get_scale_factor(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetScaleFactor {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Query the monitor size for a window.
+    pub fn monitor_size(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::WindowQuery(WindowQuery::MonitorSize {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Query the raw platform window ID.
+    pub fn raw_id(window_id: &str, tag: &str) -> Self {
+        Self::Renderer(RendererOp::WindowQuery(WindowQuery::RawId {
+            window_id: window_id.to_string(),
+            tag: tag.to_string(),
+        }))
+    }
+
+    // -- System --
+
+    /// Enable or disable automatic window tabbing (macOS).
+    pub fn allow_automatic_tabbing(enabled: bool) -> Self {
+        Self::Renderer(RendererOp::SystemOp(SystemOp::AllowAutomaticTabbing(
+            enabled,
+        )))
+    }
+
+    /// Query the current OS theme (light/dark).
+    pub fn get_system_theme(tag: &str) -> Self {
+        Self::Renderer(RendererOp::SystemQuery(SystemQuery::GetTheme {
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Query system information (OS, renderer version, etc.).
+    pub fn get_system_info(tag: &str) -> Self {
+        Self::Renderer(RendererOp::SystemQuery(SystemQuery::GetInfo {
+            tag: tag.to_string(),
+        }))
+    }
+
+    // -- Images --
+
+    /// Create an image from encoded bytes (PNG, JPEG, etc.).
+    pub fn create_image(handle: &str, data: Vec<u8>) -> Self {
+        Self::Renderer(RendererOp::Image(ImageOp::Create {
+            handle: handle.to_string(),
+            data,
+        }))
+    }
+
+    /// Create an image from raw RGBA pixel data.
+    pub fn create_image_raw(handle: &str, width: u32, height: u32, pixels: Vec<u8>) -> Self {
+        Self::Renderer(RendererOp::Image(ImageOp::CreateRaw {
+            handle: handle.to_string(),
+            width,
+            height,
+            pixels,
+        }))
+    }
+
+    /// Replace an existing image with new encoded bytes.
+    pub fn update_image(handle: &str, data: Vec<u8>) -> Self {
+        Self::Renderer(RendererOp::Image(ImageOp::Update {
+            handle: handle.to_string(),
+            data,
+        }))
+    }
+
+    /// Replace an existing image with new raw RGBA pixel data.
+    pub fn update_image_raw(handle: &str, width: u32, height: u32, pixels: Vec<u8>) -> Self {
+        Self::Renderer(RendererOp::Image(ImageOp::UpdateRaw {
+            handle: handle.to_string(),
+            width,
+            height,
+            pixels,
+        }))
+    }
+
+    /// Delete an image by handle.
+    pub fn delete_image(handle: &str) -> Self {
+        Self::Renderer(RendererOp::Image(ImageOp::Delete(handle.to_string())))
+    }
+
+    /// List all loaded image handles.
+    pub fn list_images(tag: &str) -> Self {
+        Self::Renderer(RendererOp::Image(ImageOp::List {
+            tag: tag.to_string(),
+        }))
+    }
+
+    /// Delete all loaded images.
+    pub fn clear_images() -> Self {
+        Self::Renderer(RendererOp::Image(ImageOp::Clear))
+    }
+
+    // -- Pane grid --
+
+    /// Split a pane in a pane grid along the given axis.
+    pub fn pane_split(target: &str, pane: &str, axis: &str, new_pane: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "pane_split".to_string(),
+            value: serde_json::json!({
+                "pane": pane,
+                "axis": axis,
+                "new_pane": new_pane,
+            }),
+        })
+    }
+
+    /// Close a pane in a pane grid.
+    pub fn pane_close(target: &str, pane: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "pane_close".to_string(),
+            value: serde_json::json!({"pane": pane}),
+        })
+    }
+
+    /// Swap two panes in a pane grid.
+    pub fn pane_swap(target: &str, a: &str, b: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "pane_swap".to_string(),
+            value: serde_json::json!({"a": a, "b": b}),
+        })
+    }
+
+    /// Maximize a pane in a pane grid.
+    pub fn pane_maximize(target: &str, pane: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "pane_maximize".to_string(),
+            value: serde_json::json!({"pane": pane}),
+        })
+    }
+
+    /// Restore all panes in a pane grid from a maximized state.
+    pub fn pane_restore(target: &str) -> Self {
+        Self::Renderer(RendererOp::Command {
+            id: target.to_string(),
+            family: "pane_restore".to_string(),
+            value: Value::Null,
+        })
+    }
+
+    // -- Misc --
+
+    /// Announce text to screen readers.
+    pub fn announce(text: &str) -> Self {
+        Self::Renderer(RendererOp::Announce(text.to_string()))
+    }
+
+    /// Load a font from raw byte data.
+    pub fn load_font(data: Vec<u8>) -> Self {
+        Self::Renderer(RendererOp::LoadFont(data))
+    }
+
+    /// Request a hash of the current widget tree.
+    pub fn tree_hash(tag: &str) -> Self {
+        Self::Renderer(RendererOp::TreeHash {
+            tag: tag.to_string(),
+        })
+    }
+
+    /// Query which widget currently has keyboard focus.
+    pub fn find_focused(tag: &str) -> Self {
+        Self::Renderer(RendererOp::FindFocused {
+            tag: tag.to_string(),
+        })
+    }
+
+    /// Advance the animation frame to the given timestamp.
+    pub fn advance_frame(timestamp: u64) -> Self {
+        Self::Renderer(RendererOp::AdvanceFrame { timestamp })
     }
 
     // -- Effects --

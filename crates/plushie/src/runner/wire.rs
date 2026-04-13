@@ -454,15 +454,23 @@ fn execute_wire_renderer_op(
             };
             bridge.send_window_op(op_name, window_id, &json!({"tag": tag}))
         }
-        RendererOp::SystemOp(SystemOp::AllowAutomaticTabbing(enabled)) => {
-            bridge.send_widget_op("allow_automatic_tabbing", &json!({"enabled": enabled}))
-        }
+        RendererOp::SystemOp(SystemOp::AllowAutomaticTabbing(enabled)) => bridge.send(&json!({
+            "type": "system_op",
+            "session": "",
+            "op": "allow_automatic_tabbing",
+            "settings": {"enabled": enabled},
+        })),
         RendererOp::SystemQuery(query) => {
             let (op_name, tag) = match query {
                 SystemQuery::GetTheme { tag } => ("get_system_theme", tag),
                 SystemQuery::GetInfo { tag } => ("get_system_info", tag),
             };
-            bridge.send_widget_op(op_name, &json!({"tag": tag}))
+            bridge.send(&json!({
+                "type": "system_query",
+                "session": "",
+                "op": op_name,
+                "settings": {"tag": tag},
+            }))
         }
         RendererOp::Effect {
             tag,
@@ -479,7 +487,8 @@ fn execute_wire_renderer_op(
         RendererOp::Image(image_op) => {
             let msg = match image_op {
                 ImageOp::Create { handle, data } => json!({
-                    "type": "image_op", "op": "create_from_bytes",
+                    "type": "image_op", "session": "",
+                    "op": "create_from_bytes",
                     "handle": handle, "data": base64_encode(data),
                 }),
                 ImageOp::CreateRaw {
@@ -488,12 +497,14 @@ fn execute_wire_renderer_op(
                     height,
                     pixels,
                 } => json!({
-                    "type": "image_op", "op": "create_from_rgba",
+                    "type": "image_op", "session": "",
+                    "op": "create_from_rgba",
                     "handle": handle, "pixels": base64_encode(pixels),
                     "width": width, "height": height,
                 }),
                 ImageOp::Update { handle, data } => json!({
-                    "type": "image_op", "op": "update",
+                    "type": "image_op", "session": "",
+                    "op": "update",
                     "handle": handle, "data": base64_encode(data),
                 }),
                 ImageOp::UpdateRaw {
@@ -502,19 +513,23 @@ fn execute_wire_renderer_op(
                     height,
                     pixels,
                 } => json!({
-                    "type": "image_op", "op": "update_raw",
+                    "type": "image_op", "session": "",
+                    "op": "update_raw",
                     "handle": handle, "pixels": base64_encode(pixels),
                     "width": width, "height": height,
                 }),
                 ImageOp::Delete(handle) => json!({
-                    "type": "image_op", "op": "delete", "handle": handle,
+                    "type": "image_op", "session": "",
+                    "op": "delete", "handle": handle,
                 }),
                 ImageOp::List { tag } => json!({
-                    "type": "image_op", "op": "list",
-                    "handle": "", "settings": {"tag": tag},
+                    "type": "image_op", "session": "",
+                    "op": "list", "handle": "",
+                    "settings": {"tag": tag},
                 }),
                 ImageOp::Clear => json!({
-                    "type": "image_op", "op": "clear", "handle": "",
+                    "type": "image_op", "session": "",
+                    "op": "clear", "handle": "",
                 }),
             };
             bridge.send(&msg)

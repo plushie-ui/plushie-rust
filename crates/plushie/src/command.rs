@@ -1,6 +1,6 @@
 //! Side effects returned from [`App::update`](crate::App::update).
 //!
-//! Commands are data, not closures (except `Async` and `Stream`).
+//! Commands are data, not closures (except `Async`).
 //! This makes them testable: you can assert which commands an
 //! update call returns without executing them.
 //!
@@ -411,8 +411,11 @@ impl Command {
     }
 
     // -- Window queries --
+    //
+    // Results are delivered as `Event::System(SystemEvent)` with the
+    // tag you provide, allowing correlation in your update function.
 
-    /// Query the size of a window. Result delivered as a system event.
+    /// Query the size of a window.
     pub fn get_window_size(window_id: &str, tag: &str) -> Self {
         Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetSize {
             window_id: window_id.to_string(),
@@ -557,14 +560,14 @@ impl Command {
     // -- Pane grid --
 
     /// Split a pane in a pane grid along the given axis.
-    pub fn pane_split(target: &str, pane: &str, axis: &str, new_pane: &str) -> Self {
+    pub fn pane_split(target: &str, pane: &str, axis: &str, new_pane_id: &str) -> Self {
         Self::Renderer(RendererOp::Command {
             id: target.to_string(),
             family: "pane_split".to_string(),
             value: serde_json::json!({
                 "pane": pane,
                 "axis": axis,
-                "new_pane": new_pane,
+                "new_pane_id": new_pane_id,
             }),
         })
     }

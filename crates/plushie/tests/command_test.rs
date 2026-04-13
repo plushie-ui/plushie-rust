@@ -368,7 +368,7 @@ fn command_pane_split() {
             assert_eq!(family, "pane_split");
             assert_eq!(value["pane"], "p1");
             assert_eq!(value["axis"], "horizontal");
-            assert_eq!(value["new_pane"], "p2");
+            assert_eq!(value["new_pane_id"], "p2");
         }
         _ => panic!("expected Renderer(Command)"),
     }

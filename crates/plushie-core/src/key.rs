@@ -518,12 +518,6 @@ impl InteractAction {
     }
 }
 
-impl From<&str> for InteractAction {
-    fn from(s: &str) -> Self {
-        Self::from_wire(s).unwrap_or(Self::Click)
-    }
-}
-
 impl fmt::Display for InteractAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.wire_name())
@@ -572,9 +566,10 @@ impl EffectKind {
     }
 }
 
-impl From<&str> for EffectKind {
-    fn from(s: &str) -> Self {
-        match normalize(s).as_str() {
+impl EffectKind {
+    /// Parse from a string, returning None for unrecognized kinds.
+    pub fn from_wire(s: &str) -> Option<Self> {
+        Some(match normalize(s).as_str() {
             "fileopen" => Self::FileOpen,
             "fileopenmultiple" => Self::FileOpenMultiple,
             "filesave" => Self::FileSave,
@@ -588,8 +583,8 @@ impl From<&str> for EffectKind {
             "clipboardreadprimary" => Self::ClipboardReadPrimary,
             "clipboardwriteprimary" => Self::ClipboardWritePrimary,
             "notification" => Self::Notification,
-            _ => Self::FileOpen, // default fallback
-        }
+            _ => return None,
+        })
     }
 }
 
@@ -791,12 +786,19 @@ mod tests {
     }
 
     #[test]
-    fn effect_kind_from_str() {
-        assert_eq!(EffectKind::from("file_open"), EffectKind::FileOpen);
+    fn effect_kind_from_wire() {
         assert_eq!(
-            EffectKind::from("clipboard_read"),
-            EffectKind::ClipboardRead
+            EffectKind::from_wire("file_open"),
+            Some(EffectKind::FileOpen)
         );
-        assert_eq!(EffectKind::from("FileOpen"), EffectKind::FileOpen);
+        assert_eq!(
+            EffectKind::from_wire("clipboard_read"),
+            Some(EffectKind::ClipboardRead)
+        );
+        assert_eq!(
+            EffectKind::from_wire("FileOpen"),
+            Some(EffectKind::FileOpen)
+        );
+        assert_eq!(EffectKind::from_wire("nonsense"), None);
     }
 }

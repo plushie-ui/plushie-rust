@@ -435,17 +435,15 @@ impl<A: App> TestSession<A> {
     ///     EffectKind::FileOpen,
     ///     EffectResult::FileOpened { path: "/tmp/test.txt".into() },
     /// );
-    /// // Also works with strings:
-    /// session.register_effect_stub("clipboard_read", EffectResult::ClipboardText { text: "hello".into() });
     /// ```
-    pub fn register_effect_stub(&mut self, kind: impl Into<EffectKind>, response: EffectResult) {
+    pub fn register_effect_stub(&mut self, kind: EffectKind, response: EffectResult) {
         self.effect_stubs
-            .insert(kind.into().wire_name().to_string(), response);
+            .insert(kind.wire_name().to_string(), response);
     }
 
     /// Remove a previously registered effect stub.
-    pub fn unregister_effect_stub(&mut self, kind: impl Into<EffectKind>) {
-        self.effect_stubs.remove(kind.into().wire_name());
+    pub fn unregister_effect_stub(&mut self, kind: EffectKind) {
+        self.effect_stubs.remove(kind.wire_name());
     }
 
     /// Reset the session to its initial state.

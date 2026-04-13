@@ -854,9 +854,25 @@ pub fn build_interact_response(
                 vec![]
             }
         }
-        _ => {
-            log::warn!("unknown action '{action}' or widget not found");
-            vec![]
+        (action, None) => {
+            log::warn!("interact: widget not found for action '{action}'");
+            vec![OutgoingEvent::diagnostic(
+                String::new(),
+                None,
+                "warning",
+                "selector_not_found",
+                &format!("interact {action}: no widget matched the selector"),
+            )]
+        }
+        (action, _) => {
+            log::warn!("interact: unknown action '{action}'");
+            vec![OutgoingEvent::diagnostic(
+                String::new(),
+                None,
+                "warning",
+                "unknown_action",
+                &format!("unknown interact action: {action}"),
+            )]
         }
     };
 

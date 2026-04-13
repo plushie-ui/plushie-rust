@@ -10,6 +10,7 @@ extern crate self as plushie_core;
 pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent};
 
 pub mod animation;
+pub mod key;
 pub mod ops;
 pub mod protocol;
 pub mod scoped_id;
@@ -19,6 +20,7 @@ pub mod spec;
 pub mod types;
 pub mod widget_builder;
 
+pub use key::{EffectKind, InteractAction, Key, KeyPress, MouseButton};
 pub use scoped_id::ScopedId;
 pub use selector::Selector;
 pub use spec::{CommandSpec, EventSpec, PayloadSpec, ValueType, WidgetCommandEncode};

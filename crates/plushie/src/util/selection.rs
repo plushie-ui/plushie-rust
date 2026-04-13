@@ -67,6 +67,7 @@ impl Selection {
             self.select(id);
         } else {
             self.selected.insert(id.to_string());
+            self.anchor = Some(id.to_string());
         }
     }
 

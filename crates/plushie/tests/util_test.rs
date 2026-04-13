@@ -134,6 +134,19 @@ fn deselect_removes_specific_item() {
     assert!(sel.is_selected("b"));
 }
 
+#[test]
+fn toggle_on_in_multi_mode_sets_anchor() {
+    let mut sel = Selection::new(SelectionMode::Multi, item_ids());
+    sel.toggle("b");
+    assert!(sel.is_selected("b"));
+    // Anchor should be set so range_select works from here
+    sel.range_select("d");
+    assert!(sel.is_selected("b"));
+    assert!(sel.is_selected("c"));
+    assert!(sel.is_selected("d"));
+    assert_eq!(sel.count(), 3);
+}
+
 // ---------------------------------------------------------------------------
 // UndoStack
 // ---------------------------------------------------------------------------

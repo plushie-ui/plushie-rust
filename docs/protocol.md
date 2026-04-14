@@ -163,6 +163,25 @@ are not accepted; the host must normalize before sending.
 
 **Angles** are numbers in degrees (rotations, arc sweeps, etc.).
 
+**Themes** are either a string (`"system"`, `"dark"`, `"light"`,
+`"dracula"`, etc.) or a JSON object for custom themes:
+```json
+{
+  "name": "my-theme",
+  "base": "dark",
+  "background": "#1a1a2e",
+  "text": "#e0e0e0",
+  "primary": "#0f3460",
+  "primary_strong": "#1a5276",
+  "background_weakest": "#0d0d1a"
+}
+```
+The `base` field selects a built-in theme to extend. Seed colors
+(background, text, primary, success, warning, danger) set the
+foundation. Shade keys provide fine-grained control over the
+extended palette (5 color families x 3 shades + 8 background
+levels, each with optional `_text` variant, 52 keys total).
+
 ---
 
 ## Tree nodes
@@ -1185,7 +1204,8 @@ value distinguishes the input device.
 identifies the finger. This field is absent for mouse and pen input.
 
 **Button field.** The `button` field in `press` and `release` events
-identifies the button: `"left"`, `"right"`, or `"middle"`.
+identifies the button: `"left"`, `"right"`, `"middle"`, `"back"`,
+or `"forward"`.
 
 **Modifiers.** The `modifiers` object has the shape:
 `{shift, ctrl, alt, logo, command}` (all booleans).
@@ -1198,9 +1218,24 @@ These families are emitted by:
 - Canvas interactive elements - pointer interactions on canvas
   elements. The `id` field is the element's scoped wire ID.
 
-Note: `scrolled` (scrollable container viewport change) is a
-separate widget event, not a pointer event. It has a different
-value shape and is documented in the widget events table above.
+#### Scrolled (viewport state)
+
+The `scrolled` event is distinct from `scroll` (raw wheel input).
+It is emitted by the `scrollable` widget when the viewport position
+changes, reporting where the viewport ended up:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `absolute_x` | f32 | Absolute horizontal scroll offset |
+| `absolute_y` | f32 | Absolute vertical scroll offset |
+| `relative_x` | f32 | Relative horizontal offset (0.0 to 1.0) |
+| `relative_y` | f32 | Relative vertical offset (0.0 to 1.0) |
+| `bounds_width` | f32 | Viewport width |
+| `bounds_height` | f32 | Viewport height |
+| `content_width` | f32 | Total content width |
+| `content_height` | f32 | Total content height |
+
+Coalescable: Replace (only latest viewport state matters).
 
 Pane grid events:
 

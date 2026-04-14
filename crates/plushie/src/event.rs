@@ -169,6 +169,45 @@ fn parse_resize(value: &Value) -> ResizeDimensions {
     }
 }
 
+/// Extract a string value, logging a warning if the type is wrong.
+fn expect_str<'a>(value: &'a Value, family: &str, id: &str) -> &'a str {
+    match value.as_str() {
+        Some(s) => s,
+        None => {
+            log::warn!(
+                "event value type mismatch: {family} event for \"{id}\" expected string, got {value}"
+            );
+            ""
+        }
+    }
+}
+
+/// Extract a bool value, logging a warning if the type is wrong.
+fn expect_bool(value: &Value, family: &str, id: &str) -> bool {
+    match value.as_bool() {
+        Some(b) => b,
+        None => {
+            log::warn!(
+                "event value type mismatch: {family} event for \"{id}\" expected bool, got {value}"
+            );
+            false
+        }
+    }
+}
+
+/// Extract an f64 value, logging a warning if the type is wrong.
+fn expect_f64(value: &Value, family: &str, id: &str) -> f64 {
+    match value.as_f64() {
+        Some(n) => n,
+        None => {
+            log::warn!(
+                "event value type mismatch: {family} event for \"{id}\" expected number, got {value}"
+            );
+            0.0
+        }
+    }
+}
+
 fn parse_modifiers(obj: Option<&serde_json::Map<String, Value>>) -> KeyModifiers {
     let mods = obj.and_then(|o| o.get("modifiers"));
     KeyModifiers {
@@ -366,13 +405,15 @@ impl WidgetEvent {
         match &self.event_type {
             Click => WidgetMatch::Click(id),
             DoubleClick => WidgetMatch::DoubleClick(id, parse_pointer_press(&self.value)),
-            Input => WidgetMatch::Input(id, self.value.as_str().unwrap_or_default()),
-            Submit => WidgetMatch::Submit(id, self.value.as_str().unwrap_or_default()),
-            Toggle => WidgetMatch::Toggle(id, self.value.as_bool().unwrap_or_default()),
-            Select => WidgetMatch::Select(id, self.value.as_str().unwrap_or_default()),
-            Slide => WidgetMatch::Slide(id, self.value.as_f64().unwrap_or_default()),
-            SlideRelease => WidgetMatch::SlideRelease(id, self.value.as_f64().unwrap_or_default()),
-            Paste => WidgetMatch::Paste(id, self.value.as_str().unwrap_or_default()),
+            Input => WidgetMatch::Input(id, expect_str(&self.value, "input", id)),
+            Submit => WidgetMatch::Submit(id, expect_str(&self.value, "submit", id)),
+            Toggle => WidgetMatch::Toggle(id, expect_bool(&self.value, "toggle", id)),
+            Select => WidgetMatch::Select(id, expect_str(&self.value, "select", id)),
+            Slide => WidgetMatch::Slide(id, expect_f64(&self.value, "slide", id)),
+            SlideRelease => {
+                WidgetMatch::SlideRelease(id, expect_f64(&self.value, "slide_release", id))
+            }
+            Paste => WidgetMatch::Paste(id, expect_str(&self.value, "paste", id)),
             Press => WidgetMatch::Press(id, parse_pointer_press(&self.value)),
             Release => WidgetMatch::Release(id, parse_pointer_release(&self.value)),
             Move => WidgetMatch::Move(id, parse_pointer_move(&self.value)),
@@ -387,7 +428,7 @@ impl WidgetEvent {
             Resize => WidgetMatch::Resize(id, parse_resize(&self.value)),
             KeyPress => WidgetMatch::KeyPress(id, parse_key_data(&self.value)),
             KeyRelease => WidgetMatch::KeyRelease(id, parse_key_data(&self.value)),
-            Sort => WidgetMatch::Sort(id, self.value.as_str().unwrap_or_default()),
+            Sort => WidgetMatch::Sort(id, expect_str(&self.value, "sort", id)),
             Status => WidgetMatch::Status(id, &self.value),
             OptionHovered => WidgetMatch::OptionHovered(id, &self.value),
             Open => WidgetMatch::Open(id),

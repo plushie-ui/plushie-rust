@@ -8,63 +8,14 @@
 use plushie_core::key::{MouseButton, PointerKind};
 use serde_json::Value;
 
+// Re-export typed event data from plushie-core so SDK users can
+// access them via `plushie::event::PointerPress` etc.
+pub use plushie_core::pointer::{
+    KeyData, PointerDrag, PointerMove, PointerPress, PointerRelease, PointerScroll,
+    ResizeDimensions, ScrollPosition,
+};
+
 use crate::types::KeyModifiers;
-
-// ---------------------------------------------------------------------------
-// Typed pointer event data
-// ---------------------------------------------------------------------------
-
-/// Data from a pointer press event (mouse button down, touch start).
-#[derive(Debug, Clone)]
-pub struct PointerPress {
-    pub x: f32,
-    pub y: f32,
-    pub button: MouseButton,
-    pub pointer: PointerKind,
-    pub finger: Option<u64>,
-    pub modifiers: KeyModifiers,
-}
-
-/// Data from a pointer release event (mouse button up, touch end).
-#[derive(Debug, Clone)]
-pub struct PointerRelease {
-    pub x: f32,
-    pub y: f32,
-    pub button: MouseButton,
-    pub pointer: PointerKind,
-    pub finger: Option<u64>,
-    pub modifiers: KeyModifiers,
-}
-
-/// Data from a pointer move event.
-#[derive(Debug, Clone)]
-pub struct PointerMove {
-    pub x: f32,
-    pub y: f32,
-    pub pointer: PointerKind,
-    pub finger: Option<u64>,
-    pub modifiers: KeyModifiers,
-}
-
-/// Data from a scroll event.
-#[derive(Debug, Clone)]
-pub struct PointerScroll {
-    pub x: f32,
-    pub y: f32,
-    pub delta_x: f32,
-    pub delta_y: f32,
-    pub pointer: PointerKind,
-    pub modifiers: KeyModifiers,
-}
-
-/// Data from a drag event.
-#[derive(Debug, Clone)]
-pub struct PointerDrag {
-    pub x: f32,
-    pub y: f32,
-    pub pointer: PointerKind,
-    pub modifiers: KeyModifiers,
-}
 
 /// Parse pointer press/release data from an event value.
 fn parse_pointer_press(value: &Value) -> PointerPress {
@@ -165,6 +116,58 @@ fn parse_pointer_drag(value: &Value) -> PointerDrag {
         y: get_f32("y"),
         pointer: PointerKind::from(get_str("pointer")),
         modifiers: parse_modifiers(obj),
+    }
+}
+
+fn parse_scroll_position(value: &Value) -> ScrollPosition {
+    let obj = value.as_object();
+    let get_f32 = |k: &str| -> f32 {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as f32
+    };
+    ScrollPosition {
+        absolute_x: get_f32("absolute_x"),
+        absolute_y: get_f32("absolute_y"),
+        relative_x: get_f32("relative_x"),
+        relative_y: get_f32("relative_y"),
+        bounds_width: get_f32("bounds_width"),
+        bounds_height: get_f32("bounds_height"),
+        content_width: get_f32("content_width"),
+        content_height: get_f32("content_height"),
+    }
+}
+
+fn parse_key_data(value: &Value) -> KeyData {
+    let obj = value.as_object();
+    let get_str = |k: &str| -> Option<String> {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    };
+    KeyData {
+        key: get_str("key").unwrap_or_default(),
+        modified_key: get_str("modified_key"),
+        physical_key: get_str("physical_key"),
+        modifiers: parse_modifiers(obj),
+        text: get_str("text"),
+        repeat: obj
+            .and_then(|o| o.get("repeat"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+    }
+}
+
+fn parse_resize(value: &Value) -> ResizeDimensions {
+    let obj = value.as_object();
+    let get_f32 = |k: &str| -> f32 {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as f32
+    };
+    ResizeDimensions {
+        width: get_f32("width"),
+        height: get_f32("height"),
     }
 }
 
@@ -406,7 +409,7 @@ impl WidgetEvent {
         use EventType::*;
         match &self.event_type {
             Click => WidgetMatch::Click(id),
-            DoubleClick => WidgetMatch::DoubleClick(id),
+            DoubleClick => WidgetMatch::DoubleClick(id, parse_pointer_press(&self.value)),
             Input => WidgetMatch::Input(id, self.value.as_str().unwrap_or_default()),
             Submit => WidgetMatch::Submit(id, self.value.as_str().unwrap_or_default()),
             Toggle => WidgetMatch::Toggle(id, self.value.as_bool().unwrap_or_default()),
@@ -418,16 +421,16 @@ impl WidgetEvent {
             Release => WidgetMatch::Release(id, parse_pointer_release(&self.value)),
             Move => WidgetMatch::Move(id, parse_pointer_move(&self.value)),
             Scroll => WidgetMatch::Scroll(id, parse_pointer_scroll(&self.value)),
-            Scrolled => WidgetMatch::Scrolled(id, parse_pointer_scroll(&self.value)),
+            Scrolled => WidgetMatch::Scrolled(id, parse_scroll_position(&self.value)),
             Enter => WidgetMatch::Enter(id),
             Exit => WidgetMatch::Exit(id),
             Drag => WidgetMatch::Drag(id, parse_pointer_drag(&self.value)),
             DragEnd => WidgetMatch::DragEnd(id, parse_pointer_drag(&self.value)),
             Focused => WidgetMatch::Focused(id),
             Blurred => WidgetMatch::Blurred(id),
-            Resize => WidgetMatch::Resize(id, &self.value),
-            KeyPress => WidgetMatch::KeyPress(id, &self.value),
-            KeyRelease => WidgetMatch::KeyRelease(id, &self.value),
+            Resize => WidgetMatch::Resize(id, parse_resize(&self.value)),
+            KeyPress => WidgetMatch::KeyPress(id, parse_key_data(&self.value)),
+            KeyRelease => WidgetMatch::KeyRelease(id, parse_key_data(&self.value)),
             Sort => WidgetMatch::Sort(id, self.value.as_str().unwrap_or_default()),
             Status => WidgetMatch::Status(id, &self.value),
             OptionHovered => WidgetMatch::OptionHovered(id, &self.value),
@@ -472,7 +475,7 @@ impl WidgetEvent {
 #[derive(Debug)]
 pub enum WidgetMatch<'a> {
     Click(&'a str),
-    DoubleClick(&'a str),
+    DoubleClick(&'a str, PointerPress),
     Input(&'a str, &'a str),
     Submit(&'a str, &'a str),
     Toggle(&'a str, bool),
@@ -484,16 +487,16 @@ pub enum WidgetMatch<'a> {
     Release(&'a str, PointerRelease),
     Move(&'a str, PointerMove),
     Scroll(&'a str, PointerScroll),
-    Scrolled(&'a str, PointerScroll),
+    Scrolled(&'a str, ScrollPosition),
     Enter(&'a str),
     Exit(&'a str),
     Drag(&'a str, PointerDrag),
     DragEnd(&'a str, PointerDrag),
     Focused(&'a str),
     Blurred(&'a str),
-    Resize(&'a str, &'a Value),
-    KeyPress(&'a str, &'a Value),
-    KeyRelease(&'a str, &'a Value),
+    Resize(&'a str, ResizeDimensions),
+    KeyPress(&'a str, KeyData),
+    KeyRelease(&'a str, KeyData),
     Sort(&'a str, &'a str),
     Status(&'a str, &'a Value),
     OptionHovered(&'a str, &'a Value),

@@ -258,10 +258,12 @@ impl Theme {
         self.color("background_strongest_text", hex)
     }
 
-    /// Set an arbitrary color key. Used internally by the named
-    /// builder methods. Can also be used for future shade keys
-    /// without updating the builder API.
-    fn color(mut self, key: &str, hex: &str) -> Self {
+    /// Set an arbitrary color key by name.
+    ///
+    /// Used internally by the named builder methods. Can also be
+    /// used directly for future shade keys or custom keys without
+    /// waiting for a named builder method.
+    pub fn color(mut self, key: &str, hex: &str) -> Self {
         if let Self::Custom(ref mut c) = self {
             c.colors.insert(key.to_string(), hex.to_string());
         }

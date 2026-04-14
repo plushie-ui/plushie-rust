@@ -59,6 +59,9 @@ pub struct TestSession<A: App> {
     /// Accumulated view normalization warnings (duplicate IDs,
     /// reserved characters). Collected on every view render cycle.
     diagnostics: Vec<String>,
+    /// When true, Drop panics if any diagnostics have accumulated.
+    /// Set via [`strict_diagnostics`](Self::strict_diagnostics).
+    fail_on_diagnostics: bool,
 }
 
 impl<A: App> TestSession<A> {
@@ -74,9 +77,20 @@ impl<A: App> TestSession<A> {
             async_results: HashMap::new(),
             effect_stubs: HashMap::new(),
             diagnostics: warnings,
+            fail_on_diagnostics: false,
         };
         session.execute_command(init_cmd);
         session
+    }
+
+    /// Enable strict diagnostic mode: the session will panic on Drop
+    /// if any normalization warnings have accumulated.
+    ///
+    /// This catches accidental prop validation issues without
+    /// requiring an explicit `assert_no_diagnostics()` call.
+    pub fn strict_diagnostics(mut self) -> Self {
+        self.fail_on_diagnostics = true;
+        self
     }
 
     /// Access the current model state.
@@ -734,6 +748,76 @@ where
     pub fn assert_model(&self, expected: &A::Model) {
         assert_eq!(self.model(), expected, "model mismatch");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Drop: auto-fail on diagnostics
+// ---------------------------------------------------------------------------
+
+impl<A: App> Drop for TestSession<A> {
+    fn drop(&mut self) {
+        if self.fail_on_diagnostics && !self.diagnostics.is_empty() {
+            // Don't double-panic if we're already unwinding.
+            if !std::thread::panicking() {
+                let details: Vec<_> = self
+                    .diagnostics
+                    .iter()
+                    .map(|d| format!("  - {d}"))
+                    .collect();
+                panic!(
+                    "TestSession (strict_diagnostics): diagnostics detected on drop:\n{}",
+                    details.join("\n")
+                );
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Golden-file tree hash
+// ---------------------------------------------------------------------------
+
+/// Assert that the current tree hash matches a golden file.
+///
+/// On first run (golden file doesn't exist), creates it. On
+/// subsequent runs, compares. Set `PLUSHIE_UPDATE_SNAPSHOTS=1`
+/// to overwrite existing golden files.
+///
+/// Golden files are stored as `{dir}/{name}.hash` containing
+/// the decimal u64 hash value.
+///
+/// ```ignore
+/// let session = TestSession::<Counter>::start();
+/// session.click("inc");
+/// assert_tree_hash(&session, "counter_after_inc", "tests/golden");
+/// ```
+pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir: &str) {
+    let hash = session.tree_hash();
+    let path = format!("{golden_dir}/{name}.hash");
+
+    let update = std::env::var("PLUSHIE_UPDATE_SNAPSHOTS")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    if update || !std::path::Path::new(&path).exists() {
+        std::fs::create_dir_all(golden_dir).ok();
+        std::fs::write(&path, hash.to_string()).unwrap_or_else(|e| {
+            panic!("failed to write golden file {path}: {e}");
+        });
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("failed to read golden file {path}: {e}"));
+    let expected: u64 = stored
+        .trim()
+        .parse()
+        .unwrap_or_else(|e| panic!("invalid golden file {path}: {e}"));
+
+    assert_eq!(
+        hash, expected,
+        "tree hash mismatch for \"{name}\" (run with PLUSHIE_UPDATE_SNAPSHOTS=1 to update)"
+    );
 }
 
 // ---------------------------------------------------------------------------

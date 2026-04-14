@@ -64,7 +64,40 @@ pub struct CustomTheme {
     pub colors: BTreeMap<String, String>,
 }
 
+/// The 22 built-in theme names supported by the renderer.
+///
+/// Useful for theme picker UIs and validation.
+pub const BUILTIN_THEMES: &[&str] = &[
+    "light",
+    "dark",
+    "dracula",
+    "nord",
+    "solarized_light",
+    "solarized_dark",
+    "gruvbox_light",
+    "gruvbox_dark",
+    "catppuccin_latte",
+    "catppuccin_frappe",
+    "catppuccin_macchiato",
+    "catppuccin_mocha",
+    "tokyo_night",
+    "tokyo_night_storm",
+    "tokyo_night_light",
+    "kanagawa_wave",
+    "kanagawa_dragon",
+    "kanagawa_lotus",
+    "moonfly",
+    "nightfly",
+    "oxocarbon",
+    "ferra",
+];
+
 impl Theme {
+    /// The 22 built-in theme names supported by the renderer.
+    pub fn builtin_names() -> &'static [&'static str] {
+        BUILTIN_THEMES
+    }
+
     /// Create a custom theme with the given display name.
     ///
     /// Use builder methods to set colors and shade overrides.

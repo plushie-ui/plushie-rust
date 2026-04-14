@@ -101,3 +101,34 @@ fn format_modifiers(m: &KeyModifiers) -> String {
 fn main() -> plushie::Result {
     plushie::run::<Shortcuts>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie::test::TestSession;
+
+    #[test]
+    fn starts_with_empty_log_and_zero_count() {
+        let session = TestSession::<Shortcuts>::start();
+        assert!(session.model().log.is_empty());
+        assert_eq!(session.model().count, 0);
+    }
+
+    #[test]
+    fn header_text_is_present() {
+        let session = TestSession::<Shortcuts>::start();
+        session.assert_text("header", "Press any key");
+    }
+
+    #[test]
+    fn count_label_displays_zero_initially() {
+        let session = TestSession::<Shortcuts>::start();
+        session.assert_text("count", "0 key events captured");
+    }
+
+    #[test]
+    fn scrollable_log_container_exists() {
+        let session = TestSession::<Shortcuts>::start();
+        session.assert_exists("log");
+    }
+}

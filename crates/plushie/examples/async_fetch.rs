@@ -17,7 +17,7 @@ struct FetchApp {
     error: Option<String>,
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 enum Status {
     Idle,
     Loading,
@@ -118,4 +118,47 @@ fn status_message(model: &FetchApp) -> View {
 
 fn main() -> plushie::Result {
     plushie::run::<FetchApp>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie::test::TestSession;
+
+    #[test]
+    fn starts_in_idle_state() {
+        let session = TestSession::<FetchApp>::start();
+        assert_eq!(session.model().status, Status::Idle);
+        assert!(session.model().result.is_none());
+    }
+
+    #[test]
+    fn fetch_button_exists() {
+        let session = TestSession::<FetchApp>::start();
+        session.assert_exists("fetch");
+    }
+
+    #[test]
+    fn displays_idle_status_message() {
+        let session = TestSession::<FetchApp>::start();
+        session.assert_text("status", "Press the button to start");
+    }
+
+    #[test]
+    fn clicking_fetch_triggers_async_work() {
+        let mut session = TestSession::<FetchApp>::start();
+        session.click("fetch");
+        // TestSession executes async tasks synchronously, so result
+        // is available immediately after the click.
+        assert_eq!(session.model().status, Status::Done);
+    }
+
+    #[test]
+    fn async_fetch_produces_a_result() {
+        let mut session = TestSession::<FetchApp>::start();
+        session.click("fetch");
+        assert_eq!(session.model().status, Status::Done);
+        assert!(session.model().result.is_some());
+        session.assert_exists("result");
+    }
 }

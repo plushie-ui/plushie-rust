@@ -22,7 +22,7 @@ struct TodoItem {
     done: bool,
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 enum Filter {
     All,
     Active,
@@ -141,4 +141,83 @@ fn todo_row(todo: &TodoItem) -> View {
 
 fn main() -> plushie::Result {
     plushie::run::<TodoApp>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie::test::TestSession;
+
+    #[test]
+    fn starts_with_empty_todo_list() {
+        let session = TestSession::<TodoApp>::start();
+        assert!(session.model().todos.is_empty());
+        assert!(session.model().input.is_empty());
+        assert_eq!(session.model().filter, Filter::All);
+    }
+
+    #[test]
+    fn input_and_filter_buttons_exist() {
+        let session = TestSession::<TodoApp>::start();
+        session.assert_exists("new_todo");
+        session.assert_exists("filter_all");
+        session.assert_exists("filter_active");
+        session.assert_exists("filter_done");
+    }
+
+    #[test]
+    fn typing_updates_input_model() {
+        let mut session = TestSession::<TodoApp>::start();
+        session.type_text("new_todo", "Buy milk");
+        assert_eq!(session.model().input, "Buy milk");
+    }
+
+    #[test]
+    fn submitting_adds_todo_and_clears_input() {
+        let mut session = TestSession::<TodoApp>::start();
+        session.type_text("new_todo", "Buy milk");
+        session.submit("new_todo", "Buy milk");
+        assert!(session.model().input.is_empty());
+        assert_eq!(session.model().todos.len(), 1);
+        assert_eq!(session.model().todos[0].text, "Buy milk");
+        assert!(!session.model().todos[0].done);
+    }
+
+    #[test]
+    fn toggling_marks_todo_complete() {
+        let mut session = TestSession::<TodoApp>::start();
+        session.type_text("new_todo", "Test task");
+        session.submit("new_todo", "Test task");
+        // Find the toggle checkbox inside the todo item.
+        let toggle = session
+            .find(Selector::id("toggle"))
+            .expect("toggle checkbox not found");
+        let toggle_id = toggle.id().to_string();
+        session.toggle(&*toggle_id, true);
+        assert!(session.model().todos[0].done);
+    }
+
+    #[test]
+    fn deleting_removes_todo() {
+        let mut session = TestSession::<TodoApp>::start();
+        session.type_text("new_todo", "Ephemeral");
+        session.submit("new_todo", "Ephemeral");
+        let delete = session
+            .find(Selector::id("delete"))
+            .expect("delete button not found");
+        let delete_id = delete.id().to_string();
+        session.click(&*delete_id);
+        assert!(session.model().todos.is_empty());
+    }
+
+    #[test]
+    fn filter_buttons_change_active_filter() {
+        let mut session = TestSession::<TodoApp>::start();
+        session.click("filter_active");
+        assert_eq!(session.model().filter, Filter::Active);
+        session.click("filter_done");
+        assert_eq!(session.model().filter, Filter::Done);
+        session.click("filter_all");
+        assert_eq!(session.model().filter, Filter::All);
+    }
 }

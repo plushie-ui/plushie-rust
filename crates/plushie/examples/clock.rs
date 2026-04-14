@@ -77,3 +77,28 @@ impl App for Clock {
 fn main() -> plushie::Result {
     plushie::run::<Clock>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie::test::TestSession;
+
+    #[test]
+    fn model_contains_time_string_on_init() {
+        let session = TestSession::<Clock>::start();
+        assert!(!session.model().time.is_empty());
+    }
+
+    #[test]
+    fn displays_time_in_clock_widget() {
+        let session = TestSession::<Clock>::start();
+        assert!(session.find("clock_display").is_some());
+        assert!(session.text_content("clock_display").is_some());
+    }
+
+    #[test]
+    fn subtitle_text_is_present() {
+        let session = TestSession::<Clock>::start();
+        session.assert_text("subtitle", "Updates every second");
+    }
+}

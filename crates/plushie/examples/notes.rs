@@ -264,3 +264,90 @@ fn update_selection_order(model: &mut Notes) {
 fn main() -> plushie::Result {
     plushie::run::<Notes>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie::test::TestSession;
+
+    #[test]
+    fn starts_with_empty_notes_and_list_route() {
+        let session = TestSession::<Notes>::start();
+        assert!(session.model().notes.is_empty());
+        assert_eq!(session.model().route.current(), "/list");
+    }
+
+    #[test]
+    fn heading_renders() {
+        let session = TestSession::<Notes>::start();
+        session.assert_text("heading", "Notes");
+    }
+
+    #[test]
+    fn list_view_has_buttons() {
+        let session = TestSession::<Notes>::start();
+        session.assert_exists("new_note");
+        session.assert_exists("delete_selected");
+        session.assert_exists("search");
+    }
+
+    #[test]
+    fn creating_note_navigates_to_edit() {
+        let mut session = TestSession::<Notes>::start();
+        session.click("new_note");
+        assert_eq!(session.model().notes.len(), 1);
+        assert_eq!(session.model().route.current(), "/edit");
+    }
+
+    #[test]
+    fn edit_view_has_controls() {
+        let mut session = TestSession::<Notes>::start();
+        session.click("new_note");
+        session.assert_exists("back");
+        session.assert_exists("undo");
+        session.assert_exists("redo");
+        session.assert_exists("title");
+        session.assert_exists("body");
+    }
+
+    #[test]
+    fn navigating_back_returns_to_list() {
+        let mut session = TestSession::<Notes>::start();
+        session.click("new_note");
+        session.click("back");
+        assert_eq!(session.model().route.current(), "/list");
+    }
+
+    #[test]
+    fn editing_title_updates_undo_state() {
+        let mut session = TestSession::<Notes>::start();
+        session.click("new_note");
+        session.type_text("title", "My Note");
+        assert_eq!(session.model().undo.current().title, "My Note");
+    }
+
+    #[test]
+    fn edits_saved_when_navigating_back() {
+        let mut session = TestSession::<Notes>::start();
+        session.click("new_note");
+        session.type_text("title", "Saved Title");
+        session.click("back");
+        assert_eq!(session.model().notes[0].title, "Saved Title");
+    }
+
+    #[test]
+    fn created_note_appears_in_list() {
+        let mut session = TestSession::<Notes>::start();
+        session.click("new_note");
+        session.type_text("title", "Test Note");
+        session.click("back");
+        session.assert_exists("note:1");
+    }
+
+    #[test]
+    fn search_updates_query() {
+        let mut session = TestSession::<Notes>::start();
+        session.type_text("search", "hello");
+        assert_eq!(session.model().search_query, "hello");
+    }
+}

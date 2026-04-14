@@ -129,3 +129,59 @@ impl App for Gallery {
 fn main() -> plushie::Result {
     plushie::run::<Gallery>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie::test::TestSession;
+
+    #[test]
+    fn title_renders() {
+        let session = TestSession::<Gallery>::start();
+        session.assert_text("title", "Widget Gallery");
+    }
+
+    #[test]
+    fn text_input_updates_model() {
+        let mut session = TestSession::<Gallery>::start();
+        session.type_text("input", "hello");
+        assert_eq!(session.model().input_value, "hello");
+    }
+
+    #[test]
+    fn checkbox_toggles() {
+        let mut session = TestSession::<Gallery>::start();
+        assert!(!session.model().checked);
+        session.toggle("check", true);
+        assert!(session.model().checked);
+    }
+
+    #[test]
+    fn toggler_toggles() {
+        let mut session = TestSession::<Gallery>::start();
+        assert!(!session.model().toggled);
+        session.toggle("toggler", true);
+        assert!(session.model().toggled);
+    }
+
+    #[test]
+    fn slider_updates_value() {
+        let mut session = TestSession::<Gallery>::start();
+        session.slide("slide", 75.0);
+        assert!((session.model().slider_value - 75.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn pick_list_selects_value() {
+        let mut session = TestSession::<Gallery>::start();
+        session.select("pick", "Banana");
+        assert_eq!(session.model().selected, "Banana");
+    }
+
+    #[test]
+    fn radio_selects_value() {
+        let mut session = TestSession::<Gallery>::start();
+        session.select("radio-b", "B");
+        assert_eq!(session.model().radio, "B");
+    }
+}

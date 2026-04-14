@@ -458,6 +458,13 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
     let settings = A::settings();
 
     // Apply settings directly to renderer fields (no JSON round-trip).
+    renderer.core.default_font = settings.default_font.map(|family| {
+        if family == "monospace" {
+            plushie_widget_sdk::iced::Font::MONOSPACE
+        } else {
+            plushie_widget_sdk::iced::Font::DEFAULT
+        }
+    });
     renderer.core.default_text_size = settings.default_text_size;
     renderer.core.default_event_rate = settings.default_event_rate;
     renderer

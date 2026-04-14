@@ -696,12 +696,19 @@ fn base64_encode(data: &[u8]) -> String {
 
 /// Build settings JSON from the App trait.
 #[cfg(feature = "wire")]
+/// Wire protocol version. Sent in the settings message and
+/// verified by the renderer during handshake.
+pub const PROTOCOL_VERSION: u32 = 1;
+
 fn build_settings<A: App>() -> Value {
     let settings = A::settings();
     let mut json = serde_json::json!({
-        "protocol_version": 1,
+        "protocol_version": PROTOCOL_VERSION,
     });
 
+    if let Some(ref font) = settings.default_font {
+        json["default_font"] = serde_json::json!(font);
+    }
     if let Some(size) = settings.default_text_size {
         json["default_text_size"] = serde_json::json!(size);
     }
@@ -716,6 +723,9 @@ fn build_settings<A: App>() -> Value {
     }
     if let Some(rate) = settings.default_event_rate {
         json["default_event_rate"] = serde_json::json!(rate);
+    }
+    if !settings.fonts.is_empty() {
+        json["fonts"] = serde_json::json!(settings.fonts);
     }
     if !settings.widget_config.is_empty() {
         json["widget_config"] =

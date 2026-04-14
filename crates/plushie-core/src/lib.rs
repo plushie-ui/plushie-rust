@@ -13,6 +13,7 @@ pub mod animation;
 pub mod event_type;
 pub mod key;
 pub mod ops;
+pub mod outgoing_message;
 pub mod pointer;
 pub mod protocol;
 pub mod scoped_id;

@@ -11,6 +11,8 @@
 //! channel and processed alongside renderer events.
 
 #[cfg(feature = "wire")]
+use plushie_core::outgoing_message::OutgoingMessage;
+#[cfg(feature = "wire")]
 use serde_json::Value;
 #[cfg(feature = "wire")]
 use std::collections::HashMap;
@@ -474,23 +476,23 @@ fn execute_wire_renderer_op(
             };
             bridge.send_window_op(op_name, window_id, &json!({"tag": tag}))
         }
-        RendererOp::SystemOp(SystemOp::AllowAutomaticTabbing(enabled)) => bridge.send(&json!({
-            "type": "system_op",
-            "session": "",
-            "op": "allow_automatic_tabbing",
-            "settings": {"enabled": enabled},
-        })),
+        RendererOp::SystemOp(SystemOp::AllowAutomaticTabbing(enabled)) => {
+            bridge.send(&OutgoingMessage::SystemOp {
+                session: String::new(),
+                op: "allow_automatic_tabbing".to_string(),
+                payload: json!({"enabled": enabled}),
+            })
+        }
         RendererOp::SystemQuery(query) => {
             let (op_name, tag) = match query {
                 SystemQuery::GetTheme { tag } => ("get_system_theme", tag),
                 SystemQuery::GetInfo { tag } => ("get_system_info", tag),
             };
-            bridge.send(&json!({
-                "type": "system_query",
-                "session": "",
-                "op": op_name,
-                "settings": {"tag": tag},
-            }))
+            bridge.send(&OutgoingMessage::SystemQuery {
+                session: String::new(),
+                query: op_name.to_string(),
+                id: tag.to_string(),
+            })
         }
         RendererOp::Effect {
             tag,
@@ -505,54 +507,44 @@ fn execute_wire_renderer_op(
             bridge.send_effect(&wire_id, kind, &payload)
         }
         RendererOp::Image(image_op) => {
-            let msg = match image_op {
-                ImageOp::Create { handle, data } => json!({
-                    "type": "image_op", "session": "",
-                    "op": "create_from_bytes",
-                    "handle": handle, "data": base64_encode(data),
-                }),
+            let (op, payload) = match image_op {
+                ImageOp::Create { handle, data } => (
+                    "create_from_bytes",
+                    json!({"handle": handle, "data": base64_encode(data)}),
+                ),
                 ImageOp::CreateRaw {
                     handle,
                     width,
                     height,
                     pixels,
-                } => json!({
-                    "type": "image_op", "session": "",
-                    "op": "create_from_rgba",
-                    "handle": handle, "pixels": base64_encode(pixels),
-                    "width": width, "height": height,
-                }),
-                ImageOp::Update { handle, data } => json!({
-                    "type": "image_op", "session": "",
-                    "op": "update",
-                    "handle": handle, "data": base64_encode(data),
-                }),
+                } => (
+                    "create_from_rgba",
+                    json!({"handle": handle, "pixels": base64_encode(pixels),
+                           "width": width, "height": height}),
+                ),
+                ImageOp::Update { handle, data } => (
+                    "update",
+                    json!({"handle": handle, "data": base64_encode(data)}),
+                ),
                 ImageOp::UpdateRaw {
                     handle,
                     width,
                     height,
                     pixels,
-                } => json!({
-                    "type": "image_op", "session": "",
-                    "op": "update_raw",
-                    "handle": handle, "pixels": base64_encode(pixels),
-                    "width": width, "height": height,
-                }),
-                ImageOp::Delete(handle) => json!({
-                    "type": "image_op", "session": "",
-                    "op": "delete", "handle": handle,
-                }),
-                ImageOp::List { tag } => json!({
-                    "type": "image_op", "session": "",
-                    "op": "list", "handle": "",
-                    "settings": {"tag": tag},
-                }),
-                ImageOp::Clear => json!({
-                    "type": "image_op", "session": "",
-                    "op": "clear", "handle": "",
-                }),
+                } => (
+                    "update_raw",
+                    json!({"handle": handle, "pixels": base64_encode(pixels),
+                           "width": width, "height": height}),
+                ),
+                ImageOp::Delete(handle) => ("delete", json!({"handle": handle})),
+                ImageOp::List { tag } => ("list", json!({"tag": tag})),
+                ImageOp::Clear => ("clear", json!({})),
             };
-            bridge.send(&msg)
+            bridge.send(&OutgoingMessage::ImageOp {
+                session: String::new(),
+                op: op.to_string(),
+                payload,
+            })
         }
         RendererOp::Announce(text) => bridge.send_widget_op("announce", &json!({"text": text})),
         RendererOp::LoadFont(data) => {

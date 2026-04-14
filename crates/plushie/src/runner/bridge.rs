@@ -10,6 +10,8 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::process::{Child, Command as ProcessCommand, Stdio};
 
 #[cfg(feature = "wire")]
+use plushie_core::outgoing_message::OutgoingMessage;
+#[cfg(feature = "wire")]
 use serde_json::Value;
 
 /// Wire protocol codec selection.
@@ -45,8 +47,8 @@ impl Bridge {
         })
     }
 
-    /// Send a JSON message to the renderer's stdin.
-    pub fn send(&mut self, message: &Value) -> io::Result<()> {
+    /// Send a typed message to the renderer's stdin.
+    pub fn send(&mut self, message: &OutgoingMessage) -> io::Result<()> {
         let stdin = self
             .child
             .stdin
@@ -73,32 +75,26 @@ impl Bridge {
 
     /// Send a settings message.
     pub fn send_settings(&mut self, settings: &Value) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "settings",
-            "session": "",
-            "settings": settings,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::Settings {
+            session: String::new(),
+            settings: settings.clone(),
+        })
     }
 
     /// Send a full tree snapshot.
     pub fn send_snapshot(&mut self, tree: &Value) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "snapshot",
-            "session": "",
-            "tree": tree,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::Snapshot {
+            session: String::new(),
+            tree: tree.clone(),
+        })
     }
 
     /// Send incremental patches.
     pub fn send_patch(&mut self, ops: &[Value]) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "patch",
-            "session": "",
-            "ops": ops,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::Patch {
+            session: String::new(),
+            ops: ops.to_vec(),
+        })
     }
 
     /// Send a subscribe message.
@@ -109,53 +105,41 @@ impl Bridge {
         max_rate: Option<u32>,
         window_id: Option<&str>,
     ) -> io::Result<()> {
-        let mut msg = serde_json::json!({
-            "type": "subscribe",
-            "session": "",
-            "kind": kind,
-            "tag": tag,
-        });
-        if let Some(rate) = max_rate {
-            msg["max_rate"] = serde_json::json!(rate);
-        }
-        if let Some(wid) = window_id {
-            msg["window_id"] = serde_json::json!(wid);
-        }
-        self.send(&msg)
+        self.send(&OutgoingMessage::Subscribe {
+            session: String::new(),
+            kind: kind.to_string(),
+            tag: tag.to_string(),
+            max_rate,
+            window_id: window_id.map(String::from),
+        })
     }
 
     /// Send an unsubscribe message.
     pub fn send_unsubscribe(&mut self, kind: &str, tag: &str) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "unsubscribe",
-            "session": "",
-            "kind": kind,
-            "tag": tag,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::Unsubscribe {
+            session: String::new(),
+            kind: kind.to_string(),
+            tag: tag.to_string(),
+        })
     }
 
     /// Send a widget operation (focus, scroll, etc.).
     pub fn send_widget_op(&mut self, op: &str, payload: &Value) -> io::Result<()> {
-        let mut msg = serde_json::json!({
-            "type": "widget_op",
-            "session": "",
-            "op": op,
-        });
-        msg["payload"] = payload.clone();
-        self.send(&msg)
+        self.send(&OutgoingMessage::WidgetOp {
+            session: String::new(),
+            op: op.to_string(),
+            payload: payload.clone(),
+        })
     }
 
     /// Send a widget-targeted command.
     pub fn send_command(&mut self, id: &str, family: &str, value: &Value) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "command",
-            "session": "",
-            "id": id,
-            "family": family,
-            "value": value,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::Command {
+            session: String::new(),
+            id: id.to_string(),
+            family: family.to_string(),
+            value: value.clone(),
+        })
     }
 
     /// Send a window operation.
@@ -165,33 +149,25 @@ impl Bridge {
         window_id: &str,
         settings: &Value,
     ) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "window_op",
-            "session": "",
-            "op": op,
-            "window_id": window_id,
-            "settings": settings,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::WindowOp {
+            session: String::new(),
+            op: op.to_string(),
+            window_id: window_id.to_string(),
+            settings: settings.clone(),
+        })
     }
 
     /// Send an effect request.
     pub fn send_effect(&mut self, id: &str, kind: &str, payload: &Value) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "effect",
-            "session": "",
-            "id": id,
-            "kind": kind,
-            "payload": payload,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::Effect {
+            session: String::new(),
+            id: id.to_string(),
+            kind: kind.to_string(),
+            payload: payload.clone(),
+        })
     }
 
     /// Send an interact message for automation.
-    ///
-    /// The renderer resolves the selector against its tree, performs
-    /// the interaction, and sends back an `interact_response` with
-    /// the resulting events.
     pub fn send_interact(
         &mut self,
         id: &str,
@@ -199,15 +175,13 @@ impl Bridge {
         selector: &Value,
         payload: &Value,
     ) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "interact",
-            "session": "",
-            "id": id,
-            "action": action,
-            "selector": selector,
-            "payload": payload,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::Interact {
+            session: String::new(),
+            id: id.to_string(),
+            action: action.to_string(),
+            selector: selector.clone(),
+            payload: payload.clone(),
+        })
     }
 
     /// Send a query message.
@@ -217,47 +191,37 @@ impl Bridge {
         target: &str,
         selector: Option<&Value>,
     ) -> io::Result<()> {
-        let mut msg = serde_json::json!({
-            "type": "query",
-            "session": "",
-            "id": id,
-            "target": target,
-        });
-        if let Some(sel) = selector {
-            msg["selector"] = sel.clone();
-        }
-        self.send(&msg)
+        self.send(&OutgoingMessage::Query {
+            session: String::new(),
+            id: id.to_string(),
+            target: target.to_string(),
+            selector: selector.cloned(),
+        })
     }
 
     /// Send a reset message to reinitialize the renderer session.
     pub fn send_reset(&mut self, id: &str) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "reset",
-            "session": "",
-            "id": id,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::Reset {
+            session: String::new(),
+            id: id.to_string(),
+        })
     }
 
     /// Register a stub effect response for testing/automation.
     pub fn send_register_effect_stub(&mut self, kind: &str, response: &Value) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "register_effect_stub",
-            "session": "",
-            "kind": kind,
-            "response": response,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::RegisterEffectStub {
+            session: String::new(),
+            kind: kind.to_string(),
+            response: response.clone(),
+        })
     }
 
     /// Remove a previously registered effect stub.
     pub fn send_unregister_effect_stub(&mut self, kind: &str) -> io::Result<()> {
-        let msg = serde_json::json!({
-            "type": "unregister_effect_stub",
-            "session": "",
-            "kind": kind,
-        });
-        self.send(&msg)
+        self.send(&OutgoingMessage::UnregisterEffectStub {
+            session: String::new(),
+            kind: kind.to_string(),
+        })
     }
 
     /// Read the next message from the renderer's stdout.

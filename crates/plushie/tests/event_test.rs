@@ -324,6 +324,41 @@ fn widget_match_press_handles_missing_fields() {
     }
 }
 
+#[test]
+fn widget_match_key_press_parses_typed_key() {
+    let event = Event::Widget(WidgetEvent {
+        event_type: EventType::KeyPress,
+        scoped_id: ScopedId::parse("main#editor"),
+        value: json!({"key": "Enter", "text": null, "repeat": false}),
+    });
+    match event.widget_match() {
+        Some(WidgetMatch::KeyPress("editor", data)) => {
+            assert_eq!(data.key, plushie_core::Key::Enter);
+            assert!(!data.repeat);
+        }
+        other => panic!("expected KeyPress, got {other:?}"),
+    }
+}
+
+#[test]
+fn widget_match_key_press_char_key() {
+    let event = Event::Widget(WidgetEvent {
+        event_type: EventType::KeyPress,
+        scoped_id: ScopedId::parse("main#editor"),
+        value: json!({"key": "a", "modified_key": "A", "text": "A", "repeat": false,
+                       "modifiers": {"shift": true}}),
+    });
+    match event.widget_match() {
+        Some(WidgetMatch::KeyPress("editor", data)) => {
+            assert_eq!(data.key, plushie_core::Key::Char('a'));
+            assert_eq!(data.modified_key, Some(plushie_core::Key::Char('A')));
+            assert_eq!(data.text.as_deref(), Some("A"));
+            assert!(data.modifiers.shift);
+        }
+        other => panic!("expected KeyPress, got {other:?}"),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // WidgetMatch used in a realistic update pattern
 // ---------------------------------------------------------------------------

@@ -140,17 +140,15 @@ fn parse_scroll_position(value: &Value) -> ScrollPosition {
 
 fn parse_key_data(value: &Value) -> KeyData {
     let obj = value.as_object();
-    let get_str = |k: &str| -> Option<String> {
-        obj.and_then(|o| o.get(k))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-    };
+    let get_str = |k: &str| -> Option<&str> { obj.and_then(|o| o.get(k)).and_then(|v| v.as_str()) };
+    let get_key =
+        |k: &str| -> Option<plushie_core::Key> { get_str(k).map(plushie_core::Key::from) };
     KeyData {
-        key: get_str("key").unwrap_or_default(),
-        modified_key: get_str("modified_key"),
-        physical_key: get_str("physical_key"),
+        key: get_key("key").unwrap_or(plushie_core::Key::Named(String::new())),
+        modified_key: get_key("modified_key"),
+        physical_key: get_key("physical_key"),
         modifiers: parse_modifiers(obj),
-        text: get_str("text"),
+        text: get_str("text").map(String::from),
         repeat: obj
             .and_then(|o| o.get("repeat"))
             .and_then(|v| v.as_bool())

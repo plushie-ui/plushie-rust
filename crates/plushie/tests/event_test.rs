@@ -405,7 +405,7 @@ fn form_update_pattern() {
 fn key_event_is_press() {
     let event = Event::Key(KeyEvent {
         event_type: KeyEventType::Press,
-        key: "Escape".to_string(),
+        key: plushie_core::Key::Escape,
         modified_key: None,
         physical_key: None,
         location: KeyLocation::Standard,
@@ -418,14 +418,14 @@ fn key_event_is_press() {
     let k = event.as_key_press().unwrap();
     assert!(k.is_press());
     assert!(!k.is_release());
-    assert_eq!(k.key, "Escape");
+    assert_eq!(k.key, plushie_core::Key::Escape);
 }
 
 #[test]
 fn as_key_press_returns_none_for_release() {
     let event = Event::Key(KeyEvent {
         event_type: KeyEventType::Release,
-        key: "a".to_string(),
+        key: plushie_core::Key::Char('a'),
         modified_key: None,
         physical_key: None,
         location: KeyLocation::Standard,

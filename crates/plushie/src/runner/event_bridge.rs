@@ -87,9 +87,11 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
                 } else {
                     KeyEventType::Release
                 },
-                key: json_str(value, "key"),
-                modified_key: json_str_opt(value, "modified_key"),
-                physical_key: json_str_opt(value, "physical_key"),
+                key: plushie_core::Key::from(json_str(value, "key").as_str()),
+                modified_key: json_str_opt(value, "modified_key")
+                    .map(|s| plushie_core::Key::from(s.as_str())),
+                physical_key: json_str_opt(value, "physical_key")
+                    .map(|s| plushie_core::Key::from(s.as_str())),
                 location: match json_str_opt(value, "location").as_deref() {
                     Some("left") => KeyLocation::Left,
                     Some("right") => KeyLocation::Right,
@@ -396,9 +398,9 @@ mod tests {
         match sdk {
             Event::Key(k) => {
                 assert_eq!(k.event_type, KeyEventType::Press);
-                assert_eq!(k.key, "a");
-                assert_eq!(k.modified_key, Some("A".to_string()));
-                assert_eq!(k.physical_key, Some("KeyA".to_string()));
+                assert_eq!(k.key, plushie_core::Key::Char('a'));
+                assert_eq!(k.modified_key, Some(plushie_core::Key::Char('A')));
+                assert_eq!(k.physical_key, Some(plushie_core::Key::from("KeyA")));
                 assert_eq!(k.text, Some("A".to_string()));
                 assert!(k.modifiers.shift);
                 assert!(!k.modifiers.ctrl);

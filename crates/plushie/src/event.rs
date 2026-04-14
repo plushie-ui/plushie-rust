@@ -570,17 +570,21 @@ pub enum KeyEventType {
     Release,
 }
 
-/// A keyboard event.
+/// A keyboard event from a subscription (global key handling).
+///
+/// Uses the typed [`Key`](plushie_core::Key) enum for key identity.
+/// For widget-level key events, see [`KeyData`] (carried by
+/// [`WidgetMatch::KeyPress`] / [`WidgetMatch::KeyRelease`]).
 #[derive(Debug, Clone)]
 pub struct KeyEvent {
     /// Whether this is a press or release event.
     pub event_type: KeyEventType,
-    /// The logical key name (e.g. "a", "Enter", "ArrowUp").
-    pub key: String,
-    /// The key after applying modifiers (e.g. "A" when Shift+a).
-    pub modified_key: Option<String>,
-    /// The physical key code, independent of keyboard layout.
-    pub physical_key: Option<String>,
+    /// The logical key (typed enum with aliases).
+    pub key: plushie_core::Key,
+    /// The key after applying modifiers (e.g., Shift+a produces 'A').
+    pub modified_key: Option<plushie_core::Key>,
+    /// The physical key code (layout-independent).
+    pub physical_key: Option<plushie_core::Key>,
     /// Which part of the keyboard the key is on.
     pub location: KeyLocation,
     /// Active modifier keys at the time of the event.

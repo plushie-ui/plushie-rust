@@ -777,7 +777,6 @@ fn key_event(
     key: &plushie_core::Key,
     modifiers: crate::types::KeyModifiers,
 ) -> Event {
-    let wire_name = key.wire_name();
     let text = if event_type == crate::event::KeyEventType::Press {
         match key {
             plushie_core::Key::Char(c) => Some(c.to_string()),
@@ -788,7 +787,7 @@ fn key_event(
     };
     Event::Key(crate::event::KeyEvent {
         event_type,
-        key: wire_name,
+        key: key.clone(),
         modified_key: None,
         physical_key: None,
         location: crate::event::KeyLocation::Standard,

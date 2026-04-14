@@ -415,15 +415,16 @@ impl ImageBuilder {
         super::set_prop(&mut self.props, "filter_method", method.wire_encode());
         self
     }
-    /// Rotation in degrees. Supports animation via [`Animatable`].
+    /// Rotation angle. Supports animation via [`Animatable`].
     ///
-    /// Accepts raw degrees (f32) rather than [`Angle`] because the
-    /// animation system interpolates f32 values. Canvas rotations
-    /// use the [`Angle`] type instead.
-    ///
-    /// [`Angle`]: crate::types::Angle
-    pub fn rotation(mut self, degrees: impl Into<Animatable<f32>>) -> Self {
-        super::set_prop(&mut self.props, "rotation", degrees.into().wire_encode());
+    /// Bare numbers are degrees (matching the cross-SDK convention):
+    /// ```ignore
+    /// image("photo", "/img/hero.png").rotation(45.0)
+    /// image("photo", "/img/hero.png").rotation(Angle::rad(PI / 4.0))
+    /// image("photo", "/img/hero.png").rotation(Transition::new(300, Angle::deg(90.0)))
+    /// ```
+    pub fn rotation(mut self, angle: impl Into<Animatable<Angle>>) -> Self {
+        super::set_prop(&mut self.props, "rotation", angle.into().wire_encode());
         self
     }
     pub fn opacity(mut self, o: impl Into<Animatable<f32>>) -> Self {
@@ -531,15 +532,16 @@ impl SvgBuilder {
         super::set_prop(&mut self.props, "content_fit", fit.wire_encode());
         self
     }
-    /// Rotation in degrees. Supports animation via [`Animatable`].
+    /// Rotation angle. Supports animation via [`Animatable`].
     ///
-    /// Accepts raw degrees (f32) rather than [`Angle`] because the
-    /// animation system interpolates f32 values. Canvas rotations
-    /// use the [`Angle`] type instead.
-    ///
-    /// [`Angle`]: crate::types::Angle
-    pub fn rotation(mut self, degrees: impl Into<Animatable<f32>>) -> Self {
-        super::set_prop(&mut self.props, "rotation", degrees.into().wire_encode());
+    /// Bare numbers are degrees (matching the cross-SDK convention):
+    /// ```ignore
+    /// image("photo", "/img/hero.png").rotation(45.0)
+    /// image("photo", "/img/hero.png").rotation(Angle::rad(PI / 4.0))
+    /// image("photo", "/img/hero.png").rotation(Transition::new(300, Angle::deg(90.0)))
+    /// ```
+    pub fn rotation(mut self, angle: impl Into<Animatable<Angle>>) -> Self {
+        super::set_prop(&mut self.props, "rotation", angle.into().wire_encode());
         self
     }
     pub fn opacity(mut self, o: impl Into<Animatable<f32>>) -> Self {

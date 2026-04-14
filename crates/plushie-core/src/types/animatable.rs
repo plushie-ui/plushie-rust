@@ -30,6 +30,7 @@
 use crate::animation::{Sequence, Spring, Transition};
 use crate::protocol::PropValue;
 use crate::types::PlushieType;
+use crate::types::angle::Angle;
 use crate::types::background::Background;
 use crate::types::color::Color;
 use crate::types::gradient::Gradient;
@@ -113,6 +114,22 @@ impl From<&str> for Animatable<Color> {
 impl From<String> for Animatable<Color> {
     fn from(s: String) -> Self {
         Self::Value(Color::from(s))
+    }
+}
+
+/// Convert a bare f32 (degrees) to an animated angle.
+///
+/// Allows `.rotation(45.0)` without wrapping in `Angle::deg`.
+impl From<f32> for Animatable<Angle> {
+    fn from(v: f32) -> Self {
+        Self::Value(Angle::from(v))
+    }
+}
+
+/// Convert a bare i32 (degrees) to an animated angle.
+impl From<i32> for Animatable<Angle> {
+    fn from(v: i32) -> Self {
+        Self::Value(Angle::from(v))
     }
 }
 

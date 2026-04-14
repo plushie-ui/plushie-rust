@@ -821,6 +821,197 @@ pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir
 }
 
 // ---------------------------------------------------------------------------
+// WidgetTestSession
+// ---------------------------------------------------------------------------
+
+/// A test session for composite widgets in isolation.
+///
+/// Auto-generates a harness app that hosts the widget in a
+/// `window > column` container. Emitted events from the widget
+/// are recorded and accessible via [`events`](Self::events) and
+/// [`last_event`](Self::last_event).
+///
+/// ```ignore
+/// use plushie::test::WidgetTestSession;
+///
+/// let mut session = WidgetTestSession::<StarRating>::start("stars");
+/// session.click("star_3");
+/// let (family, value) = session.last_event().unwrap();
+/// assert_eq!(family, "select");
+/// ```
+pub struct WidgetTestSession<W: crate::widget::Widget> {
+    inner: TestSession<WidgetHarness<W>>,
+}
+
+/// Harness app that hosts a widget and records emitted events.
+///
+/// Used internally by [`WidgetTestSession`]. The `events` field
+/// stores all widget events for test assertions.
+pub struct WidgetHarness<W: crate::widget::Widget> {
+    widget_id: String,
+    props: plushie_core::protocol::PropMap,
+    events: Vec<(String, Value)>,
+    _marker: std::marker::PhantomData<W>,
+}
+
+impl<W: crate::widget::Widget> App for WidgetHarness<W> {
+    type Model = Self;
+
+    fn init() -> (Self, Command) {
+        (
+            Self {
+                widget_id: String::new(),
+                props: plushie_core::protocol::PropMap::new(),
+                events: Vec::new(),
+                _marker: std::marker::PhantomData,
+            },
+            Command::None,
+        )
+    }
+
+    fn update(model: &mut Self, event: Event) -> Command {
+        // Record all widget events emitted by the hosted widget.
+        if let Event::Widget(ref w) = event {
+            model
+                .events
+                .push((w.event_type.as_family().to_string(), w.value.clone()));
+        }
+        Command::None
+    }
+
+    fn view(
+        model: &Self,
+        widgets: &mut crate::widget::WidgetRegistrar,
+    ) -> plushie_core::protocol::TreeNode {
+        use crate::ui::*;
+
+        let mut wv = crate::widget::WidgetView::<W>::new(&model.widget_id);
+        for (key, value) in model.props.iter() {
+            wv = wv.prop(key, value.clone());
+        }
+
+        window("main")
+            .child(column().child(wv.register(widgets)))
+            .into()
+    }
+}
+
+impl<W: crate::widget::Widget> WidgetTestSession<W> {
+    /// Start a test session hosting the widget with the given ID.
+    pub fn start(id: &str) -> Self {
+        let mut session = TestSession::<WidgetHarness<W>>::start();
+        session.model_mut().widget_id = id.to_string();
+        // Re-render to actually show the widget.
+        session.dispatch(Event::System(crate::event::SystemEvent {
+            event_type: crate::event::SystemEventType::AnimationFrame,
+            tag: None,
+            value: None,
+            id: None,
+            window_id: None,
+        }));
+        Self { inner: session }
+    }
+
+    /// Start with initial props set on the widget.
+    pub fn start_with_props(
+        id: &str,
+        props: Vec<(&str, plushie_core::protocol::PropValue)>,
+    ) -> Self {
+        let mut session = TestSession::<WidgetHarness<W>>::start();
+        session.model_mut().widget_id = id.to_string();
+        for (key, value) in props {
+            session.model_mut().props.insert(key, value);
+        }
+        // Re-render with props.
+        session.dispatch(Event::System(crate::event::SystemEvent {
+            event_type: crate::event::SystemEventType::AnimationFrame,
+            tag: None,
+            value: None,
+            id: None,
+            window_id: None,
+        }));
+        Self { inner: session }
+    }
+
+    // -- Event recording --
+
+    /// All events emitted by the widget (oldest first).
+    pub fn events(&self) -> &[(String, Value)] {
+        &self.inner.model().events
+    }
+
+    /// The most recently emitted event, if any.
+    pub fn last_event(&self) -> Option<&(String, Value)> {
+        self.inner.model().events.last()
+    }
+
+    /// Take ownership of all recorded events, clearing the buffer.
+    pub fn drain_events(&mut self) -> Vec<(String, Value)> {
+        std::mem::take(&mut self.inner.model_mut().events)
+    }
+
+    // -- Access to the underlying TestSession --
+
+    /// Access the underlying [`TestSession`] for the full API
+    /// (interactions, assertions, queries, diagnostics, etc.).
+    ///
+    /// ```ignore
+    /// session.session().assert_a11y("star_3", &json!({"role": "radio_button"}));
+    /// session.session().canvas_press("canvas", 10.0, 20.0, "left");
+    /// ```
+    pub fn session(&self) -> &TestSession<WidgetHarness<W>> {
+        &self.inner
+    }
+
+    /// Mutable access to the underlying [`TestSession`].
+    pub fn session_mut(&mut self) -> &mut TestSession<WidgetHarness<W>> {
+        &mut self.inner
+    }
+
+    // -- Convenience delegates for the most common operations --
+
+    /// Simulate a click on a widget.
+    pub fn click(&mut self, selector: impl Into<Selector>) {
+        self.inner.click(selector);
+    }
+
+    /// Simulate text input.
+    pub fn type_text(&mut self, selector: impl Into<Selector>, text: &str) {
+        self.inner.type_text(selector, text);
+    }
+
+    /// Simulate a toggle.
+    pub fn toggle(&mut self, selector: impl Into<Selector>, checked: bool) {
+        self.inner.toggle(selector, checked);
+    }
+
+    /// Simulate a slider change.
+    pub fn slide(&mut self, selector: impl Into<Selector>, value: f64) {
+        self.inner.slide(selector, value);
+    }
+
+    /// Simulate a key press.
+    pub fn press(&mut self, key: impl Into<KeyPress>) {
+        self.inner.press(key);
+    }
+
+    /// Find a widget in the view tree.
+    pub fn find(&self, selector: impl Into<Selector>) -> Option<Element<'_>> {
+        self.inner.find(selector)
+    }
+
+    /// Assert a widget exists.
+    pub fn assert_exists(&self, selector: impl Into<Selector>) {
+        self.inner.assert_exists(selector);
+    }
+
+    /// Assert a widget displays expected text.
+    pub fn assert_text(&self, selector: impl Into<Selector>, expected: &str) {
+        self.inner.assert_text(selector, expected);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

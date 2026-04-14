@@ -317,52 +317,10 @@ impl Event {
 }
 
 // ---------------------------------------------------------------------------
-// EventType
+// EventType (re-exported from plushie-core)
 // ---------------------------------------------------------------------------
 
-/// The kind of widget interaction that occurred.
-///
-/// `Copy` so it can be used directly in match arms without borrowing.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum EventType {
-    Click,
-    DoubleClick,
-    Input,
-    Submit,
-    Paste,
-    Toggle,
-    Select,
-    Slide,
-    SlideRelease,
-    Press,
-    Release,
-    Move,
-    Scroll,
-    Scrolled,
-    Enter,
-    Exit,
-    Resize,
-    Focused,
-    Blurred,
-    Drag,
-    DragEnd,
-    KeyPress,
-    KeyRelease,
-    Sort,
-    Status,
-    OptionHovered,
-    PaneFocusCycle,
-    PaneResized,
-    PaneDragged,
-    PaneClicked,
-    TransitionComplete,
-    Open,
-    Close,
-    KeyBinding,
-    /// A custom event family (e.g., "star_rating:select").
-    /// Carries the raw family string for matching.
-    Custom(String),
-}
+pub use plushie_core::EventType;
 
 // ---------------------------------------------------------------------------
 // WidgetEvent
@@ -520,44 +478,11 @@ pub enum WidgetMatch<'a> {
 }
 
 /// Convert an event family string to an [`EventType`].
+///
+/// Delegates to [`EventType::from_family`] (the single source of
+/// truth in plushie-core).
 pub fn family_to_event_type(family: &str) -> EventType {
-    match family {
-        "click" => EventType::Click,
-        "double_click" => EventType::DoubleClick,
-        "input" => EventType::Input,
-        "submit" => EventType::Submit,
-        "toggle" => EventType::Toggle,
-        "select" => EventType::Select,
-        "slide" => EventType::Slide,
-        "slide_release" => EventType::SlideRelease,
-        "paste" => EventType::Paste,
-        "press" => EventType::Press,
-        "release" => EventType::Release,
-        "move" => EventType::Move,
-        "scroll" => EventType::Scroll,
-        "scrolled" => EventType::Scrolled,
-        "enter" => EventType::Enter,
-        "exit" => EventType::Exit,
-        "resize" => EventType::Resize,
-        "focused" => EventType::Focused,
-        "blurred" => EventType::Blurred,
-        "drag" => EventType::Drag,
-        "drag_end" => EventType::DragEnd,
-        "sort" => EventType::Sort,
-        "status" => EventType::Status,
-        "transition_complete" => EventType::TransitionComplete,
-        "open" => EventType::Open,
-        "close" => EventType::Close,
-        "option_hovered" => EventType::OptionHovered,
-        "key_binding" => EventType::KeyBinding,
-        "key_press" => EventType::KeyPress,
-        "key_release" => EventType::KeyRelease,
-        "pane_focus_cycle" => EventType::PaneFocusCycle,
-        "pane_resized" => EventType::PaneResized,
-        "pane_dragged" => EventType::PaneDragged,
-        "pane_clicked" => EventType::PaneClicked,
-        _ => EventType::Custom(family.to_string()),
-    }
+    EventType::from_family(family)
 }
 
 // ---------------------------------------------------------------------------

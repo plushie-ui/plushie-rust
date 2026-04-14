@@ -234,6 +234,97 @@ fn widget_match_returns_none_for_non_matchable_events() {
 }
 
 // ---------------------------------------------------------------------------
+// Typed pointer events in WidgetMatch
+// ---------------------------------------------------------------------------
+
+#[test]
+fn widget_match_press_parses_pointer_data() {
+    let event = Event::Widget(WidgetEvent {
+        event_type: EventType::Press,
+        scoped_id: ScopedId::parse("main#canvas"),
+        value: json!({"x": 10.5, "y": 20.0, "button": "right", "pointer": "mouse"}),
+    });
+    match event.widget_match() {
+        Some(WidgetMatch::Press("canvas", ptr)) => {
+            assert!((ptr.x - 10.5).abs() < 0.01);
+            assert!((ptr.y - 20.0).abs() < 0.01);
+            assert_eq!(ptr.button, plushie_core::key::MouseButton::Right);
+            assert_eq!(ptr.pointer, plushie_core::key::PointerKind::Mouse);
+            assert_eq!(ptr.finger, None);
+        }
+        other => panic!("expected Press, got {other:?}"),
+    }
+}
+
+#[test]
+fn widget_match_press_touch_with_finger() {
+    let event = Event::Widget(WidgetEvent {
+        event_type: EventType::Press,
+        scoped_id: ScopedId::parse("main#canvas"),
+        value: json!({"x": 5.0, "y": 15.0, "button": "left", "pointer": "touch", "finger": 2}),
+    });
+    match event.widget_match() {
+        Some(WidgetMatch::Press("canvas", ptr)) => {
+            assert_eq!(ptr.pointer, plushie_core::key::PointerKind::Touch);
+            assert_eq!(ptr.finger, Some(2));
+        }
+        other => panic!("expected Press, got {other:?}"),
+    }
+}
+
+#[test]
+fn widget_match_move_parses_coordinates() {
+    let event = Event::Widget(WidgetEvent {
+        event_type: EventType::Move,
+        scoped_id: ScopedId::parse("main#canvas"),
+        value: json!({"x": 50.0, "y": 75.0, "pointer": "pen"}),
+    });
+    match event.widget_match() {
+        Some(WidgetMatch::Move("canvas", ptr)) => {
+            assert!((ptr.x - 50.0).abs() < 0.01);
+            assert!((ptr.y - 75.0).abs() < 0.01);
+            assert_eq!(ptr.pointer, plushie_core::key::PointerKind::Pen);
+        }
+        other => panic!("expected Move, got {other:?}"),
+    }
+}
+
+#[test]
+fn widget_match_scroll_parses_deltas() {
+    let event = Event::Widget(WidgetEvent {
+        event_type: EventType::Scroll,
+        scoped_id: ScopedId::parse("main#area"),
+        value: json!({"x": 0.0, "y": 0.0, "delta_x": 0.0, "delta_y": -3.0}),
+    });
+    match event.widget_match() {
+        Some(WidgetMatch::Scroll("area", ptr)) => {
+            assert!((ptr.delta_y - (-3.0)).abs() < 0.01);
+        }
+        other => panic!("expected Scroll, got {other:?}"),
+    }
+}
+
+#[test]
+fn widget_match_press_handles_missing_fields() {
+    // Graceful defaults when JSON has minimal data.
+    let event = Event::Widget(WidgetEvent {
+        event_type: EventType::Press,
+        scoped_id: ScopedId::parse("main#canvas"),
+        value: json!({}),
+    });
+    match event.widget_match() {
+        Some(WidgetMatch::Press("canvas", ptr)) => {
+            assert_eq!(ptr.x, 0.0);
+            assert_eq!(ptr.y, 0.0);
+            assert_eq!(ptr.button, plushie_core::key::MouseButton::Left);
+            assert_eq!(ptr.pointer, plushie_core::key::PointerKind::Mouse);
+            assert_eq!(ptr.finger, None);
+        }
+        other => panic!("expected Press, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // WidgetMatch used in a realistic update pattern
 // ---------------------------------------------------------------------------
 

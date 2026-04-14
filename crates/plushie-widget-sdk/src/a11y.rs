@@ -108,6 +108,12 @@ impl A11yOverrides {
     ///
     /// Excludes `hidden` which is handled separately (subtree
     /// suppression rather than property override).
+    ///
+    /// State flags (required, invalid, modal, read_only) only count
+    /// as overrides when `Some(true)`, because `Some(false)` matches
+    /// the default (no visible effect). Interaction state fields
+    /// (busy, disabled, toggled, selected) count as overrides for
+    /// ANY value because they override auto-detected widget state.
     pub(crate) fn has_overrides(&self) -> bool {
         let c = &self.core;
         c.role.is_some()

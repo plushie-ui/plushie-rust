@@ -415,6 +415,13 @@ impl ImageBuilder {
         super::set_prop(&mut self.props, "filter_method", method.wire_encode());
         self
     }
+    /// Rotation in degrees. Supports animation via [`Animatable`].
+    ///
+    /// Accepts raw degrees (f32) rather than [`Angle`] because the
+    /// animation system interpolates f32 values. Canvas rotations
+    /// use the [`Angle`] type instead.
+    ///
+    /// [`Angle`]: crate::types::Angle
     pub fn rotation(mut self, degrees: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "rotation", degrees.into().wire_encode());
         self
@@ -524,6 +531,13 @@ impl SvgBuilder {
         super::set_prop(&mut self.props, "content_fit", fit.wire_encode());
         self
     }
+    /// Rotation in degrees. Supports animation via [`Animatable`].
+    ///
+    /// Accepts raw degrees (f32) rather than [`Angle`] because the
+    /// animation system interpolates f32 values. Canvas rotations
+    /// use the [`Angle`] type instead.
+    ///
+    /// [`Angle`]: crate::types::Angle
     pub fn rotation(mut self, degrees: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "rotation", degrees.into().wire_encode());
         self

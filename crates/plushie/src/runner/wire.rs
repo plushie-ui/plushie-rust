@@ -694,12 +694,12 @@ fn base64_encode(data: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(data)
 }
 
-/// Build settings JSON from the App trait.
-#[cfg(feature = "wire")]
 /// Wire protocol version. Sent in the settings message and
 /// verified by the renderer during handshake.
+#[cfg(feature = "wire")]
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Build settings JSON from the App trait for the wire protocol.
 fn build_settings<A: App>() -> Value {
     let settings = A::settings();
     let mut json = serde_json::json!({

@@ -334,17 +334,27 @@ impl EventEmitter {
     /// its coalesce hint between events for the same key.
     fn buffer_event(&mut self, key: &CoalesceKey, event: OutgoingEvent, hint: &CoalesceHint) {
         if let Some(existing) = self.pending.get_mut(key) {
-            // Check for strategy mismatch: Replace vs Accumulate.
-            let compatible = matches!(
-                (&*existing, hint),
-                (PendingEvent::Replace(_), CoalesceHint::Replace)
-                    | (PendingEvent::Accumulate { .. }, CoalesceHint::Accumulate(_))
-            );
+            // Check for strategy mismatch. Replace-vs-Replace is always compatible.
+            // Accumulate-vs-Accumulate is only compatible when the tracked field
+            // set is identical: merging into a buffer that tracks different
+            // fields would silently miscount totals.
+            let compatible = match (&*existing, hint) {
+                (PendingEvent::Replace(_), CoalesceHint::Replace) => true,
+                (
+                    PendingEvent::Accumulate {
+                        fields: existing_fields,
+                        ..
+                    },
+                    CoalesceHint::Accumulate(new_fields),
+                ) => existing_fields == new_fields,
+                _ => false,
+            };
             if compatible {
                 existing.merge(event);
                 return;
             }
-            // Strategy changed; flush the old entry and start fresh.
+            // Strategy changed (or Accumulate field list changed); flush the old
+            // entry and start fresh.
             self.flush_key(key);
         }
         self.pending

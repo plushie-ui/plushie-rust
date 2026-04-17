@@ -62,6 +62,15 @@
 //! transform typically borrows whatever mutable state it needs (a
 //! registry, a state store, a manager) with a lifetime that outlives
 //! the walk.
+//!
+//! # Current consumers
+//!
+//! - `plushie` SDK: `runtime::prepare_tree` composes widget expansion
+//!   (`ExpandWidgetsTransform`) and ID normalization
+//!   (`NormalizeTransform`) in one walk.
+//! - `plushie-widget-sdk`: `WidgetRegistry::prepare_and_scan` composes
+//!   widget prepare (`PrepareTransform`) with animation-descriptor
+//!   detection (`ScanTransform`) in one walk.
 
 use crate::protocol::TreeNode;
 

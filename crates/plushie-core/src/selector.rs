@@ -386,3 +386,132 @@ fn is_focused(node: &TreeNode) -> bool {
     }
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::Props;
+    use serde_json::json;
+
+    /// Construct a minimal [`TreeNode`] for tree-search tests.
+    fn node(id: &str, type_name: &str) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props: Props::Wire(json!({})),
+            children: vec![],
+        }
+    }
+
+    /// Construct a [`TreeNode`] with children.
+    fn node_with_children(id: &str, type_name: &str, children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props: Props::Wire(json!({})),
+            children,
+        }
+    }
+
+    #[test]
+    fn find_by_id_matches_exact_id() {
+        let root = node_with_children(
+            "main",
+            "window",
+            vec![node("main#save", "button"), node("main#cancel", "button")],
+        );
+        let sel = Selector::id("main#save");
+        let found = sel.find(&root).expect("exact id match");
+        assert_eq!(found.id, "main#save");
+    }
+
+    #[test]
+    fn find_by_id_matches_local_name() {
+        let root = node_with_children(
+            "main",
+            "window",
+            vec![node("main#save", "button"), node("main#cancel", "button")],
+        );
+        let sel = Selector::id("save");
+        let found = sel.find(&root).expect("local-name match");
+        assert_eq!(found.id, "main#save");
+    }
+
+    #[test]
+    fn find_by_id_matches_scoped_path_suffix() {
+        let root = node_with_children(
+            "main",
+            "window",
+            vec![node_with_children(
+                "main#todos",
+                "column",
+                vec![node("main#todo-1/done", "checkbox")],
+            )],
+        );
+        let sel = Selector::id("todo-1/done");
+        let found = sel
+            .find(&root)
+            .expect("scoped-path suffix should match trailing segments");
+        assert_eq!(found.id, "main#todo-1/done");
+    }
+
+    #[test]
+    fn find_by_id_matches_deeply_nested_scoped_suffix() {
+        let root = node_with_children(
+            "main",
+            "window",
+            vec![node_with_children(
+                "main#page-theme",
+                "column",
+                vec![node_with_children(
+                    "main#page-theme/page",
+                    "column",
+                    vec![node_with_children(
+                        "main#page-theme/page/rating-card",
+                        "column",
+                        vec![node("main#page-theme/page/rating-card/stars", "canvas")],
+                    )],
+                )],
+            )],
+        );
+        let sel = Selector::id("page-theme/page/rating-card/stars");
+        let found = sel
+            .find(&root)
+            .expect("deep scoped-path suffix should match");
+        assert_eq!(found.id, "main#page-theme/page/rating-card/stars");
+    }
+
+    #[test]
+    fn find_by_id_local_name_still_matches_for_bare_target() {
+        // Target "done" should still be resolvable via the local-name
+        // rule even when the only candidate is a sibling subtree whose
+        // scoped suffix does not line up on a `/` boundary.
+        let root = node_with_children(
+            "main",
+            "window",
+            vec![node("main#unrelated/done", "checkbox")],
+        );
+        let sel = Selector::id("done");
+        let found = sel
+            .find(&root)
+            .expect("local-name rule should still hit here");
+        assert_eq!(found.id, "main#unrelated/done");
+    }
+
+    #[test]
+    fn find_by_id_does_not_match_mid_segment_substring() {
+        // The suffix rule requires a `/` or `#` boundary. Target
+        // "ne/done" must not match "main#unrelated/done" just because
+        // it appears as a raw substring.
+        let root = node_with_children(
+            "main",
+            "window",
+            vec![node("main#unrelated/done", "checkbox")],
+        );
+        let sel = Selector::id("ne/done");
+        assert!(
+            sel.find(&root).is_none(),
+            "suffix match must respect segment boundaries"
+        );
+    }
+}

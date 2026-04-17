@@ -169,9 +169,28 @@ fn form_text_input() {
 fn form_toggle() {
     let mut session = TestSession::<Form>::start();
     assert!(!session.model().agreed);
-    session.toggle("agree", true);
+    session.set_toggle("agree", true);
     assert!(session.model().agreed);
     session.assert_text("agreed_display", "Agreed: true");
+}
+
+#[test]
+fn form_toggle_auto_flips_current_value() {
+    let mut session = TestSession::<Form>::start();
+    // Initial: agreed=false; auto-flip should turn it on.
+    session.toggle("agree");
+    assert!(session.model().agreed);
+    // And then flip back off.
+    session.toggle("agree");
+    assert!(!session.model().agreed);
+}
+
+#[test]
+fn form_submit_reads_current_value_when_no_arg() {
+    let mut session = TestSession::<Form>::start();
+    session.type_text("name", "Alice");
+    session.submit("name");
+    assert_eq!(session.model().name, "Alice");
 }
 
 #[test]
@@ -184,7 +203,7 @@ fn form_slider() {
 #[test]
 fn form_submit() {
     let mut session = TestSession::<Form>::start();
-    session.submit("name", "Bob");
+    session.submit_with("name", "Bob");
     assert_eq!(session.model().name, "Bob");
 }
 
@@ -295,7 +314,7 @@ fn todo_starts_with_items() {
 #[test]
 fn todo_add_item_via_submit() {
     let mut session = TestSession::<TodoApp>::start();
-    session.submit("new_todo", "Learn Rust");
+    session.submit_with("new_todo", "Learn Rust");
     assert_eq!(session.model().items.len(), 3);
     assert_eq!(session.model().items[2].text, "Learn Rust");
 }

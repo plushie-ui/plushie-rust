@@ -152,7 +152,7 @@ mod tests {
     fn checkbox_toggles() {
         let mut session = TestSession::<Gallery>::start();
         assert!(!session.model().checked);
-        session.toggle("check", true);
+        session.set_toggle("check", true);
         assert!(session.model().checked);
     }
 
@@ -160,7 +160,7 @@ mod tests {
     fn toggler_toggles() {
         let mut session = TestSession::<Gallery>::start();
         assert!(!session.model().toggled);
-        session.toggle("toggler", true);
+        session.set_toggle("toggler", true);
         assert!(session.model().toggled);
     }
 

@@ -36,6 +36,26 @@ use crate::runtime;
 use crate::widget::{EventResult, Interception, WidgetStateStore};
 
 // ---------------------------------------------------------------------------
+// Sort direction for TestSession::sort
+// ---------------------------------------------------------------------------
+
+/// Sort direction hint used by [`TestSession::sort`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortDir {
+    Asc,
+    Desc,
+}
+
+impl SortDir {
+    fn as_str(self) -> &'static str {
+        match self {
+            SortDir::Asc => "asc",
+            SortDir::Desc => "desc",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // TestSession
 // ---------------------------------------------------------------------------
 
@@ -136,8 +156,22 @@ impl<A: App> TestSession<A> {
         ));
     }
 
-    /// Simulate a toggle on a checkbox or toggler.
-    pub fn toggle(&mut self, selector: impl Into<Selector>, checked: bool) {
+    /// Simulate a toggle on a checkbox or toggler by auto-flipping
+    /// the current `checked` prop in the tree. Use
+    /// [`set_toggle`](Self::set_toggle) when the target value is
+    /// known explicitly.
+    pub fn toggle(&mut self, selector: impl Into<Selector>) {
+        let node = self.resolve(selector);
+        let id = node.id.clone();
+        let current = node
+            .prop_bool("checked")
+            .or_else(|| node.prop_bool("is_toggled"))
+            .unwrap_or(false);
+        self.dispatch(widget_event(EventType::Toggle, &id, Value::Bool(!current)));
+    }
+
+    /// Simulate a toggle with an explicit target value.
+    pub fn set_toggle(&mut self, selector: impl Into<Selector>, checked: bool) {
         let id = self.resolve(selector).id.clone();
         self.dispatch(widget_event(EventType::Toggle, &id, Value::Bool(checked)));
     }
@@ -152,8 +186,19 @@ impl<A: App> TestSession<A> {
         ));
     }
 
-    /// Simulate a form submission (text input Enter key).
-    pub fn submit(&mut self, selector: impl Into<Selector>, text: &str) {
+    /// Simulate a form submission, reading the current value from
+    /// the widget's `value` prop in the tree. Use
+    /// [`submit_with`](Self::submit_with) to supply an explicit
+    /// value.
+    pub fn submit(&mut self, selector: impl Into<Selector>) {
+        let node = self.resolve(selector);
+        let id = node.id.clone();
+        let text = node.prop_str("value").unwrap_or("").to_string();
+        self.dispatch(widget_event(EventType::Submit, &id, Value::String(text)));
+    }
+
+    /// Simulate a form submission with an explicit value.
+    pub fn submit_with(&mut self, selector: impl Into<Selector>, text: &str) {
         let id = self.resolve(selector).id.clone();
         self.dispatch(widget_event(
             EventType::Submit,
@@ -192,13 +237,20 @@ impl<A: App> TestSession<A> {
         ));
     }
 
-    /// Simulate a table column sort click.
-    pub fn sort(&mut self, selector: impl Into<Selector>, column: &str) {
+    /// Simulate a table column sort click with a direction.
+    ///
+    /// Emits a sort event with `{column, direction}` payload so apps
+    /// that look at both can see the intended direction explicitly.
+    /// Apps that only read the column key continue to work.
+    pub fn sort(&mut self, selector: impl Into<Selector>, column: &str, direction: SortDir) {
         let id = self.resolve(selector).id.clone();
         self.dispatch(widget_event(
             EventType::Sort,
             &id,
-            Value::String(column.to_string()),
+            serde_json::json!({
+                "column": column,
+                "direction": direction.as_str(),
+            }),
         ));
     }
 
@@ -462,7 +514,14 @@ impl<A: App> TestSession<A> {
     /// In TestSession, async tasks are executed synchronously during
     /// dispatch, so this always returns the result if the task was
     /// triggered. Returns `None` if no task with that tag has run.
-    pub fn await_async(&self, tag: &str) -> Option<&Result<Value, Value>> {
+    ///
+    /// The `_timeout` argument is accepted for API parity with
+    /// real-backend sessions and is unused in mock mode.
+    pub fn await_async(
+        &self,
+        tag: &str,
+        _timeout: std::time::Duration,
+    ) -> Option<&Result<Value, Value>> {
         self.async_results.get(tag)
     }
 
@@ -976,9 +1035,14 @@ impl<W: crate::widget::Widget> WidgetTestSession<W> {
         self.inner.type_text(selector, text);
     }
 
-    /// Simulate a toggle.
-    pub fn toggle(&mut self, selector: impl Into<Selector>, checked: bool) {
-        self.inner.toggle(selector, checked);
+    /// Simulate a toggle by reading the current prop and flipping it.
+    pub fn toggle(&mut self, selector: impl Into<Selector>) {
+        self.inner.toggle(selector);
+    }
+
+    /// Simulate a toggle with an explicit target value.
+    pub fn set_toggle(&mut self, selector: impl Into<Selector>, checked: bool) {
+        self.inner.set_toggle(selector, checked);
     }
 
     /// Simulate a slider change.

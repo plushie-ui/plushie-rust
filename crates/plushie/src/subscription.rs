@@ -175,9 +175,34 @@ impl Subscription {
     }
 
     /// Scope this subscription to a specific window.
+    ///
+    /// Use as a chained method on a single subscription. For grouping
+    /// multiple subscriptions under a window, see
+    /// [`Subscription::window_group`](Self::window_group).
     pub fn for_window(mut self, window_id: &str) -> Self {
         self.window_id = Some(window_id.to_string());
         self
+    }
+
+    /// Scope a group of subscriptions to a specific window.
+    ///
+    /// Equivalent to calling `.for_window(window_id)` on each
+    /// subscription individually. Handy when returning multiple
+    /// per-window subscriptions from [`App::subscribe`](crate::App::subscribe):
+    ///
+    /// ```ignore
+    /// fn subscribe(model: &Self) -> Vec<Subscription> {
+    ///     Subscription::window_group("main", vec![
+    ///         Subscription::on_key_press(),
+    ///         Subscription::on_pointer_move(),
+    ///     ])
+    /// }
+    /// ```
+    pub fn window_group(
+        window_id: &str,
+        subs: impl IntoIterator<Item = Subscription>,
+    ) -> Vec<Subscription> {
+        subs.into_iter().map(|s| s.for_window(window_id)).collect()
     }
 
     /// Limit the maximum event rate (events per second).
@@ -215,5 +240,31 @@ impl Subscription {
     /// Unique key for diffing: `(kind, tag)`.
     pub(crate) fn diff_key(&self) -> (&str, &str) {
         (self.wire_kind(), &self.tag)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_group_scopes_each_subscription() {
+        let subs = Subscription::window_group(
+            "secondary",
+            vec![
+                Subscription::on_key_press(),
+                Subscription::on_pointer_move(),
+            ],
+        );
+        assert_eq!(subs.len(), 2);
+        for sub in &subs {
+            assert_eq!(sub.window_id.as_deref(), Some("secondary"));
+        }
+    }
+
+    #[test]
+    fn for_window_chains_on_single_subscription() {
+        let sub = Subscription::on_key_press().for_window("main");
+        assert_eq!(sub.window_id.as_deref(), Some("main"));
     }
 }

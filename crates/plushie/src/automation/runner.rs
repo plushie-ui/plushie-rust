@@ -75,18 +75,10 @@ fn execute_instruction<A: App>(
             Ok(())
         }
         Instruction::Toggle(sel, value) => {
-            let checked = match value {
-                Some(v) => *v,
-                None => {
-                    // No explicit value: read current state and invert.
-                    let current = session
-                        .find(sel.clone())
-                        .and_then(|e| e.prop_bool("checked").or_else(|| e.prop_bool("is_toggled")))
-                        .unwrap_or(false);
-                    !current
-                }
-            };
-            session.toggle(sel.clone(), checked);
+            match value {
+                Some(v) => session.set_toggle(sel.clone(), *v),
+                None => session.toggle(sel.clone()),
+            }
             Ok(())
         }
         Instruction::Select(sel, value) => {

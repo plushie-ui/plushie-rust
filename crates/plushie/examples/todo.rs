@@ -176,7 +176,7 @@ mod tests {
     fn submitting_adds_todo_and_clears_input() {
         let mut session = TestSession::<TodoApp>::start();
         session.type_text("new_todo", "Buy milk");
-        session.submit("new_todo", "Buy milk");
+        session.submit_with("new_todo", "Buy milk");
         assert!(session.model().input.is_empty());
         assert_eq!(session.model().todos.len(), 1);
         assert_eq!(session.model().todos[0].text, "Buy milk");
@@ -187,13 +187,13 @@ mod tests {
     fn toggling_marks_todo_complete() {
         let mut session = TestSession::<TodoApp>::start();
         session.type_text("new_todo", "Test task");
-        session.submit("new_todo", "Test task");
+        session.submit_with("new_todo", "Test task");
         // Find the toggle checkbox inside the todo item.
         let toggle = session
             .find(Selector::id("toggle"))
             .expect("toggle checkbox not found");
         let toggle_id = toggle.id().to_string();
-        session.toggle(&*toggle_id, true);
+        session.set_toggle(&*toggle_id, true);
         assert!(session.model().todos[0].done);
     }
 
@@ -201,7 +201,7 @@ mod tests {
     fn deleting_removes_todo() {
         let mut session = TestSession::<TodoApp>::start();
         session.type_text("new_todo", "Ephemeral");
-        session.submit("new_todo", "Ephemeral");
+        session.submit_with("new_todo", "Ephemeral");
         let delete = session
             .find(Selector::id("delete"))
             .expect("delete button not found");

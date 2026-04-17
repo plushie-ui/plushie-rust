@@ -96,6 +96,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 
+use plushie_core::tree_walk::{TreeTransform, WalkCtx};
 use plushie_core::types::FromNode;
 use serde_json::Value;
 
@@ -443,20 +444,6 @@ impl WidgetStateStore {
         }
     }
 
-    /// Expand all __widget__ nodes in a TreeNode tree.
-    ///
-    /// Merges expanders from the registrar (collected during
-    /// `App::view()`) and then recursively expands widget
-    /// placeholder nodes by calling their `view()` methods.
-    pub fn expand_tree(&mut self, tree: &View, registrar: WidgetRegistrar) -> View {
-        // Merge newly registered expanders and initialize state
-        // for any widgets we haven't seen before.
-        for (id, expander) in registrar.take_all() {
-            self.register_expander(id, expander);
-        }
-        self.expand_node(tree)
-    }
-
     /// Insert or update a (id -> expander) mapping, initialising
     /// state on first registration.
     ///
@@ -467,7 +454,7 @@ impl WidgetStateStore {
     ///
     /// TODO(M-6): once the renderer's structured-diagnostic plumbing
     /// lands, replace the `log::error!` with a proper diagnostic emit.
-    fn register_expander(&mut self, id: String, expander: Box<dyn DynWidgetExpander>) {
+    pub(crate) fn register_expander(&mut self, id: String, expander: Box<dyn DynWidgetExpander>) {
         let incoming_type = expander.state_type_id();
         let incoming_name = expander.widget_type_name();
         if let Some((existing_type, _)) = self.states.get(&id) {
@@ -497,22 +484,16 @@ impl WidgetStateStore {
         self.expanders.insert(id, expander);
     }
 
-    fn expand_node(&self, node: &View) -> View {
-        if node.type_name == "__widget__"
+    /// Replace `node` in place with the expansion of its `__widget__`
+    /// placeholder. Iterates so widgets that return widgets keep
+    /// unwinding until we hit a concrete widget type.
+    pub(crate) fn expand_in_place(&self, node: &mut View) {
+        while node.type_name == "__widget__"
             && let Some(expander) = self.expanders.get(&node.id)
         {
             let (_type_id, state) = self.states.get(&node.id).expect("widget state missing");
             let expanded = expander.expand(&node.id, node, state.as_ref());
-            return self.expand_node(&expanded);
-        }
-
-        let children = node.children.iter().map(|c| self.expand_node(c)).collect();
-
-        View {
-            id: node.id.clone(),
-            type_name: node.type_name.clone(),
-            props: node.props.clone(),
-            children,
+            *node = expanded;
         }
     }
 
@@ -551,5 +532,43 @@ impl WidgetStateStore {
         }
 
         None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ExpandWidgetsTransform
+// ---------------------------------------------------------------------------
+
+/// Tree transform that replaces `__widget__` placeholder nodes with the
+/// views their registered expanders produce.
+///
+/// Runs before normalization so widgets' expanded subtrees participate
+/// in scope-prefixing and a11y rewrites identically to authored nodes.
+pub(crate) struct ExpandWidgetsTransform<'a> {
+    store: &'a WidgetStateStore,
+}
+
+impl<'a> ExpandWidgetsTransform<'a> {
+    pub(crate) fn new(store: &'a WidgetStateStore) -> Self {
+        Self { store }
+    }
+}
+
+impl TreeTransform for ExpandWidgetsTransform<'_> {
+    fn enter(&mut self, node: &mut View, _ctx: &mut WalkCtx) {
+        // Expand this node until it is no longer a `__widget__`
+        // placeholder. The walker will descend into the expanded
+        // children on its own, so nested widget placeholders inside
+        // the expansion get picked up as the traversal continues.
+        self.store.expand_in_place(node);
+    }
+}
+
+/// Merge a freshly-collected [`WidgetRegistrar`] into a store without
+/// kicking off a traversal. Used by the runtime to set up widget
+/// state before driving expand + normalize in a combined walk.
+pub(crate) fn register_expanders(store: &mut WidgetStateStore, registrar: WidgetRegistrar) {
+    for (id, expander) in registrar.take_all() {
+        store.register_expander(id, expander);
     }
 }

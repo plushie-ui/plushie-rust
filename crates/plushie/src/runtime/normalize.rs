@@ -58,7 +58,9 @@
 use std::collections::{BTreeMap, HashSet};
 
 use plushie_core::protocol::{PropValue, TreeNode};
-use plushie_core::tree_walk::{TreeTransform, WalkCtx, walk};
+#[cfg(any(test, feature = "wire"))]
+use plushie_core::tree_walk::walk;
+use plushie_core::tree_walk::{TreeTransform, WalkCtx};
 use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
 
 /// Normalize a view tree: apply scope prefixes, validate IDs,
@@ -67,35 +69,34 @@ use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
 ///
 /// Returns the normalized tree and any validation warnings
 /// (duplicate IDs, reserved characters, unresolved a11y refs).
+///
+/// Thin wrapper around the `NormalizeTransform`: drives it through
+/// `walk()` over a clone of the input, then runs the cross-widget
+/// a11y passes. Call sites that already own a mutable tree can
+/// compose [`NormalizeTransform`] with other transforms through
+/// `walk()` directly and then invoke [`finalize_a11y`].
+#[cfg(any(test, feature = "wire"))]
 pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
     let mut result = tree.clone();
-    let (warnings, _) = normalize_in_place(&mut result);
+    let mut transform = NormalizeTransform::new();
+    let mut ctx = WalkCtx::default();
+    walk(&mut result, &mut [&mut transform], &mut ctx);
+    let (warnings, _ctx) = finalize_a11y(&mut result, ctx);
     (result, warnings)
 }
 
-/// Drive normalization directly over a tree the caller already owns.
+/// Run the a11y-ref rewrite and missing-accessible-name passes over a
+/// tree whose IDs are already scope-normalized. Continues accumulating
+/// warnings into the supplied [`WalkCtx`].
 ///
-/// Mutates `tree` in place (scope-rewriting IDs, injecting inferred
-/// a11y, etc.) and returns the accumulated warnings along with the
-/// final [`WalkCtx`] so callers that chain additional walks can
-/// inspect it.
-pub(crate) fn normalize_in_place(tree: &mut TreeNode) -> (Vec<String>, WalkCtx) {
-    let mut transform = NormalizeTransform::new();
-    let mut ctx = WalkCtx::default();
-    walk(tree, &mut [&mut transform], &mut ctx);
-
-    // Pass 2: rewrite a11y refs, populate radio groups and role
-    // defaults. Uses the scoped IDs gathered during the first pass so
-    // we can both rewrite and validate references.
+/// Split from `normalize_in_place` so callers that compose
+/// normalization with other transforms in a single traversal can still
+/// reuse the cross-widget a11y logic, which has to run *after* the
+/// full set of declared IDs is known.
+pub(crate) fn finalize_a11y(tree: &mut TreeNode, mut ctx: WalkCtx) -> (Vec<String>, WalkCtx) {
     let declared_ids = collect_ids(tree);
     let radio_groups = collect_radio_groups(tree);
     rewrite_a11y_in_place(tree, "", &declared_ids, &radio_groups, &mut ctx.warnings, 0);
-
-    // Pass 3: walk the finished tree looking for interactive widgets
-    // that have no accessible name at all. Emits
-    // `missing_accessible_name` diagnostics with the scoped ID of the
-    // offender. Catches icon-only toolbars that would otherwise render
-    // a focusable node with no screen-reader label.
     check_missing_accessible_name(tree, &mut ctx.warnings);
 
     let warnings = std::mem::take(&mut ctx.warnings);

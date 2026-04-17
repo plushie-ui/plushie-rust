@@ -102,6 +102,12 @@ pub(crate) fn color_to_value(c: &Color) -> PropValue {
     c.wire_encode()
 }
 
+/// Convert a Background (solid color or gradient) to a PropValue
+/// via PlushieType.
+pub(crate) fn background_to_value(bg: &Background) -> PropValue {
+    bg.wire_encode()
+}
+
 /// Convert an Align to a horizontal alignment string for the renderer.
 pub(crate) fn halign_to_value(a: Align) -> PropValue {
     PropValue::Str(

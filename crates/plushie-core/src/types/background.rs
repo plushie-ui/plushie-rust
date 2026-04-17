@@ -55,3 +55,15 @@ impl From<Gradient> for Background {
         Self::Gradient(g)
     }
 }
+
+impl From<&str> for Background {
+    fn from(s: &str) -> Self {
+        Self::Color(Color::from(s))
+    }
+}
+
+impl From<String> for Background {
+    fn from(s: String) -> Self {
+        Self::Color(Color::from(s.as_str()))
+    }
+}

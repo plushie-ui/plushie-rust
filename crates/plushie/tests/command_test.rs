@@ -254,7 +254,7 @@ fn command_snap_to_end() {
 
 #[test]
 fn command_maximize_window() {
-    match Command::maximize_window("main", true) {
+    match Command::maximize_window("main") {
         Command::Renderer(RendererOp::Window(WindowOp::Maximize {
             window_id,
             maximized,
@@ -263,6 +263,36 @@ fn command_maximize_window() {
             assert!(maximized);
         }
         _ => panic!("expected Window(Maximize)"),
+    }
+}
+
+#[test]
+fn command_unmaximize_window() {
+    match Command::unmaximize_window("main") {
+        Command::Renderer(RendererOp::Window(WindowOp::Maximize {
+            window_id,
+            maximized,
+        })) => {
+            assert_eq!(window_id, "main");
+            assert!(!maximized);
+        }
+        _ => panic!("expected Window(Maximize)"),
+    }
+}
+
+#[test]
+fn command_minimize_unminimize_window() {
+    match Command::minimize_window("main") {
+        Command::Renderer(RendererOp::Window(WindowOp::Minimize { minimized, .. })) => {
+            assert!(minimized);
+        }
+        _ => panic!("expected Window(Minimize)"),
+    }
+    match Command::unminimize_window("main") {
+        Command::Renderer(RendererOp::Window(WindowOp::Minimize { minimized, .. })) => {
+            assert!(!minimized);
+        }
+        _ => panic!("expected Window(Minimize)"),
     }
 }
 

@@ -415,19 +415,35 @@ impl Command {
         }))
     }
 
-    /// Set or unset the maximized state of a window.
-    pub fn maximize_window(id: &str, maximized: bool) -> Self {
+    /// Maximize a window.
+    pub fn maximize_window(id: &str) -> Self {
         Self::Renderer(RendererOp::Window(WindowOp::Maximize {
             window_id: id.to_string(),
-            maximized,
+            maximized: true,
         }))
     }
 
-    /// Set or unset the minimized state of a window.
-    pub fn minimize_window(id: &str, minimized: bool) -> Self {
+    /// Restore a window from maximized to its previous size.
+    pub fn unmaximize_window(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::Maximize {
+            window_id: id.to_string(),
+            maximized: false,
+        }))
+    }
+
+    /// Minimize a window.
+    pub fn minimize_window(id: &str) -> Self {
         Self::Renderer(RendererOp::Window(WindowOp::Minimize {
             window_id: id.to_string(),
-            minimized,
+            minimized: true,
+        }))
+    }
+
+    /// Restore a minimized window.
+    pub fn unminimize_window(id: &str) -> Self {
+        Self::Renderer(RendererOp::Window(WindowOp::Minimize {
+            window_id: id.to_string(),
+            minimized: false,
         }))
     }
 

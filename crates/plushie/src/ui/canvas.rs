@@ -54,6 +54,36 @@ fn stroke_set(props: &mut PropMap, key: &str, val: impl Into<super::PropValue>) 
     }
 }
 
+/// Build a reusable linear [`Gradient`] value.
+///
+/// The returned gradient can be stored in a variable and applied to
+/// multiple shapes via `From<Gradient> for Background`, or passed to
+/// `.fill(..)` directly.
+///
+/// ```ignore
+/// let sky = linear_gradient((0.0, 0.0), (0.0, 200.0), [
+///     (0.0, Color::hex("#1a1a2e")),
+///     (1.0, Color::hex("#0f3460")),
+/// ]);
+///
+/// rect(0.0, 0.0, 400.0, 200.0).fill(sky.clone());
+/// rect(0.0, 200.0, 400.0, 400.0).fill(sky);
+/// ```
+pub fn linear_gradient<I, C>(start: (f32, f32), end: (f32, f32), stops: I) -> Gradient
+where
+    I: IntoIterator<Item = (f32, C)>,
+    C: Into<Color>,
+{
+    Gradient::linear(
+        start,
+        end,
+        stops
+            .into_iter()
+            .map(|(offset, c)| (offset, c.into()))
+            .collect(),
+    )
+}
+
 /// Build a gradient fill value in the wire format the renderer expects.
 fn gradient_fill(x1: f32, y1: f32, x2: f32, y2: f32, stops: &[(f32, &str)]) -> super::PropValue {
     use super::PropValue;
@@ -424,8 +454,12 @@ impl RectBuilder {
         self.id = id.to_string();
         self
     }
-    pub fn fill(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into()));
+    pub fn fill(mut self, bg: impl Into<Background>) -> Self {
+        super::set_prop(
+            &mut self.props,
+            "fill",
+            super::background_to_value(&bg.into()),
+        );
         self
     }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self {
@@ -542,8 +576,12 @@ impl CircleBuilder {
         self.id = id.to_string();
         self
     }
-    pub fn fill(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into()));
+    pub fn fill(mut self, bg: impl Into<Background>) -> Self {
+        super::set_prop(
+            &mut self.props,
+            "fill",
+            super::background_to_value(&bg.into()),
+        );
         self
     }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self {
@@ -721,8 +759,12 @@ impl PathBuilder {
         self.id = id.to_string();
         self
     }
-    pub fn fill(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into()));
+    pub fn fill(mut self, bg: impl Into<Background>) -> Self {
+        super::set_prop(
+            &mut self.props,
+            "fill",
+            super::background_to_value(&bg.into()),
+        );
         self
     }
     pub fn stroke(mut self, c: impl Into<Color>) -> Self {
@@ -825,8 +867,12 @@ impl CanvasTextBuilder {
         self
     }
     /// Fill color for the text.
-    pub fn fill(mut self, c: impl Into<Color>) -> Self {
-        super::set_prop(&mut self.props, "fill", super::color_to_value(&c.into()));
+    pub fn fill(mut self, bg: impl Into<Background>) -> Self {
+        super::set_prop(
+            &mut self.props,
+            "fill",
+            super::background_to_value(&bg.into()),
+        );
         self
     }
     pub fn font(mut self, f: Font) -> Self {

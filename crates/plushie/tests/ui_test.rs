@@ -384,3 +384,30 @@ fn table_column_with_width_and_align() {
     assert_eq!(cols[0]["min_width"], 100.0);
     assert_eq!(cols[0]["align"], "center");
 }
+
+#[test]
+fn canvas_rect_fill_accepts_linear_gradient() {
+    let bg = linear_gradient(
+        (0.0, 0.0),
+        (100.0, 0.0),
+        [(0.0, Color::hex("#ff0000")), (1.0, Color::hex("#0000ff"))],
+    );
+    let v = view_json(rect(0.0, 0.0, 100.0, 50.0).fill(bg));
+    let fill = &v["props"]["fill"];
+    assert_eq!(fill["type"], "linear");
+    assert_eq!(fill["start"], serde_json::json!([0.0, 0.0]));
+    assert_eq!(fill["end"], serde_json::json!([100.0, 0.0]));
+    assert_eq!(fill["stops"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn canvas_rect_fill_still_accepts_color() {
+    let v = view_json(rect(0.0, 0.0, 10.0, 10.0).fill(Color::hex("#abcdef")));
+    assert_eq!(v["props"]["fill"], "#abcdef");
+}
+
+#[test]
+fn canvas_rect_fill_accepts_hex_string() {
+    let v = view_json(rect(0.0, 0.0, 10.0, 10.0).fill("#abcdef"));
+    assert_eq!(v["props"]["fill"], "#abcdef");
+}

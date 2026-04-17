@@ -65,6 +65,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PickListWidget {
         render_pick_list(node, *ctx)
     }
 
+    /// Flow the pick_list's `placeholder` prop into
+    /// `a11y.description` as a fallback when the author hasn't set
+    /// one. Mirrors combo_box_widget so the two visually-similar
+    /// widgets behave consistently for screen readers. Host SDK
+    /// builders may author this on the tree directly; the fallback
+    /// keeps custom widget crates that skip the builder honest.
+    fn infer_a11y(&self, node: &TreeNode) -> Option<crate::a11y::A11yOverrides> {
+        let props = &node.props;
+        crate::prop_helpers::prop_str(props, "placeholder")
+            .map(crate::a11y::A11yOverrides::with_description)
+    }
+
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(PickListWidget)
     }

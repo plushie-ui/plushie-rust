@@ -1345,6 +1345,80 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
     }
 
+    /// Whether any active widget subscription matches `kind`.
+    ///
+    /// Used by the renderer to decide whether to compose an iced
+    /// subscription for a source even when no host-level subscription
+    /// is registered. A widget is the sole subscriber in that case and
+    /// we still need iced to emit the underlying events.
+    pub fn has_widget_subscription(&self, kind: &str) -> bool {
+        self.active_widget_subs.values().any(|sub| sub.kind == kind)
+    }
+
+    /// Dispatch an iced [`Message`] to every widget with an active
+    /// subscription matching `kind`, optionally filtered by
+    /// `window_id`.
+    ///
+    /// For each matching [`CollectedSubscription`], the owning widget's
+    /// [`PlushieWidget::handle_message`] is invoked with `msg`. The
+    /// returned events from every widget are concatenated and returned.
+    /// Widgets that return [`HandleResult::Fallthrough`] contribute
+    /// nothing (the registry makes no attempt to generate a generic
+    /// event for widget-subscription delivery; fallthrough signals the
+    /// widget didn't care about this particular payload).
+    ///
+    /// When `window_id` is `Some`, only subscriptions whose originating
+    /// node lived under that window receive the event. `None` delivers
+    /// to subscriptions from every window (used for window-agnostic
+    /// sources like system theme changes).
+    ///
+    /// If a widget has multiple instances subscribed to the same kind,
+    /// its `handle_message` fires once per matching subscription entry
+    /// (i.e. once per instance). Stateless widgets can ignore the
+    /// duplication; stateful widgets typically iterate their own
+    /// per-instance state on each call.
+    pub fn dispatch_widget_subscription(
+        &mut self,
+        kind: &str,
+        window_id: Option<&str>,
+        msg: &Message,
+    ) -> Vec<OutgoingEvent> {
+        // Collect matching (node_id, type_name) pairs first so the
+        // mutable borrow in call_widget_mut doesn't overlap with the
+        // immutable iteration over active_widget_subs.
+        let targets: Vec<(String, String)> = self
+            .active_widget_subs
+            .values()
+            .filter(|sub| sub.kind == kind)
+            .filter(|sub| match window_id {
+                Some(wid) => sub.window_id == wid,
+                None => true,
+            })
+            .filter_map(|sub| {
+                self.node_factory_map
+                    .get(&sub.node_id)
+                    .and_then(|&idx| self.impls.get(idx))
+                    .and_then(|w| w.type_names().first().map(|t| t.to_string()))
+                    .map(|type_name| (sub.node_id.clone(), type_name))
+            })
+            .collect();
+
+        let mut out = Vec::new();
+        for (node_id, type_name) in targets {
+            let result = self.call_widget_mut(
+                &type_name,
+                "handle_message",
+                &node_id,
+                |widget| widget.handle_message(msg),
+                || HandleResult::Fallthrough,
+            );
+            if let HandleResult::Handled(events) = result {
+                out.extend(events);
+            }
+        }
+        out
+    }
+
     /// Route a widget command to the factory
     /// that owns the target node ID.
     pub fn handle_widget_op(
@@ -2194,6 +2268,89 @@ mod tests {
             registry.active_widget_subscriptions().is_empty(),
             "subscription must go away once the owning node leaves the tree"
         );
+    }
+
+    // A widget that counts how many messages it received and emits a
+    // "tick" outgoing event for each one. Used to verify
+    // dispatch_widget_subscription routes messages correctly.
+    struct CountingTickWidget;
+
+    impl PlushieWidget<()> for CountingTickWidget {
+        fn type_names(&self) -> &[&str] {
+            &["counter"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("count").into()
+        }
+
+        fn subscriptions(
+            &self,
+            node: &TreeNode,
+            _ctx: &SubscribeCtx<'_>,
+        ) -> Vec<WidgetSubscription> {
+            vec![WidgetSubscription::new("on_animation_frame", &node.id)]
+        }
+
+        fn handle_message(&mut self, _msg: &Message) -> HandleResult {
+            HandleResult::emit(vec![OutgoingEvent::generic(
+                "tick".to_string(),
+                "counter".to_string(),
+                None,
+            )])
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(CountingTickWidget)
+        }
+    }
+
+    #[test]
+    fn has_widget_subscription_reports_active_kinds() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(CountingTickWidget));
+
+        let mut tree = tree(vec![leaf("c1", "counter")]);
+        let mut shared = crate::shared_state::SharedState::new();
+        registry.prepare_walk(&mut tree, &mut shared, &Theme::Dark);
+
+        assert!(registry.has_widget_subscription("on_animation_frame"));
+        assert!(!registry.has_widget_subscription("on_key_press"));
+    }
+
+    #[test]
+    fn dispatch_widget_subscription_calls_handle_message_on_owners() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(CountingTickWidget));
+
+        let mut tree = tree(vec![leaf("c1", "counter"), leaf("c2", "counter")]);
+        let mut shared = crate::shared_state::SharedState::new();
+        registry.prepare_walk(&mut tree, &mut shared, &Theme::Dark);
+
+        let events =
+            registry.dispatch_widget_subscription("on_animation_frame", None, &Message::NoOp);
+        assert_eq!(
+            events.len(),
+            2,
+            "each subscribed widget should see the message and emit one event"
+        );
+    }
+
+    #[test]
+    fn dispatch_widget_subscription_ignores_non_matching_kinds() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(CountingTickWidget));
+
+        let mut tree = tree(vec![leaf("c1", "counter")]);
+        let mut shared = crate::shared_state::SharedState::new();
+        registry.prepare_walk(&mut tree, &mut shared, &Theme::Dark);
+
+        let events = registry.dispatch_widget_subscription("on_key_press", None, &Message::NoOp);
+        assert!(events.is_empty());
     }
 
     // ---------------------------------------------------------------------------

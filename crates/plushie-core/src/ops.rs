@@ -98,6 +98,15 @@ pub enum RendererOp {
     FocusNext,
     /// Move keyboard focus to the previous focusable widget.
     FocusPrevious,
+    /// Move keyboard focus to the next focusable widget within the
+    /// given scope. The scope is a widget ID; focus wraps within the
+    /// subtree rooted at that widget rather than walking the full
+    /// tree. Use for modal focus traps, menus, and other scoped
+    /// keyboard-navigation containers.
+    FocusNextWithin { scope: String },
+    /// Move keyboard focus to the previous focusable widget within
+    /// the given scope.
+    FocusPreviousWithin { scope: String },
 
     // -- Window operations --
     /// Perform a window operation (close, resize, move, etc.).

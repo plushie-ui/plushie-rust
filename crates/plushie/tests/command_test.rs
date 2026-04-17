@@ -31,6 +31,24 @@ fn command_focus_carries_id() {
 }
 
 #[test]
+fn command_focus_next_within_carries_scope() {
+    match Command::focus_next_within("menu") {
+        Command::Renderer(RendererOp::FocusNextWithin { scope }) => assert_eq!(scope, "menu"),
+        _ => panic!("expected FocusNextWithin"),
+    }
+}
+
+#[test]
+fn command_focus_previous_within_carries_scope() {
+    match Command::focus_previous_within("menu") {
+        Command::Renderer(RendererOp::FocusPreviousWithin { scope }) => {
+            assert_eq!(scope, "menu")
+        }
+        _ => panic!("expected FocusPreviousWithin"),
+    }
+}
+
+#[test]
 fn command_close_window_produces_window_op() {
     match Command::close_window("main") {
         Command::Renderer(RendererOp::Window(WindowOp::Close(id))) => assert_eq!(id, "main"),

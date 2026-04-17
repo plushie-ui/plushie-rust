@@ -43,6 +43,12 @@ impl App {
             // -- Global focus (no target widget) --
             RendererOp::FocusNext => operation::focus_next(),
             RendererOp::FocusPrevious => operation::focus_previous(),
+            RendererOp::FocusNextWithin { scope } => {
+                operation::focus_next_within(iced::advanced::widget::Id::from(scope))
+            }
+            RendererOp::FocusPreviousWithin { scope } => {
+                operation::focus_previous_within(iced::advanced::widget::Id::from(scope))
+            }
 
             // -- Accessibility --
             //

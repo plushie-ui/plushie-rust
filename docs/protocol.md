@@ -597,6 +597,8 @@ query renderer state.
 |----|---------|-------------|
 | `close_window` | `window_id` | Close a window |
 | `announce` | `text`, optional `politeness` (`"polite"` or `"assertive"`, default `"assertive"`) | Screen reader announcement (no visible widget needed) |
+| `focus_next_within` | `scope` (widget ID) | Move focus to the next focusable widget within the subtree rooted at `scope` |
+| `focus_previous_within` | `scope` (widget ID) | Move focus to the previous focusable widget within the subtree rooted at `scope` |
 | `exit` | -- | Exit the renderer |
 | `tree_hash` | `tag` (optional) | Compute SHA-256 hash of current tree; response via `op_query_response` |
 | `find_focused` | `tag` (optional) | Find the currently focused widget; response via `op_query_response` |

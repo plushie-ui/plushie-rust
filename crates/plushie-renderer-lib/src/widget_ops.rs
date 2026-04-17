@@ -59,6 +59,22 @@ impl App {
             }
             "focus_next" => iced::widget::operation::focus_next(),
             "focus_previous" => iced::widget::operation::focus_previous(),
+            "focus_next_within" => {
+                let scope = payload
+                    .get("scope")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                iced::widget::operation::focus_next_within(iced::widget::Id::from(scope))
+            }
+            "focus_previous_within" => {
+                let scope = payload
+                    .get("scope")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                iced::widget::operation::focus_previous_within(iced::widget::Id::from(scope))
+            }
             "scroll_to" => {
                 let target = get_target();
                 let offset_x = payload

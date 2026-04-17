@@ -338,6 +338,29 @@ impl Command {
         Self::Renderer(RendererOp::FocusPrevious)
     }
 
+    /// Move keyboard focus to the next focusable widget within the
+    /// subtree rooted at the given widget ID. Focus wraps within the
+    /// scope rather than walking out into siblings.
+    ///
+    /// Use this for scoped keyboard navigation: a menu, a pane grid,
+    /// or anywhere you need a contained Tab cycle. For modal focus
+    /// traps, set `a11y.modal = true` on the container; the fork
+    /// auto-traps focus at modal boundaries without needing this
+    /// command.
+    pub fn focus_next_within(scope: &str) -> Self {
+        Self::Renderer(RendererOp::FocusNextWithin {
+            scope: scope.to_string(),
+        })
+    }
+
+    /// Move keyboard focus to the previous focusable widget within
+    /// the given scope. See [`focus_next_within`](Command::focus_next_within).
+    pub fn focus_previous_within(scope: &str) -> Self {
+        Self::Renderer(RendererOp::FocusPreviousWithin {
+            scope: scope.to_string(),
+        })
+    }
+
     // -- Text cursor --
 
     /// Select all text in a text input or editor.

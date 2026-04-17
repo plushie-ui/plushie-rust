@@ -927,6 +927,12 @@ fn execute_wire_renderer_op(
         RendererOp::Commands(commands) => bridge.send_commands(commands.clone()),
         RendererOp::FocusNext => bridge.send_widget_op("focus_next", &json!({})),
         RendererOp::FocusPrevious => bridge.send_widget_op("focus_previous", &json!({})),
+        RendererOp::FocusNextWithin { scope } => {
+            bridge.send_widget_op("focus_next_within", &json!({"scope": scope}))
+        }
+        RendererOp::FocusPreviousWithin { scope } => {
+            bridge.send_widget_op("focus_previous_within", &json!({"scope": scope}))
+        }
         RendererOp::Window(op) => execute_wire_window_op(bridge, op),
         RendererOp::WindowQuery(query) => {
             let (op_name, window_id, tag) = match query {

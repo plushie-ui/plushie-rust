@@ -77,6 +77,7 @@ impl fmt::Display for NotificationUrgency {
 /// In direct mode, these are passed in-process with zero serialization.
 /// In wire mode, they are serialized at the process boundary.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum RendererOp {
     // -- Widget-targeted command --
     /// Send a command to a widget by ID.
@@ -156,6 +157,7 @@ pub enum RendererOp {
 
 /// A window management operation.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum WindowOp {
     /// Close a window.
     Close(String),
@@ -235,6 +237,7 @@ pub enum WindowOp {
 
 /// A query for window state.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum WindowQuery {
     GetSize { window_id: String, tag: String },
     GetPosition { window_id: String, tag: String },
@@ -259,6 +262,7 @@ pub enum SystemOp {
 
 /// A system-level query.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SystemQuery {
     /// Query the current OS theme (light/dark).
     GetTheme { tag: String },
@@ -411,6 +415,7 @@ impl NotificationOpts {
 
 /// An image management operation.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ImageOp {
     /// Create an image from encoded bytes (PNG, JPEG, etc.).
     Create { handle: String, data: Vec<u8> },

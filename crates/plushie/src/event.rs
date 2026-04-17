@@ -240,6 +240,7 @@ fn parse_modifiers(obj: Option<&serde_json::Map<String, Value>>) -> KeyModifiers
 
 /// An event delivered to the app's update function.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Event {
     Widget(WidgetEvent),
     Key(KeyEvent),
@@ -470,6 +471,7 @@ impl WidgetEvent {
 /// }
 /// ```
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum WidgetMatch<'a> {
     Click(&'a str),
     DoubleClick(&'a str, PointerPress),
@@ -531,6 +533,7 @@ pub fn family_to_event_type(family: &str) -> EventType {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KeyEventType {
     Press,
     Release,
@@ -575,6 +578,7 @@ impl KeyEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum KeyLocation {
     #[default]
     Standard,
@@ -611,6 +615,7 @@ pub struct WindowEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum WindowEventType {
     Opened,
     Closed,
@@ -676,6 +681,7 @@ pub struct EffectEvent {
 /// converts the wire-format (kind, status, value) triple into the
 /// appropriate variant.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum EffectResult {
     /// A file was selected by the user.
     FileOpened { path: String },
@@ -836,6 +842,7 @@ pub struct SystemEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SystemEventType {
     SystemInfo,
     SystemTheme,
@@ -909,6 +916,7 @@ pub struct ImeEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ImeEventType {
     Opened,
     Preedit,

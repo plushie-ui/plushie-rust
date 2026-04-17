@@ -133,6 +133,7 @@ impl std::fmt::Debug for StreamEmitter {
 /// Commands that go to the renderer are wrapped in
 /// [`Command::Renderer`]. SDK-local commands (async tasks, timers)
 /// are handled in-process and never reach the renderer.
+#[non_exhaustive]
 pub enum Command {
     /// No side effect.
     None,

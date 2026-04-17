@@ -120,6 +120,7 @@ impl App {
                 "advance_frame",
                 &serde_json::json!({"timestamp": timestamp}),
             ),
+            _ => Task::none(),
         }
     }
 
@@ -233,6 +234,7 @@ impl App {
                     "width": width, "height": height
                 }),
             ),
+            _ => Task::none(),
         }
     }
 
@@ -263,6 +265,7 @@ impl App {
             WindowQuery::RawId { window_id, tag } => {
                 self.handle_window_op("raw_id", &window_id, &json!({"tag": tag}))
             }
+            _ => Task::none(),
         }
     }
 
@@ -283,6 +286,7 @@ impl App {
             SystemQuery::GetInfo { tag } => {
                 self.handle_system_query("get_system_info", &serde_json::json!({"tag": tag}))
             }
+            _ => Task::none(),
         }
     }
 
@@ -336,6 +340,7 @@ impl App {
                 self.handle_widget_op("list_images", &serde_json::json!({"target": tag}))
             }
             ImageOp::Clear => self.handle_widget_op("clear_images", &serde_json::json!({})),
+            _ => Task::none(),
         }
     }
 

@@ -123,6 +123,7 @@ pub trait Widget: Send + Sync + 'static {
 /// variant: it would be redundant with mutating state and returning
 /// `Consumed`.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum EventResult {
     /// Emit a transformed event to the parent.
     Emit { family: String, value: Value },

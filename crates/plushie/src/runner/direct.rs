@@ -23,8 +23,8 @@ use plushie_widget_sdk::widget::widget_set::iced_widget_set;
 use crate::App;
 use crate::command::Command;
 use crate::event::{EffectEvent, EffectResult, Event, WidgetEvent};
-use crate::runtime;
 use crate::runtime::subscriptions::{SubOp, SubscriptionManager};
+use crate::runtime::view_errors::{ViewErrors, ViewOutcome};
 use crate::widget::{EventResult as WidgetEventResult, Interception, WidgetStateStore};
 
 use super::effect_tracker::{self, EffectTracker};
@@ -54,6 +54,8 @@ struct DirectApp<A: App> {
     active_timers: HashMap<String, std::time::Duration>,
     /// Tracks in-flight effects for wire ID resolution and timeouts.
     effect_tracker: EffectTracker,
+    /// Consecutive-view-panic tracking for the frozen-UI overlay.
+    view_errors: ViewErrors,
 }
 
 impl<A: App> DirectApp<A> {
@@ -87,6 +89,7 @@ impl<A: App> DirectApp<A> {
             sub_manager: SubscriptionManager::new(),
             active_timers: HashMap::new(),
             effect_tracker: EffectTracker::new(),
+            view_errors: ViewErrors::default(),
         };
 
         // Apply user settings to the renderer before the first view.
@@ -301,10 +304,26 @@ impl<A: App> DirectApp<A> {
     }
 
     fn refresh_view(&mut self) {
-        let (tree, warnings) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
-        for warning in &warnings {
-            log::warn!("view normalization: {warning}");
-        }
+        // Fall back to the last-good tree when A::view() panics so
+        // the UI doesn't disappear while we log the error. The
+        // view_errors state owns the consecutive counter and
+        // frozen-UI overlay injection.
+        let fallback = self.current_tree.clone().unwrap_or_else(placeholder_tree);
+        let outcome = crate::runtime::view_errors::run_guarded_view::<A>(
+            &mut self.view_errors,
+            &self.model,
+            &mut self.widget_store,
+            &fallback,
+        );
+        let tree = match outcome {
+            ViewOutcome::Ok(tree, warnings) => {
+                for warning in &warnings {
+                    log::warn!("view normalization: {warning}");
+                }
+                tree
+            }
+            ViewOutcome::Panicked { last_good, .. } => last_good,
+        };
 
         self.renderer.registry.prepare_walk(
             &tree,
@@ -603,4 +622,19 @@ pub fn run<A: App>() -> crate::Result {
     .scale_factor(DirectApp::<A>::scale_factor_for_window)
     .run()
     .map_err(|e| crate::Error::Iced(e.to_string()))
+}
+
+/// Minimal empty tree used as a first-frame fallback if A::view()
+/// panics before any successful render. Gives the renderer
+/// something valid to draw rather than leaving `current_tree` as
+/// `None`.
+fn placeholder_tree() -> TreeNode {
+    TreeNode {
+        id: String::new(),
+        type_name: "container".to_string(),
+        props: plushie_widget_sdk::protocol::Props::Typed(
+            plushie_widget_sdk::protocol::PropMap::new(),
+        ),
+        children: vec![],
+    }
 }

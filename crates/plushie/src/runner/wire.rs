@@ -60,11 +60,25 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     let mut sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
     let mut effect_tracker = EffectTracker::new();
     let mut async_mgr = AsyncTaskManager::new();
+    let mut view_errors = crate::runtime::view_errors::ViewErrors::default();
 
-    // Initial view; shared across restarts as the "current tree".
-    let view = A::view(&model, &mut crate::widget::WidgetRegistrar::new());
-    let (normalized, _) = normalize::normalize(&view);
-    let mut current_tree = normalized;
+    // Initial view; shared across restarts as the "current tree". If
+    // the first view call panics there is no last-good tree to fall
+    // back to, so we use an empty container as a seed.
+    let seed = plushie_core::protocol::TreeNode {
+        id: String::new(),
+        type_name: "container".to_string(),
+        props: plushie_core::protocol::Props::Typed(plushie_core::protocol::PropMap::new()),
+        children: vec![],
+    };
+    let mut current_tree = match crate::runtime::view_errors::run_guarded_view_wire::<A>(
+        &mut view_errors,
+        &model,
+        &seed,
+    ) {
+        crate::runtime::view_errors::ViewOutcome::Ok(tree, _) => tree,
+        crate::runtime::view_errors::ViewOutcome::Panicked { last_good, .. } => last_good,
+    };
 
     let mut restart_count: u32 = 0;
     let mut pending_init: Option<Command> = Some(init_cmd);
@@ -135,6 +149,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
             &mut effect_tracker,
             &mut async_mgr,
             &mut sub_manager,
+            &mut view_errors,
             policy.heartbeat_interval,
         );
 
@@ -186,6 +201,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 /// Run one session against an already-spawned renderer. Returns the
 /// classified [`ExitReason`] when the session ends (renderer
 /// disconnect, crash, heartbeat timeout, or explicit shutdown).
+#[allow(clippy::too_many_arguments)]
 #[cfg(feature = "wire")]
 fn run_session<A: App>(
     bridge: &mut Bridge,
@@ -194,6 +210,7 @@ fn run_session<A: App>(
     effect_tracker: &mut EffectTracker,
     async_mgr: &mut AsyncTaskManager,
     sub_manager: &mut crate::runtime::subscriptions::SubscriptionManager,
+    view_errors: &mut crate::runtime::view_errors::ViewErrors,
     heartbeat_interval: Option<std::time::Duration>,
 ) -> ExitReason {
     loop {
@@ -210,6 +227,7 @@ fn run_session<A: App>(
                         effect_tracker,
                         async_mgr,
                         sub_manager,
+                        view_errors,
                     ) {
                         log::error!("command execution failed: {e}");
                     }
@@ -240,6 +258,7 @@ fn run_session<A: App>(
                     effect_tracker,
                     async_mgr,
                     sub_manager,
+                    view_errors,
                 )
             {
                 log::error!("async event processing failed: {e}");
@@ -260,6 +279,7 @@ fn run_session<A: App>(
                 effect_tracker,
                 async_mgr,
                 sub_manager,
+                view_errors,
             ) {
                 log::error!("timeout command execution failed: {e}");
             }
@@ -269,6 +289,10 @@ fn run_session<A: App>(
 
 /// Process a single SDK event through the full MVU cycle:
 /// update -> view -> normalize -> diff -> patch -> sub sync.
+///
+/// Wraps `A::view()` in the view-errors guard so a panic falls
+/// back to the last-good tree and increments the consecutive
+/// counter (frozen-UI overlay at threshold).
 #[cfg(feature = "wire")]
 fn process_event<A: App>(
     model: &mut A::Model,
@@ -278,16 +302,23 @@ fn process_event<A: App>(
     effect_tracker: &mut EffectTracker,
     async_mgr: &mut AsyncTaskManager,
     sub_manager: &mut crate::runtime::subscriptions::SubscriptionManager,
+    view_errors: &mut crate::runtime::view_errors::ViewErrors,
 ) -> crate::Result {
     let cmd = A::update(model, event);
     execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
 
-    // Re-render and diff.
-    let view = A::view(model, &mut crate::widget::WidgetRegistrar::new());
-    let (new_tree, warnings) = normalize::normalize(&view);
-    for warning in &warnings {
-        log::warn!("view normalization: {warning}");
-    }
+    // Re-render and diff under panic guard.
+    let outcome =
+        crate::runtime::view_errors::run_guarded_view_wire::<A>(view_errors, model, current_tree);
+    let new_tree = match outcome {
+        crate::runtime::view_errors::ViewOutcome::Ok(tree, warnings) => {
+            for warning in &warnings {
+                log::warn!("view normalization: {warning}");
+            }
+            tree
+        }
+        crate::runtime::view_errors::ViewOutcome::Panicked { last_good, .. } => last_good,
+    };
 
     let patches = tree_diff::diff_tree(current_tree, &new_tree);
     if !patches.is_empty() {
@@ -327,89 +358,87 @@ fn classify_exit(bridge: &mut Bridge, err: &io::Error) -> ExitReason {
     }
 }
 
-/// Convert a wire protocol JSON message to SDK Events.
+/// Typed representation of a single renderer -> SDK message.
 ///
-/// Most messages produce a single event. Interact responses may
-/// produce multiple events (one per renderer-generated action).
-/// Returns an empty Vec for unrecognized messages.
+/// Mirrors the outgoing shapes in plushie-core's OutgoingEvent /
+/// response families. Unknown messages decode into
+/// [`IncomingRendererMessage::Unknown`] so a SDK/renderer version
+/// skew produces a diagnostic rather than a silent drop. F-2.3.2 +
+/// F-2.3.3.
 #[cfg(feature = "wire")]
-fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Event> {
-    use super::event_bridge::{SinkEvent, sink_event_to_sdk};
-    use plushie_core::protocol::{EffectResponse, KeyModifiers, OutgoingEvent};
+#[derive(Debug)]
+enum IncomingRendererMessage {
+    Event {
+        family: String,
+        id: String,
+        value: Option<Value>,
+        tag: Option<String>,
+        modifiers: Option<plushie_core::protocol::KeyModifiers>,
+        captured: Option<bool>,
+    },
+    EffectResponse {
+        id: String,
+        status: &'static str,
+        result: Option<Value>,
+        error: Option<String>,
+    },
+    QueryResponse {
+        kind: String,
+        tag: String,
+        data: Value,
+    },
+    InteractResponse {
+        events: Vec<Value>,
+    },
+    /// Message type the SDK doesn't recognise. Preserves the type
+    /// string and raw payload so diagnostics can surface version
+    /// skew cleanly.
+    Unknown {
+        msg_type: String,
+        raw: Value,
+    },
+}
 
-    let msg_type = match msg.get("type").and_then(|v| v.as_str()) {
-        Some(t) => t,
-        None => return vec![],
-    };
-
-    // Interact responses contain multiple events that each need
-    // a full MVU cycle. Recursively convert each sub-event.
-    if msg_type == "interact_response" {
-        return msg
-            .get("events")
-            .and_then(|v| v.as_array())
-            .map(|events| {
-                events
-                    .iter()
-                    .flat_map(|e| wire_to_sdk_events(e, effect_tracker))
-                    .collect()
-            })
-            .unwrap_or_default();
-    }
-
-    let sink_event = match msg_type {
+/// Decode a top-level wire message into a typed variant.
+#[cfg(feature = "wire")]
+fn decode_incoming(msg: &Value) -> Option<IncomingRendererMessage> {
+    let msg_type = msg.get("type").and_then(|v| v.as_str())?;
+    let decoded = match msg_type {
         "event" => {
-            let family = match msg.get("family").and_then(|v| v.as_str()) {
-                Some(f) => f.to_string(),
-                None => return vec![],
-            };
+            let family = msg.get("family").and_then(|v| v.as_str())?.to_string();
             let id = msg
                 .get("id")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let mut event = OutgoingEvent::widget_event(family, id, msg.get("value").cloned());
-            if let Some(tag) = msg.get("tag").and_then(|v| v.as_str()) {
-                event.tag = Some(tag.to_string());
+            IncomingRendererMessage::Event {
+                family,
+                id,
+                value: msg.get("value").cloned(),
+                tag: msg
+                    .get("tag")
+                    .and_then(|v| v.as_str())
+                    .map(ToString::to_string),
+                modifiers: msg
+                    .get("modifiers")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok()),
+                captured: msg.get("captured").and_then(|v| v.as_bool()),
             }
-            event.modifiers = msg
-                .get("modifiers")
-                .and_then(|v| serde_json::from_value::<KeyModifiers>(v.clone()).ok());
-            event.captured = msg.get("captured").and_then(|v| v.as_bool());
-            SinkEvent::Event(event)
         }
         "effect_response" => {
-            let wire_id = match msg.get("id").and_then(|v| v.as_str()) {
-                Some(id) => id,
-                None => return vec![],
-            };
+            let id = msg.get("id").and_then(|v| v.as_str())?.to_string();
             let status = match msg.get("status").and_then(|v| v.as_str()) {
                 Some("ok") => "ok",
                 Some("cancelled") => "cancelled",
                 Some("unsupported") => "unsupported",
                 _ => "error",
             };
-
-            // Resolve via the tracker for typed result parsing.
-            if let Some((tag, kind)) = effect_tracker.resolve(wire_id) {
-                let error_as_value = msg
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .map(|e| Value::String(e.to_string()));
-                let value = msg.get("result").or(error_as_value.as_ref());
-                let result = EffectResult::parse(&kind, status, value);
-                return vec![Event::Effect(EffectEvent { tag, result })];
-            }
-
-            let response = EffectResponse {
-                message_type: "effect_response",
-                session: String::new(),
-                id: wire_id.to_string(),
+            IncomingRendererMessage::EffectResponse {
+                id,
                 status,
                 result: msg.get("result").cloned(),
                 error: msg.get("error").and_then(|v| v.as_str()).map(String::from),
-            };
-            SinkEvent::EffectResponse(response)
+            }
         }
         "query_response" | "op_query_response" => {
             let kind = msg
@@ -428,9 +457,100 @@ fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Ev
                 .or_else(|| msg.get("data"))
                 .cloned()
                 .unwrap_or(Value::Null);
+            IncomingRendererMessage::QueryResponse { kind, tag, data }
+        }
+        "interact_response" => {
+            let events = msg
+                .get("events")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            IncomingRendererMessage::InteractResponse { events }
+        }
+        other => IncomingRendererMessage::Unknown {
+            msg_type: other.to_string(),
+            raw: msg.clone(),
+        },
+    };
+    Some(decoded)
+}
+
+/// Convert a wire protocol JSON message to SDK Events.
+///
+/// Decodes into [`IncomingRendererMessage`] first so unknown
+/// message types are preserved as `Unknown` and surface through the
+/// diagnostic channel instead of being silently dropped.
+#[cfg(feature = "wire")]
+fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Event> {
+    use super::event_bridge::{SinkEvent, sink_event_to_sdk};
+    use plushie_core::protocol::{EffectResponse, OutgoingEvent};
+
+    let Some(decoded) = decode_incoming(msg) else {
+        // No `type` field at all: not our message shape.
+        log::warn!("[code=unknown_message_type] wire message without `type` field: {msg}");
+        return vec![];
+    };
+
+    let sink_event = match decoded {
+        IncomingRendererMessage::InteractResponse { events } => {
+            // Interact responses contain multiple events that each
+            // need a full MVU cycle. Recursively convert each one.
+            return events
+                .iter()
+                .flat_map(|e| wire_to_sdk_events(e, effect_tracker))
+                .collect();
+        }
+        IncomingRendererMessage::Unknown { msg_type, raw: _ } => {
+            // TODO(M-6): Replace with structured diagnostic event
+            // once the M-6 inbound diagnostic stream is wired. For
+            // now a tagged log line is the observable path.
+            log::error!(
+                "[code=unknown_message_type] unrecognised renderer message type `{msg_type}`; \
+                     likely a host/renderer version skew"
+            );
+            return vec![];
+        }
+        IncomingRendererMessage::Event {
+            family,
+            id,
+            value,
+            tag,
+            modifiers,
+            captured,
+        } => {
+            let mut event = OutgoingEvent::widget_event(family, id, value);
+            event.tag = tag;
+            event.modifiers = modifiers;
+            event.captured = captured;
+            SinkEvent::Event(event)
+        }
+        IncomingRendererMessage::EffectResponse {
+            id: wire_id,
+            status,
+            result,
+            error,
+        } => {
+            // Resolve via the tracker for typed result parsing.
+            if let Some((tag, kind)) = effect_tracker.resolve(&wire_id) {
+                let error_as_value = error.as_ref().map(|e| Value::String(e.clone()));
+                let value = result.as_ref().or(error_as_value.as_ref());
+                let result = EffectResult::parse(&kind, status, value);
+                return vec![Event::Effect(EffectEvent { tag, result })];
+            }
+
+            let response = EffectResponse {
+                message_type: "effect_response",
+                session: String::new(),
+                id: wire_id,
+                status,
+                result,
+                error,
+            };
+            SinkEvent::EffectResponse(response)
+        }
+        IncomingRendererMessage::QueryResponse { kind, tag, data } => {
             SinkEvent::QueryResponse { kind, tag, data }
         }
-        _ => return vec![],
     };
 
     sink_event_to_sdk(sink_event).into_iter().collect()

@@ -12,6 +12,7 @@ use crate::widget::WidgetStateStore;
 pub mod normalize;
 pub mod subscriptions;
 pub mod tree_diff;
+pub mod view_errors;
 
 /// Build, expand, and normalize a view tree from the current model.
 ///

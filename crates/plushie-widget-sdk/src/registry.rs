@@ -68,10 +68,43 @@ use crate::render_ctx::RenderCtx;
 /// along with the current theme and text rendering defaults. This
 /// allows widgets to do theme-dependent initialization without
 /// deferring to the first `prepare()` call.
+///
+/// `init` is called for every registered widget on every Settings
+/// message, regardless of whether the widget declares a namespace.
+/// Widgets with a namespace receive the matching config slice from
+/// `widget_config[namespace]`; widgets without a namespace receive
+/// `Value::Null`.
+///
+/// # Typed config
+///
+/// Widgets that store config in a struct should declare
+/// `#[derive(Default, Deserialize)]` and read via
+/// [`config_or_default`](Self::config_or_default) so missing or
+/// malformed config falls back to sane defaults without boilerplate:
+///
+/// ```ignore
+/// use serde::Deserialize;
+///
+/// #[derive(Default, Deserialize)]
+/// struct GaugeConfig {
+///     #[serde(default)]
+///     warn_threshold: f32,
+/// }
+///
+/// impl<R: PlushieRenderer> PlushieWidget<R> for Gauge {
+///     fn namespace(&self) -> &str { "gauge" }
+///     fn init(&mut self, ctx: &InitCtx<'_>) {
+///         let cfg = ctx.config_or_default::<GaugeConfig>();
+///         self.warn_threshold = cfg.warn_threshold;
+///     }
+///     // ...
+/// }
+/// ```
 #[derive(Debug)]
 pub struct InitCtx<'a> {
     /// Widget-specific config from `Settings.widget_config[namespace]`.
-    /// `Value::Null` if the host didn't provide config for this widget.
+    /// `Value::Null` if the host didn't provide config for this
+    /// widget, or if the widget has no namespace.
     pub config: &'a Value,
     /// The current theme at init time.
     pub theme: &'a Theme,
@@ -79,6 +112,28 @@ pub struct InitCtx<'a> {
     pub default_text_size: Option<f32>,
     /// Global default font, if set by the host.
     pub default_font: Option<iced::Font>,
+}
+
+impl InitCtx<'_> {
+    /// Deserialize [`config`](Self::config) into a typed value.
+    ///
+    /// Returns the deserialization error on malformed input so the
+    /// caller can decide how to handle it (log, fail fast, fall back
+    /// to defaults).
+    pub fn config_as<T: serde::de::DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
+        T::deserialize(self.config.clone())
+    }
+
+    /// Deserialize [`config`](Self::config), falling back to
+    /// [`Default::default`] on malformed or missing config.
+    ///
+    /// Prefer this helper when the widget has sensible defaults and
+    /// partial/absent config should not take the renderer down. The
+    /// fallback path also covers the "widget has no namespace" case,
+    /// where `config` is [`Value::Null`].
+    pub fn config_or_default<T: serde::de::DeserializeOwned + Default>(&self) -> T {
+        self.config_as::<T>().unwrap_or_default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1184,6 +1239,158 @@ mod tests {
             // New session -> fresh zero counter.
             Box::new(CountingWidget::default())
         }
+    }
+
+    // -- init ergonomics -----------------------------------------------------
+
+    struct InitSpy {
+        inits: std::rc::Rc<std::cell::RefCell<Vec<(String, Value)>>>,
+        ns: &'static str,
+    }
+
+    impl PlushieWidget<()> for InitSpy {
+        fn type_names(&self) -> &[&str] {
+            &["init_spy"]
+        }
+
+        fn namespace(&self) -> &str {
+            self.ns
+        }
+
+        fn init(&mut self, ctx: &InitCtx<'_>) {
+            self.inits
+                .borrow_mut()
+                .push((self.ns.to_string(), ctx.config.clone()));
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("spy").into()
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(InitSpy {
+                inits: self.inits.clone(),
+                ns: self.ns,
+            })
+        }
+    }
+
+    #[test]
+    fn init_runs_for_every_widget_including_empty_namespace() {
+        let inits = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut registry = WidgetRegistry::<()>::new();
+        // Two widgets: one with a namespace, one without. Both must
+        // receive init.
+        registry.register(Box::new(InitSpy {
+            inits: inits.clone(),
+            ns: "",
+        }));
+        let theme = Theme::Dark;
+        let config = serde_json::json!({ "other_ns": { "x": 1 } });
+        let ctx = InitCtx {
+            config: &config,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+        registry.init_all(&ctx);
+
+        let calls = inits.borrow().clone();
+        assert_eq!(calls.len(), 1, "init should fire once for the widget");
+        assert_eq!(calls[0].0, "", "namespace-less widget should still init");
+        assert_eq!(
+            calls[0].1,
+            Value::Null,
+            "namespace-less widget receives Value::Null"
+        );
+    }
+
+    #[test]
+    fn init_delivers_namespaced_config_slice() {
+        let inits = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(InitSpy {
+            inits: inits.clone(),
+            ns: "gauge",
+        }));
+        let theme = Theme::Dark;
+        let config = serde_json::json!({ "gauge": { "threshold": 42 } });
+        let ctx = InitCtx {
+            config: &config,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+        registry.init_all(&ctx);
+
+        let calls = inits.borrow().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "gauge");
+        assert_eq!(calls[0].1, serde_json::json!({ "threshold": 42 }));
+    }
+
+    #[test]
+    fn init_ctx_config_or_default_parses_typed_struct() {
+        #[derive(Default, serde::Deserialize)]
+        struct Cfg {
+            #[serde(default)]
+            threshold: f32,
+        }
+
+        let theme = Theme::Dark;
+        let config = serde_json::json!({ "threshold": 42.0 });
+        let ctx = InitCtx {
+            config: &config,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+        let cfg = ctx.config_or_default::<Cfg>();
+        assert!((cfg.threshold - 42.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn init_ctx_config_or_default_falls_back_on_null() {
+        #[derive(Default, serde::Deserialize)]
+        struct Cfg {
+            #[serde(default)]
+            threshold: f32,
+        }
+
+        let theme = Theme::Dark;
+        let null = Value::Null;
+        let ctx = InitCtx {
+            config: &null,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+        let cfg = ctx.config_or_default::<Cfg>();
+        assert_eq!(cfg.threshold, 0.0);
+    }
+
+    #[test]
+    fn init_ctx_config_as_reports_errors() {
+        #[derive(serde::Deserialize)]
+        struct Cfg {
+            #[allow(dead_code)]
+            threshold: f32,
+        }
+
+        let theme = Theme::Dark;
+        let bad = serde_json::json!({ "threshold": "not a number" });
+        let ctx = InitCtx {
+            config: &bad,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+        let result = ctx.config_as::<Cfg>();
+        assert!(result.is_err());
     }
 
     #[test]

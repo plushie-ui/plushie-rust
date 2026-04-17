@@ -217,7 +217,7 @@ fn run_session<A: App>(
         let incoming = bridge.recv_timeout(heartbeat_interval);
         match incoming {
             super::bridge::Incoming::Message(raw) => {
-                let events = wire_to_sdk_events(&raw, effect_tracker);
+                let events = wire_to_sdk_events(&raw, effect_tracker, async_mgr);
                 for event in events {
                     if let Err(e) = process_event::<A>(
                         model,
@@ -246,10 +246,25 @@ fn run_session<A: App>(
             }
         }
 
-        // Drain async results and delayed events that arrived while
-        // we were waiting on the bridge.
+        // Drain async results, delayed events, and effect timeouts
+        // that arrived while we were waiting on the bridge.
         for sink_event in async_mgr.drain() {
-            if let Some(event) = super::event_bridge::sink_event_to_sdk(sink_event)
+            let event = match sink_event {
+                SinkEvent::EffectTimeout { wire_id } => {
+                    // Resolve to the user tag via the tracker; emit
+                    // Timeout. Skip silently if already resolved
+                    // (response-raced-the-deadline).
+                    match effect_tracker.resolve(&wire_id) {
+                        Some((tag, _kind)) => Some(Event::Effect(EffectEvent {
+                            tag,
+                            result: EffectResult::Timeout,
+                        })),
+                        None => None,
+                    }
+                }
+                other => super::event_bridge::sink_event_to_sdk(other),
+            };
+            if let Some(event) = event
                 && let Err(e) = process_event::<A>(
                     model,
                     event,
@@ -262,26 +277,6 @@ fn run_session<A: App>(
                 )
             {
                 log::error!("async event processing failed: {e}");
-            }
-        }
-
-        // Check for timed-out effects after processing each message.
-        for (tag, _kind) in effect_tracker.check_timeouts() {
-            let event = Event::Effect(EffectEvent {
-                tag,
-                result: EffectResult::Timeout,
-            });
-            if let Err(e) = process_event::<A>(
-                model,
-                event,
-                bridge,
-                current_tree,
-                effect_tracker,
-                async_mgr,
-                sub_manager,
-                view_errors,
-            ) {
-                log::error!("timeout command execution failed: {e}");
             }
         }
     }
@@ -480,7 +475,11 @@ fn decode_incoming(msg: &Value) -> Option<IncomingRendererMessage> {
 /// message types are preserved as `Unknown` and surface through the
 /// diagnostic channel instead of being silently dropped.
 #[cfg(feature = "wire")]
-fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Event> {
+fn wire_to_sdk_events(
+    msg: &Value,
+    effect_tracker: &mut EffectTracker,
+    async_mgr: &mut AsyncTaskManager,
+) -> Vec<Event> {
     use super::event_bridge::{SinkEvent, sink_event_to_sdk};
     use plushie_core::protocol::{EffectResponse, OutgoingEvent};
 
@@ -496,7 +495,7 @@ fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Ev
             // need a full MVU cycle. Recursively convert each one.
             return events
                 .iter()
-                .flat_map(|e| wire_to_sdk_events(e, effect_tracker))
+                .flat_map(|e| wire_to_sdk_events(e, effect_tracker, async_mgr))
                 .collect();
         }
         IncomingRendererMessage::Unknown { msg_type, raw: _ } => {
@@ -529,6 +528,10 @@ fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Ev
             result,
             error,
         } => {
+            // Cancel the tokio-scheduled deadline task now that a
+            // real response has arrived. Cheap if the task already
+            // completed (rare).
+            async_mgr.cancel_effect_timeout(&wire_id);
             // Resolve via the tracker for typed result parsing.
             if let Some((tag, kind)) = effect_tracker.resolve(&wire_id) {
                 let error_as_value = error.as_ref().map(|e| Value::String(e.clone()));
@@ -572,6 +575,11 @@ struct AsyncTaskManager {
     tx: std::sync::mpsc::SyncSender<SinkEvent>,
     rx: std::sync::mpsc::Receiver<SinkEvent>,
     running: HashMap<String, tokio::task::JoinHandle<()>>,
+    /// Pending effect timeout tasks keyed by tracker wire ID.
+    ///
+    /// Aborted when a response arrives so the deadline task does
+    /// not fire for a completed effect.
+    effect_timeouts: HashMap<String, tokio::task::JoinHandle<()>>,
 }
 
 #[cfg(feature = "wire")]
@@ -593,6 +601,41 @@ impl AsyncTaskManager {
             tx,
             rx,
             running: HashMap::new(),
+            effect_timeouts: HashMap::new(),
+        }
+    }
+
+    /// Spawn a tokio sleep task that posts an [`SinkEvent::EffectTimeout`]
+    /// once the deadline elapses.
+    ///
+    /// The task is keyed by the tracker's wire ID so a response can
+    /// cancel it via [`Self::cancel_effect_timeout`]. The timeout
+    /// fires regardless of whether the wire reader is currently
+    /// blocked, closing the "deadline only checked on next incoming
+    /// message" gap in the old polling design.
+    fn schedule_effect_timeout(&mut self, wire_id: String, duration: std::time::Duration) {
+        // Replace any prior timeout task for this wire ID.
+        if let Some(handle) = self.effect_timeouts.remove(&wire_id) {
+            handle.abort();
+        }
+        let tx = self.tx.clone();
+        let wire_id_for_task = wire_id.clone();
+        let handle = self.runtime.spawn(async move {
+            tokio::time::sleep(duration).await;
+            let _ = tx.send(SinkEvent::EffectTimeout {
+                wire_id: wire_id_for_task,
+            });
+        });
+        self.effect_timeouts.insert(wire_id, handle);
+    }
+
+    /// Cancel a pending effect-timeout task by wire ID.
+    ///
+    /// Called when a response arrives before the deadline so the
+    /// scheduled SinkEvent::EffectTimeout is never emitted.
+    fn cancel_effect_timeout(&mut self, wire_id: &str) {
+        if let Some(handle) = self.effect_timeouts.remove(wire_id) {
+            handle.abort();
         }
     }
 
@@ -672,8 +715,14 @@ impl AsyncTaskManager {
         let mut events = Vec::new();
         while let Ok(event) = self.rx.try_recv() {
             // Remove completed task handles to free memory.
-            if let SinkEvent::AsyncResult { ref tag, .. } = event {
-                self.running.remove(tag);
+            match &event {
+                SinkEvent::AsyncResult { tag, .. } => {
+                    self.running.remove(tag);
+                }
+                SinkEvent::EffectTimeout { wire_id } => {
+                    self.effect_timeouts.remove(wire_id);
+                }
+                _ => {}
             }
             events.push(event);
         }
@@ -703,7 +752,7 @@ fn execute_wire_command(
             }
         }
         Command::Renderer(ref op) => {
-            execute_wire_renderer_op(bridge, op, effect_tracker)?;
+            execute_wire_renderer_op(bridge, op, effect_tracker, async_mgr)?;
         }
         Command::Async { tag, task } => {
             async_mgr.spawn_async(tag, task);
@@ -727,6 +776,7 @@ fn execute_wire_renderer_op(
     bridge: &mut Bridge,
     op: &plushie_core::ops::RendererOp,
     effect_tracker: &mut EffectTracker,
+    async_mgr: &mut AsyncTaskManager,
 ) -> crate::Result {
     use plushie_core::ops::{ImageOp, RendererOp, SystemOp, SystemQuery, WindowQuery};
     use serde_json::json;
@@ -749,6 +799,10 @@ fn execute_wire_renderer_op(
                 }
                 WindowQuery::MonitorSize { window_id, tag } => ("monitor_size", window_id, tag),
                 WindowQuery::RawId { window_id, tag } => ("raw_id", window_id, tag),
+                _ => {
+                    log::warn!("wire mode: unhandled WindowQuery variant; query skipped");
+                    return Ok(());
+                }
             };
             bridge.send_window_op(op_name, window_id, &json!({"tag": tag}))
         }
@@ -763,6 +817,10 @@ fn execute_wire_renderer_op(
             let (op_name, tag) = match query {
                 SystemQuery::GetTheme { tag } => ("get_system_theme", tag),
                 SystemQuery::GetInfo { tag } => ("get_system_info", tag),
+                _ => {
+                    log::warn!("wire mode: unhandled SystemQuery variant; query skipped");
+                    return Ok(());
+                }
             };
             bridge.send(&OutgoingMessage::SystemQuery {
                 session: String::new(),
@@ -779,6 +837,11 @@ fn execute_wire_renderer_op(
             let effective_timeout =
                 timeout.unwrap_or_else(|| effect_tracker::default_timeout(kind));
             let wire_id = effect_tracker.track(tag, kind, effective_timeout);
+            // Schedule a tokio-driven timeout so the deadline fires
+            // even when the bridge reader is blocked waiting for
+            // renderer input. Cancelled in the resolve path when a
+            // response arrives in time.
+            async_mgr.schedule_effect_timeout(wire_id.clone(), effective_timeout);
             let (_, payload) = plushie_core::ops::effect_request_to_wire(request);
             bridge.send_effect(&wire_id, kind, &payload)
         }
@@ -815,6 +878,10 @@ fn execute_wire_renderer_op(
                 ImageOp::Delete(handle) => ("delete", json!({"handle": handle})),
                 ImageOp::List { tag } => ("list", json!({"tag": tag})),
                 ImageOp::Clear => ("clear", json!({})),
+                _ => {
+                    log::warn!("wire mode: unhandled ImageOp variant; op skipped");
+                    return Ok(());
+                }
             };
             bridge.send(&OutgoingMessage::ImageOp {
                 session: String::new(),
@@ -839,6 +906,13 @@ fn execute_wire_renderer_op(
         }
         RendererOp::AdvanceFrame { timestamp } => {
             bridge.send_widget_op("advance_frame", &json!({"timestamp": timestamp}))
+        }
+        // RendererOp is #[non_exhaustive]; any variant added after this
+        // match was written is an unknown op in wire mode and is
+        // skipped with a warning rather than silently dropped.
+        _ => {
+            log::warn!("wire mode: unhandled RendererOp variant; op skipped");
+            Ok(())
         }
     }
 }
@@ -949,6 +1023,12 @@ fn execute_wire_window_op(bridge: &mut Bridge, op: &plushie_core::ops::WindowOp)
                 "width": width, "height": height,
             }),
         ),
+        // WindowOp is #[non_exhaustive]; skip unknown variants with a
+        // warning so a newly added op doesn't break wire compilation.
+        _ => {
+            log::warn!("wire mode: unhandled WindowOp variant; op skipped");
+            Ok(())
+        }
     }
 }
 

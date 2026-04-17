@@ -1006,7 +1006,15 @@ pub(crate) fn run(
 ) {
     // Detect codec BEFORE initializing the sink so the WriterSink
     // encodes with the correct codec from the first message.
-    let codec = crate::startup::detect_codec(forced_codec, &mut reader);
+    // Codec detection errors can't be sent on the wire (no codec yet),
+    // so they log to stderr and return.
+    let codec = match crate::startup::detect_codec(forced_codec, &mut reader) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("{e}");
+            return;
+        }
+    };
 
     let sink = plushie_renderer_lib::WriterSink::new(writer, codec);
     plushie_renderer_lib::emitters::init_sink(Box::new(sink));
@@ -1030,8 +1038,17 @@ pub(crate) fn run(
     // Settings gate: require Settings as the first message from the host.
     // Fonts are loaded later when handle_message processes the forwarded
     // Settings through the session (via load_fonts_from_settings).
-    let initial = crate::startup::read_required_settings(&codec, &mut reader);
-    crate::startup::validate_settings(&initial.settings, expected_token, &codec);
+    let initial = match crate::startup::read_required_settings(&codec, &mut reader) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::startup::emit_startup_error(&codec, &e);
+            return;
+        }
+    };
+    if let Err(e) = crate::startup::validate_settings(&initial.settings, expected_token) {
+        crate::startup::emit_startup_error(&codec, &e);
+        return;
+    }
 
     // Branch on mode once at the top. Headless uses iced::Renderer
     // (tiny-skia) for real screenshots. Mock uses the null renderer ()

@@ -27,24 +27,7 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
     // RUST_LOG=plushie=debug (or =info, =trace) for more output.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
-    // Wrap startup in catch_unwind so a panic from startup_exit
-    // runs Drop for TransportGuard (socket cleanup) before exiting
-    // non-zero. This wrapper is local to pre-daemon startup; once
-    // iced::daemon runs it installs its own loop. A dedicated
-    // startup catch sits here so startup-time panics don't leak
-    // /tmp sockets.
-    let startup_result =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_inner(builder, args)));
-    match startup_result {
-        Ok(r) => r,
-        Err(_) => {
-            // Panic payload already logged by the panic hook (if any)
-            // or by Rust's default; the important part is that Drop
-            // ran during unwind. Exit non-zero so supervisors treat
-            // this as a failure.
-            std::process::exit(1);
-        }
-    }
+    run_inner(builder, args)
 }
 
 fn run_inner(
@@ -141,7 +124,9 @@ fn run_inner(
     // Headless/mock modes handle their own sink initialization
     // after codec detection. They receive the writer directly.
     if has_flag("--mock") {
-        let writer = writer_opt.take().unwrap();
+        // Invariant: writer_opt is Some on entry; only one of the
+        // --mock / --headless / windowed branches takes it.
+        let writer = writer_opt.take().expect("writer available on mock path");
         crate::headless::run(
             forced_codec,
             crate::headless::Mode::Mock,
@@ -155,7 +140,11 @@ fn run_inner(
         return Ok(());
     }
     if has_flag("--headless") {
-        let writer = writer_opt.take().unwrap();
+        // Invariant: writer_opt is Some on entry; only one of the
+        // --mock / --headless / windowed branches takes it.
+        let writer = writer_opt
+            .take()
+            .expect("writer available on headless path");
         crate::headless::run(
             forced_codec,
             crate::headless::Mode::Headless,
@@ -171,7 +160,15 @@ fn run_inner(
 
     // Startup handshake: detect codec, send Hello, then read Settings.
     let mut reader = reader;
-    let codec = crate::startup::detect_codec(forced_codec, &mut reader);
+    // Codec-detection errors have no codec to encode with; log and
+    // return so RAII runs (transport sockets, spawned children).
+    let codec = match crate::startup::detect_codec(forced_codec, &mut reader) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("{e}");
+            return Ok(());
+        }
+    };
 
     // Initialize the global sink for windowed mode now that we know
     // the codec. Use a channel writer to avoid blocking the event loop.
@@ -193,8 +190,18 @@ fn run_inner(
         return Ok(());
     }
 
-    let initial = crate::startup::read_required_settings(&codec, &mut reader);
-    crate::startup::validate_settings(&initial.settings, expected_token.as_deref(), &codec);
+    let initial = match crate::startup::read_required_settings(&codec, &mut reader) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::startup::emit_startup_error(&codec, &e);
+            return Ok(());
+        }
+    };
+    if let Err(e) = crate::startup::validate_settings(&initial.settings, expected_token.as_deref())
+    {
+        crate::startup::emit_startup_error(&codec, &e);
+        return Ok(());
+    }
     let iced_settings = plushie_renderer_lib::settings::parse_iced_settings(&initial.settings);
     let font_bytes = crate::startup::collect_font_bytes(&initial.settings);
 

@@ -42,6 +42,16 @@ pub(crate) enum SinkEvent {
     StreamValue { tag: String, value: Value },
     /// A delayed event (Command::SendAfter).
     DelayedEvent(crate::event::Event),
+    /// An effect whose deadline elapsed before a response arrived.
+    ///
+    /// Carries the tracker's wire ID; the dispatcher resolves it
+    /// against the tracker to recover the user-facing tag and kind,
+    /// then delivers `EffectResult::Timeout` to the app.
+    ///
+    /// Only emitted by the wire-mode AsyncTaskManager; direct mode
+    /// polls `EffectTracker::check_timeouts` instead.
+    #[cfg_attr(not(feature = "wire"), allow(dead_code))]
+    EffectTimeout { wire_id: String },
 }
 
 /// Convert a SinkEvent to an SDK Event.
@@ -57,6 +67,10 @@ pub(crate) fn sink_event_to_sdk(sink_event: SinkEvent) -> Option<Event> {
             Some(Event::Stream(crate::event::StreamEvent { tag, value }))
         }
         SinkEvent::DelayedEvent(event) => Some(event),
+        // EffectTimeout requires tracker context to resolve to an
+        // Event; the wire-runner handles it directly and never calls
+        // sink_event_to_sdk on this variant.
+        SinkEvent::EffectTimeout { .. } => None,
     }
 }
 

@@ -12,12 +12,59 @@
 //!
 //! This module provides the shared steps (1, 4, 5, 6) so each mode
 //! only handles its own backend-specific setup.
+//!
+//! Fatal handshake failures return [`StartupError`] so the caller can
+//! unwind normally. RAII guards (transport sockets, spawned children)
+//! run their Drop implementations during the return path. The caller
+//! is responsible for emitting a wire error (via [`emit_startup_error`])
+//! and setting the process exit status.
 
 use std::io::BufRead;
 
 use plushie_widget_sdk::codec::Codec;
 use plushie_widget_sdk::protocol::{IncomingMessage, SessionMessage};
 use serde_json::Value;
+
+/// Fatal startup failure.
+///
+/// Carries a human-readable message; no structured variants yet because
+/// every current failure mode logs the same way. Wrap in a thiserror
+/// enum later if callers need to distinguish causes.
+#[derive(Debug)]
+pub(crate) struct StartupError {
+    pub(crate) message: String,
+}
+
+impl StartupError {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for StartupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for StartupError {}
+
+pub(crate) type StartupResult<T> = Result<T, StartupError>;
+
+/// Emit a startup failure to the wire (best-effort) and log it.
+///
+/// The caller handles process exit. Drop order unwinds normally so
+/// transport sockets and spawned children are cleaned up via RAII
+/// before the process exits.
+pub(crate) fn emit_startup_error(codec: &Codec, err: &StartupError) {
+    log::error!("{}", err.message);
+    let error = serde_json::json!({"type": "error", "message": err.message});
+    if let Ok(bytes) = codec.encode(&error) {
+        let _ = plushie_renderer_lib::emitters::write_output(&bytes);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Codec detection
@@ -31,29 +78,33 @@ use serde_json::Value;
 /// Returns the detected codec. The caller is responsible for
 /// threading it to all consumers (WriterSink, App, stdin reader).
 ///
-/// Exits the process on I/O error (no codec means no way to
-/// communicate the error over the wire).
-pub(crate) fn detect_codec(forced: Option<Codec>, reader: &mut impl BufRead) -> Codec {
+/// Returns an error on I/O failure. Codec-detection errors cannot
+/// send a wire error (no codec is known), so callers log and exit;
+/// any wire-safe errors after this point flow through [`StartupError`].
+pub(crate) fn detect_codec(
+    forced: Option<Codec>,
+    reader: &mut impl BufRead,
+) -> StartupResult<Codec> {
     match forced {
         Some(c) => {
             log::info!("wire codec (forced): {c}");
-            c
+            Ok(c)
         }
         None => {
             let buf = match reader.fill_buf() {
                 Ok(buf) if !buf.is_empty() => buf,
                 Ok(_) => {
-                    log::error!("stdin closed before first message");
-                    std::process::exit(1);
+                    return Err(StartupError::new("stdin closed before first message"));
                 }
                 Err(e) => {
-                    log::error!("stdin read error during codec detection: {e}");
-                    std::process::exit(1);
+                    return Err(StartupError::new(format!(
+                        "stdin read error during codec detection: {e}"
+                    )));
                 }
             };
             let codec = Codec::detect_from_first_byte(buf[0]);
             log::info!("wire codec (detected): {codec}");
-            codec
+            Ok(codec)
         }
     }
 }
@@ -105,54 +156,63 @@ impl InitialSettings {
 /// the Settings variant. Returns an [`InitialSettings`] with both the
 /// session key and settings body.
 ///
-/// Calls [`startup_exit`] if the message cannot be read, decoded, or
-/// is not a Settings message.
-pub(crate) fn read_required_settings(codec: &Codec, reader: &mut impl BufRead) -> InitialSettings {
+/// Returns an error if the message cannot be read, decoded, or is not
+/// a Settings message. The caller typically hands the error to
+/// [`emit_startup_error`] before returning.
+pub(crate) fn read_required_settings(
+    codec: &Codec,
+    reader: &mut impl BufRead,
+) -> StartupResult<InitialSettings> {
     let payload = match codec.read_message(reader) {
         Ok(Some(bytes)) => bytes,
         Ok(None) => {
-            startup_exit(codec, "stdin closed before settings received");
+            return Err(StartupError::new("stdin closed before settings received"));
         }
         Err(e) => {
-            startup_exit(codec, &format!("failed to read initial settings: {e}"));
+            return Err(StartupError::new(format!(
+                "failed to read initial settings: {e}"
+            )));
         }
     };
 
     let value: Value = match codec.decode(&payload) {
         Ok(v) => v,
         Err(e) => {
-            startup_exit(codec, &format!("failed to decode initial settings: {e}"));
+            return Err(StartupError::new(format!(
+                "failed to decode initial settings: {e}"
+            )));
         }
     };
 
     let sm = match SessionMessage::from_value(value) {
         Ok(sm) => sm,
         Err(e) => {
-            startup_exit(codec, &format!("failed to parse initial settings: {e}"));
+            return Err(StartupError::new(format!(
+                "failed to parse initial settings: {e}"
+            )));
         }
     };
 
     match sm.message {
         IncomingMessage::Settings { settings } => {
             log::info!("initial settings received (session {:?})", sm.session);
-            InitialSettings {
+            Ok(InitialSettings {
                 session: sm.session,
                 settings,
-            }
+            })
         }
         ref other => {
             let variant = message_variant_name(other);
-            startup_exit(
-                codec,
-                &format!("expected settings as first message, got {variant}"),
-            );
+            Err(StartupError::new(format!(
+                "expected settings as first message, got {variant}"
+            )))
         }
     }
 }
 
 /// Validate protocol version and token in the initial Settings.
 ///
-/// Checks the following, calling [`startup_exit`] on failure:
+/// Returns [`StartupError`] on:
 ///
 /// - **Protocol version**: `protocol_version` must be present and
 ///   match [`PROTOCOL_VERSION`]. A mismatch or missing value is
@@ -161,28 +221,27 @@ pub(crate) fn read_required_settings(codec: &Codec, reader: &mut impl BufRead) -
 /// - **Token** (listen mode): if `expected_token` is `Some`, the
 ///   settings must contain a matching `token` field. Comparison uses
 ///   constant-time equality to prevent timing attacks.
-/// - **Prop validation**: if `validate_props` is true, enables the
-///   global prop validation flag via `OnceLock`.
+///
+/// On success, applies the prop validation flag via `OnceLock`.
 ///
 /// [`PROTOCOL_VERSION`]: plushie_widget_sdk::protocol::PROTOCOL_VERSION
-pub(crate) fn validate_settings(settings: &Value, expected_token: Option<&str>, codec: &Codec) {
+pub(crate) fn validate_settings(
+    settings: &Value,
+    expected_token: Option<&str>,
+) -> StartupResult<()> {
     // Protocol version check (mandatory).
     let expected = u64::from(plushie_widget_sdk::protocol::PROTOCOL_VERSION);
     match settings.get("protocol_version").and_then(|v| v.as_u64()) {
         Some(version) if version == expected => {}
         Some(version) => {
-            startup_exit(
-                codec,
-                &format!(
-                    "protocol version mismatch: host sent {version}, renderer expects {expected}"
-                ),
-            );
+            return Err(StartupError::new(format!(
+                "protocol version mismatch: host sent {version}, renderer expects {expected}"
+            )));
         }
         None => {
-            startup_exit(
-                codec,
-                &format!("missing protocol_version in Settings (expected {expected})"),
-            );
+            return Err(StartupError::new(format!(
+                "missing protocol_version in Settings (expected {expected})"
+            )));
         }
     }
 
@@ -193,16 +252,19 @@ pub(crate) fn validate_settings(settings: &Value, expected_token: Option<&str>, 
                 log::info!("token verified");
             }
             Some(_) => {
-                startup_exit(codec, "token mismatch: connection rejected");
+                return Err(StartupError::new("token mismatch: connection rejected"));
             }
             None => {
-                startup_exit(codec, "missing token in Settings: connection rejected");
+                return Err(StartupError::new(
+                    "missing token in Settings: connection rejected",
+                ));
             }
         }
     }
 
     // Prop validation flag.
     plushie_renderer_lib::settings::apply_validate_props(settings);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -242,32 +304,6 @@ pub(crate) fn collect_font_bytes(settings: &Value) -> Vec<Vec<u8>> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// Emit a wire error message and abort startup.
-///
-/// Used for fatal startup failures where the renderer cannot proceed.
-/// Encodes a `{"type": "error", "message": ...}` JSON object using
-/// the provided codec and writes it to the output channel, then
-/// panics with the message so stack unwinding runs `Drop` for
-/// `TransportGuard` (socket file removal, child reap, etc.). The
-/// renderer binary's main installs a panic hook that sets exit
-/// status to 1.
-///
-/// Note: this helper is only called once a codec has been determined.
-/// The earlier codec-detection step fails separately: when the very
-/// first byte cannot be classified as JSON or MessagePack, the process
-/// logs the reason to stderr and exits with status 1 without emitting
-/// a wire error. There is no safe codec to use at that point, and
-/// guessing would send bytes the host cannot decode. Do not "fix" this
-/// by picking a default codec.
-fn startup_exit(codec: &Codec, message: &str) -> ! {
-    log::error!("{message}");
-    let error = serde_json::json!({"type": "error", "message": message});
-    if let Ok(bytes) = codec.encode(&error) {
-        let _ = plushie_renderer_lib::emitters::write_output(&bytes);
-    }
-    panic!("plushie renderer startup failed: {message}");
-}
 
 /// Constant-time byte comparison to prevent timing attacks on token
 /// verification.

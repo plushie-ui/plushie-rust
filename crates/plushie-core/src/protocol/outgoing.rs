@@ -970,7 +970,7 @@ pub struct EffectStubAck {
 impl EffectStubAck {
     pub fn registered(kind: String) -> Self {
         Self {
-            message_type: "effect_stub_registered",
+            message_type: "effect_stub_register_ack",
             session: String::new(),
             kind,
         }
@@ -978,7 +978,7 @@ impl EffectStubAck {
 
     pub fn unregistered(kind: String) -> Self {
         Self {
-            message_type: "effect_stub_unregistered",
+            message_type: "effect_stub_unregister_ack",
             session: String::new(),
             kind,
         }

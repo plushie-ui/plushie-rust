@@ -20,6 +20,7 @@ pub mod scoped_id;
 pub mod selector;
 pub mod settings;
 pub mod spec;
+pub mod tree_walk;
 pub mod types;
 pub mod widget_builder;
 

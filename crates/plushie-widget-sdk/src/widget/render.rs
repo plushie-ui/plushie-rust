@@ -71,10 +71,10 @@ pub fn render<'a, R: PlushieRenderer>(
     // Explicit values win per field; inferred values fill in the gaps so a
     // single `a11y.label` override doesn't silently discard an inferred
     // `description` (e.g. a text_input's placeholder).
-    let inferred = ctx
-        .registry
-        .get_for_type(node.type_name.as_str())
-        .and_then(|widget| widget.infer_a11y(node));
+    //
+    // Panic-isolated to match the render dispatch: a buggy third-party
+    // widget must not take down the renderer via infer_a11y either.
+    let inferred = ctx.registry.infer_a11y_for_node(node);
     let explicit = crate::a11y::A11yOverrides::from_props(&node.props);
     let overrides = match (inferred, explicit) {
         (Some(inf), Some(exp)) => Some(crate::a11y::A11yOverrides::merge(&inf, &exp)),

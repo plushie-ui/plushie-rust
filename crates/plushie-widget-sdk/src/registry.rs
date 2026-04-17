@@ -447,11 +447,94 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         result
     }
 
+    /// Whether the widget at `type_name` is trusted (bypasses catch_unwind).
+    /// Only the iced set is trusted; every other provenance (empty, a
+    /// third-party set) goes through panic isolation.
+    fn is_trusted(&self, type_name: &str) -> bool {
+        self.provenance.get(type_name).is_some_and(|s| s == "iced")
+    }
+
+    /// Dispatch a widget call with panic isolation (immutable receiver).
+    ///
+    /// Trusted widgets (the built-in iced set) run `f` directly.
+    /// Untrusted widgets run `f` inside `catch_unwind`. If the call
+    /// panics, a diagnostic is logged and `fallback` is returned.
+    ///
+    /// `PLUSHIE_NO_CATCH_UNWIND=1` disables the wrapping for debugging
+    /// so panics propagate with full stack traces.
+    fn call_widget<T>(
+        &self,
+        type_name: &str,
+        label: &str,
+        node_id: &str,
+        f: impl FnOnce(&dyn PlushieWidget<R>) -> T,
+        fallback: impl FnOnce() -> T,
+    ) -> T {
+        let Some(&idx) = self.type_index.get(type_name) else {
+            return fallback();
+        };
+        let widget = self.impls[idx].as_ref();
+
+        if self.is_trusted(type_name) || !catch_unwind_enabled() {
+            return f(widget);
+        }
+
+        // AssertUnwindSafe: widget panics at arbitrary entry points
+        // may leave the widget's internal state inconsistent. That is
+        // acceptable here because this dispatch is the firewall; the
+        // renderer ignores the widget's contribution for this call and
+        // continues driving the rest of the tree.
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(widget))) {
+            Ok(v) => v,
+            Err(_) => {
+                log::error!(
+                    "[code=widget_panic][id={node_id}] widget `{type_name}` panicked in {label}",
+                );
+                fallback()
+            }
+        }
+    }
+
+    /// Mutable counterpart to [`call_widget`]. Dispatches to a widget's
+    /// mutable method with the same trusted/untrusted policy.
+    fn call_widget_mut<T>(
+        &mut self,
+        type_name: &str,
+        label: &str,
+        node_id: &str,
+        f: impl FnOnce(&mut Box<dyn PlushieWidget<R>>) -> T,
+        fallback: impl FnOnce() -> T,
+    ) -> T {
+        let trusted = self.is_trusted(type_name);
+        let Some(&idx) = self.type_index.get(type_name) else {
+            return fallback();
+        };
+
+        if trusted || !catch_unwind_enabled() {
+            return f(&mut self.impls[idx]);
+        }
+
+        let widget = &mut self.impls[idx];
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(widget))) {
+            Ok(v) => v,
+            Err(_) => {
+                log::error!(
+                    "[code=widget_panic][id={node_id}] widget `{type_name}` panicked in {label}",
+                );
+                fallback()
+            }
+        }
+    }
+
     /// Render a tree node by dispatching to the registered factory.
     ///
-    /// Third-party factories (from non-"iced" sets) are wrapped in
-    /// `catch_unwind` for panic isolation. A panic produces a red error
+    /// Untrusted widgets (anything not provided by the built-in iced
+    /// set) run inside `catch_unwind`. A panic produces a red error
     /// placeholder instead of crashing the renderer.
+    ///
+    /// Render has its own inline isolation because the returned
+    /// `Element` borrows the widget (`&'a self`), which the generic
+    /// `call_widget` helper's return type can't express.
     pub fn render_node<'a>(
         &'a self,
         node: &'a TreeNode,
@@ -467,9 +550,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             return iced::widget::container(iced::widget::Space::new()).into();
         };
 
-        let is_trusted = self.provenance.get(type_name).is_some_and(|s| s == "iced");
-
-        if is_trusted || !catch_unwind_enabled() {
+        if self.is_trusted(type_name) || !catch_unwind_enabled() {
             self.impls[idx].render(node, ctx)
         } else {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -477,8 +558,11 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             })) {
                 Ok(element) => element,
                 Err(_) => {
-                    log::error!("[id={}] widget `{}` panicked in render", node.id, type_name,);
-                    iced::widget::text(format!("Widget error: `{}`", type_name))
+                    log::error!(
+                        "[code=widget_panic][id={}] widget `{type_name}` panicked in render",
+                        node.id,
+                    );
+                    iced::widget::text(format!("Widget error: `{type_name}`"))
                         .color(iced::Color::from_rgb(1.0, 0.0, 0.0))
                         .into()
                 }
@@ -517,26 +601,57 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
     }
 
-    /// Broadcast init to all widgets with matching namespace config.
+    /// Broadcast init to every registered widget.
+    ///
+    /// `init` is called for every widget regardless of namespace. A
+    /// widget that declares a non-empty namespace receives the
+    /// matching config slice from `ctx.config` (or `Value::Null` if
+    /// the host didn't provide one). A widget with no namespace
+    /// receives `Value::Null`. Every call runs under panic isolation
+    /// for untrusted widgets.
     pub fn init_all(&mut self, ctx: &InitCtx<'_>) {
-        for widget in &mut self.impls {
-            let ns = widget.namespace();
-            if !ns.is_empty() {
-                // Build per-namespace InitCtx with config slice
-                let ns_config = ctx
-                    .config
+        // Collect (type_name, namespace) pairs to drive the panic-
+        // isolated dispatch. Iterating over `impls` directly would
+        // borrow `self` for the whole loop and block call_widget_mut.
+        let per_widget: Vec<(String, String)> = self
+            .impls
+            .iter()
+            .enumerate()
+            .map(|(idx, widget)| {
+                let type_name = widget
+                    .type_names()
+                    .first()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("widget#{idx}"));
+                (type_name, widget.namespace().to_string())
+            })
+            .collect();
+
+        for (type_name, ns) in per_widget {
+            let ns_config = if ns.is_empty() {
+                Value::Null
+            } else {
+                ctx.config
                     .as_object()
-                    .and_then(|obj| obj.get(ns))
+                    .and_then(|obj| obj.get(&ns))
                     .cloned()
-                    .unwrap_or(Value::Null);
-                let ns_ctx = InitCtx {
-                    config: &ns_config,
-                    theme: ctx.theme,
-                    default_text_size: ctx.default_text_size,
-                    default_font: ctx.default_font,
-                };
-                widget.init(&ns_ctx);
-            }
+                    .unwrap_or(Value::Null)
+            };
+            self.call_widget_mut(
+                &type_name,
+                "init",
+                &type_name,
+                |widget| {
+                    let ns_ctx = InitCtx {
+                        config: &ns_config,
+                        theme: ctx.theme,
+                        default_text_size: ctx.default_text_size,
+                        default_font: ctx.default_font,
+                    };
+                    widget.init(&ns_ctx);
+                },
+                || {},
+            );
         }
     }
 
@@ -573,8 +688,27 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         // shrinks factory-owned per-instance state keyed by
         // (window_id, node_id) when nodes leave the tree.
         let live_keys = ctx.live_keys;
-        for widget in &mut self.impls {
-            widget.cleanup_stale(&live_keys);
+        let type_names: Vec<String> = self
+            .impls
+            .iter()
+            .enumerate()
+            .map(|(idx, widget)| {
+                widget
+                    .type_names()
+                    .first()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("widget#{idx}"))
+            })
+            .collect();
+        for type_name in type_names {
+            let live_keys_ref = &live_keys;
+            self.call_widget_mut(
+                &type_name,
+                "cleanup_stale",
+                &type_name,
+                |widget| widget.cleanup_stale(live_keys_ref),
+                || {},
+            );
         }
     }
 
@@ -621,7 +755,17 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         // Factory-specific prepare.
         if let Some(&idx) = self.type_index.get(node.type_name.as_str()) {
             self.node_factory_map.insert(node.id.clone(), idx);
-            self.impls[idx].prepare(node, current_window_id, ctx.theme);
+            let type_name = node.type_name.clone();
+            let window_id_owned = current_window_id.to_string();
+            let node_ref = node;
+            let theme_ref = ctx.theme;
+            self.call_widget_mut(
+                &type_name,
+                "prepare",
+                &node.id,
+                |widget| widget.prepare(node_ref, &window_id_owned, theme_ref),
+                || {},
+            );
         }
 
         for child in &node.children {
@@ -644,10 +788,22 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         // default conversion below.
         if let Some(node_id) = msg.node_id()
             && let Some((idx, _)) = self.get_for_node_id(node_id)
-            && let Some(factory) = self.get_mut(idx)
-            && let Some(events) = factory.handle_message(msg)
         {
-            return events;
+            let type_name = self.impls[idx]
+                .type_names()
+                .first()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            let result = self.call_widget_mut(
+                &type_name,
+                "handle_message",
+                node_id,
+                |factory| factory.handle_message(msg),
+                || None,
+            );
+            if let Some(events) = result {
+                return events;
+            }
         }
 
         match msg {
@@ -705,7 +861,38 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     ) -> Option<Vec<OutgoingEvent>> {
         let (idx, _) = self.get_for_node_id(node_id)?;
         self.validate_command_payload(idx, node_id, op, payload);
-        self.impls[idx].handle_widget_op(node_id, op, payload)
+        let type_name = self.impls[idx]
+            .type_names()
+            .first()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        self.call_widget_mut(
+            &type_name,
+            "handle_widget_op",
+            node_id,
+            |widget| widget.handle_widget_op(node_id, op, payload),
+            || None,
+        )
+    }
+
+    /// Panic-isolated `infer_a11y` dispatch for the widget that owns `node`.
+    ///
+    /// Returns `None` if no widget is registered for the node type, if
+    /// the widget declines to infer (returns `None`), or if the call
+    /// panics (untrusted widget only; a trusted widget's panic still
+    /// propagates).
+    pub fn infer_a11y_for_node(&self, node: &TreeNode) -> Option<crate::a11y::A11yOverrides> {
+        let type_name = node.type_name.as_str();
+        if !self.type_index.contains_key(type_name) {
+            return None;
+        }
+        self.call_widget(
+            type_name,
+            "infer_a11y",
+            &node.id,
+            |widget| widget.infer_a11y(node),
+            || None,
+        )
     }
 
     /// Clear the node-to-factory mapping. Called before a full prepare walk.
@@ -1241,6 +1428,41 @@ mod tests {
             "`.widget()` override must drop inherited provenance so panic \
              isolation wraps the new widget"
         );
+    }
+
+    struct PanickingInPrepare;
+
+    impl PlushieWidget<()> for PanickingInPrepare {
+        fn type_names(&self) -> &[&str] {
+            &["prepare_panic"]
+        }
+
+        fn prepare(&mut self, _node: &TreeNode, _window_id: &str, _theme: &Theme) {
+            panic!("intentional prepare panic");
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("noop").into()
+        }
+
+        fn clone_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(PanickingInPrepare)
+        }
+    }
+
+    #[test]
+    fn prepare_panic_does_not_crash_registry() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(PanickingInPrepare));
+
+        let tree = tree(vec![leaf("p1", "prepare_panic")]);
+        let mut shared = crate::shared_state::SharedState::new();
+        // Must not panic out of prepare_walk.
+        registry.prepare_walk(&tree, &mut shared, &Theme::Dark);
     }
 
     #[test]

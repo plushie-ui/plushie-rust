@@ -112,6 +112,15 @@ impl EffectTracker {
         self.pending.drain().map(|(_, e)| (e.tag, e.kind)).collect()
     }
 
+    /// Count of pending effects, for diagnostic logging on shutdown.
+    ///
+    /// Purely informational: runtime teardown paths call this before
+    /// invoking [`flush_all`] so the log message carries useful
+    /// context about how many effects were dropped.
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
+
     /// Number of in-flight effects.
     pub fn len(&self) -> usize {
         self.pending.len()

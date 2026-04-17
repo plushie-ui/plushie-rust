@@ -220,7 +220,8 @@ pub fn run<A: App>() -> Result {
 /// Run the app in wire mode (subprocess renderer).
 ///
 /// Spawns the renderer binary at `binary_path` and communicates
-/// over stdin/stdout using the plushie wire protocol.
+/// over stdin/stdout using the plushie wire protocol. Uses a
+/// private 2-worker tokio runtime for SDK-local async work.
 ///
 /// # Errors
 ///
@@ -230,4 +231,22 @@ pub fn run<A: App>() -> Result {
 #[cfg(feature = "wire")]
 pub fn run_wire<A: App>(binary_path: &str) -> Result {
     runner::wire::run_wire::<A>(binary_path)
+}
+
+/// Run the app in wire mode on a caller-provided tokio runtime.
+///
+/// Identical to [`run_wire`] except SDK-local async tasks
+/// ([`Command::async_task`](crate::command::Command::async_task),
+/// streams, delayed events, and effect-timeout deadlines) are
+/// spawned on the supplied [`tokio::runtime::Handle`] instead of
+/// a privately owned runtime. Use this when the host app already
+/// drives its own tokio runtime and wants to avoid a second one
+/// being created.
+///
+/// # Errors
+///
+/// Same as [`run_wire`].
+#[cfg(feature = "wire")]
+pub fn run_wire_with_runtime<A: App>(binary_path: &str, runtime: tokio::runtime::Handle) -> Result {
+    runner::wire::run_wire_with_runtime::<A>(binary_path, runtime)
 }

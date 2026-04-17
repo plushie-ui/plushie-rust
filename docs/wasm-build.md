@@ -174,3 +174,11 @@ Access API, Notification API) can be added to `WebEffectHandler`.
 supported on WASM (no filesystem). Use inline font data
 (`{"data": "base64..."}` objects) or the `load_font` widget op
 with base64-encoded bytes.
+
+**Sessions.** WASM is single-session by architecture. Standard
+`wasm32-unknown-unknown` has no threads, so the multiplexed
+session dispatcher in the native renderer has no counterpart in
+the browser. Host integrations that need isolation between test
+fixtures must spawn separate WASM instances instead of relying on
+the `session` routing field. The `--max-sessions` CLI flag is
+native-only; the WASM entry point does not parse CLI flags.

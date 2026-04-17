@@ -49,8 +49,39 @@ use crate::settings::ExitReason;
 /// `max_restarts` exhaustion the hook fires once more with
 /// [`ExitReason::MaxRestartsReached`] and the function returns
 /// [`crate::Error::RendererExit`].
+///
+/// Uses a private 2-worker tokio runtime for SDK-local async work
+/// (`Command::Async`, `Command::Stream`, `Command::SendAfter`,
+/// effect-timeout scheduling). Apps that already have a tokio
+/// runtime should prefer [`run_wire_with_runtime`] to avoid a
+/// second runtime living alongside theirs.
 #[cfg(feature = "wire")]
 pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
+    run_wire_inner::<A>(binary_path, None)
+}
+
+/// Run the app in wire mode using a caller-provided tokio runtime.
+///
+/// Equivalent to [`run_wire`] except SDK-local async tasks are
+/// spawned on the supplied [`tokio::runtime::Handle`]. Integration
+/// point for apps that already drive their own tokio runtime and
+/// want to avoid a second one being created implicitly.
+///
+/// The handle is only used to spawn tasks; the runtime itself is
+/// owned by the caller and must outlive the returned [`crate::Result`].
+#[cfg(feature = "wire")]
+pub fn run_wire_with_runtime<A: App>(
+    binary_path: &str,
+    runtime: tokio::runtime::Handle,
+) -> crate::Result {
+    run_wire_inner::<A>(binary_path, Some(runtime))
+}
+
+#[cfg(feature = "wire")]
+fn run_wire_inner<A: App>(
+    binary_path: &str,
+    runtime: Option<tokio::runtime::Handle>,
+) -> crate::Result {
     let settings = build_settings::<A>();
     let policy = A::restart_policy();
 
@@ -59,7 +90,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 
     let mut sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
     let mut effect_tracker = EffectTracker::new();
-    let mut async_mgr = AsyncTaskManager::new();
+    let mut async_mgr = AsyncTaskManager::new(runtime);
     let mut view_errors = crate::runtime::view_errors::ViewErrors::default();
 
     // Initial view; shared across restarts as the "current tree". If
@@ -163,9 +194,12 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
         // or log before the (potentially final) restart attempt.
         A::handle_renderer_exit(&mut model, reason.clone());
 
-        // Shutdown: do not restart. Return Ok so clean exit is not
-        // reported as an error.
+        // Shutdown: do not restart. Drain any in-flight effects with
+        // EffectResult::Shutdown so the app can release associated
+        // resources (progress bars, loading flags) instead of
+        // waiting forever on a response that will never come.
         if matches!(reason, ExitReason::Shutdown) {
+            flush_effects_on_shutdown::<A>(&mut model, &mut effect_tracker);
             return Ok(());
         }
 
@@ -176,6 +210,10 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
                 last_reason: Box::new(reason.clone()),
             };
             A::handle_renderer_exit(&mut model, final_reason.clone());
+            // Max-restarts is a terminal state; flush pending effects
+            // as Shutdown too so the app sees the same drained state
+            // as on a clean shutdown.
+            flush_effects_on_shutdown::<A>(&mut model, &mut effect_tracker);
             return Err(crate::Error::RendererExit(final_reason));
         }
 
@@ -195,6 +233,29 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
         // Bridge is dropped here; its Drop kills + reaps the old
         // child. We rebuild cleanly next iteration.
         drop(bridge);
+    }
+}
+
+/// Drain pending effects with [`EffectResult::Shutdown`].
+///
+/// Called on runner teardown (clean shutdown or max-restarts
+/// exhaustion) so the app observes a terminal event for each
+/// in-flight effect rather than a silent drop.
+#[cfg(feature = "wire")]
+fn flush_effects_on_shutdown<A: App>(model: &mut A::Model, effect_tracker: &mut EffectTracker) {
+    let pending = effect_tracker.pending_count();
+    if pending == 0 {
+        return;
+    }
+    log::info!("wire shutdown: flushing {pending} in-flight effect(s) as Shutdown");
+    for (tag, _kind) in effect_tracker.flush_all() {
+        let event = Event::Effect(EffectEvent {
+            tag,
+            result: EffectResult::Shutdown,
+        });
+        // Fire-and-forget: commands returned from update() are
+        // discarded on teardown since the wire is already closing.
+        let _ = A::update(model, event);
     }
 }
 
@@ -569,9 +630,27 @@ fn wire_to_sdk_events(
 /// main event loop polls between renderer messages. The 1024 slot
 /// capacity matches the backpressure pattern used by the headless
 /// multiplex writer.
+/// Tokio runtime backing: either a caller-supplied handle or a
+/// privately owned 2-worker runtime.
+#[cfg(feature = "wire")]
+enum RuntimeBacking {
+    Handle(tokio::runtime::Handle),
+    Owned(tokio::runtime::Runtime),
+}
+
+#[cfg(feature = "wire")]
+impl RuntimeBacking {
+    fn handle(&self) -> tokio::runtime::Handle {
+        match self {
+            Self::Handle(h) => h.clone(),
+            Self::Owned(rt) => rt.handle().clone(),
+        }
+    }
+}
+
 #[cfg(feature = "wire")]
 struct AsyncTaskManager {
-    runtime: tokio::runtime::Runtime,
+    runtime: RuntimeBacking,
     tx: std::sync::mpsc::SyncSender<SinkEvent>,
     rx: std::sync::mpsc::Receiver<SinkEvent>,
     running: HashMap<String, tokio::task::JoinHandle<()>>,
@@ -589,15 +668,21 @@ impl AsyncTaskManager {
     /// workloads while preventing runaway growth.
     const CHANNEL_CAPACITY: usize = 1024;
 
-    fn new() -> Self {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .expect("failed to create tokio runtime for wire async");
+    fn new(external: Option<tokio::runtime::Handle>) -> Self {
+        let runtime = match external {
+            Some(handle) => RuntimeBacking::Handle(handle),
+            None => {
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .enable_all()
+                    .build()
+                    .expect("failed to create tokio runtime for wire async");
+                RuntimeBacking::Owned(rt)
+            }
+        };
         let (tx, rx) = std::sync::mpsc::sync_channel(Self::CHANNEL_CAPACITY);
         Self {
-            runtime: rt,
+            runtime,
             tx,
             rx,
             running: HashMap::new(),
@@ -620,7 +705,7 @@ impl AsyncTaskManager {
         }
         let tx = self.tx.clone();
         let wire_id_for_task = wire_id.clone();
-        let handle = self.runtime.spawn(async move {
+        let handle = self.runtime.handle().spawn(async move {
             tokio::time::sleep(duration).await;
             let _ = tx.send(SinkEvent::EffectTimeout {
                 wire_id: wire_id_for_task,
@@ -647,7 +732,7 @@ impl AsyncTaskManager {
 
         let tx = self.tx.clone();
         let tag_clone = tag.clone();
-        let handle = self.runtime.spawn(async move {
+        let handle = self.runtime.handle().spawn(async move {
             let future = (task_fn)();
             // Guard against user-future panics so the app sees an
             // AsyncEvent(Err(..)) instead of silently hanging.
@@ -676,7 +761,7 @@ impl AsyncTaskManager {
             let _ = &tag_for_sink;
         }));
 
-        let handle = self.runtime.spawn(async move {
+        let handle = self.runtime.handle().spawn(async move {
             let future = (task_fn)(emitter);
             let result = super::run_task_with_panic_guard(&tag_for_result, future).await;
             let _ = tx_final.send(SinkEvent::AsyncResult {
@@ -695,7 +780,7 @@ impl AsyncTaskManager {
 
     fn send_after(&self, delay: std::time::Duration, event: crate::event::Event) {
         let tx = self.tx.clone();
-        self.runtime.spawn(async move {
+        self.runtime.handle().spawn(async move {
             // tokio::time::sleep doesn't panic in practice, but we
             // route through the panic guard for consistency with the
             // other spawn paths. SendAfter carries a delivery-only

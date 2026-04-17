@@ -31,7 +31,7 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
 }
 
 fn run_inner(
-    builder: plushie_widget_sdk::app::PlushieAppBuilder,
+    mut builder: plushie_widget_sdk::app::PlushieAppBuilder,
     args: Vec<String>,
 ) -> iced::Result {
     // Parse codec flags early so all modes (headless, test, normal) can use them.
@@ -121,6 +121,12 @@ fn run_inner(
         .map(|s| s.to_string())
         .collect::<Vec<_>>();
 
+    // Extract the optional session-factory closure before the
+    // builder is consumed. Multiplex sessions need it to rebuild
+    // a fresh registry per session; single-session and windowed
+    // modes ignore it.
+    let session_factory = builder.take_session_factory();
+
     // Headless/mock modes handle their own sink initialization
     // after codec detection. They receive the writer directly.
     if has_flag("--mock") {
@@ -136,6 +142,7 @@ fn run_inner(
             reader,
             writer,
             expected_token.as_deref(),
+            session_factory,
         );
         return Ok(());
     }
@@ -154,6 +161,7 @@ fn run_inner(
             reader,
             writer,
             expected_token.as_deref(),
+            session_factory,
         );
         return Ok(());
     }

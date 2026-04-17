@@ -19,8 +19,20 @@
 //! }
 //! ```
 
+use std::sync::Arc;
+
 use crate::PlushieRenderer;
 use crate::registry::{PlushieWidget, WidgetRegistry, WidgetSet};
+
+/// Factory closure that produces a fresh [`WidgetRegistry`] for a
+/// session.
+///
+/// Used by the renderer binary's multiplexed headless/mock path so
+/// each session thread can construct its own registry without sharing
+/// state across threads. The closure must be `Send + Sync` because it
+/// is invoked from session worker threads; the registries it creates
+/// do not need to be `Send`.
+pub type SessionRegistryFactory<R> = Arc<dyn Fn() -> WidgetRegistry<R> + Send + Sync + 'static>;
 
 /// Builder for registering widgets before starting the renderer.
 ///
@@ -29,8 +41,15 @@ use crate::registry::{PlushieWidget, WidgetRegistry, WidgetSet};
 ///
 /// The `R` parameter selects the renderer backend. Defaults to
 /// `iced::Renderer` which is used by headless and windowed modes.
+///
+/// The optional [`session_factory`](Self::with_session_factory) slot
+/// provides a closure that builds a fresh registry for each session
+/// in multiplexed headless/mock mode. Apps that use custom widgets
+/// need to supply a factory so those widgets are available in every
+/// session; without one, sessions fall back to the built-in iced set.
 pub struct PlushieAppBuilder<R: PlushieRenderer = iced::Renderer> {
     registry: WidgetRegistry<R>,
+    session_factory: Option<SessionRegistryFactory<R>>,
 }
 
 impl<R: PlushieRenderer> std::fmt::Debug for PlushieAppBuilder<R> {
@@ -46,7 +65,32 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
     pub fn new() -> Self {
         Self {
             registry: WidgetRegistry::new(),
+            session_factory: None,
         }
+    }
+
+    /// Attach a factory closure that constructs a fresh
+    /// [`WidgetRegistry`] for each session in multiplexed mode.
+    ///
+    /// The closure is invoked once per session thread. It must
+    /// register every widget the app needs (including the built-in
+    /// iced set via [`iced_widget_set`](crate::widget::widget_set::iced_widget_set)
+    /// if the app uses them).
+    ///
+    /// Only consulted by `--max-sessions > 1` headless / mock modes.
+    /// Windowed mode and single-session headless / mock build the
+    /// registry from the builder's own accumulated registrations.
+    pub fn with_session_factory(
+        mut self,
+        factory: impl Fn() -> WidgetRegistry<R> + Send + Sync + 'static,
+    ) -> Self {
+        self.session_factory = Some(Arc::new(factory));
+        self
+    }
+
+    /// Take the session factory out of the builder, if any.
+    pub fn take_session_factory(&mut self) -> Option<SessionRegistryFactory<R>> {
+        self.session_factory.take()
     }
 
     /// Register a [`PlushieWidget`] implementation.

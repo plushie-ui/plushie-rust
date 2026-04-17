@@ -303,6 +303,28 @@ impl<A: App> DirectApp<A> {
         }
     }
 
+    /// Drain pending effects with [`EffectResult::Shutdown`].
+    ///
+    /// Called when `Command::Exit` fires so the app observes a
+    /// terminal event per effect rather than a silent drop as iced
+    /// tears the daemon down.
+    fn drain_effects_as_shutdown(&mut self) {
+        let pending = self.effect_tracker.pending_count();
+        if pending == 0 {
+            return;
+        }
+        log::info!("direct shutdown: flushing {pending} in-flight effect(s) as Shutdown");
+        for (tag, _kind) in self.effect_tracker.flush_all() {
+            let event = Event::Effect(crate::event::EffectEvent {
+                tag,
+                result: crate::event::EffectResult::Shutdown,
+            });
+            // Fire-and-forget: commands from Shutdown are discarded
+            // since iced::exit is about to tear the loop down.
+            let _ = A::update(&mut self.model, event);
+        }
+    }
+
     fn refresh_view(&mut self) {
         // Fall back to the last-good tree when A::view() panics so
         // the UI doesn't disappear while we log the error. The
@@ -336,7 +358,13 @@ impl<A: App> DirectApp<A> {
     fn execute_command(&mut self, cmd: Command) -> Task<Message> {
         match cmd {
             Command::None => Task::none(),
-            Command::Exit => plushie_widget_sdk::iced::exit(),
+            Command::Exit => {
+                // Drain any in-flight effects with EffectResult::Shutdown
+                // so the app observes a terminal event per effect
+                // instead of a silent drop as iced exits.
+                self.drain_effects_as_shutdown();
+                plushie_widget_sdk::iced::exit()
+            }
             Command::Batch(cmds) => {
                 let tasks: Vec<Task<Message>> =
                     cmds.into_iter().map(|c| self.execute_command(c)).collect();

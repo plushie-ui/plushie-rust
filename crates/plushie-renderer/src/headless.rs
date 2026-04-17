@@ -158,7 +158,25 @@ struct Session<R: PlushieRenderer> {
 }
 
 impl<R: PlushieRenderer> Session<R> {
+    /// Construct a new session with the default built-in iced widget set.
     fn new(mode: Mode, writer: WireWriter) -> Self {
+        let mut registry = plushie_widget_sdk::registry::WidgetRegistry::new();
+        registry.register_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
+        Self::with_registry(mode, writer, registry)
+    }
+
+    /// Construct a new session with an explicit, pre-built registry.
+    ///
+    /// Used by the multiplexed dispatcher so each session thread can
+    /// invoke a caller-supplied factory closure (produced by
+    /// [`PlushieAppBuilder::with_session_factory`](plushie_widget_sdk::app::PlushieAppBuilder::with_session_factory))
+    /// to obtain a registry populated with both built-in and custom
+    /// widgets.
+    fn with_registry(
+        mode: Mode,
+        writer: WireWriter,
+        registry: plushie_widget_sdk::registry::WidgetRegistry<R>,
+    ) -> Self {
         let renderer_settings = iced::advanced::renderer::Settings {
             default_font: iced::Font::DEFAULT,
             default_text_size: iced::Pixels(16.0),
@@ -175,9 +193,6 @@ impl<R: PlushieRenderer> Session<R> {
             ),
             cursor: mouse::Cursor::Unavailable,
         };
-
-        let mut registry = plushie_widget_sdk::registry::WidgetRegistry::new();
-        registry.register_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
 
         Self {
             core: Core::new(),
@@ -1003,6 +1018,7 @@ pub(crate) fn run(
     mut reader: BufReader<Box<dyn Read + Send>>,
     writer: Box<dyn std::io::Write + Send>,
     expected_token: Option<&str>,
+    session_factory: Option<plushie_widget_sdk::app::SessionRegistryFactory<iced::Renderer>>,
 ) {
     // Detect codec BEFORE initializing the sink so the WriterSink
     // encodes with the correct codec from the first message.
@@ -1053,19 +1069,30 @@ pub(crate) fn run(
     // Branch on mode once at the top. Headless uses iced::Renderer
     // (tiny-skia) for real screenshots. Mock uses the null renderer ()
     // for speed (synthetic events handle all interactions).
+    //
+    // The session_factory parameter is only honoured for iced::Renderer
+    // sessions; mock mode is protocol-only and always uses the built-in
+    // iced widget set.
     match mode {
         Mode::Headless => {
             if max_sessions <= 1 {
-                run_single::<iced::Renderer>(codec, mode, &mut reader, initial);
+                run_single::<iced::Renderer>(codec, mode, &mut reader, initial, None);
             } else {
-                run_multiplexed::<iced::Renderer>(codec, mode, max_sessions, &mut reader, initial);
+                run_multiplexed::<iced::Renderer>(
+                    codec,
+                    mode,
+                    max_sessions,
+                    &mut reader,
+                    initial,
+                    session_factory,
+                );
             }
         }
         Mode::Mock => {
             if max_sessions <= 1 {
-                run_single::<()>(codec, mode, &mut reader, initial);
+                run_single::<()>(codec, mode, &mut reader, initial, None);
             } else {
-                run_multiplexed::<()>(codec, mode, max_sessions, &mut reader, initial);
+                run_multiplexed::<()>(codec, mode, max_sessions, &mut reader, initial, None);
             }
         }
     }
@@ -1206,6 +1233,7 @@ fn run_single<R: PlushieRenderer>(
     mode: Mode,
     reader: &mut impl BufRead,
     initial: crate::startup::InitialSettings,
+    session_factory: Option<plushie_widget_sdk::app::SessionRegistryFactory<R>>,
 ) {
     // Writer thread: drains the channel and writes to stdout. Same
     // capacity (256) as the multiplexed path.
@@ -1218,7 +1246,11 @@ fn run_single<R: PlushieRenderer>(
         }
     });
 
-    let mut session = Session::<R>::new(mode, WireWriter::channel(writer_tx.clone(), codec));
+    let writer = WireWriter::channel(writer_tx.clone(), codec);
+    let mut session = match session_factory {
+        Some(factory) => Session::<R>::with_registry(mode, writer, factory()),
+        None => Session::<R>::new(mode, writer),
+    };
 
     // Process the initial Settings through the session so Core.apply()
     // picks up default_event_rate, default_text_size, widget config, etc.
@@ -1265,6 +1297,7 @@ fn run_multiplexed<R: PlushieRenderer>(
     max_sessions: usize,
     reader: &mut impl BufRead,
     initial: crate::startup::InitialSettings,
+    session_factory: Option<plushie_widget_sdk::app::SessionRegistryFactory<R>>,
 ) {
     use std::collections::HashMap;
 
@@ -1347,9 +1380,15 @@ fn run_multiplexed<R: PlushieRenderer>(
                     let sid = session_id.clone();
 
                     let closed_writer_tx = writer_tx.clone();
+                    let thread_factory = session_factory.clone();
                     let handle = thread::spawn(move || {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            let mut session = Session::<R>::new(mode, writer);
+                            let mut session = match thread_factory {
+                                Some(factory) => {
+                                    Session::<R>::with_registry(mode, writer, factory())
+                                }
+                                None => Session::<R>::new(mode, writer),
+                            };
                             for msg in &rx {
                                 let mut read_next = || rx.recv().ok();
                                 if let Err(e) =
@@ -1385,6 +1424,12 @@ fn run_multiplexed<R: PlushieRenderer>(
                         // processing is done and any panic error has been
                         // reported. This ensures the host only sees this
                         // event when the session is truly finished.
+                        //
+                        // session_closed delivery is best-effort: if the
+                        // writer thread is already gone (stdout closed),
+                        // the send fails silently. Log so the local trail
+                        // reflects that; hosts should already have timeouts
+                        // on any `await session_closed` loop.
                         let closed = serde_json::json!({
                             "type": "event",
                             "session": sid,
@@ -1393,8 +1438,18 @@ fn run_multiplexed<R: PlushieRenderer>(
                             "data": {}
                         });
 
-                        if let Ok(bytes) = codec.encode(&closed) {
-                            let _ = closed_writer_tx.send(bytes);
+                        match codec.encode(&closed) {
+                            Ok(bytes) => {
+                                if closed_writer_tx.send(bytes).is_err() {
+                                    log::info!(
+                                        "session '{sid}': session_closed send failed \
+                                         (writer likely gone)"
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                log::info!("session '{sid}': session_closed encode failed: {e}");
+                            }
                         }
                     });
 

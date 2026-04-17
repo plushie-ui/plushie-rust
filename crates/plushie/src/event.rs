@@ -713,6 +713,12 @@ pub enum EffectResult {
     RendererRestarted,
     /// The effect kind is not supported by this backend.
     Unsupported,
+    /// The runner is shutting down and could not complete the effect.
+    ///
+    /// Delivered by both direct and wire runners when they drain
+    /// pending effects during teardown. Apps should treat this as a
+    /// "best-effort abort" and avoid retrying.
+    Shutdown,
     /// Unknown or untyped result (fallback for forward compatibility).
     Other(Value),
 }

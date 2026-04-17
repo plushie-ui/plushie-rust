@@ -1,8 +1,13 @@
-//! Tree normalization: scope prefixing and ID validation.
+//! Tree normalization: scope prefixing, ID validation, a11y rewrites.
 //!
 //! After `App::view()` returns a `View` (TreeNode), normalization
 //! walks the tree to apply scoped ID prefixes and validate ID
-//! constraints.
+//! constraints. A second pass rewrites cross-widget accessibility
+//! references (`labelled_by`, `described_by`, `error_message`,
+//! `active_descendant`, `radio_group`) through the same scope-
+//! prefix logic, populates implicit radio groups from the shared
+//! `group` prop on radios, and fills in the accessible role from
+//! the widget type when the author did not set one.
 //!
 //! ## Scoping rules
 //!
@@ -31,21 +36,49 @@
 //! and a `tree_too_deep` diagnostic is appended. Render and
 //! prepare_walk apply the same cap so defence-in-depth holds even
 //! if the host sends a pathologically nested tree.
+//!
+//! ## A11y rewrites
+//!
+//! Cross-widget references inside the `a11y` prop are scope-rewritten
+//! the same way widget IDs are: a reference to `heading` inside a
+//! scoped `form` container becomes `main#form/heading`. References
+//! that cannot be resolved to any declared ID in the normalized
+//! tree produce an `a11y_ref_unresolved` diagnostic.
+//!
+//! Radio widgets sharing the same `group` prop value are collected
+//! into an implicit radio group: each member's `a11y.radio_group` is
+//! populated with the scoped IDs of its peers. This mirrors the
+//! HTML `<input type="radio" name="x">` model where grouping is by
+//! name, not DOM position.
+//!
+//! `a11y.role` is auto-populated from the widget type when the
+//! author has not set one. `automation::Element::inferred_role`
+//! reads this normalized prop directly.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
-use plushie_core::protocol::TreeNode;
+use plushie_core::protocol::{PropValue, TreeNode};
 use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
 
-/// Normalize a view tree: apply scope prefixes and validate IDs.
+/// Normalize a view tree: apply scope prefixes, validate IDs,
+/// rewrite cross-widget a11y references, and auto-populate a11y
+/// defaults (role, radio_group).
 ///
 /// Returns the normalized tree and any validation warnings
-/// (duplicate IDs, reserved characters).
+/// (duplicate IDs, reserved characters, unresolved a11y refs).
 pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
     let mut warnings = Vec::new();
     let mut seen_ids = HashSet::new();
     let result = normalize_node(tree, "", &mut seen_ids, &mut warnings, 0);
-    (result, warnings)
+
+    // Second pass: rewrite a11y refs, populate radio groups and role
+    // defaults. Uses the scoped IDs gathered during the first pass so
+    // we can both rewrite and validate references.
+    let declared_ids = collect_ids(&result);
+    let radio_groups = collect_radio_groups(&result);
+    let rewritten = rewrite_a11y(&result, "", &declared_ids, &radio_groups, &mut warnings, 0);
+
+    (rewritten, warnings)
 }
 
 fn normalize_node(
@@ -140,6 +173,294 @@ fn normalize_node(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Pass 2: a11y rewrites
+// ---------------------------------------------------------------------------
+
+/// Collect every declared scoped ID in the normalized tree.
+fn collect_ids(node: &TreeNode) -> HashSet<String> {
+    fn walk(node: &TreeNode, out: &mut HashSet<String>) {
+        if !node.id.is_empty() && !node.id.starts_with("auto:") {
+            out.insert(node.id.clone());
+        }
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    let mut ids = HashSet::new();
+    walk(node, &mut ids);
+    ids
+}
+
+/// Key used to collect radios into a shared group: (enclosing scope, group name).
+///
+/// Scope is the same scope string we use for IDs; it keeps two radio
+/// sets with the same `group` name in separate scoped containers from
+/// being lumped together. Window qualifiers are baked into the scope
+/// string.
+type RadioGroupKey = (String, String);
+
+/// Collect radio widgets sharing the same `group` prop value within
+/// the same enclosing scope. Returns a map from `(scope, group_name)`
+/// to an ordered list of scoped IDs.
+fn collect_radio_groups(root: &TreeNode) -> BTreeMap<RadioGroupKey, Vec<String>> {
+    fn walk(node: &TreeNode, scope: &str, groups: &mut BTreeMap<RadioGroupKey, Vec<String>>) {
+        let next_scope = child_scope_of(node, scope);
+        if node.type_name == "radio"
+            && let Some(group) = node.props.get_str("group")
+        {
+            let key = (scope.to_string(), group.to_string());
+            groups.entry(key).or_default().push(node.id.clone());
+        }
+        for child in &node.children {
+            walk(child, &next_scope, groups);
+        }
+    }
+    let mut groups = BTreeMap::new();
+    walk(root, "", &mut groups);
+    groups
+}
+
+/// Scope string under which this node's children live after
+/// normalization. Mirrors `normalize_node`'s child-scope computation
+/// but operates on already-scoped node IDs.
+fn child_scope_of(node: &TreeNode, scope: &str) -> String {
+    let is_auto = node.id.starts_with("auto:");
+    let is_window = node.type_name == "window";
+    if is_window {
+        format!("{}#", node.id)
+    } else if is_auto || node.id.is_empty() {
+        scope.to_string()
+    } else {
+        node.id.clone()
+    }
+}
+
+/// Walk the normalized tree and rewrite a11y refs + populate defaults.
+fn rewrite_a11y(
+    node: &TreeNode,
+    scope: &str,
+    declared: &HashSet<String>,
+    radio_groups: &BTreeMap<RadioGroupKey, Vec<String>>,
+    warnings: &mut Vec<String>,
+    depth: usize,
+) -> TreeNode {
+    if depth > MAX_TREE_DEPTH {
+        return node.clone();
+    }
+
+    let next_scope = child_scope_of(node, scope);
+    let children: Vec<TreeNode> = node
+        .children
+        .iter()
+        .map(|c| rewrite_a11y(c, &next_scope, declared, radio_groups, warnings, depth + 1))
+        .collect();
+
+    let props = apply_a11y_rewrites(node, scope, declared, radio_groups, warnings);
+
+    TreeNode {
+        id: node.id.clone(),
+        type_name: node.type_name.clone(),
+        props,
+        children,
+    }
+}
+
+/// Build a new Props for `node` with its a11y sub-object rewritten.
+///
+/// Returns the input node's props unchanged if there is nothing to do.
+fn apply_a11y_rewrites(
+    node: &TreeNode,
+    scope: &str,
+    declared: &HashSet<String>,
+    radio_groups: &BTreeMap<RadioGroupKey, Vec<String>>,
+    warnings: &mut Vec<String>,
+) -> plushie_core::protocol::Props {
+    let existing_role = node
+        .props
+        .get_value("a11y")
+        .and_then(|v| v.get("role").cloned());
+    let inferred_role = if existing_role.is_none() {
+        widget_type_to_role(&node.type_name).map(|s| s.to_string())
+    } else {
+        None
+    };
+
+    let radio_ids = if node.type_name == "radio" {
+        node.props.get_str("group").and_then(|g| {
+            radio_groups
+                .get(&(scope.to_string(), g.to_string()))
+                .cloned()
+        })
+    } else {
+        None
+    };
+
+    let a11y_obj = node
+        .props
+        .get_value("a11y")
+        .and_then(|v| v.as_object().cloned());
+
+    // If the existing a11y is absent AND we have nothing to inject,
+    // leave props alone. This keeps untouched nodes bit-identical.
+    if a11y_obj.is_none() && inferred_role.is_none() && radio_ids.is_none() {
+        return node.props.clone();
+    }
+
+    let mut obj = a11y_obj.unwrap_or_default();
+
+    // Inject inferred role if the author didn't set one.
+    if let Some(role) = inferred_role {
+        obj.entry("role").or_insert(serde_json::Value::String(role));
+    }
+
+    // Rewrite single-ID refs.
+    for key in [
+        "labelled_by",
+        "described_by",
+        "error_message",
+        "active_descendant",
+    ] {
+        if let Some(v) = obj.get(key).cloned()
+            && let Some(s) = v.as_str()
+        {
+            let rewritten = resolve_ref(s, scope);
+            if !declared.contains(&rewritten) && !s.is_empty() {
+                warnings.push(format!(
+                    "a11y_ref_unresolved: {key}=\"{s}\" on \"{}\" \
+                     does not match any declared widget ID",
+                    node.id,
+                ));
+            }
+            obj.insert(key.to_string(), serde_json::Value::String(rewritten));
+        }
+    }
+
+    // Rewrite each element of `radio_group`.
+    if let Some(v) = obj.get("radio_group").cloned()
+        && let Some(arr) = v.as_array()
+    {
+        let rewritten: Vec<serde_json::Value> = arr
+            .iter()
+            .filter_map(|item| item.as_str())
+            .map(|s| {
+                let r = resolve_ref(s, scope);
+                if !declared.contains(&r) && !s.is_empty() {
+                    warnings.push(format!(
+                        "a11y_ref_unresolved: radio_group member \"{s}\" \
+                         on \"{}\" does not match any declared widget ID",
+                        node.id,
+                    ));
+                }
+                serde_json::Value::String(r)
+            })
+            .collect();
+        obj.insert(
+            "radio_group".to_string(),
+            serde_json::Value::Array(rewritten),
+        );
+    }
+
+    // Populate implicit radio group (authoring via shared `group` prop)
+    // only when the author hasn't already set one explicitly.
+    if let Some(ids) = radio_ids
+        && !obj.contains_key("radio_group")
+    {
+        let arr: Vec<serde_json::Value> = ids.into_iter().map(serde_json::Value::String).collect();
+        obj.insert("radio_group".to_string(), serde_json::Value::Array(arr));
+    }
+
+    // Reassemble props with the updated a11y object.
+    install_a11y(&node.props, obj)
+}
+
+/// Produce a new `Props` value with `a11y` replaced by the given map.
+fn install_a11y(
+    base: &plushie_core::protocol::Props,
+    obj: serde_json::Map<String, serde_json::Value>,
+) -> plushie_core::protocol::Props {
+    match base {
+        plushie_core::protocol::Props::Typed(map) => {
+            let mut map = map.clone();
+            map.remove("a11y");
+            map.insert("a11y", PropValue::from(serde_json::Value::Object(obj)));
+            plushie_core::protocol::Props::Typed(map)
+        }
+        plushie_core::protocol::Props::Wire(v) => {
+            let mut v = v.clone();
+            if let Some(m) = v.as_object_mut() {
+                m.insert("a11y".to_string(), serde_json::Value::Object(obj));
+            }
+            plushie_core::protocol::Props::Wire(v)
+        }
+    }
+}
+
+/// Rewrite a cross-widget ID reference through the scope-prefix logic.
+///
+/// The reference shapes recognized (mirrors the ID-prefix rules):
+/// - Already-scoped refs (`"window#path"` or `"scope/leaf"`) pass
+///   through unchanged.
+/// - Bare refs gain the enclosing scope as a prefix.
+/// - Empty refs pass through (nothing to resolve).
+fn resolve_ref(raw: &str, scope: &str) -> String {
+    if raw.is_empty() || scope.is_empty() {
+        return raw.to_string();
+    }
+    if raw.contains('#') || raw.contains('/') {
+        // Author provided a pre-scoped ref; leave it alone.
+        return raw.to_string();
+    }
+    if scope.ends_with('#') {
+        format!("{scope}{raw}")
+    } else {
+        format!("{scope}/{raw}")
+    }
+}
+
+/// Built-in widget-type -> accessible-role map.
+///
+/// Uses the same role-name strings as iced's native `convert_role`
+/// mapping so the automation fallback and the AccessKit tree agree.
+/// Widgets whose role is context-dependent (e.g. `tooltip`, which
+/// the fork models via iced-direct defaults) are omitted so we don't
+/// override the author's intent.
+fn widget_type_to_role(widget_type: &str) -> Option<&'static str> {
+    Some(match widget_type {
+        "button" => "button",
+        "checkbox" => "check_box",
+        "toggler" => "switch",
+        "radio" => "radio_button",
+        "text_input" => "text_input",
+        "text_editor" => "multiline_text_input",
+        "text" => "label",
+        "rich_text" => "label",
+        "slider" => "slider",
+        "vertical_slider" => "slider",
+        "pick_list" => "combo_box",
+        "combo_box" => "combo_box",
+        "progress_bar" => "progress_indicator",
+        "image" => "image",
+        "svg" => "image",
+        "qr_code" => "image",
+        "scrollable" => "scroll_view",
+        "container" => "group",
+        "column" => "group",
+        "row" => "group",
+        "stack" => "group",
+        "grid" => "group",
+        "pane_grid" => "group",
+        "table" => "table",
+        "canvas" => "canvas",
+        "rule" => "separator",
+        // Space is purely visual whitespace. No accessible role.
+        // Tooltip, overlay, pin, floating, sensor, pointer_area,
+        // themer, responsive, window: no default role; leave them
+        // to the fork or explicit overrides.
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +472,15 @@ mod tests {
             type_name: type_name.to_string(),
             props: json!({}).into(),
             children,
+        }
+    }
+
+    fn node_with_props(id: &str, type_name: &str, props: serde_json::Value) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props: props.into(),
+            children: vec![],
         }
     }
 
@@ -279,5 +609,151 @@ mod tests {
         );
         let (_, warnings) = normalize(&tree);
         assert!(warnings.is_empty());
+    }
+
+    // -- A11y rewrite tests -------------------------------------------------
+
+    #[test]
+    fn a11y_role_populated_from_widget_type() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props("save", "button", json!({}))],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let btn = &result.children[0];
+        let role = btn
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("role").and_then(|r| r.as_str()).map(str::to_string));
+        assert_eq!(role.as_deref(), Some("button"));
+    }
+
+    #[test]
+    fn a11y_role_explicit_wins_over_inferred() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "save",
+                "button",
+                json!({"a11y": {"role": "link"}}),
+            )],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let btn = &result.children[0];
+        let role = btn
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("role").and_then(|r| r.as_str()).map(str::to_string));
+        assert_eq!(role.as_deref(), Some("link"));
+    }
+
+    #[test]
+    fn a11y_ref_rewritten_inside_scoped_container() {
+        let tree = node(
+            "form",
+            "container",
+            vec![
+                node_with_props("heading", "text", json!({"content": "Log in"})),
+                node_with_props(
+                    "email",
+                    "text_input",
+                    json!({"a11y": {"labelled_by": "heading"}}),
+                ),
+            ],
+        );
+        let (result, warnings) = normalize(&tree);
+        assert!(
+            warnings.is_empty(),
+            "no diagnostics expected, got {warnings:?}"
+        );
+        let email = &result.children[1];
+        let labelled_by = email.props.get_value("a11y").and_then(|v| {
+            v.get("labelled_by")
+                .and_then(|r| r.as_str())
+                .map(str::to_string)
+        });
+        assert_eq!(labelled_by.as_deref(), Some("form/heading"));
+    }
+
+    #[test]
+    fn a11y_ref_unresolved_emits_diagnostic() {
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "email",
+                "text_input",
+                json!({"a11y": {"labelled_by": "missing"}}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            warnings.iter().any(|w| w.contains("a11y_ref_unresolved")),
+            "expected a11y_ref_unresolved diagnostic, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn implicit_radio_group_populates_radio_group_a11y() {
+        let tree = node(
+            "form",
+            "container",
+            vec![
+                node_with_props("r1", "radio", json!({"group": "flavor"})),
+                node_with_props("r2", "radio", json!({"group": "flavor"})),
+                node_with_props("r3", "radio", json!({"group": "flavor"})),
+            ],
+        );
+        let (result, warnings) = normalize(&tree);
+        assert!(warnings.is_empty(), "got {warnings:?}");
+        for child in &result.children {
+            let group = child
+                .props
+                .get_value("a11y")
+                .and_then(|v| v.get("radio_group").cloned())
+                .and_then(|v| v.as_array().cloned());
+            let group = group.expect("radio_group should be populated");
+            let ids: Vec<String> = group
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect();
+            assert_eq!(ids, vec!["form/r1", "form/r2", "form/r3"]);
+        }
+    }
+
+    #[test]
+    fn explicit_radio_group_is_not_overwritten_but_rewritten() {
+        let tree = node(
+            "form",
+            "container",
+            vec![
+                node_with_props("heading", "text", json!({"content": "Pick"})),
+                node_with_props(
+                    "r1",
+                    "radio",
+                    json!({
+                        "group": "flavor",
+                        "a11y": {"radio_group": ["heading"]}
+                    }),
+                ),
+            ],
+        );
+        let (result, warnings) = normalize(&tree);
+        // No diagnostic since `heading` is a real declared ID.
+        assert!(warnings.is_empty(), "got {warnings:?}");
+        let r1 = &result.children[1];
+        let group = r1
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("radio_group").cloned())
+            .and_then(|v| v.as_array().cloned())
+            .unwrap();
+        let ids: Vec<String> = group
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+        assert_eq!(ids, vec!["form/heading"]);
     }
 }

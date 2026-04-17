@@ -2,7 +2,8 @@
 
 use serde_json::Value;
 
-use crate::types::Angle;
+use crate::protocol::{PropMap, PropValue};
+use crate::types::{Angle, PlushieType, border::Radius};
 
 /// A canvas path drawing command.
 ///
@@ -60,15 +61,124 @@ pub enum PathCommand {
         y: f32,
         w: f32,
         h: f32,
-        radius: f32,
+        /// Corner radius. Accepts a scalar `f32` (uniform) or a
+        /// [`Radius::PerCorner`] with per-corner values.
+        radius: Radius,
     },
     Close,
 }
 
+impl PathCommand {
+    /// Encode a single command to its wire-format representation.
+    pub fn wire_encode(&self) -> PropValue {
+        match self {
+            PathCommand::MoveTo { x, y } => array(&[
+                PropValue::Str("move_to".into()),
+                PropValue::F64(*x as f64),
+                PropValue::F64(*y as f64),
+            ]),
+            PathCommand::LineTo { x, y } => array(&[
+                PropValue::Str("line_to".into()),
+                PropValue::F64(*x as f64),
+                PropValue::F64(*y as f64),
+            ]),
+            PathCommand::BezierTo {
+                cp1x,
+                cp1y,
+                cp2x,
+                cp2y,
+                x,
+                y,
+            } => array(&[
+                PropValue::Str("bezier_to".into()),
+                PropValue::F64(*cp1x as f64),
+                PropValue::F64(*cp1y as f64),
+                PropValue::F64(*cp2x as f64),
+                PropValue::F64(*cp2y as f64),
+                PropValue::F64(*x as f64),
+                PropValue::F64(*y as f64),
+            ]),
+            PathCommand::QuadraticTo { cpx, cpy, x, y } => array(&[
+                PropValue::Str("quadratic_to".into()),
+                PropValue::F64(*cpx as f64),
+                PropValue::F64(*cpy as f64),
+                PropValue::F64(*x as f64),
+                PropValue::F64(*y as f64),
+            ]),
+            PathCommand::Arc {
+                cx,
+                cy,
+                radius,
+                start_angle,
+                end_angle,
+            } => array(&[
+                PropValue::Str("arc".into()),
+                PropValue::F64(*cx as f64),
+                PropValue::F64(*cy as f64),
+                PropValue::F64(*radius as f64),
+                PropValue::F64(start_angle.degrees() as f64),
+                PropValue::F64(end_angle.degrees() as f64),
+            ]),
+            PathCommand::ArcTo {
+                x1,
+                y1,
+                x2,
+                y2,
+                radius,
+            } => array(&[
+                PropValue::Str("arc_to".into()),
+                PropValue::F64(*x1 as f64),
+                PropValue::F64(*y1 as f64),
+                PropValue::F64(*x2 as f64),
+                PropValue::F64(*y2 as f64),
+                PropValue::F64(*radius as f64),
+            ]),
+            PathCommand::Ellipse {
+                cx,
+                cy,
+                rx,
+                ry,
+                rotation,
+                start_angle,
+                end_angle,
+            } => array(&[
+                PropValue::Str("ellipse".into()),
+                PropValue::F64(*cx as f64),
+                PropValue::F64(*cy as f64),
+                PropValue::F64(*rx as f64),
+                PropValue::F64(*ry as f64),
+                PropValue::F64(rotation.degrees() as f64),
+                PropValue::F64(start_angle.degrees() as f64),
+                PropValue::F64(end_angle.degrees() as f64),
+            ]),
+            PathCommand::RoundedRect { x, y, w, h, radius } => {
+                // "rounded_rect" with object radius when per-corner,
+                // scalar otherwise.
+                let mut entry = PropMap::new();
+                entry.insert("type", PropValue::Str("rounded_rect".into()));
+                entry.insert("x", PropValue::F64(*x as f64));
+                entry.insert("y", PropValue::F64(*y as f64));
+                entry.insert("w", PropValue::F64(*w as f64));
+                entry.insert("h", PropValue::F64(*h as f64));
+                entry.insert("radius", radius.wire_encode());
+                PropValue::Object(entry)
+            }
+            PathCommand::Close => PropValue::Str("close".into()),
+        }
+    }
+}
+
+fn array(items: &[PropValue]) -> PropValue {
+    PropValue::Array(items.to_vec())
+}
+
 /// Decode an array of wire-format path commands into typed values.
 ///
-/// Wire format: each command is either the string `"close"` or an array
-/// `["command_name", arg1, arg2, ...]` where args are numbers.
+/// Wire format: each command is either the string `"close"`, an array
+/// `["command_name", arg1, arg2, ...]` where args are numbers, or an
+/// object `{"type": "rounded_rect", "x": ..., "radius": ...}` for
+/// commands (like `rounded_rect`) that carry typed sub-values such
+/// as [`Radius`].
 pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
     let arr = match value.as_array() {
         Some(a) => a,
@@ -83,6 +193,31 @@ pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
                 result.push(PathCommand::Close);
             }
             continue;
+        }
+
+        // Object form (typed commands carrying structured sub-values).
+        if let Some(obj) = cmd.as_object() {
+            let cmd_name = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            let f_obj = |k: &str| -> f32 {
+                obj.get(k)
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32)
+                    .unwrap_or(0.0)
+            };
+            if cmd_name == "rounded_rect" {
+                let radius = obj
+                    .get("radius")
+                    .and_then(Radius::wire_decode)
+                    .unwrap_or_default();
+                result.push(PathCommand::RoundedRect {
+                    x: f_obj("x"),
+                    y: f_obj("y"),
+                    w: f_obj("w"),
+                    h: f_obj("h"),
+                    radius,
+                });
+                continue;
+            }
         }
 
         let parts = match cmd.as_array() {
@@ -148,7 +283,7 @@ pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
                 y: f(2),
                 w: f(3),
                 h: f(4),
-                radius: f(5),
+                radius: Radius::Uniform(f(5)),
             },
             _ => continue,
         };
@@ -262,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn decode_rounded_rect() {
+    fn decode_rounded_rect_scalar_legacy() {
         let cmds = decode_commands(&json!([["rounded_rect", 10.0, 20.0, 100.0, 50.0, 8.0]]));
         assert_eq!(
             cmds,
@@ -271,9 +406,52 @@ mod tests {
                 y: 20.0,
                 w: 100.0,
                 h: 50.0,
-                radius: 8.0
+                radius: Radius::Uniform(8.0),
             },]
         );
+    }
+
+    #[test]
+    fn decode_rounded_rect_object_form() {
+        let cmds = decode_commands(&json!([
+            {
+                "type": "rounded_rect",
+                "x": 10.0,
+                "y": 20.0,
+                "w": 100.0,
+                "h": 50.0,
+                "radius": {"top_left": 4.0, "top_right": 8.0, "bottom_right": 4.0, "bottom_left": 8.0}
+            }
+        ]));
+        assert_eq!(
+            cmds,
+            vec![PathCommand::RoundedRect {
+                x: 10.0,
+                y: 20.0,
+                w: 100.0,
+                h: 50.0,
+                radius: Radius::PerCorner {
+                    top_left: 4.0,
+                    top_right: 8.0,
+                    bottom_right: 4.0,
+                    bottom_left: 8.0,
+                },
+            },]
+        );
+    }
+
+    #[test]
+    fn encode_rounded_rect_round_trip() {
+        let cmd = PathCommand::RoundedRect {
+            x: 10.0,
+            y: 20.0,
+            w: 100.0,
+            h: 50.0,
+            radius: Radius::Uniform(8.0),
+        };
+        let encoded: Value = cmd.wire_encode().into();
+        let decoded = decode_commands(&serde_json::json!([encoded]));
+        assert_eq!(decoded.len(), 1);
     }
 
     #[test]

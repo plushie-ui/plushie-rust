@@ -21,6 +21,7 @@ use super::{PropMap, PropValue};
 
 use crate::View;
 use crate::types::*;
+pub use plushie_core::types::canvas::PathCommand;
 
 /// Push a transform entry to the "transforms" array in a props map.
 fn push_transform(props: &mut PropMap, kind: &str, fields: &[(&str, f32)]) {
@@ -739,19 +740,138 @@ pub struct PathBuilder {
     props: PropMap,
 }
 
-/// Create an SVG path shape from a path data string.
+/// Create a canvas path shape from a sequence of typed
+/// [`PathCommand`]s.
 ///
 /// ```ignore
-/// path("M 0 0 L 100 100 L 0 100 Z").fill(Color::blue())
+/// use plushie::prelude::*;
+///
+/// path(vec![
+///     move_to(0.0, 0.0),
+///     line_to(100.0, 0.0),
+///     line_to(50.0, 80.0),
+///     close(),
+/// ]).fill(Color::blue())
 /// ```
+///
+/// Use [`path_raw`] if you have an existing SVG path data string you
+/// want to pass verbatim.
 #[track_caller]
-pub fn path(data: &str) -> PathBuilder {
+pub fn path(commands: impl IntoIterator<Item = PathCommand>) -> PathBuilder {
     let mut props = PropMap::new();
-    super::set_prop(&mut props, "data", data);
+    let encoded: Vec<PropValue> = commands.into_iter().map(|cmd| cmd.wire_encode()).collect();
+    super::set_prop(&mut props, "commands", PropValue::Array(encoded));
     PathBuilder {
         id: super::auto_id("path"),
         props,
     }
+}
+
+/// Create a canvas path shape from pre-encoded path commands.
+///
+/// Escape hatch for cases where the caller has already encoded a
+/// `Vec<PropValue>` of commands (e.g. generated programmatically).
+/// Prefer [`path`] with typed [`PathCommand`]s for new code.
+#[track_caller]
+pub fn path_raw(encoded_commands: Vec<PropValue>) -> PathBuilder {
+    let mut props = PropMap::new();
+    super::set_prop(&mut props, "commands", PropValue::Array(encoded_commands));
+    PathBuilder {
+        id: super::auto_id("path"),
+        props,
+    }
+}
+
+// -- Path command builders --
+
+/// Move to `(x, y)` without drawing.
+pub fn move_to(x: f32, y: f32) -> PathCommand {
+    PathCommand::MoveTo { x, y }
+}
+
+/// Draw a straight line to `(x, y)`.
+pub fn line_to(x: f32, y: f32) -> PathCommand {
+    PathCommand::LineTo { x, y }
+}
+
+/// Draw a cubic bezier curve to `(x, y)` with control points
+/// `(cp1x, cp1y)` and `(cp2x, cp2y)`.
+pub fn bezier_to(cp1x: f32, cp1y: f32, cp2x: f32, cp2y: f32, x: f32, y: f32) -> PathCommand {
+    PathCommand::BezierTo {
+        cp1x,
+        cp1y,
+        cp2x,
+        cp2y,
+        x,
+        y,
+    }
+}
+
+/// Draw a quadratic bezier curve to `(x, y)` with control point
+/// `(cpx, cpy)`.
+pub fn quadratic_to(cpx: f32, cpy: f32, x: f32, y: f32) -> PathCommand {
+    PathCommand::QuadraticTo { cpx, cpy, x, y }
+}
+
+/// Draw a circular arc centered at `(cx, cy)` with the given radius,
+/// sweeping from `start` to `end`.
+pub fn arc(cx: f32, cy: f32, radius: f32, start: Angle, end: Angle) -> PathCommand {
+    PathCommand::Arc {
+        cx,
+        cy,
+        radius,
+        start_angle: start,
+        end_angle: end,
+    }
+}
+
+/// Draw an arc with the given tangent segment and radius.
+pub fn arc_to(x1: f32, y1: f32, x2: f32, y2: f32, radius: f32) -> PathCommand {
+    PathCommand::ArcTo {
+        x1,
+        y1,
+        x2,
+        y2,
+        radius,
+    }
+}
+
+/// Draw an elliptical arc centered at `(cx, cy)` with radii `(rx, ry)`.
+pub fn ellipse(
+    cx: f32,
+    cy: f32,
+    rx: f32,
+    ry: f32,
+    rotation: Angle,
+    start: Angle,
+    end: Angle,
+) -> PathCommand {
+    PathCommand::Ellipse {
+        cx,
+        cy,
+        rx,
+        ry,
+        rotation,
+        start_angle: start,
+        end_angle: end,
+    }
+}
+
+/// Draw a rounded rectangle. The `radius` accepts an `f32` for
+/// uniform corners or a [`Radius::PerCorner`] for individual values.
+pub fn rounded_rect(x: f32, y: f32, w: f32, h: f32, radius: impl Into<Radius>) -> PathCommand {
+    PathCommand::RoundedRect {
+        x,
+        y,
+        w,
+        h,
+        radius: radius.into(),
+    }
+}
+
+/// Close the current sub-path.
+pub fn close() -> PathCommand {
+    PathCommand::Close
 }
 
 impl PathBuilder {

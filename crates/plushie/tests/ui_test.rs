@@ -411,3 +411,41 @@ fn canvas_rect_fill_accepts_hex_string() {
     let v = view_json(rect(0.0, 0.0, 10.0, 10.0).fill("#abcdef"));
     assert_eq!(v["props"]["fill"], "#abcdef");
 }
+
+#[test]
+fn canvas_path_builds_from_typed_commands() {
+    let v = view_json(
+        path(vec![
+            move_to(0.0, 0.0),
+            line_to(100.0, 0.0),
+            line_to(50.0, 80.0),
+            close(),
+        ])
+        .fill(Color::hex("#222")),
+    );
+    let commands = v["props"]["commands"].as_array().unwrap();
+    assert_eq!(commands.len(), 4);
+    assert_eq!(commands[0][0], "move_to");
+    assert_eq!(commands[3], "close");
+}
+
+#[test]
+fn canvas_rounded_rect_command_accepts_per_corner_radius() {
+    let cmd = rounded_rect(
+        0.0,
+        0.0,
+        100.0,
+        50.0,
+        Radius::PerCorner {
+            top_left: 4.0,
+            top_right: 8.0,
+            bottom_right: 4.0,
+            bottom_left: 8.0,
+        },
+    );
+    let v = view_json(path(vec![cmd]));
+    let first = &v["props"]["commands"][0];
+    assert_eq!(first["type"], "rounded_rect");
+    assert_eq!(first["radius"]["top_left"], 4.0);
+    assert_eq!(first["radius"]["top_right"], 8.0);
+}

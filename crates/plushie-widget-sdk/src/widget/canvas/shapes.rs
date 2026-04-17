@@ -320,11 +320,20 @@ pub(super) fn build_path_from_commands(commands: &[canvas_types::PathCommand]) -
                     });
                 }
                 PathCommand::RoundedRect { x, y, w, h, radius } => {
-                    builder.rounded_rectangle(
-                        Point::new(*x, *y),
-                        Size::new(*w, *h),
-                        iced::border::Radius::new(*radius),
-                    );
+                    let iced_radius = match radius {
+                        plushie_core::types::Radius::Uniform(r) => iced::border::Radius::new(*r),
+                        plushie_core::types::Radius::PerCorner {
+                            top_left,
+                            top_right,
+                            bottom_right,
+                            bottom_left,
+                        } => iced::border::Radius::new(0.0)
+                            .top_left(*top_left)
+                            .top_right(*top_right)
+                            .bottom_right(*bottom_right)
+                            .bottom_left(*bottom_left),
+                    };
+                    builder.rounded_rectangle(Point::new(*x, *y), Size::new(*w, *h), iced_radius);
                 }
                 PathCommand::Close => {
                     builder.close();

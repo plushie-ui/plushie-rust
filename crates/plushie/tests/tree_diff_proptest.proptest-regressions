@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 2685c4394fb86fb0eaaf8d349c6d4db6bb997998a8beb17e95e1290c1ed9e0b2 # shrinks to a = TreeNode { id: "s", type_name: "container", props: Wire(Object {}), children: [] }, b = TreeNode { id: "s", type_name: "container", props: Wire(Object {"a": Null}), children: [] }

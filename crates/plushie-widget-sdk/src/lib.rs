@@ -72,8 +72,11 @@ pub mod tree;
 #[doc(hidden)]
 pub mod widget;
 
-// Re-export the PlushieWidget derive macro for widget authors.
-pub use plushie_core_macros::{WidgetEvent, WidgetProps};
+// Re-export the widget derive macros for widget authors. Keeping the
+// re-exports here (and mirrored in the prelude) means a widget crate
+// depends on `plushie-widget-sdk` alone; there is no reason to pull
+// in `plushie-core` directly.
+pub use plushie_core_macros::{WidgetCommand, WidgetEvent, WidgetProps};
 
 // Re-export iced so widget crates can use `plushie_widget_sdk::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when

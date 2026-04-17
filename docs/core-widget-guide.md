@@ -487,7 +487,7 @@ command construction with automatic family naming and value
 encoding:
 
 ```rust
-use plushie_core::WidgetCommand;
+use plushie_widget_sdk::WidgetCommand;
 
 #[derive(WidgetCommand)]
 enum GaugeCommand {

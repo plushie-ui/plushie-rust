@@ -602,5 +602,5 @@ pub fn run<A: App>() -> crate::Result {
     .theme(DirectApp::<A>::theme_for_window)
     .scale_factor(DirectApp::<A>::scale_factor_for_window)
     .run()
-    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    .map_err(|e| crate::Error::Iced(e.to_string()))
 }

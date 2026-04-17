@@ -1,6 +1,7 @@
 //! Application and window configuration.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -80,12 +81,70 @@ pub struct WindowConfig {
 }
 
 /// Reason the renderer process exited (wire mode only).
+///
+/// Passed to `App::handle_renderer_exit` before the runner returns.
+/// The variants mirror the Elixir bridge's exit categorisation so
+/// behaviour is consistent across SDKs.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ExitReason {
-    /// Normal exit (renderer closed cleanly).
-    Normal,
-    /// Renderer crashed with an error message.
-    Crash(String),
-    /// Lost connection to the renderer.
-    Disconnected,
+    /// Renderer crashed. `message` carries the I/O error or panic
+    /// description; `code` is the subprocess exit code if we were
+    /// able to reap it.
+    Crash { message: String, code: Option<i32> },
+    /// Lost connection to the renderer (pipe closed cleanly without
+    /// a full message).
+    ConnectionLost,
+    /// Renderer shut down at our request (e.g. `Command::Exit`).
+    Shutdown,
+    /// No messages received within the configured heartbeat interval.
+    HeartbeatTimeout,
+    /// Auto-restart gave up after exhausting
+    /// [`RestartPolicy::max_restarts`]. `last_reason` is the reason
+    /// for the final restart attempt.
+    MaxRestartsReached { last_reason: Box<ExitReason> },
+}
+
+impl ExitReason {
+    /// Short human-friendly label, useful for logs.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Crash { .. } => "crash",
+            Self::ConnectionLost => "connection_lost",
+            Self::Shutdown => "shutdown",
+            Self::HeartbeatTimeout => "heartbeat_timeout",
+            Self::MaxRestartsReached { .. } => "max_restarts_reached",
+        }
+    }
+}
+
+/// Restart policy for wire mode.
+///
+/// Returned from `App::restart_policy` to configure auto-restart
+/// behaviour on renderer crashes.
+///
+/// `max_restarts = 0` disables auto-restart entirely; the first crash
+/// delivers [`ExitReason::Crash`] to `App::handle_renderer_exit` and
+/// the runner returns with `plushie::Error::RendererExit`.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct RestartPolicy {
+    /// Maximum consecutive restart attempts before giving up.
+    pub max_restarts: u32,
+    /// Base delay for exponential backoff. Actual delay is
+    /// `restart_delay * 2.pow(restart_count)`.
+    pub restart_delay: Duration,
+    /// If `Some`, a watchdog triggers a restart if no wire message is
+    /// received within this interval. `None` disables heartbeats.
+    pub heartbeat_interval: Option<Duration>,
+}
+
+impl Default for RestartPolicy {
+    fn default() -> Self {
+        Self {
+            max_restarts: 5,
+            restart_delay: Duration::from_millis(100),
+            heartbeat_interval: Some(Duration::from_secs(30)),
+        }
+    }
 }

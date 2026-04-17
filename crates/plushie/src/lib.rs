@@ -56,6 +56,7 @@
 pub mod animation;
 pub mod automation;
 pub mod command;
+mod error;
 pub mod event;
 pub mod prelude;
 pub mod query;
@@ -72,6 +73,8 @@ pub mod ui;
 pub mod undo;
 pub mod widget;
 
+pub use error::Error;
+
 // Re-export the widget SDK for widget authors who also use the app SDK.
 pub use plushie_widget_sdk as widget_sdk;
 
@@ -84,7 +87,7 @@ pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent, WidgetPro
 
 use command::Command;
 use event::Event;
-use settings::{ExitReason, Settings, WindowConfig};
+use settings::{ExitReason, RestartPolicy, Settings, WindowConfig};
 use subscription::Subscription;
 
 /// A view tree returned from [`App::view`].
@@ -158,9 +161,30 @@ pub trait App: Send + 'static {
         WindowConfig::default()
     }
 
-    /// Called when the renderer process exits unexpectedly.
+    /// Called synchronously before [`run_wire`] returns
+    /// [`Error::RendererExit`] when the renderer subprocess exits.
     /// Wire mode only; direct mode never calls this.
+    ///
+    /// Use this hook to save state, log diagnostics, or clean up
+    /// model-side resources. The typed error coordinates
+    /// process-level action (retry, exit, surface to user) after the
+    /// hook returns.
+    ///
+    /// When auto-restart is active (see [`App::restart_policy`]), the
+    /// hook fires on every restart attempt with the matching
+    /// [`ExitReason`], then once more with
+    /// [`ExitReason::MaxRestartsReached`] when the limit is hit.
     fn handle_renderer_exit(_model: &mut Self::Model, _reason: ExitReason) {}
+
+    /// Restart policy for wire mode.
+    ///
+    /// The default policy restarts up to five times with exponential
+    /// backoff and a thirty-second heartbeat. Return a custom policy
+    /// to adjust limits or disable auto-restart entirely
+    /// (`max_restarts: 0`).
+    fn restart_policy() -> RestartPolicy {
+        RestartPolicy::default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +192,11 @@ pub trait App: Send + 'static {
 // ---------------------------------------------------------------------------
 
 /// Result type for plushie entry points.
-pub type Result = std::result::Result<(), Box<dyn std::error::Error>>;
+///
+/// The error type is the [`plushie::Error`](crate::Error) enum. Match
+/// on specific variants to handle failure modes (spawn failure,
+/// protocol mismatch, renderer exit) distinctly.
+pub type Result = std::result::Result<(), Error>;
 
 // ---------------------------------------------------------------------------
 // Entry points (stubs until runners are implemented)

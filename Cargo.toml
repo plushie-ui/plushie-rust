@@ -20,6 +20,9 @@ authors = ["Daniel Hedlund <daniel@digitree.org>"]
 keywords = ["gui", "desktop", "framework", "native", "iced"]
 categories = ["gui", "rendering"]
 
+[workspace.dependencies]
+thiserror = "2"
+
 # Lint configuration. CI also passes RUSTFLAGS="-D warnings" (via justfile)
 # which promotes ALL warnings to errors. The lints below catch things that
 # should always be errors regardless of CI, and survive Rust toolchain

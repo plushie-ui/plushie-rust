@@ -16,6 +16,8 @@ use plushie_core::outgoing_message::OutgoingMessage;
 use serde_json::Value;
 #[cfg(feature = "wire")]
 use std::collections::HashMap;
+#[cfg(feature = "wire")]
+use std::io;
 
 #[cfg(feature = "wire")]
 use super::bridge::Bridge;
@@ -31,6 +33,8 @@ use crate::command::Command;
 use crate::event::{EffectEvent, EffectResult, Event};
 #[cfg(feature = "wire")]
 use crate::runtime::{normalize, tree_diff};
+#[cfg(feature = "wire")]
+use crate::settings::ExitReason;
 
 /// Run the app in wire mode.
 ///
@@ -41,8 +45,10 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     // Build settings from the app.
     let settings = build_settings::<A>();
 
-    // Spawn the renderer.
-    let mut bridge = Bridge::spawn(binary_path)?;
+    // Spawn the renderer. Map io::Error -> Error::Spawn so callers
+    // can distinguish "binary not found" from runtime I/O failures.
+    let mut bridge =
+        Bridge::spawn(binary_path).map_err(|e| crate::Error::spawn(binary_path.to_string(), e))?;
 
     // Send initial settings.
     bridge.send_settings(&settings)?;
@@ -68,7 +74,9 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     let view = A::view(&model, &mut crate::widget::WidgetRegistrar::new());
     let (normalized, _) = normalize::normalize(&view);
     let mut current_tree = normalized;
-    bridge.send_snapshot(&serde_json::to_value(&current_tree).unwrap())?;
+    let snapshot_value = serde_json::to_value(&current_tree)
+        .map_err(|e| crate::Error::WireEncode(format!("initial snapshot: {e}")))?;
+    bridge.send_snapshot(&snapshot_value)?;
 
     // Execute the initial command (e.g. focus a field, start
     // async work) so apps work from the first frame.
@@ -90,7 +98,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
                          effect_tracker: &mut EffectTracker,
                          async_mgr: &mut AsyncTaskManager,
                          sub_manager: &mut crate::runtime::subscriptions::SubscriptionManager|
-     -> std::io::Result<()> {
+     -> crate::Result {
         let cmd = A::update(model, event);
         execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
 
@@ -120,7 +128,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     };
 
     // Event loop.
-    loop {
+    let exit_reason = loop {
         // Read next event from renderer.
         let raw = match bridge.receive() {
             Ok(msg) => msg,
@@ -137,7 +145,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
                     A::update(&mut model, event);
                 }
 
-                break;
+                break classify_exit(&mut bridge, &e);
             }
         };
 
@@ -196,9 +204,32 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
                 log::error!("timeout command execution failed: {e}");
             }
         }
-    }
+    };
 
-    Ok(())
+    // Give the app a chance to clean up or log before returning.
+    A::handle_renderer_exit(&mut model, exit_reason.clone());
+
+    Err(crate::Error::RendererExit(exit_reason))
+}
+
+/// Classify a bridge receive error into a typed [`ExitReason`].
+///
+/// `UnexpectedEof` indicates the renderer closed stdout cleanly but
+/// without sending a proper shutdown marker; everything else is
+/// treated as a crash. Reaps the child (non-blocking) to capture the
+/// exit code for `Crash`.
+#[cfg(feature = "wire")]
+fn classify_exit(bridge: &mut Bridge, err: &io::Error) -> ExitReason {
+    match err.kind() {
+        io::ErrorKind::UnexpectedEof => ExitReason::ConnectionLost,
+        _ => {
+            let code = bridge.try_reap();
+            ExitReason::Crash {
+                message: err.to_string(),
+                code,
+            }
+        }
+    }
 }
 
 /// Convert a wire protocol JSON message to SDK Events.
@@ -439,7 +470,7 @@ fn execute_wire_command(
     cmd: Command,
     effect_tracker: &mut EffectTracker,
     async_mgr: &mut AsyncTaskManager,
-) -> std::io::Result<()> {
+) -> crate::Result {
     match cmd {
         Command::None => {}
         Command::Exit => {
@@ -475,7 +506,7 @@ fn execute_wire_renderer_op(
     bridge: &mut Bridge,
     op: &plushie_core::ops::RendererOp,
     effect_tracker: &mut EffectTracker,
-) -> std::io::Result<()> {
+) -> crate::Result {
     use plushie_core::ops::{ImageOp, RendererOp, SystemOp, SystemQuery, WindowQuery};
     use serde_json::json;
 
@@ -593,10 +624,7 @@ fn execute_wire_renderer_op(
 
 /// Execute a window operation via the bridge.
 #[cfg(feature = "wire")]
-fn execute_wire_window_op(
-    bridge: &mut Bridge,
-    op: &plushie_core::ops::WindowOp,
-) -> std::io::Result<()> {
+fn execute_wire_window_op(bridge: &mut Bridge, op: &plushie_core::ops::WindowOp) -> crate::Result {
     use plushie_core::ops::WindowOp;
     use serde_json::json;
 
@@ -760,7 +788,7 @@ fn build_settings<A: App>() -> Value {
 fn apply_wire_sub_ops(
     bridge: &mut Bridge,
     ops: Vec<crate::runtime::subscriptions::SubOp>,
-) -> std::io::Result<()> {
+) -> crate::Result {
     use crate::runtime::subscriptions::SubOp;
     for op in ops {
         match op {

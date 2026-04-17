@@ -48,21 +48,24 @@ impl Bridge {
     }
 
     /// Send a typed message to the renderer's stdin.
-    pub fn send(&mut self, message: &OutgoingMessage) -> io::Result<()> {
-        let stdin = self
-            .child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdin closed"))?;
+    ///
+    /// Encode failures return [`crate::Error::WireEncode`]; I/O
+    /// failures return [`crate::Error::Io`]. F-2.3.4.
+    pub fn send(&mut self, message: &OutgoingMessage) -> crate::Result {
+        let stdin = self.child.stdin.as_mut().ok_or_else(|| {
+            crate::Error::Io(io::Error::new(io::ErrorKind::BrokenPipe, "stdin closed"))
+        })?;
 
         match self.codec {
             Codec::Json => {
-                let json = serde_json::to_string(message).map_err(io::Error::other)?;
+                let json = serde_json::to_string(message)
+                    .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
                 writeln!(stdin, "{json}")?;
                 stdin.flush()?;
             }
             Codec::MsgPack => {
-                let bytes = rmp_serde::to_vec(message).map_err(io::Error::other)?;
+                let bytes = rmp_serde::to_vec(message)
+                    .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
                 let len = (bytes.len() as u32).to_be_bytes();
                 stdin.write_all(&len)?;
                 stdin.write_all(&bytes)?;
@@ -74,7 +77,7 @@ impl Bridge {
     }
 
     /// Send a settings message.
-    pub fn send_settings(&mut self, settings: &Value) -> io::Result<()> {
+    pub fn send_settings(&mut self, settings: &Value) -> crate::Result {
         self.send(&OutgoingMessage::Settings {
             session: String::new(),
             settings: settings.clone(),
@@ -82,7 +85,7 @@ impl Bridge {
     }
 
     /// Send a full tree snapshot.
-    pub fn send_snapshot(&mut self, tree: &Value) -> io::Result<()> {
+    pub fn send_snapshot(&mut self, tree: &Value) -> crate::Result {
         self.send(&OutgoingMessage::Snapshot {
             session: String::new(),
             tree: tree.clone(),
@@ -90,7 +93,7 @@ impl Bridge {
     }
 
     /// Send incremental patches.
-    pub fn send_patch(&mut self, ops: &[Value]) -> io::Result<()> {
+    pub fn send_patch(&mut self, ops: &[Value]) -> crate::Result {
         self.send(&OutgoingMessage::Patch {
             session: String::new(),
             ops: ops.to_vec(),
@@ -104,7 +107,7 @@ impl Bridge {
         tag: &str,
         max_rate: Option<u32>,
         window_id: Option<&str>,
-    ) -> io::Result<()> {
+    ) -> crate::Result {
         self.send(&OutgoingMessage::Subscribe {
             session: String::new(),
             kind: kind.to_string(),
@@ -115,7 +118,7 @@ impl Bridge {
     }
 
     /// Send an unsubscribe message.
-    pub fn send_unsubscribe(&mut self, kind: &str, tag: &str) -> io::Result<()> {
+    pub fn send_unsubscribe(&mut self, kind: &str, tag: &str) -> crate::Result {
         self.send(&OutgoingMessage::Unsubscribe {
             session: String::new(),
             kind: kind.to_string(),
@@ -124,7 +127,7 @@ impl Bridge {
     }
 
     /// Send a widget operation (focus, scroll, etc.).
-    pub fn send_widget_op(&mut self, op: &str, payload: &Value) -> io::Result<()> {
+    pub fn send_widget_op(&mut self, op: &str, payload: &Value) -> crate::Result {
         self.send(&OutgoingMessage::WidgetOp {
             session: String::new(),
             op: op.to_string(),
@@ -133,7 +136,7 @@ impl Bridge {
     }
 
     /// Send a widget-targeted command.
-    pub fn send_command(&mut self, id: &str, family: &str, value: &Value) -> io::Result<()> {
+    pub fn send_command(&mut self, id: &str, family: &str, value: &Value) -> crate::Result {
         self.send(&OutgoingMessage::Command {
             session: String::new(),
             id: id.to_string(),
@@ -146,7 +149,7 @@ impl Bridge {
     pub fn send_commands(
         &mut self,
         commands: Vec<plushie_core::ops::WidgetCommand>,
-    ) -> io::Result<()> {
+    ) -> crate::Result {
         self.send(&OutgoingMessage::Commands {
             session: String::new(),
             commands,
@@ -157,7 +160,7 @@ impl Bridge {
     ///
     /// Uses the unified `_op` envelope: op-specific data lives under
     /// `payload`; routing fields (`op`, `window_id`) stay flat.
-    pub fn send_window_op(&mut self, op: &str, window_id: &str, payload: &Value) -> io::Result<()> {
+    pub fn send_window_op(&mut self, op: &str, window_id: &str, payload: &Value) -> crate::Result {
         self.send(&OutgoingMessage::WindowOp {
             session: String::new(),
             op: op.to_string(),
@@ -167,7 +170,7 @@ impl Bridge {
     }
 
     /// Send an effect request.
-    pub fn send_effect(&mut self, id: &str, kind: &str, payload: &Value) -> io::Result<()> {
+    pub fn send_effect(&mut self, id: &str, kind: &str, payload: &Value) -> crate::Result {
         self.send(&OutgoingMessage::Effect {
             session: String::new(),
             id: id.to_string(),
@@ -183,7 +186,7 @@ impl Bridge {
         action: &str,
         selector: &Value,
         payload: &Value,
-    ) -> io::Result<()> {
+    ) -> crate::Result {
         self.send(&OutgoingMessage::Interact {
             session: String::new(),
             id: id.to_string(),
@@ -199,7 +202,7 @@ impl Bridge {
         id: &str,
         target: &str,
         selector: Option<&Value>,
-    ) -> io::Result<()> {
+    ) -> crate::Result {
         self.send(&OutgoingMessage::Query {
             session: String::new(),
             id: id.to_string(),
@@ -209,7 +212,7 @@ impl Bridge {
     }
 
     /// Send a reset message to reinitialize the renderer session.
-    pub fn send_reset(&mut self, id: &str) -> io::Result<()> {
+    pub fn send_reset(&mut self, id: &str) -> crate::Result {
         self.send(&OutgoingMessage::Reset {
             session: String::new(),
             id: id.to_string(),
@@ -217,7 +220,7 @@ impl Bridge {
     }
 
     /// Register a stub effect response for testing/automation.
-    pub fn send_register_effect_stub(&mut self, kind: &str, response: &Value) -> io::Result<()> {
+    pub fn send_register_effect_stub(&mut self, kind: &str, response: &Value) -> crate::Result {
         self.send(&OutgoingMessage::RegisterEffectStub {
             session: String::new(),
             kind: kind.to_string(),
@@ -226,7 +229,7 @@ impl Bridge {
     }
 
     /// Remove a previously registered effect stub.
-    pub fn send_unregister_effect_stub(&mut self, kind: &str) -> io::Result<()> {
+    pub fn send_unregister_effect_stub(&mut self, kind: &str) -> crate::Result {
         self.send(&OutgoingMessage::UnregisterEffectStub {
             session: String::new(),
             kind: kind.to_string(),
@@ -282,6 +285,23 @@ impl Bridge {
         self.child.kill()
     }
 
+    /// Reap the child if it has already exited, returning the exit
+    /// code. Does not block.
+    pub fn try_reap(&mut self) -> Option<i32> {
+        match self.child.try_wait() {
+            Ok(Some(status)) => status.code(),
+            _ => None,
+        }
+    }
+
+    /// Wait for the child to exit, returning the exit code.
+    ///
+    /// Blocks until the child terminates. Use after `kill()` to reap
+    /// the process and avoid zombies.
+    pub fn wait(&mut self) -> io::Result<Option<i32>> {
+        Ok(self.child.wait()?.code())
+    }
+
     /// Set the codec after hello message negotiation.
     pub fn set_codec(&mut self, codec: Codec) {
         self.codec = codec;
@@ -292,5 +312,9 @@ impl Bridge {
 impl Drop for Bridge {
     fn drop(&mut self) {
         let _ = self.kill();
+        // Reap the child to capture the exit code and avoid zombies
+        // on platforms where kill() returns before the process is
+        // actually reaped. F-2.2.4.
+        let _ = self.child.wait();
     }
 }

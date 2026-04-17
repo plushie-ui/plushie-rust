@@ -58,6 +58,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use plushie_core::protocol::{PropValue, TreeNode};
+use plushie_core::tree_walk::{TreeTransform, WalkCtx, walk};
 use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
 
 /// Normalize a view tree: apply scope prefixes, validate IDs,
@@ -67,116 +68,158 @@ use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
 /// Returns the normalized tree and any validation warnings
 /// (duplicate IDs, reserved characters, unresolved a11y refs).
 pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
-    let mut warnings = Vec::new();
-    let mut seen_ids = HashSet::new();
-    let result = normalize_node(tree, "", &mut seen_ids, &mut warnings, 0);
-
-    // Second pass: rewrite a11y refs, populate radio groups and role
-    // defaults. Uses the scoped IDs gathered during the first pass so
-    // we can both rewrite and validate references.
-    let declared_ids = collect_ids(&result);
-    let radio_groups = collect_radio_groups(&result);
-    let rewritten = rewrite_a11y(&result, "", &declared_ids, &radio_groups, &mut warnings, 0);
-
-    // Third pass: walk the finished tree looking for interactive
-    // widgets that have no accessible name at all. Emits
-    // `missing_accessible_name` diagnostics with the scoped ID of
-    // the offender. Catches icon-only toolbars that would otherwise
-    // render a focusable node with no screen-reader label.
-    check_missing_accessible_name(&rewritten, &mut warnings);
-
-    (rewritten, warnings)
+    let mut result = tree.clone();
+    let (warnings, _) = normalize_in_place(&mut result);
+    (result, warnings)
 }
 
-fn normalize_node(
-    node: &TreeNode,
-    scope: &str,
-    seen_ids: &mut HashSet<String>,
-    warnings: &mut Vec<String>,
+/// Drive normalization directly over a tree the caller already owns.
+///
+/// Mutates `tree` in place (scope-rewriting IDs, injecting inferred
+/// a11y, etc.) and returns the accumulated warnings along with the
+/// final [`WalkCtx`] so callers that chain additional walks can
+/// inspect it.
+pub(crate) fn normalize_in_place(tree: &mut TreeNode) -> (Vec<String>, WalkCtx) {
+    let mut transform = NormalizeTransform::new();
+    let mut ctx = WalkCtx::default();
+    walk(tree, &mut [&mut transform], &mut ctx);
+
+    // Pass 2: rewrite a11y refs, populate radio groups and role
+    // defaults. Uses the scoped IDs gathered during the first pass so
+    // we can both rewrite and validate references.
+    let declared_ids = collect_ids(tree);
+    let radio_groups = collect_radio_groups(tree);
+    rewrite_a11y_in_place(tree, "", &declared_ids, &radio_groups, &mut ctx.warnings, 0);
+
+    // Pass 3: walk the finished tree looking for interactive widgets
+    // that have no accessible name at all. Emits
+    // `missing_accessible_name` diagnostics with the scoped ID of the
+    // offender. Catches icon-only toolbars that would otherwise render
+    // a focusable node with no screen-reader label.
+    check_missing_accessible_name(tree, &mut ctx.warnings);
+
+    let warnings = std::mem::take(&mut ctx.warnings);
+    (warnings, ctx)
+}
+
+/// First-pass transform: scope-rewrite IDs, detect duplicates and
+/// reserved characters, cap recursion depth.
+///
+/// Uses `WalkCtx::scope` as a stack: `enter` extends it with this
+/// node's contribution; `exit` truncates back to the pre-enter length.
+/// Normalize-specific state (duplicate-ID set, depth counter) stays
+/// inside the transform so `WalkCtx` can remain scope-only.
+pub(crate) struct NormalizeTransform {
+    seen_ids: HashSet<String>,
+    /// Length to truncate `ctx.scope` to on `exit` for each node on
+    /// the stack. Mirrors the recursion frames.
+    scope_stack: Vec<usize>,
+    /// Current walk depth. Increments on `enter`, decrements on `exit`.
     depth: usize,
-) -> TreeNode {
-    if depth > MAX_TREE_DEPTH {
-        // Truncate the subtree to stop runaway recursion. The current
-        // node is returned with no children; a diagnostic records the
-        // truncation so hosts can surface it.
-        log::error!(
-            "[code=tree_too_deep][id={}] normalize depth exceeds {}, truncating subtree",
-            node.id,
-            MAX_TREE_DEPTH
-        );
-        warnings.push(format!(
-            "tree_too_deep: subtree rooted at \"{}\" exceeds MAX_TREE_DEPTH={}, truncating",
-            node.id, MAX_TREE_DEPTH
-        ));
-        return TreeNode {
-            id: node.id.clone(),
-            type_name: node.type_name.clone(),
-            props: node.props.clone(),
-            children: vec![],
+    /// Once the depth cap has been exceeded, children are elided.
+    /// Mirrored via `skip_children` (children are never truncated
+    /// destructively; the walker just doesn't recurse into them).
+    truncate_children: Vec<bool>,
+}
+
+impl NormalizeTransform {
+    pub(crate) fn new() -> Self {
+        Self {
+            seen_ids: HashSet::new(),
+            scope_stack: Vec::new(),
+            depth: 0,
+            truncate_children: Vec::new(),
+        }
+    }
+}
+
+impl TreeTransform for NormalizeTransform {
+    fn enter(&mut self, node: &mut TreeNode, ctx: &mut WalkCtx) {
+        // Defence-in-depth against runaway recursion. The walker is
+        // recursive itself, so halting here matters. We still run
+        // exit/pop bookkeeping for symmetry.
+        if self.depth > MAX_TREE_DEPTH {
+            log::error!(
+                "[code=tree_too_deep][id={}] normalize depth exceeds {}, truncating subtree",
+                node.id,
+                MAX_TREE_DEPTH
+            );
+            ctx.warnings.push(format!(
+                "tree_too_deep: subtree rooted at \"{}\" exceeds MAX_TREE_DEPTH={}, truncating",
+                node.id, MAX_TREE_DEPTH
+            ));
+            // Drop the children so the walker has nothing to descend
+            // into, then record a no-op scope stack entry.
+            node.children.clear();
+            self.scope_stack.push(ctx.scope.len());
+            self.truncate_children.push(true);
+            self.depth += 1;
+            return;
+        }
+
+        let prev_scope_len = ctx.scope.len();
+        let id = &node.id;
+        let type_name = &node.type_name;
+        let is_auto = id.starts_with("auto:");
+        let is_window = type_name == "window";
+
+        // Scope-rewrite this node's ID.
+        let scoped_id = if is_auto || ctx.scope.is_empty() {
+            id.clone()
+        } else if ctx.scope.ends_with('#') {
+            format!("{}{}", ctx.scope, id)
+        } else {
+            format!("{}/{}", ctx.scope, id)
         };
-    }
-    let id = &node.id;
-    let type_name = &node.type_name;
 
-    let is_auto = id.starts_with("auto:");
-    let is_window = type_name == "window";
-
-    // Build the scoped ID.
-    // Window nodes keep their bare ID. Children of windows get "window#id".
-    // Deeper descendants get "window#parent/id" (# only at window boundary).
-    let scoped_id = if is_auto || scope.is_empty() {
-        id.clone()
-    } else if scope.ends_with('#') {
-        format!("{scope}{id}")
-    } else {
-        format!("{scope}/{id}")
-    };
-
-    // Check for duplicate IDs (only for non-auto IDs).
-    if !is_auto && !scoped_id.is_empty() && !seen_ids.insert(scoped_id.clone()) {
-        warnings.push(format!("duplicate ID: \"{scoped_id}\""));
-    }
-
-    // Check for reserved characters in user-provided IDs.
-    if !is_auto {
-        if id.contains('/') {
-            warnings.push(format!(
-                "ID \"{id}\" contains reserved character '/'. \
-                 Use container scoping instead."
-            ));
+        // Duplicate detection (non-auto only).
+        if !is_auto && !scoped_id.is_empty() && !self.seen_ids.insert(scoped_id.clone()) {
+            ctx.warnings.push(format!("duplicate ID: \"{scoped_id}\""));
         }
-        if id.contains('#') {
-            warnings.push(format!(
-                "ID \"{id}\" contains reserved character '#'. \
-                 '#' is reserved for window-qualified paths."
-            ));
+
+        // Reserved-character validation (user IDs only).
+        if !is_auto {
+            if id.contains('/') {
+                ctx.warnings.push(format!(
+                    "ID \"{id}\" contains reserved character '/'. \
+                     Use container scoping instead."
+                ));
+            }
+            if id.contains('#') {
+                ctx.warnings.push(format!(
+                    "ID \"{id}\" contains reserved character '#'. \
+                     '#' is reserved for window-qualified paths."
+                ));
+            }
         }
+
+        // Build child scope.
+        let child_scope = if is_window {
+            format!("{scoped_id}#")
+        } else if is_auto || id.is_empty() {
+            ctx.scope.clone()
+        } else {
+            scoped_id.clone()
+        };
+
+        // Install the rewritten ID on the node and push scope frame.
+        node.id = scoped_id;
+        ctx.scope = child_scope;
+        self.scope_stack.push(prev_scope_len);
+        self.truncate_children.push(false);
+        self.depth += 1;
     }
 
-    // Build the scope for children.
-    // Window nodes set "window#" as the child scope.
-    // Named non-window nodes propagate their scoped ID.
-    // Auto-ID nodes are transparent.
-    let child_scope = if is_window {
-        format!("{scoped_id}#")
-    } else if is_auto || id.is_empty() {
-        scope.to_string()
-    } else {
-        scoped_id.clone()
-    };
+    fn exit(&mut self, _node: &mut TreeNode, ctx: &mut WalkCtx) {
+        if let Some(prev_len) = self.scope_stack.pop() {
+            ctx.scope.truncate(prev_len);
+        }
+        self.truncate_children.pop();
+        self.depth = self.depth.saturating_sub(1);
+    }
 
-    // Normalize children recursively.
-    let children = node
-        .children
-        .iter()
-        .map(|child| normalize_node(child, &child_scope, seen_ids, warnings, depth + 1))
-        .collect();
-
-    TreeNode {
-        id: scoped_id,
-        type_name: node.type_name.clone(),
-        props: node.props.clone(),
-        children,
+    fn skip_children(&self, _node: &TreeNode, _ctx: &WalkCtx) -> bool {
+        self.truncate_children.last().copied().unwrap_or(false)
     }
 }
 
@@ -243,33 +286,31 @@ fn child_scope_of(node: &TreeNode, scope: &str) -> String {
     }
 }
 
-/// Walk the normalized tree and rewrite a11y refs + populate defaults.
-fn rewrite_a11y(
-    node: &TreeNode,
+/// Walk the normalized tree and rewrite a11y refs + populate defaults
+/// in place.
+fn rewrite_a11y_in_place(
+    node: &mut TreeNode,
     scope: &str,
     declared: &HashSet<String>,
     radio_groups: &BTreeMap<RadioGroupKey, Vec<String>>,
     warnings: &mut Vec<String>,
     depth: usize,
-) -> TreeNode {
+) {
     if depth > MAX_TREE_DEPTH {
-        return node.clone();
+        return;
     }
 
     let next_scope = child_scope_of(node, scope);
-    let children: Vec<TreeNode> = node
-        .children
-        .iter()
-        .map(|c| rewrite_a11y(c, &next_scope, declared, radio_groups, warnings, depth + 1))
-        .collect();
-
-    let props = apply_a11y_rewrites(node, scope, declared, radio_groups, warnings);
-
-    TreeNode {
-        id: node.id.clone(),
-        type_name: node.type_name.clone(),
-        props,
-        children,
+    node.props = apply_a11y_rewrites(node, scope, declared, radio_groups, warnings);
+    for child in &mut node.children {
+        rewrite_a11y_in_place(
+            child,
+            &next_scope,
+            declared,
+            radio_groups,
+            warnings,
+            depth + 1,
+        );
     }
 }
 

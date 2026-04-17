@@ -394,10 +394,17 @@ impl Bridge {
 #[cfg(feature = "wire")]
 impl Drop for Bridge {
     fn drop(&mut self) {
-        // Signal the reader to stop before killing the child; the
-        // read call inside the reader will return on pipe close.
-        self.stop_reader();
+        // Order matters. Signalling stop without killing first can
+        // deadlock: the reader thread is blocked inside `read_one`,
+        // which only returns after the child closes its stdout. The
+        // child doesn't close it until we kill or it exits on its own.
+        // Kill first, then stop_reader (which joins after read_one
+        // returns on the pipe-closed error).
+        if let Some(reader) = self.reader.as_ref() {
+            reader.stop.store(true, Ordering::SeqCst);
+        }
         let _ = self.kill();
+        self.stop_reader();
         // Reap the child to capture the exit code and avoid zombies
         // on platforms where kill() returns before the process is
         // actually reaped.

@@ -32,7 +32,7 @@ use crate::command::Command;
 #[cfg(feature = "wire")]
 use crate::event::{EffectEvent, EffectResult, Event};
 #[cfg(feature = "wire")]
-use crate::runtime::{normalize, tree_diff};
+use crate::runtime::tree_diff;
 #[cfg(feature = "wire")]
 use crate::settings::ExitReason;
 
@@ -315,13 +315,12 @@ fn run_session<A: App>(
                     // Resolve to the user tag via the tracker; emit
                     // Timeout. Skip silently if already resolved
                     // (response-raced-the-deadline).
-                    match effect_tracker.resolve(&wire_id) {
-                        Some((tag, _kind)) => Some(Event::Effect(EffectEvent {
+                    effect_tracker.resolve(&wire_id).map(|(tag, _kind)| {
+                        Event::Effect(EffectEvent {
                             tag,
                             result: EffectResult::Timeout,
-                        })),
-                        None => None,
-                    }
+                        })
+                    })
                 }
                 other => super::event_bridge::sink_event_to_sdk(other),
             };
@@ -349,6 +348,7 @@ fn run_session<A: App>(
 /// Wraps `A::view()` in the view-errors guard so a panic falls
 /// back to the last-good tree and increments the consecutive
 /// counter (frozen-UI overlay at threshold).
+#[allow(clippy::too_many_arguments)]
 #[cfg(feature = "wire")]
 fn process_event<A: App>(
     model: &mut A::Model,
@@ -450,6 +450,7 @@ enum IncomingRendererMessage {
     /// skew cleanly.
     Unknown {
         msg_type: String,
+        #[allow(dead_code)] // Retained for log-only diagnostic use.
         raw: Value,
     },
 }

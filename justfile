@@ -10,7 +10,7 @@ default:
 
 # === CI Preflight ===
 
-preflight: check check-release clippy fmt test test-examples
+preflight: check check-release clippy fmt test test-examples test-wire
     @echo ""
     @echo "All preflight checks passed!"
 
@@ -18,12 +18,14 @@ preflight: check check-release clippy fmt test test-examples
 
 check:
     cargo check --workspace --all-targets
+    cargo check -p plushie --all-targets --features wire
 
 check-release:
     cargo check --workspace --release
 
 clippy:
     cargo clippy --workspace --all-targets
+    cargo clippy -p plushie --all-targets --features wire
 
 fmt:
     cargo fmt --check
@@ -33,6 +35,9 @@ test:
 
 test-examples:
     cargo test -p plushie --examples
+
+test-wire:
+    cargo test -p plushie --features wire --test wire_mode
 
 test-cargo:
     cargo test --workspace

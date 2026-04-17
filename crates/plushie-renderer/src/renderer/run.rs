@@ -152,6 +152,13 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
     let sink = plushie_renderer_lib::WriterSink::new(Box::new(channel_writer), codec);
     plushie_renderer_lib::emitters::init_sink(Box::new(sink));
 
+    // Install the renderer panic hook now that the sink is wired.
+    // A panic in an iced subscription, window handler, or effect
+    // handler emits session_error + session_closed on the wire
+    // before the default abort runs, so hosts see a structured
+    // signal when the renderer dies unexpectedly.
+    plushie_renderer_lib::emitters::install_panic_hook();
+
     let ext_key_refs: Vec<&str> = ext_keys.iter().map(|s| s.as_str()).collect();
     if let Err(e) = emit_hello("windowed", "wgpu", &ext_key_refs, &["iced"], transport_name) {
         log_hello_error(&e);

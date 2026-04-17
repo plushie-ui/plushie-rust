@@ -190,6 +190,18 @@ impl From<PropValue> for Value {
 ///
 /// Uses a `Vec` for storage since widget props are typically small
 /// (5-15 entries). Linear scan is faster than hashing for this size.
+///
+/// # Wire serialisation key order
+///
+/// Props are serialised to JSON via
+/// [`into_json_map`](PropMap::into_json_map) which collects into a
+/// `serde_json::Map`. The workspace compiles `serde_json` **without**
+/// the `preserve_order` feature, so `Map` is an alphabetical-key
+/// `BTreeMap` equivalent. Downstream consumers (wire protocol,
+/// `TestSession::tree_hash`, golden-file tests) rely on this.
+/// Enabling `preserve_order` would make JSON serialisation
+/// insertion-ordered and break golden-file stability silently.
+/// See `tree_hash` for the regression test pinning this.
 #[derive(Debug, Clone, Default)]
 pub struct PropMap(Vec<(String, PropValue)>);
 
@@ -611,5 +623,56 @@ mod tests {
         assert_eq!(PropValue::U64(42).as_f64(), Some(42.0));
         assert_eq!(PropValue::F64(42.0).as_i64(), Some(42));
         assert_eq!(PropValue::I64(42).as_u64(), Some(42));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Alphabetical key ordering invariant
+    //
+    // Regression for hat-04 3.9: tree_hash and golden-file tests depend
+    // on `serde_json::to_string` producing alphabetical-key output. That
+    // holds only when `serde_json`'s `preserve_order` feature is
+    // NOT enabled. This test inserts keys in non-alphabetical order and
+    // asserts the serialised string is alphabetical.
+    //
+    // If this test ever fails, a transitive dependency has enabled
+    // `preserve_order`; golden files across the workspace will break.
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn props_serialise_keys_alphabetically() {
+        let mut map = PropMap::new();
+        // Insert in reverse-alphabetical order.
+        map.insert("zebra", "z");
+        map.insert("mango", "m");
+        map.insert("apple", "a");
+        let props = Props::Typed(map);
+
+        let json_str = serde_json::to_string(&props).unwrap();
+        // Alphabetical: apple, mango, zebra.
+        let expected = r#"{"apple":"a","mango":"m","zebra":"z"}"#;
+        assert_eq!(
+            json_str, expected,
+            "serde_json Props serialisation must be alphabetical; \
+             if this fails, serde_json's preserve_order feature may have \
+             leaked in via a transitive dependency"
+        );
+    }
+
+    #[test]
+    fn nested_props_serialise_keys_alphabetically() {
+        // Nested objects must also be alphabetical.
+        let mut inner = PropMap::new();
+        inner.insert("width", 100.0f64);
+        inner.insert("height", 50.0f64);
+        let mut outer = PropMap::new();
+        outer.insert("z_field", PropValue::Object(inner));
+        outer.insert("a_field", "a");
+        let props = Props::Typed(outer);
+
+        let json_str = serde_json::to_string(&props).unwrap();
+        assert_eq!(
+            json_str,
+            r#"{"a_field":"a","z_field":{"height":50.0,"width":100.0}}"#
+        );
     }
 }

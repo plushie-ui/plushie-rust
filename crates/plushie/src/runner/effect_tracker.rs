@@ -66,7 +66,10 @@ impl EffectTracker {
         self.pending.retain(|_, e| e.tag != tag);
 
         let wire_id = format!("ef_{}", self.next_id);
-        self.next_id += 1;
+        // wrapping_add for explicit defensive clarity: 2^64 increments
+        // is unreachable in practice, but this removes the debug-build
+        // overflow panic concern entirely.
+        self.next_id = self.next_id.wrapping_add(1);
 
         self.pending.insert(
             wire_id.clone(),

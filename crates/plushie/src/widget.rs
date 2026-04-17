@@ -19,6 +19,20 @@
 //! and behave identically in use - the distinction is only about who
 //! writes them.
 //!
+//! # Widget IDs must be unique across Widget types
+//!
+//! Each widget ID owns a single state slot typed by the concrete
+//! `Widget::State`. Reusing an ID for two different `Widget` types
+//! within the same view cycle is a programming error: the first
+//! registration wins the state slot, the second mounts a downcast
+//! against the wrong `TypeId` and panics.
+//!
+//! The runtime emits a `widget_id_type_collision` error-level
+//! diagnostic (with both type names and the offending ID) and then
+//! panics, because silently accepting a mismatched state would
+//! produce nonsense behaviour that's much harder to debug than a
+//! hard fail.
+//!
 //! # Defining a widget
 //!
 //! ```ignore
@@ -110,6 +124,15 @@ use crate::subscription::Subscription;
 /// `Sync`) because state is accessed exclusively by one session
 /// thread: `&mut state` in `handle_event` and `&state` in `view`.
 /// Concurrent access is never possible by design.
+///
+/// # ID uniqueness
+///
+/// Each widget ID owns one state slot, typed by `Self::State`.
+/// Reusing the same ID for two different `Widget` types within a
+/// view cycle is a programming error: the first registration wins
+/// the slot, the second downcast fails. The runtime emits a
+/// `widget_id_type_collision` diagnostic and panics to fail loudly
+/// rather than silently corrupting state.
 pub trait Widget: Send + Sync + 'static {
     /// Per-instance state persisted across renders.
     type State: Default + Send + 'static;
@@ -303,23 +326,30 @@ pub(crate) trait DynWidgetExpander: Send {
     fn handle_event(&self, event: &Event, state: &mut dyn Any) -> EventResult;
     fn default_state(&self) -> Box<dyn Any + Send>;
     fn subscribe(&self, node: &View, state: &dyn Any) -> Vec<Subscription>;
+    /// TypeId of the concrete `Widget::State` this expander owns.
+    /// Used by [`WidgetStateStore`] to detect ID collisions between
+    /// two different `Widget` types.
+    fn state_type_id(&self) -> std::any::TypeId;
+    /// Human-readable name of the concrete `Widget` type. Used only
+    /// for diagnostic messages on ID collisions.
+    fn widget_type_name(&self) -> &'static str;
 }
 
 struct WidgetExpander<W: Widget>(std::marker::PhantomData<W>);
 
 impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
     fn expand(&self, id: &str, node: &View, state: &dyn Any) -> View {
-        let state = state
-            .downcast_ref::<W::State>()
-            .expect("widget state type mismatch");
+        let state = state.downcast_ref::<W::State>().unwrap_or_else(|| {
+            widget_type_mismatch_panic::<W>(id);
+        });
         let props = W::Props::from_node(node);
         W::view(id, &props, state)
     }
 
     fn handle_event(&self, event: &Event, state: &mut dyn Any) -> EventResult {
-        let state = state
-            .downcast_mut::<W::State>()
-            .expect("widget state type mismatch");
+        let state = state.downcast_mut::<W::State>().unwrap_or_else(|| {
+            widget_type_mismatch_panic::<W>("<event dispatch>");
+        });
         W::handle_event(event, state)
     }
 
@@ -328,12 +358,37 @@ impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
     }
 
     fn subscribe(&self, node: &View, state: &dyn Any) -> Vec<Subscription> {
-        let state = state
-            .downcast_ref::<W::State>()
-            .expect("widget state type mismatch");
+        let state = state.downcast_ref::<W::State>().unwrap_or_else(|| {
+            widget_type_mismatch_panic::<W>(&node.id);
+        });
         let props = W::Props::from_node(node);
         W::subscribe(&props, state)
     }
+
+    fn state_type_id(&self) -> std::any::TypeId {
+        std::any::TypeId::of::<W::State>()
+    }
+
+    fn widget_type_name(&self) -> &'static str {
+        std::any::type_name::<W>()
+    }
+}
+
+/// Panic helper for TypeId downcast failures in the expander path.
+///
+/// Previously these sites used `expect("widget state type mismatch")`
+/// which gave no actionable context. Collision detection at insertion
+/// time (see [`WidgetStateStore::register_expander`]) is the primary
+/// guard; this path only fires on truly unexpected state shape
+/// mismatches and always names the concrete widget type.
+fn widget_type_mismatch_panic<W: Widget>(id: &str) -> ! {
+    panic!(
+        "widget state type mismatch: expander for `{}` (id={id:?}) \
+         received state of the wrong type. This should have been \
+         caught at registration with a `widget_id_type_collision` \
+         diagnostic; treat this panic as a bug in WidgetStateStore.",
+        std::any::type_name::<W>(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -370,8 +425,13 @@ impl WidgetRegistrar {
 // ---------------------------------------------------------------------------
 
 /// Stores per-widget-instance state and expanders.
+///
+/// State entries carry the `TypeId` of the concrete `Widget::State`
+/// so we can detect ID collisions between two different `Widget`
+/// types at registration time rather than crashing on a downcast
+/// much later.
 pub(crate) struct WidgetStateStore {
-    states: HashMap<String, Box<dyn Any + Send>>,
+    states: HashMap<String, (std::any::TypeId, Box<dyn Any + Send>)>,
     expanders: HashMap<String, Box<dyn DynWidgetExpander>>,
 }
 
@@ -392,19 +452,56 @@ impl WidgetStateStore {
         // Merge newly registered expanders and initialize state
         // for any widgets we haven't seen before.
         for (id, expander) in registrar.take_all() {
-            if !self.states.contains_key(&id) {
-                self.states.insert(id.clone(), expander.default_state());
-            }
-            self.expanders.insert(id, expander);
+            self.register_expander(id, expander);
         }
         self.expand_node(tree)
+    }
+
+    /// Insert or update a (id -> expander) mapping, initialising
+    /// state on first registration.
+    ///
+    /// On collision between two different `Widget` types for the same
+    /// ID, emits a `widget_id_type_collision` error-level diagnostic
+    /// naming both types and panics. Silent acceptance would leave
+    /// the downcast path to trip later with no actionable context.
+    ///
+    /// TODO(M-6): once the renderer's structured-diagnostic plumbing
+    /// lands, replace the `log::error!` with a proper diagnostic emit.
+    fn register_expander(&mut self, id: String, expander: Box<dyn DynWidgetExpander>) {
+        let incoming_type = expander.state_type_id();
+        let incoming_name = expander.widget_type_name();
+        if let Some((existing_type, _)) = self.states.get(&id) {
+            if *existing_type != incoming_type {
+                // Find the previously-registered widget's type name
+                // via the expanders map for a clearer diagnostic.
+                let existing_name = self
+                    .expanders
+                    .get(&id)
+                    .map(|e| e.widget_type_name())
+                    .unwrap_or("<unknown>");
+                log::error!(
+                    "[code=widget_id_type_collision][id={id}] widget ID reused across types: \
+                     `{existing_name}` was previously registered; `{incoming_name}` attempted \
+                     to register against the same slot",
+                );
+                panic!(
+                    "widget_id_type_collision: ID {id:?} was previously registered as \
+                     `{existing_name}`; cannot reuse it for `{incoming_name}`. Pick a \
+                     unique ID per composite widget type."
+                );
+            }
+        } else {
+            self.states
+                .insert(id.clone(), (incoming_type, expander.default_state()));
+        }
+        self.expanders.insert(id, expander);
     }
 
     fn expand_node(&self, node: &View) -> View {
         if node.type_name == "__widget__"
             && let Some(expander) = self.expanders.get(&node.id)
         {
-            let state = self.states.get(&node.id).expect("widget state missing");
+            let (_type_id, state) = self.states.get(&node.id).expect("widget state missing");
             let expanded = expander.expand(&node.id, node, state.as_ref());
             return self.expand_node(&expanded);
         }
@@ -436,7 +533,7 @@ impl WidgetStateStore {
 
         for (i, ancestor_id) in scope.iter().enumerate() {
             if let Some(expander) = self.expanders.get(ancestor_id) {
-                let state = self.states.get_mut(ancestor_id)?;
+                let (_type_id, state) = self.states.get_mut(ancestor_id)?;
                 let result = expander.handle_event(event, state.as_mut());
                 match result {
                     EventResult::Ignored => continue,

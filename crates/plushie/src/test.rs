@@ -673,6 +673,24 @@ impl<A: App> TestSession<A> {
     /// Uses FNV-1a on the tree's JSON serialization. The hash is
     /// deterministic across builds, so it can be stored as a constant
     /// in tests for regression detection.
+    ///
+    /// # Key ordering invariant
+    ///
+    /// The hash's stability depends on deterministic JSON key order.
+    /// `serde_json` is compiled **without** the `preserve_order`
+    /// feature in this workspace, so its `Map` is an alphabetical-key
+    /// `BTreeMap` equivalent. Enabling `preserve_order` would make
+    /// `serde_json::to_string(&tree)` insertion-ordered and break
+    /// golden files silently. If that feature ever leaks in via a
+    /// transitive dependency, the regression test
+    /// `tree_hash_serialisation_uses_alphabetical_keys` must fail
+    /// loudly.
+    ///
+    /// Cross-SDK portability: other host SDKs may emit different
+    /// key orderings over the wire. The wire is permissive, but
+    /// `tree_hash` golden files are NOT byte-portable across SDKs
+    /// unless the other SDK also sorts alphabetically. See
+    /// `by-design.md` for the documented divergence.
     pub fn tree_hash(&self) -> u64 {
         let json = serde_json::to_string(&self.tree).expect("tree serialization failed");
         fnv1a(json.as_bytes())

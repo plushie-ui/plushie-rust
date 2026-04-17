@@ -78,9 +78,13 @@ pub(crate) fn intern_font_family(name: &str) -> &'static str {
 
     if cache.len() >= MAX_FONT_FAMILY_CACHE {
         if !WARNED.swap(true, Ordering::Relaxed) {
+            // TODO(M-6): once structured-diagnostic plumbing lands,
+            // upgrade this to emit a `font_cache_cap_exceeded`
+            // diagnostic event so hosts can detect it programmatically
+            // rather than parsing log lines.
             log::warn!(
-                "font family cache full ({MAX_FONT_FAMILY_CACHE} entries); \
-                 new names will leak without caching"
+                "[code=font_cache_cap_exceeded] font family cache full \
+                 ({MAX_FONT_FAMILY_CACHE} entries); new names will leak without caching"
             );
         }
         return leaked;

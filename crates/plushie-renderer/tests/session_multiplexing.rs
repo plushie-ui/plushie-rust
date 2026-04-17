@@ -180,6 +180,54 @@ fn spawn_renderer(args: &[&str]) -> (Child, StderrCapture) {
     (child, capture)
 }
 
+/// Render mode selector for parity helpers. `Mock` runs the
+/// protocol-only path, `Headless` runs the real iced pipeline via
+/// tiny-skia. Any widget-event test that lands in `Mock` should
+/// also pass in `Headless`; use `run_in_both_modes` to make that
+/// a compile-time-obvious invariant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Mock,
+    Headless,
+}
+
+impl Mode {
+    fn flag(self) -> &'static str {
+        match self {
+            Mode::Mock => "--mock",
+            Mode::Headless => "--headless",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Mode::Mock => "mock",
+            Mode::Headless => "headless",
+        }
+    }
+}
+
+/// Run a test body against both mock and headless renderer modes.
+///
+/// A panic in one mode is reported with the mode name so the failure
+/// message identifies which branch diverged. This is the pattern new
+/// widget-event tests should follow: write the scenario once, then
+/// exercise both backends to keep mock and headless in sync.
+fn run_in_both_modes(body: impl Fn(Mode)) {
+    for mode in [Mode::Mock, Mode::Headless] {
+        let label = mode.label();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(mode)));
+        if let Err(payload) = result {
+            let msg = payload
+                .downcast_ref::<&'static str>()
+                .copied()
+                .or_else(|| payload.downcast_ref::<String>().map(|s| s.as_str()))
+                .unwrap_or("(non-string panic)");
+            panic!("test body failed in {label} mode: {msg}");
+        }
+    }
+}
+
 #[test]
 fn hello_message_has_empty_session() {
     let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
@@ -488,260 +536,267 @@ fn headless_interact_step_round_trip() {
 // use the LineReceiver defined at the top of this file.
 
 // ---------------------------------------------------------------------------
-// Item 4+17: Widget render structural verification via mock interact tests
+// Widget-event tests: each runs against both mock and headless mode
+// through run_in_both_modes so parity can't drift silently.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn mock_text_input_emits_input_event() {
-    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
+fn text_input_emits_input_event_in_both_modes() {
+    run_in_both_modes(|mode| {
+        let (mut child, _stderr) = spawn_renderer(&[mode.flag(), "--json"]);
 
-    let mut stdin = child.stdin.take().unwrap();
-    let receiver = LineReceiver::new(child.stdout.take().unwrap());
-    let timeout = Duration::from_secs(10);
+        let mut stdin = child.stdin.take().unwrap();
+        let receiver = LineReceiver::new(child.stdout.take().unwrap());
+        let timeout = Duration::from_secs(10);
 
-    // Bootstrap.
-    send(
-        &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
-    );
-    let hello = receiver.recv_timeout(timeout);
-    assert_eq!(hello["type"], "hello");
+        // Bootstrap.
+        send(
+            &mut stdin,
+            &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
+        );
+        let hello = receiver.recv_timeout(timeout);
+        assert_eq!(hello["type"], "hello");
 
-    // Send a tree with a text_input widget.
-    send(
-        &mut stdin,
-        &serde_json::json!({
-            "session": "s1",
-            "type": "snapshot",
-            "tree": {
-                "id": "main", "type": "window", "props": {}, "children": [
-                    {"id": "root", "type": "column", "props": {}, "children": [
-                        {"id": "inp1", "type": "text_input", "props": {"value": "", "placeholder": "Type here"}, "children": []}
-                    ]}
-                ]
+        // Send a tree with a text_input widget.
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": "s1",
+                "type": "snapshot",
+                "tree": {
+                    "id": "main", "type": "window", "props": {}, "children": [
+                        {"id": "root", "type": "column", "props": {}, "children": [
+                            {"id": "inp1", "type": "text_input", "props": {"value": "", "placeholder": "Type here"}, "children": []}
+                        ]}
+                    ]
+                }
+            }),
+        );
+
+        // Interact: type_text on the text_input.
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": "s1",
+                "type": "interact",
+                "id": "i1",
+                "action": "type_text",
+                "selector": {"by": "id", "value": "inp1"},
+                "payload": {"text": "hello"}
+            }),
+        );
+
+        // Collect events from interact_step and interact_response messages.
+        // The type_text action may produce steps that require snapshot replies.
+        let mut all_events = Vec::new();
+        loop {
+            let msg = receiver.recv_skip_status();
+            if msg["type"] == "interact_step" {
+                assert_eq!(msg["session"], "s1");
+                if let Some(evts) = msg["events"].as_array() {
+                    all_events.extend(evts.clone());
+                }
+                send(
+                    &mut stdin,
+                    &serde_json::json!({
+                        "session": "s1",
+                        "type": "snapshot",
+                        "tree": {
+                            "id": "main", "type": "window", "props": {}, "children": [
+                                {"id": "root", "type": "column", "props": {}, "children": [
+                                    {"id": "inp1", "type": "text_input", "props": {"value": "hello"}, "children": []}
+                                ]}
+                            ]
+                        }
+                    }),
+                );
+            } else if msg["type"] == "interact_response" {
+                assert_eq!(msg["session"], "s1");
+                assert_eq!(msg["id"], "i1");
+                if let Some(evts) = msg["events"].as_array() {
+                    all_events.extend(evts.clone());
+                }
+                break;
+            } else {
+                panic!("unexpected message type: {}", msg["type"]);
             }
-        }),
-    );
-
-    // Interact: type_text on the text_input.
-    send(
-        &mut stdin,
-        &serde_json::json!({
-            "session": "s1",
-            "type": "interact",
-            "id": "i1",
-            "action": "type_text",
-            "selector": {"by": "id", "value": "inp1"},
-            "payload": {"text": "hello"}
-        }),
-    );
-
-    // Collect events from interact_step and interact_response messages.
-    // The type_text action may produce steps that require snapshot replies.
-    let mut all_events = Vec::new();
-    loop {
-        let msg = receiver.recv_skip_status();
-        if msg["type"] == "interact_step" {
-            assert_eq!(msg["session"], "s1");
-            if let Some(evts) = msg["events"].as_array() {
-                all_events.extend(evts.clone());
-            }
-            send(
-                &mut stdin,
-                &serde_json::json!({
-                    "session": "s1",
-                    "type": "snapshot",
-                    "tree": {
-                        "id": "main", "type": "window", "props": {}, "children": [
-                            {"id": "root", "type": "column", "props": {}, "children": [
-                                {"id": "inp1", "type": "text_input", "props": {"value": "hello"}, "children": []}
-                            ]}
-                        ]
-                    }
-                }),
-            );
-        } else if msg["type"] == "interact_response" {
-            assert_eq!(msg["session"], "s1");
-            assert_eq!(msg["id"], "i1");
-            if let Some(evts) = msg["events"].as_array() {
-                all_events.extend(evts.clone());
-            }
-            break;
-        } else {
-            panic!("unexpected message type: {}", msg["type"]);
         }
-    }
 
-    let input_event = all_events
-        .iter()
-        .find(|e| e["family"] == "input")
-        .unwrap_or_else(|| panic!("expected an input event in: {all_events:?}"));
-    assert_eq!(input_event["id"], "inp1");
-    assert_eq!(input_event["value"], "hello");
+        let input_event = all_events
+            .iter()
+            .find(|e| e["family"] == "input")
+            .unwrap_or_else(|| panic!("expected an input event in: {all_events:?}"));
+        assert_eq!(input_event["id"], "inp1");
+        assert_eq!(input_event["value"], "hello");
 
-    drop(stdin);
-    child.wait().unwrap();
+        drop(stdin);
+        child.wait().unwrap();
+    });
 }
 
 #[test]
-fn mock_checkbox_emits_toggle_event() {
-    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
+fn checkbox_emits_toggle_event_in_both_modes() {
+    run_in_both_modes(|mode| {
+        let (mut child, _stderr) = spawn_renderer(&[mode.flag(), "--json"]);
 
-    let mut stdin = child.stdin.take().unwrap();
-    let receiver = LineReceiver::new(child.stdout.take().unwrap());
-    let timeout = Duration::from_secs(10);
+        let mut stdin = child.stdin.take().unwrap();
+        let receiver = LineReceiver::new(child.stdout.take().unwrap());
+        let timeout = Duration::from_secs(10);
 
-    send(
-        &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
-    );
-    let hello = receiver.recv_timeout(timeout);
-    assert_eq!(hello["type"], "hello");
+        send(
+            &mut stdin,
+            &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
+        );
+        let hello = receiver.recv_timeout(timeout);
+        assert_eq!(hello["type"], "hello");
 
-    // Send a tree with a checkbox widget.
-    send(
-        &mut stdin,
-        &serde_json::json!({
-            "session": "s1",
-            "type": "snapshot",
-            "tree": {
-                "id": "main", "type": "window", "props": {}, "children": [
-                    {"id": "root", "type": "column", "props": {}, "children": [
-                        {"id": "chk1", "type": "checkbox", "props": {"label": "Accept", "checked": false}, "children": []}
-                    ]}
-                ]
+        // Send a tree with a checkbox widget.
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": "s1",
+                "type": "snapshot",
+                "tree": {
+                    "id": "main", "type": "window", "props": {}, "children": [
+                        {"id": "root", "type": "column", "props": {}, "children": [
+                            {"id": "chk1", "type": "checkbox", "props": {"label": "Accept", "checked": false}, "children": []}
+                        ]}
+                    ]
+                }
+            }),
+        );
+
+        // Interact: toggle the checkbox. Both modes use the full iced
+        // pipeline, so toggle injects real mouse events which produce
+        // interact_step messages followed by the final interact_response.
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": "s1",
+                "type": "interact",
+                "id": "i1",
+                "action": "toggle",
+                "selector": {"by": "id", "value": "chk1"},
+                "payload": {"value": true}
+            }),
+        );
+
+        // Collect all interact_step events, sending back a snapshot after
+        // each step (the renderer blocks waiting for the host's tree update).
+        let mut toggle_events = Vec::new();
+        loop {
+            let msg = receiver.recv_timeout(timeout);
+            if msg["type"] == "interact_step" {
+                assert_eq!(msg["session"], "s1");
+                assert_eq!(msg["id"], "i1");
+                if let Some(evts) = msg["events"].as_array() {
+                    toggle_events.extend(evts.clone());
+                }
+                // Send back the same tree so the renderer can proceed.
+                send(
+                    &mut stdin,
+                    &serde_json::json!({
+                        "session": "s1",
+                        "type": "snapshot",
+                        "tree": {
+                            "id": "main", "type": "window", "props": {}, "children": [
+                                {"id": "root", "type": "column", "props": {}, "children": [
+                                    {"id": "chk1", "type": "checkbox", "props": {"label": "Accept", "checked": true}, "children": []}
+                                ]}
+                            ]
+                        }
+                    }),
+                );
+            } else if msg["type"] == "interact_response" {
+                assert_eq!(msg["session"], "s1");
+                assert_eq!(msg["id"], "i1");
+                // Any remaining events from the final response.
+                if let Some(evts) = msg["events"].as_array() {
+                    toggle_events.extend(evts.clone());
+                }
+                break;
+            } else if msg.get("family").and_then(|f| f.as_str()) == Some("status") {
+                // Skip status change events during interaction.
+                continue;
+            } else {
+                panic!("unexpected message type: {}", msg["type"]);
             }
-        }),
-    );
-
-    // Interact: toggle the checkbox. Mock mode now uses the full iced
-    // pipeline, so toggle injects real mouse events which produce
-    // interact_step messages followed by the final interact_response.
-    send(
-        &mut stdin,
-        &serde_json::json!({
-            "session": "s1",
-            "type": "interact",
-            "id": "i1",
-            "action": "toggle",
-            "selector": {"by": "id", "value": "chk1"},
-            "payload": {"value": true}
-        }),
-    );
-
-    // Collect all interact_step events, sending back a snapshot after
-    // each step (the renderer blocks waiting for the host's tree update).
-    let mut toggle_events = Vec::new();
-    loop {
-        let msg = receiver.recv_timeout(timeout);
-        if msg["type"] == "interact_step" {
-            assert_eq!(msg["session"], "s1");
-            assert_eq!(msg["id"], "i1");
-            if let Some(evts) = msg["events"].as_array() {
-                toggle_events.extend(evts.clone());
-            }
-            // Send back the same tree so the renderer can proceed.
-            send(
-                &mut stdin,
-                &serde_json::json!({
-                    "session": "s1",
-                    "type": "snapshot",
-                    "tree": {
-                        "id": "main", "type": "window", "props": {}, "children": [
-                            {"id": "root", "type": "column", "props": {}, "children": [
-                                {"id": "chk1", "type": "checkbox", "props": {"label": "Accept", "checked": true}, "children": []}
-                            ]}
-                        ]
-                    }
-                }),
-            );
-        } else if msg["type"] == "interact_response" {
-            assert_eq!(msg["session"], "s1");
-            assert_eq!(msg["id"], "i1");
-            // Any remaining events from the final response.
-            if let Some(evts) = msg["events"].as_array() {
-                toggle_events.extend(evts.clone());
-            }
-            break;
-        } else if msg.get("family").and_then(|f| f.as_str()) == Some("status") {
-            // Skip status change events during interaction.
-            continue;
-        } else {
-            panic!("unexpected message type: {}", msg["type"]);
         }
-    }
 
-    // The toggle event should have been produced by the iced pipeline.
-    assert!(
-        toggle_events.iter().any(|e| e["family"] == "toggle"),
-        "expected a toggle event in the interact flow, got: {toggle_events:?}"
-    );
+        // The toggle event should have been produced by the iced pipeline.
+        assert!(
+            toggle_events.iter().any(|e| e["family"] == "toggle"),
+            "expected a toggle event in the interact flow, got: {toggle_events:?}"
+        );
 
-    drop(stdin);
-    child.wait().unwrap();
+        drop(stdin);
+        child.wait().unwrap();
+    });
 }
 
 #[test]
-fn mock_slider_emits_slide_event() {
-    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
+fn slider_emits_slide_event_in_both_modes() {
+    run_in_both_modes(|mode| {
+        let (mut child, _stderr) = spawn_renderer(&[mode.flag(), "--json"]);
 
-    let mut stdin = child.stdin.take().unwrap();
-    let receiver = LineReceiver::new(child.stdout.take().unwrap());
-    let timeout = Duration::from_secs(10);
+        let mut stdin = child.stdin.take().unwrap();
+        let receiver = LineReceiver::new(child.stdout.take().unwrap());
+        let timeout = Duration::from_secs(10);
 
-    send(
-        &mut stdin,
-        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
-    );
-    let hello = receiver.recv_timeout(timeout);
-    assert_eq!(hello["type"], "hello");
+        send(
+            &mut stdin,
+            &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
+        );
+        let hello = receiver.recv_timeout(timeout);
+        assert_eq!(hello["type"], "hello");
 
-    // Send a tree with a slider widget.
-    send(
-        &mut stdin,
-        &serde_json::json!({
-            "session": "s1",
-            "type": "snapshot",
-            "tree": {
-                "id": "main", "type": "window", "props": {}, "children": [
-                    {"id": "root", "type": "column", "props": {}, "children": [
-                        {"id": "sld1", "type": "slider", "props": {"value": 50, "range": [0, 100]}, "children": []}
-                    ]}
-                ]
-            }
-        }),
-    );
+        // Send a tree with a slider widget.
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": "s1",
+                "type": "snapshot",
+                "tree": {
+                    "id": "main", "type": "window", "props": {}, "children": [
+                        {"id": "root", "type": "column", "props": {}, "children": [
+                            {"id": "sld1", "type": "slider", "props": {"value": 50, "range": [0, 100]}, "children": []}
+                        ]}
+                    ]
+                }
+            }),
+        );
 
-    // Interact: slide to a new value.
-    send(
-        &mut stdin,
-        &serde_json::json!({
-            "session": "s1",
-            "type": "interact",
-            "id": "i1",
-            "action": "slide",
-            "selector": {"by": "id", "value": "sld1"},
-            "payload": {"value": 75.0}
-        }),
-    );
+        // Interact: slide to a new value.
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": "s1",
+                "type": "interact",
+                "id": "i1",
+                "action": "slide",
+                "selector": {"by": "id", "value": "sld1"},
+                "payload": {"value": 75.0}
+            }),
+        );
 
-    let resp = receiver.recv_skip_status();
-    assert_eq!(resp["type"], "interact_response");
-    assert_eq!(resp["session"], "s1");
-    assert_eq!(resp["id"], "i1");
+        let resp = receiver.recv_skip_status();
+        assert_eq!(resp["type"], "interact_response");
+        assert_eq!(resp["session"], "s1");
+        assert_eq!(resp["id"], "i1");
 
-    let events = resp["events"]
-        .as_array()
-        .expect("events should be an array");
-    let slide_event = events
-        .iter()
-        .find(|e| e["family"] == "slide")
-        .expect("expected a slide event");
-    assert_eq!(slide_event["id"], "sld1");
-    assert_eq!(events[0]["value"], 75.0);
+        let events = resp["events"]
+            .as_array()
+            .expect("events should be an array");
+        let slide_event = events
+            .iter()
+            .find(|e| e["family"] == "slide")
+            .expect("expected a slide event");
+        assert_eq!(slide_event["id"], "sld1");
+        assert_eq!(events[0]["value"], 75.0);
 
-    drop(stdin);
-    child.wait().unwrap();
+        drop(stdin);
+        child.wait().unwrap();
+    });
 }
 
 // ---------------------------------------------------------------------------

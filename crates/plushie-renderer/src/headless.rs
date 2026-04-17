@@ -634,10 +634,18 @@ fn handle_message<R: PlushieRenderer>(
                             .and_then(|v| v.as_str())
                             .unwrap_or_default()
                             .to_string();
+                        let politeness = payload
+                            .get("politeness")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("assertive")
+                            .to_string();
                         let event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
                             "announce",
                             "",
-                            Some(serde_json::json!({"text": announce_text})),
+                            Some(serde_json::json!({
+                                "text": announce_text,
+                                "politeness": politeness,
+                            })),
                         );
                         let _ = s.writer.emit(&event.with_session(session_id));
                     }

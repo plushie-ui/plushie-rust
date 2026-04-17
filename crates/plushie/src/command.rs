@@ -806,9 +806,27 @@ impl Command {
 
     // -- Misc --
 
-    /// Announce text to screen readers.
-    pub fn announce(text: &str) -> Self {
-        Self::Renderer(RendererOp::Announce(text.to_string()))
+    /// Announce text to screen readers at the given politeness.
+    ///
+    /// `politeness`:
+    /// - [`Live::Polite`] queues after any ongoing speech; correct
+    ///   for status messages, toast feedback, and confirmations.
+    /// - [`Live::Assertive`] interrupts ongoing speech; reserved
+    ///   for urgent announcements the user must hear immediately.
+    ///
+    /// [`Live::Polite`]: plushie_core::types::a11y::Live::Polite
+    /// [`Live::Assertive`]: plushie_core::types::a11y::Live::Assertive
+    pub fn announce(text: &str, politeness: plushie_core::types::a11y::Live) -> Self {
+        Self::Renderer(RendererOp::Announce {
+            text: text.to_string(),
+            politeness,
+        })
+    }
+
+    /// Announce text politely to screen readers. Shorthand for
+    /// [`Command::announce(text, Live::Polite)`](Command::announce).
+    pub fn announce_text(text: &str) -> Self {
+        Self::announce(text, plushie_core::types::a11y::Live::Polite)
     }
 
     /// Load a font from raw byte data.

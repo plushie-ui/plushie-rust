@@ -464,9 +464,29 @@ fn command_pane_restore() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn command_announce() {
-    match Command::announce("Item saved") {
-        Command::Renderer(RendererOp::Announce(text)) => assert_eq!(text, "Item saved"),
+fn command_announce_with_politeness() {
+    use plushie_core::types::a11y::Live;
+    match Command::announce("Item saved", Live::Polite) {
+        Command::Renderer(RendererOp::Announce { text, politeness }) => {
+            assert_eq!(text, "Item saved");
+            assert_eq!(politeness, Live::Polite);
+        }
+        _ => panic!("expected Announce"),
+    }
+}
+
+#[test]
+fn command_announce_text_defaults_to_polite() {
+    use plushie_core::types::a11y::Live;
+    match Command::announce_text("Saved") {
+        Command::Renderer(RendererOp::Announce { text, politeness }) => {
+            assert_eq!(text, "Saved");
+            assert_eq!(
+                politeness,
+                Live::Polite,
+                "announce_text convenience should default to polite"
+            );
+        }
         _ => panic!("expected Announce"),
     }
 }

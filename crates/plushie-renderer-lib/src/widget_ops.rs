@@ -151,11 +151,20 @@ impl App {
                 }
             }
             "announce" => {
+                // `politeness` is read off the wire for forward-compat
+                // (the SDK always sends it) but the fork currently
+                // treats all announcements as assertive. When the
+                // fork grows a polite variant this branch can route
+                // explicitly; until then the politeness hint is
+                // logged for visibility but otherwise ignored.
                 let text = payload
                     .get("text")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_string();
+                if let Some(p) = payload.get("politeness").and_then(|v| v.as_str()) {
+                    log::trace!("announce politeness={p} (renderer routes to assertive)");
+                }
                 iced::announce(text)
             }
             "exit" => iced::exit(),

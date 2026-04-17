@@ -1030,7 +1030,16 @@ fn execute_wire_renderer_op(
                 payload,
             })
         }
-        RendererOp::Announce(text) => bridge.send_widget_op("announce", &json!({"text": text})),
+        RendererOp::Announce { text, politeness } => bridge.send_widget_op(
+            "announce",
+            &json!({
+                "text": text,
+                "politeness": match politeness {
+                    plushie_core::types::a11y::Live::Polite => "polite",
+                    plushie_core::types::a11y::Live::Assertive => "assertive",
+                },
+            }),
+        ),
         RendererOp::LoadFont(data) => {
             bridge.send_widget_op("load_font", &json!({"data": base64_encode(data)}))
         }

@@ -587,7 +587,7 @@ query renderer state.
   "type": "widget_op",
   "session": "s1",
   "op": "announce",
-  "payload": { "text": "Item saved" }
+  "payload": { "text": "Item saved", "politeness": "polite" }
 }
 ```
 
@@ -596,7 +596,7 @@ query renderer state.
 | Op | Payload | Description |
 |----|---------|-------------|
 | `close_window` | `window_id` | Close a window |
-| `announce` | `text` | Screen reader announcement (no visible widget needed) |
+| `announce` | `text`, optional `politeness` (`"polite"` or `"assertive"`, default `"assertive"`) | Screen reader announcement (no visible widget needed) |
 | `exit` | -- | Exit the renderer |
 | `tree_hash` | `tag` (optional) | Compute SHA-256 hash of current tree; response via `op_query_response` |
 | `find_focused` | `tag` (optional) | Find the currently focused widget; response via `op_query_response` |
@@ -1659,7 +1659,7 @@ emit a synthetic event instead of dispatching to the platform
 accessibility layer (which does not exist without a display server):
 
 ```json
-{"type": "event", "session": "", "family": "announce", "id": "", "value": {"text": "Item saved successfully"}}
+{"type": "event", "session": "", "family": "announce", "id": "", "value": {"text": "Item saved successfully", "politeness": "polite"}}
 ```
 
 This allows host test suites to verify that announcements are triggered

@@ -45,7 +45,14 @@ impl App {
             RendererOp::FocusPrevious => operation::focus_previous(),
 
             // -- Accessibility --
-            RendererOp::Announce(text) => iced::announce(text),
+            //
+            // Politeness is carried on the wire but collapsed to the
+            // fork's assertive `announce` for now. Per-politeness
+            // routing requires fork-level additions; the SDK-level
+            // API is future-proofed so app code can specify politeness
+            // today and the renderer picks it up when the fork grows
+            // the `announce_polite` variant.
+            RendererOp::Announce { text, .. } => iced::announce(text),
 
             // -- Window operations --
             RendererOp::Window(op) => self.execute_window_op(op),

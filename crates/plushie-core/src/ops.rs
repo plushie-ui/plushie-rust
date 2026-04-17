@@ -127,7 +127,16 @@ pub enum RendererOp {
 
     // -- Accessibility --
     /// Announce text to screen readers.
-    Announce(String),
+    ///
+    /// `politeness` controls whether the announcement interrupts
+    /// ongoing speech (assertive) or queues after the current
+    /// utterance (polite). App code typically wants polite for
+    /// status messages and toast feedback; assertive is reserved
+    /// for urgent context that must reach the user immediately.
+    Announce {
+        text: String,
+        politeness: crate::types::a11y::Live,
+    },
     /// Load a font from raw byte data.
     LoadFont(Vec<u8>),
 

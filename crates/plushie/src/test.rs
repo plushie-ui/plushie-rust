@@ -936,38 +936,71 @@ impl<A: App> TestSession<A> {
         assert_eq!(actual, expected, "role mismatch for {sel}");
     }
 
+    /// Resolve the final accessibility attributes for a widget the same
+    /// way the render pipeline does.
+    ///
+    /// The normalized tree already carries the author's explicit `a11y`
+    /// prop plus any host-SDK defaults (role from the widget-type
+    /// table, implicit radio-group wiring, etc.). This helper also
+    /// layers widget-sdk's `infer_a11y` fallbacks so the returned
+    /// value matches what `A11yOverride` would send to AccessKit:
+    ///
+    /// - `text_input` / `text_editor` / `combo_box` / `pick_list`:
+    ///   `placeholder` flows into `description` when unset.
+    /// - `image` / `svg` / `qr_code`: `alt` flows into `label` when
+    ///   unset.
+    ///
+    /// Returns `None` if the selector does not match any widget in the
+    /// tree. An empty `A11y` (no fields set) is returned for widgets
+    /// the normalizer left untouched (e.g. plain text without any
+    /// explicit a11y).
+    ///
+    /// Use this in preference to reading the raw `a11y` prop for test
+    /// assertions that care about what screen readers will see.
+    pub fn resolved_a11y(
+        &self,
+        selector: impl Into<Selector>,
+    ) -> Option<plushie_core::types::a11y::A11y> {
+        let sel = selector.into();
+        let node = sel.find(&self.tree)?;
+        Some(resolve_a11y_for_node(node))
+    }
+
     /// Assert that a widget's accessibility properties contain all
     /// expected key-value pairs.
     ///
-    /// `expected` must be a JSON object. Each key in it is checked
-    /// against the widget's a11y props; missing keys or value
-    /// mismatches panic with a detailed message.
+    /// Uses [`resolved_a11y`](Self::resolved_a11y) so both explicit
+    /// overrides and widget-sdk auto-inference (placeholder -> description,
+    /// alt -> label) are visible to the assertion. `expected` must be a
+    /// JSON object; each key is compared against the resolved a11y.
     ///
     /// ```ignore
     /// session.assert_a11y("heading", &serde_json::json!({"role": "heading", "level": 1}));
     /// ```
     pub fn assert_a11y(&self, selector: impl Into<Selector>, expected: &Value) {
         let sel = selector.into();
-        let elem = self
-            .find(sel.clone())
+        let resolved = self
+            .resolved_a11y(sel.clone())
             .unwrap_or_else(|| panic!("assert_a11y: element not found: {sel}"));
-        let a11y = elem
-            .a11y()
-            .unwrap_or_else(|| panic!("assert_a11y: no a11y props on element: {sel}"));
+        let actual = Value::from(
+            <plushie_core::types::a11y::A11y as plushie_core::types::PlushieType>::wire_encode(
+                &resolved,
+            ),
+        );
         let expected_obj = expected
             .as_object()
             .expect("assert_a11y: expected value must be a JSON object");
-        let actual_obj = a11y
+        let actual_obj = actual
             .as_object()
-            .unwrap_or_else(|| panic!("assert_a11y: a11y is not an object on element: {sel}"));
+            .unwrap_or_else(|| panic!("assert_a11y: resolved a11y is not an object for {sel}"));
         for (key, expected_val) in expected_obj {
             match actual_obj.get(key) {
                 Some(actual_val) if actual_val == expected_val => {}
                 Some(actual_val) => panic!(
-                    "assert_a11y: a11y.{key} mismatch for {sel}\n  expected: {expected_val}\n  actual: {actual_val}\n  full a11y: {a11y}"
+                    "assert_a11y: a11y.{key} mismatch for {sel}\n  expected: {expected_val}\n  actual: {actual_val}\n  full a11y: {actual}"
                 ),
                 None => panic!(
-                    "assert_a11y: a11y.{key} not found on {sel}\n  expected: {expected_val}\n  full a11y: {a11y}"
+                    "assert_a11y: a11y.{key} not found on {sel}\n  expected: {expected_val}\n  full a11y: {actual}"
                 ),
             }
         }
@@ -1506,6 +1539,40 @@ fn key_event(
         captured: false,
         window_id: Some("main".to_string()),
     })
+}
+
+/// Resolve the merged a11y for a node: author explicit + widget-sdk
+/// fallbacks (placeholder / alt inference). The normalizer has already
+/// injected tree-authored defaults (role, implicit radio_group), so we
+/// only need to layer in the infer_a11y fallbacks here.
+fn resolve_a11y_for_node(node: &TreeNode) -> plushie_core::types::a11y::A11y {
+    use plushie_core::types::PlushieType;
+    use plushie_core::types::a11y::A11y;
+
+    let explicit = A11y::extract(&node.props, "a11y").unwrap_or_default();
+    let mut inferred = A11y::default();
+
+    // Widget-sdk infer_a11y fallbacks for the built-in types that have
+    // one. These mirror the pick_list_widget, combo_box_widget,
+    // text_input_widget, text_editor_widget infer_a11y implementations;
+    // host SDK builders are expected to set the same defaults directly
+    // on the tree, but we fall back here so tests still see them for
+    // custom widgets or untouched trees.
+    match node.type_name.as_str() {
+        "text_input" | "text_editor" | "combo_box" | "pick_list" => {
+            if let Some(placeholder) = node.props.get_str("placeholder") {
+                inferred.description = Some(placeholder.to_string());
+            }
+        }
+        "image" | "svg" | "qr_code" => {
+            if let Some(alt) = node.props.get_str("alt") {
+                inferred.label = Some(alt.to_string());
+            }
+        }
+        _ => {}
+    }
+
+    A11y::merge(&inferred, &explicit)
 }
 
 /// Walk the tree and collect non-empty IDs. Used to enrich

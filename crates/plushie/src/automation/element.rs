@@ -166,7 +166,9 @@ fn widget_type_to_role(widget_type: &str) -> &str {
         "table" => "table",
         "canvas" => "canvas",
         "tooltip" => "tooltip",
-        "space" => "separator",
+        // Space is visual whitespace with no ARIA role; surface the raw
+        // type so `Selector::role("separator")` doesn't match spacers.
+        "space" => "space",
         "rule" => "separator",
         other => other,
     }

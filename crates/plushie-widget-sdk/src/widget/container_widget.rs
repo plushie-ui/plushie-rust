@@ -197,7 +197,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ContainerWidget {
         c.into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(ContainerWidget)
     }
 }

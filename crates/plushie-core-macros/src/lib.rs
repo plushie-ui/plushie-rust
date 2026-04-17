@@ -11,6 +11,9 @@
 //!
 //! - [`WidgetProps`]: Define your widget's properties as a struct
 //!   and get typed extraction from the widget tree.
+//!
+//! - [`PlushieWidget`]: Generate `type_names` and `fresh_for_session`
+//!   for simple stateless widgets.
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
@@ -884,6 +887,130 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
             }
         }
     })
+}
+
+// ---------------------------------------------------------------------------
+// PlushieWidget derive
+// ---------------------------------------------------------------------------
+
+/// Generate `type_names` and `fresh_for_session` for a
+/// [`PlushieWidget`] impl, and re-declare the impl block with those
+/// methods injected.
+///
+/// Works on unit structs and structs that implement [`Default`] (the
+/// derive uses `Self::default()` when the type is not a unit struct).
+/// Requires `#[plushie_widget(type_name = "...")]`.
+///
+/// The derive produces a full `impl<R: PlushieRenderer>
+/// PlushieWidget<R> for Self` that forwards `render` to an inherent
+/// method the author defines on the struct.
+///
+/// # Example
+///
+/// ```ignore
+/// use plushie_widget_sdk::prelude::*;
+///
+/// #[derive(PlushieWidget)]
+/// #[plushie_widget(type_name = "my_gauge")]
+/// struct MyGauge;
+///
+/// impl MyGauge {
+///     fn render<'a, R: PlushieRenderer>(
+///         &'a self,
+///         node: &'a TreeNode,
+///         ctx: &RenderCtx<'a, R>,
+///     ) -> PlushieElement<'a, R> {
+///         todo!()
+///     }
+/// }
+/// ```
+///
+/// Stateful widgets that cannot be reached via `Default` should
+/// implement `PlushieWidget` manually so the "return a truly fresh
+/// instance" contract stays explicit.
+#[proc_macro_derive(PlushieWidget, attributes(plushie_widget))]
+pub fn derive_plushie_widget_trait(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    match derive_plushie_widget_trait_impl(&input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+fn derive_plushie_widget_trait_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let type_name = extract_plushie_widget_type_name(input)?;
+    let struct_name = &input.ident;
+
+    let is_unit = matches!(
+        &input.data,
+        Data::Struct(data) if matches!(&data.fields, Fields::Unit)
+    );
+    let fresh_expr = if is_unit {
+        quote! { ::std::boxed::Box::new(Self) }
+    } else {
+        quote! { ::std::boxed::Box::new(<Self as ::core::default::Default>::default()) }
+    };
+
+    Ok(quote! {
+        impl<__R: ::plushie_widget_sdk::PlushieRenderer>
+            ::plushie_widget_sdk::registry::PlushieWidget<__R> for #struct_name
+        where
+            Self: ::plushie_widget_sdk::registry::PlushieWidgetRender<__R>,
+        {
+            fn type_names(&self) -> &[&str] {
+                &[#type_name]
+            }
+
+            fn render<'a>(
+                &'a self,
+                node: &'a ::plushie_widget_sdk::protocol::TreeNode,
+                ctx: &::plushie_widget_sdk::render_ctx::RenderCtx<'a, __R>,
+            ) -> ::plushie_widget_sdk::PlushieElement<'a, __R> {
+                <Self as ::plushie_widget_sdk::registry::PlushieWidgetRender<__R>>::render(
+                    self, node, ctx,
+                )
+            }
+
+            fn fresh_for_session(&self)
+                -> ::std::boxed::Box<dyn ::plushie_widget_sdk::registry::PlushieWidget<__R>>
+            {
+                #fresh_expr
+            }
+        }
+    })
+}
+
+fn extract_plushie_widget_type_name(input: &DeriveInput) -> syn::Result<String> {
+    for attr in &input.attrs {
+        if attr.path().is_ident("plushie_widget") {
+            let mut name = None;
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("type_name") {
+                    let value = meta.value()?;
+                    let lit: Lit = value.parse()?;
+                    if let Lit::Str(s) = lit {
+                        name = Some(s.value());
+                        Ok(())
+                    } else {
+                        Err(meta.error("expected string literal for type_name"))
+                    }
+                } else {
+                    Err(meta.error("unknown plushie_widget attribute, expected `type_name`"))
+                }
+            })?;
+            return name.ok_or_else(|| {
+                syn::Error::new_spanned(
+                    attr,
+                    "plushie_widget attribute requires type_name = \"...\"",
+                )
+            });
+        }
+    }
+    Err(syn::Error::new_spanned(
+        &input.ident,
+        "PlushieWidget derive requires #[plushie_widget(type_name = \"...\")] attribute",
+    ))
 }
 
 fn extract_widget_name(input: &DeriveInput) -> syn::Result<String> {

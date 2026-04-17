@@ -173,7 +173,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
         s.into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(ScrollableWidget)
     }
 }

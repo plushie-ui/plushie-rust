@@ -58,7 +58,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
         gauge(value).width(width).color(color).into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(GaugeWidget)
     }
 }
@@ -416,7 +416,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
             .into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(GaugeWidget)
     }
 }
@@ -537,7 +537,7 @@ against these specs and logs warnings on mismatch.
 use plushie_core::{EventSpec, CommandSpec, PayloadSpec, ValueType};
 
 impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
-    // ... type_names, render, clone_for_session ...
+    // ... type_names, render, fresh_for_session ...
 
     fn event_specs(&self) -> Vec<EventSpec> {
         vec![

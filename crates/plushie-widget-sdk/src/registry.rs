@@ -14,16 +14,34 @@
 //!
 //! # Example
 //!
+//! Simple stateless widget via the derive:
+//!
 //! ```ignore
 //! use plushie_widget_sdk::prelude::*;
 //!
+//! #[derive(PlushieWidget)]
+//! #[plushie_widget(type_name = "gauge")]
 //! struct Gauge;
 //!
+//! impl<R: PlushieRenderer> PlushieWidgetRender<R> for Gauge {
+//!     fn render<'a>(
+//!         &'a self,
+//!         node: &'a TreeNode,
+//!         ctx: &RenderCtx<'a, R>,
+//!     ) -> PlushieElement<'a, R> {
+//!         todo!()
+//!     }
+//! }
+//! ```
+//!
+//! Manual impl (stateful widgets, multiple type names, etc.):
+//!
+//! ```ignore
 //! impl<R: PlushieRenderer> PlushieWidget<R> for Gauge {
 //!     fn type_names(&self) -> &[&str] { &["gauge"] }
-//!     fn render<'a>(&self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>)
-//!         -> Element<'a, Message, Theme, R> { todo!() }
-//!     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+//!     fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>)
+//!         -> PlushieElement<'a, R> { todo!() }
+//!     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
 //!         Box::new(Gauge)
 //!     }
 //! }
@@ -272,12 +290,38 @@ pub trait PlushieWidget<R: PlushieRenderer> {
         vec![]
     }
 
-    /// Create a clone of this widget for multiplexed sessions.
+    /// Produce a fresh widget instance for a new multiplexed session.
     ///
-    /// Each session gets its own widget instance with independent
-    /// per-instance state. Stateless widgets can return a fresh
-    /// default instance.
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>>;
+    /// Each session gets its own widget with independent per-instance
+    /// state. Return a widget with *no per-instance state* carried
+    /// over. Shared, read-only configuration can be wrapped in `Arc`
+    /// and cloned cheaply.
+    ///
+    /// For stateless widgets, `Box::new(Self::default())` (or
+    /// `Box::new(Self)` for unit structs) is the canonical impl.
+    ///
+    /// See the "Session multiplexing" section in
+    /// `docs/core-widget-guide.md` for the full contract and a worked
+    /// stateful-widget example.
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>>;
+}
+
+/// Helper trait used by `#[derive(PlushieWidget)]`.
+///
+/// The derive generates an `impl PlushieWidget<R>` that delegates its
+/// `render` method to `PlushieWidgetRender::render`. Widget authors
+/// using the derive implement this trait to supply only the render
+/// body; `type_names` and `fresh_for_session` are generated.
+///
+/// Manually-implemented widgets do not need this trait.
+pub trait PlushieWidgetRender<R: PlushieRenderer> {
+    /// Render a tree node to an iced Element. Same contract as
+    /// [`PlushieWidget::render`].
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> Element<'a, Message, Theme, R>;
 }
 
 // ---------------------------------------------------------------------------
@@ -576,12 +620,12 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     }
 
     /// Clone all widget instances for a new multiplexed session.
-    pub fn clone_for_session(&self) -> Self {
+    pub fn fresh_for_session(&self) -> Self {
         let mut cloned_impls: Vec<Box<dyn PlushieWidget<R>>> = Vec::with_capacity(self.impls.len());
         let mut new_type_index = HashMap::new();
 
         for (i, widget) in self.impls.iter().enumerate() {
-            let cloned = widget.clone_for_session();
+            let cloned = widget.fresh_for_session();
             let new_idx = cloned_impls.len();
             cloned_impls.push(cloned);
 
@@ -1028,7 +1072,7 @@ mod tests {
             iced::widget::text("test").into()
         }
 
-        fn clone_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
             Box::new(TestWidget::new(&self.names))
         }
     }
@@ -1107,12 +1151,77 @@ mod tests {
         assert!(registry.get_for_node_id("nonexistent/id").is_none());
     }
 
+    struct CountingWidget {
+        calls: std::cell::Cell<u32>,
+    }
+
+    impl Default for CountingWidget {
+        fn default() -> Self {
+            Self {
+                calls: std::cell::Cell::new(0),
+            }
+        }
+    }
+
+    impl PlushieWidget<()> for CountingWidget {
+        fn type_names(&self) -> &[&str] {
+            &["counter"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("count").into()
+        }
+
+        fn prepare(&mut self, _node: &TreeNode, _window_id: &str, _theme: &Theme) {
+            self.calls.set(self.calls.get() + 1);
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            // New session -> fresh zero counter.
+            Box::new(CountingWidget::default())
+        }
+    }
+
     #[test]
-    fn clone_for_session_preserves_type_index() {
+    fn fresh_for_session_isolates_state_between_sessions() {
+        // Drive registry A. The counter widget records prepare calls
+        // indirectly through the node-factory map.
+        let mut a = WidgetRegistry::<()>::new();
+        a.register(Box::new(CountingWidget::default()));
+        let tree_a = tree(vec![leaf("n1", "counter"), leaf("n2", "counter")]);
+        let mut shared_a = crate::shared_state::SharedState::new();
+        a.prepare_walk(&tree_a, &mut shared_a, &Theme::Dark);
+
+        // A fresh session registry must not carry node mappings or
+        // per-widget state from `a`.
+        let mut b = a.fresh_for_session();
+        let tree_b = tree(vec![leaf("n3", "counter")]);
+        let mut shared_b = crate::shared_state::SharedState::new();
+        b.prepare_walk(&tree_b, &mut shared_b, &Theme::Dark);
+
+        assert!(a.get_for_node_id("n1").is_some());
+        assert!(a.get_for_node_id("n2").is_some());
+        assert!(b.get_for_node_id("n3").is_some());
+        assert!(
+            b.get_for_node_id("n1").is_none(),
+            "session registry must not inherit node->factory map"
+        );
+        assert!(
+            b.get_for_node_id("n2").is_none(),
+            "session registry must not inherit node->factory map"
+        );
+    }
+
+    #[test]
+    fn fresh_for_session_preserves_type_index() {
         let mut registry = WidgetRegistry::<()>::new();
         registry.register_set(&TestSet);
 
-        let cloned = registry.clone_for_session();
+        let cloned = registry.fresh_for_session();
         assert!(cloned.handles_type("alpha"));
         assert!(cloned.handles_type("beta"));
         assert_eq!(cloned.len(), registry.len());
@@ -1147,7 +1256,7 @@ mod tests {
             iced::widget::text("gauge").into()
         }
 
-        fn clone_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
             Box::new(SpecWidget)
         }
 
@@ -1323,7 +1432,7 @@ mod tests {
             self.spy.sizes.lock().unwrap().push(self.contents.len());
         }
 
-        fn clone_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
             Box::new(SpyingWidget {
                 contents: std::collections::HashMap::new(),
                 spy: self.spy.clone(),
@@ -1407,7 +1516,7 @@ mod tests {
             panic!("intentional render panic");
         }
 
-        fn clone_for_session(&self) -> Box<dyn PlushieWidget<iced::Renderer>> {
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<iced::Renderer>> {
             Box::new(PanickingButton)
         }
     }
@@ -1449,7 +1558,7 @@ mod tests {
             iced::widget::text("noop").into()
         }
 
-        fn clone_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
             Box::new(PanickingInPrepare)
         }
     }

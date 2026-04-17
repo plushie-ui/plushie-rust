@@ -60,7 +60,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
         self.engine.cleanup_stale(live_ids);
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(CanvasWidget::new())
     }
 }

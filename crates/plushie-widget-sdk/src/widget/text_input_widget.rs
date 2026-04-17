@@ -72,7 +72,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextInputWidget {
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(TextInputWidget)
     }
 }

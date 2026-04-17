@@ -44,7 +44,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocGauge {
         .into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(DocGauge)
     }
 }
@@ -137,7 +137,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocContainer {
         col.into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(DocContainer)
     }
 }
@@ -233,7 +233,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocRating {
         stars.into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(DocRating)
     }
 }
@@ -261,12 +261,52 @@ fn doc_rating_no_props() {
 }
 
 // ============================================================================
-// clone_for_session
+// fresh_for_session
 // ============================================================================
 
 #[test]
-fn doc_clone_for_session() {
+fn doc_fresh_for_session() {
     let widget = DocRating;
-    let cloned: Box<dyn PlushieWidget<iced::Renderer>> = widget.clone_for_session();
+    let cloned: Box<dyn PlushieWidget<iced::Renderer>> = widget.fresh_for_session();
     assert_eq!(cloned.type_names(), &["doc_rating"]);
+}
+
+// ============================================================================
+// #[derive(PlushieWidget)] - boilerplate-free stateless widget
+// ============================================================================
+
+#[derive(PlushieWidget)]
+#[plushie_widget(type_name = "doc_derive_gauge")]
+struct DocDeriveGauge;
+
+impl<R: PlushieRenderer> PlushieWidgetRender<R> for DocDeriveGauge {
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        _ctx: &RenderCtx<'a, R>,
+    ) -> PlushieElement<'a, R> {
+        let value = node.prop_f32("value").unwrap_or(0.0);
+        progress_bar(0.0..=100.0, value).into()
+    }
+}
+
+#[test]
+fn derive_widget_type_names_and_fresh() {
+    let widget = DocDeriveGauge;
+    assert_eq!(
+        <DocDeriveGauge as PlushieWidget<iced::Renderer>>::type_names(&widget),
+        &["doc_derive_gauge"]
+    );
+    let fresh: Box<dyn PlushieWidget<iced::Renderer>> = widget.fresh_for_session();
+    assert_eq!(fresh.type_names(), &["doc_derive_gauge"]);
+}
+
+#[test]
+fn derive_widget_renders() {
+    let node = node_with_props("g", "doc_derive_gauge", json!({"value": 42.0}));
+    let test = TestEnv::default();
+    let ctx = test.render_ctx();
+    let widget = DocDeriveGauge;
+    let _element: PlushieElement<'_> =
+        <DocDeriveGauge as PlushieWidget<iced::Renderer>>::render(&widget, &node, &ctx);
 }

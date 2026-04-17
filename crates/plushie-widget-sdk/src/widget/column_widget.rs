@@ -105,7 +105,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ColumnWidget {
         container(elem).id(widget::Id::from(node.id.clone())).into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(ColumnWidget)
     }
 }

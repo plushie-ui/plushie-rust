@@ -76,7 +76,13 @@ pub mod widget;
 // re-exports here (and mirrored in the prelude) means a widget crate
 // depends on `plushie-widget-sdk` alone; there is no reason to pull
 // in `plushie-core` directly.
-pub use plushie_core_macros::{WidgetCommand, WidgetEvent, WidgetProps};
+//
+// `PlushieWidget` from plushie_core_macros is the derive macro; it
+// shares a name with the `registry::PlushieWidget` trait. Rust
+// permits the coexistence (derives and traits inhabit different
+// namespaces) but importers must take care not to glob-import only
+// the trait and then use `#[derive(PlushieWidget)]`.
+pub use plushie_core_macros::{PlushieWidget, WidgetCommand, WidgetEvent, WidgetProps};
 
 // Re-export iced so widget crates can use `plushie_widget_sdk::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when
@@ -102,3 +108,14 @@ pub trait PlushieRenderer:
 
 impl PlushieRenderer for () {}
 impl PlushieRenderer for iced::Renderer {}
+
+/// Convenience alias for the `Element` type returned by
+/// [`PlushieWidget::render`](registry::PlushieWidget::render).
+///
+/// Equivalent to `iced::Element<'a, Message, iced::Theme, R>`. Widget
+/// impls that are generic over the renderer should write
+/// `PlushieElement<'a, R>`; widgets that only ever render under the
+/// real iced renderer can omit the parameter (`PlushieElement<'a>`)
+/// and get `iced::Renderer` as the default.
+pub type PlushieElement<'a, R = iced::Renderer> =
+    iced::Element<'a, crate::message::Message, iced::Theme, R>;

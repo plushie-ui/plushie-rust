@@ -359,7 +359,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Bounded channels for multiplexed headless sessions, preventing
   unbounded memory growth.
 - Session thread `catch_unwind` with error events; extension
-  `catch_unwind` on `clone_for_session` and `handle_event`.
+  `catch_unwind` on `fresh_for_session` and `handle_event`.
 - Validate schemas added for checkbox, toggler, and radio (`line_height`,
   `wrapping`, `shaping`) and pane_grid (`split_axis`).
 - Image `border_radius` validate type corrected (Number, was Any).

@@ -105,7 +105,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
         self.last_values.retain(|k, _| live_ids.contains(k));
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(SliderWidget::new())
     }
 }
@@ -148,7 +148,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
         self.last_values.retain(|k, _| live_ids.contains(k));
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(VerticalSliderWidget::new())
     }
 }

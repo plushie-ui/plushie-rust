@@ -12,14 +12,22 @@
 //! direct `iced` dependency. This avoids version conflicts when
 //! plushie-core bumps its iced version.
 
-// -- Renderer trait alias --
-pub use crate::PlushieRenderer;
+// -- Renderer trait alias + Element shorthand --
+pub use crate::{PlushieElement, PlushieRenderer};
 
 // -- PlushieWidget trait, registry, and lifecycle types --
-pub use crate::registry::{GenerationCounter, InitCtx, PlushieWidget, WidgetRegistry, WidgetSet};
+pub use crate::registry::{
+    GenerationCounter, InitCtx, PlushieWidget, PlushieWidgetRender, WidgetRegistry, WidgetSet,
+};
 
 // -- Derive macros for widget props, events, and commands --
 pub use crate::{WidgetCommand, WidgetEvent, WidgetProps};
+// Derive macro re-export. Note: the macro and the
+// `registry::PlushieWidget` trait share the name `PlushieWidget`,
+// but Rust keeps macros and traits in separate namespaces so
+// `#[derive(PlushieWidget)]` and `impl PlushieWidget<R>` both work
+// from a single glob import.
+pub use plushie_core_macros::PlushieWidget;
 
 // -- Rendering context --
 pub use crate::render_ctx::RenderCtx;

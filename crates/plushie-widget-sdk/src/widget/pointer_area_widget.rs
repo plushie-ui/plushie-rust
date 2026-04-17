@@ -180,7 +180,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
         ma.into()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(PointerAreaWidget)
     }
 }

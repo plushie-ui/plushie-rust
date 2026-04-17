@@ -231,7 +231,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         self.caches.retain(|k, _| live_ids.contains(k));
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(QrCodeWidget::new())
     }
 }

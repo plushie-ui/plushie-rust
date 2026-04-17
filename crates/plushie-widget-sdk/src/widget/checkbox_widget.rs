@@ -66,7 +66,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CheckboxWidget {
         render_checkbox(node, *ctx)
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(CheckboxWidget)
     }
 }

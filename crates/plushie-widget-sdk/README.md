@@ -16,21 +16,43 @@ renderer.
 ```rust
 use plushie_widget_sdk::prelude::*;
 
+#[derive(PlushieWidget)]
+#[plushie_widget(type_name = "my_gauge")]
 struct MyGauge;
 
-impl PlushieWidget for MyGauge {
+impl<R: PlushieRenderer> PlushieWidgetRender<R> for MyGauge {
+    fn render<'a>(
+        &'a self,
+        node: &'a TreeNode,
+        ctx: &RenderCtx<'a, R>,
+    ) -> PlushieElement<'a, R> {
+        // Build an iced Element from the node's props
+        todo!()
+    }
+}
+```
+
+The `PlushieWidget` derive generates `type_names` and
+`fresh_for_session`. The author implements `PlushieWidgetRender::render`
+with the body. `PlushieElement<'a, R>` is the shorthand for
+`iced::Element<'a, Message, iced::Theme, R>`.
+
+For full control (stateful widgets, custom lifecycle hooks, multiple
+type names) skip the derive and implement `PlushieWidget` directly:
+
+```rust
+impl<R: PlushieRenderer> PlushieWidget<R> for MyGauge {
     fn type_names(&self) -> &[&str] { &["my_gauge"] }
 
     fn render<'a>(
         &'a self,
         node: &'a TreeNode,
-        ctx: &RenderCtx<'a>,
-    ) -> Element<'a, Message> {
-        // Build an iced Element from the node's props
+        ctx: &RenderCtx<'a, R>,
+    ) -> PlushieElement<'a, R> {
         todo!()
     }
 
-    fn clone_for_session(&self) -> Box<dyn PlushieWidget> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(MyGauge)
     }
 }

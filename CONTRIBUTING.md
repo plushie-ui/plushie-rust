@@ -67,7 +67,7 @@ plushie-widget-sdk is the public SDK for writing custom widgets. The quick path:
 1. Create a Rust crate that depends on `plushie-widget-sdk`.
 2. Import everything from `plushie_widget_sdk::prelude::*`.
 3. Implement the `PlushieWidget` trait (three required methods:
-   `type_names()`, `render()`, `clone_for_session()`).
+   `type_names()`, `render()`, `fresh_for_session()`).
 4. For iced types not in the prelude, use `plushie_widget_sdk::iced::*`
    instead of adding a direct `iced` dependency, which avoids version
    conflicts.

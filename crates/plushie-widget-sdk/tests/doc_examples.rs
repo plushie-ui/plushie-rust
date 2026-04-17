@@ -280,11 +280,7 @@ fn doc_fresh_for_session() {
 struct DocDeriveGauge;
 
 impl<R: PlushieRenderer> PlushieWidgetRender<R> for DocDeriveGauge {
-    fn render<'a>(
-        &'a self,
-        node: &'a TreeNode,
-        _ctx: &RenderCtx<'a, R>,
-    ) -> PlushieElement<'a, R> {
+    fn render<'a>(&'a self, node: &'a TreeNode, _ctx: &RenderCtx<'a, R>) -> PlushieElement<'a, R> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         progress_bar(0.0..=100.0, value).into()
     }

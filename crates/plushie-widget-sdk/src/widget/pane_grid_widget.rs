@@ -208,10 +208,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                 let key = (window_id.to_string(), grid_id.to_string());
                 if let Some(state) = self.states.get(&key) {
                     let pane_id = state.get(*pane).cloned().unwrap_or_default();
-                    HandleResult::emit(vec![OutgoingEvent::pane_clicked(
-                        grid_id.clone(),
-                        pane_id,
-                    )])
+                    HandleResult::emit(vec![OutgoingEvent::pane_clicked(grid_id.clone(), pane_id)])
                 } else {
                     HandleResult::consume()
                 }

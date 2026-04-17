@@ -40,16 +40,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for Counter {
         let key = (window_id.to_string(), node.id.clone());
         // Seed the counter from the node's initial_value prop if it
         // hasn't been seen before.
-        self.counts.entry(key).or_insert_with(|| {
-            node.prop_f32("initial_value").unwrap_or(0.0) as u32
-        });
+        self.counts
+            .entry(key)
+            .or_insert_with(|| node.prop_f32("initial_value").unwrap_or(0.0) as u32);
     }
 
-    fn render<'a>(
-        &'a self,
-        node: &'a TreeNode,
-        _ctx: &RenderCtx<'a, R>,
-    ) -> PlushieElement<'a, R> {
+    fn render<'a>(&'a self, node: &'a TreeNode, _ctx: &RenderCtx<'a, R>) -> PlushieElement<'a, R> {
         let key = (String::new(), node.id.clone());
         let count = self.counts.get(&key).copied().unwrap_or(0);
         text(format!("count: {count}")).into()
@@ -134,14 +130,13 @@ fn counter_widget_full_lifecycle() {
 
     // 3. handle_widget_op: external reset via op. The reset op sets
     //    the counter to the provided value.
-    let reset_events =
-        <Counter as PlushieWidget<iced::Renderer>>::handle_widget_op(
-            &mut widget,
-            "c1",
-            "reset",
-            &json!(0),
-        )
-        .unwrap_or_default();
+    let reset_events = <Counter as PlushieWidget<iced::Renderer>>::handle_widget_op(
+        &mut widget,
+        "c1",
+        "reset",
+        &json!(0),
+    )
+    .unwrap_or_default();
     assert_eq!(reset_events.len(), 1);
     assert_eq!(reset_events[0].family, "changed");
 

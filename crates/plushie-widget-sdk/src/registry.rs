@@ -362,11 +362,7 @@ pub trait PlushieWidget<R: PlushieRenderer> {
     ///
     /// Default impl returns an empty `Vec`. Timers, animation frames,
     /// and per-widget event listeners are the primary use case.
-    fn subscriptions(
-        &self,
-        _node: &TreeNode,
-        _ctx: &SubscribeCtx<'_>,
-    ) -> Vec<WidgetSubscription> {
+    fn subscriptions(&self, _node: &TreeNode, _ctx: &SubscribeCtx<'_>) -> Vec<WidgetSubscription> {
         vec![]
     }
 
@@ -2204,7 +2200,11 @@ mod tests {
         registry.register(Box::new(SpecFamilyA));
         registry.register(Box::new(SpecFamilyBConflicting));
         let diags = registry.family_collision_diagnostics();
-        assert_eq!(diags.len(), 1, "mismatched spec must produce one diagnostic");
+        assert_eq!(
+            diags.len(),
+            1,
+            "mismatched spec must produce one diagnostic"
+        );
     }
 
     #[test]
@@ -2219,7 +2219,7 @@ mod tests {
 
         registry.register(Box::new(PanickingButton));
         assert!(
-            registry.provenance.get("button").is_none(),
+            !registry.provenance.contains_key("button"),
             "`.widget()` override must drop inherited provenance so panic \
              isolation wraps the new widget"
         );

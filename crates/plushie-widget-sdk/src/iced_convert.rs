@@ -6,10 +6,11 @@
 //! named conversion functions.
 
 use iced::advanced::widget::operation::accessible;
+use iced::theme::palette;
 use iced::widget::canvas;
 use iced::widget::text;
 
-use crate::theming::parse_hex_color;
+use crate::theming::resolve_builtin;
 use crate::widget::helpers::intern_font_family;
 
 use plushie_core::types;
@@ -18,10 +19,185 @@ use plushie_core::types;
 // Color
 // -------------------------------------------------------------------------
 
-/// Convert a plushie-core Color (hex string) to an iced Color.
-/// Returns `iced::Color::TRANSPARENT` for unparseable hex values.
+/// Convert a plushie-core Color (canonical hex string) to an iced Color.
+///
+/// The input has already been validated by [`types::Color`]'s constructor
+/// or wire decoder, so its hex form is guaranteed to be `#rrggbb` or
+/// `#rrggbbaa` with valid hex digits. If the invariant is violated the
+/// conversion returns [`iced::Color::TRANSPARENT`] as a safe fallback.
 pub fn color(c: &types::Color) -> iced::Color {
-    parse_hex_color(c.as_hex()).unwrap_or(iced::Color::TRANSPARENT)
+    hex_to_iced_color(c.as_hex()).unwrap_or(iced::Color::TRANSPARENT)
+}
+
+/// Parse a canonical hex string (`#rrggbb` or `#rrggbbaa`) into an iced Color.
+///
+/// Strict: rejects short forms and any non-canonical input. All hex
+/// validation lives in `types::Color`; this helper only performs the
+/// byte-to-iced color conversion for values that have already passed
+/// `Color`'s validator.
+///
+/// Callers holding an already-typed [`types::Color`] should use
+/// [`color`] instead. This raw entry point exists for a small number
+/// of sites (animation interpolation, canvas palette lookup) where the
+/// value is produced inline rather than round-tripped through
+/// [`types::Color`].
+pub fn hex_to_iced_color(hex: &str) -> Option<iced::Color> {
+    let hex = hex.trim_start_matches('#');
+    match hex.len() {
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some(iced::Color::from_rgb8(r, g, b))
+        }
+        8 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            let a = u8::from_str_radix(&hex[6..8], 16).ok()?;
+            Some(iced::Color::from_rgba8(r, g, b, a as f32 / 255.0))
+        }
+        _ => None,
+    }
+}
+
+// -------------------------------------------------------------------------
+// Theme
+// -------------------------------------------------------------------------
+
+/// Convert a plushie-core [`types::CustomTheme`] into an iced [`iced::Theme`].
+///
+/// Uses the `base` field to select the seed palette (default: dark),
+/// overrides seed colors from the typed color map, and applies shade
+/// overrides onto the generated palette when any shade keys are set.
+pub fn custom_theme(c: &types::CustomTheme) -> iced::Theme {
+    let base_theme = c
+        .base
+        .as_deref()
+        .map(resolve_builtin)
+        .unwrap_or(iced::Theme::Dark);
+
+    let mut seed = base_theme.seed();
+    if let Some(col) = c.colors.get("background") {
+        seed.background = color(col);
+    }
+    if let Some(col) = c.colors.get("text") {
+        seed.text = color(col);
+    }
+    if let Some(col) = c.colors.get("primary") {
+        seed.primary = color(col);
+    }
+    if let Some(col) = c.colors.get("success") {
+        seed.success = color(col);
+    }
+    if let Some(col) = c.colors.get("warning") {
+        seed.warning = color(col);
+    }
+    if let Some(col) = c.colors.get("danger") {
+        seed.danger = color(col);
+    }
+
+    let name = if c.name.is_empty() {
+        "Custom".to_string()
+    } else {
+        c.name.clone()
+    };
+
+    if has_shade_override(c) {
+        let colors = c.colors.clone();
+        iced::Theme::custom_with_fn(name, seed, move |s| {
+            let mut pal = palette::Palette::generate(s);
+            apply_shade_overrides(&mut pal, &colors);
+            pal
+        })
+    } else {
+        iced::Theme::custom(name, seed)
+    }
+}
+
+/// Shade keys that trigger the `custom_with_fn` path.
+const SHADE_KEYS: &[&str] = &[
+    "primary_base",
+    "primary_weak",
+    "primary_strong",
+    "secondary_base",
+    "secondary_weak",
+    "secondary_strong",
+    "success_base",
+    "success_weak",
+    "success_strong",
+    "warning_base",
+    "warning_weak",
+    "warning_strong",
+    "danger_base",
+    "danger_weak",
+    "danger_strong",
+    "background_base",
+    "background_weakest",
+    "background_weaker",
+    "background_weak",
+    "background_neutral",
+    "background_strong",
+    "background_stronger",
+    "background_strongest",
+];
+
+fn has_shade_override(c: &types::CustomTheme) -> bool {
+    SHADE_KEYS
+        .iter()
+        .any(|k| c.colors.contains_key(*k) || c.colors.contains_key(&format!("{}_text", k)))
+}
+
+fn apply_shade_overrides(
+    pal: &mut palette::Palette,
+    colors: &std::collections::BTreeMap<String, types::Color>,
+) {
+    override_pair(&mut pal.primary.base, colors, "primary_base");
+    override_pair(&mut pal.primary.weak, colors, "primary_weak");
+    override_pair(&mut pal.primary.strong, colors, "primary_strong");
+
+    override_pair(&mut pal.secondary.base, colors, "secondary_base");
+    override_pair(&mut pal.secondary.weak, colors, "secondary_weak");
+    override_pair(&mut pal.secondary.strong, colors, "secondary_strong");
+
+    override_pair(&mut pal.success.base, colors, "success_base");
+    override_pair(&mut pal.success.weak, colors, "success_weak");
+    override_pair(&mut pal.success.strong, colors, "success_strong");
+
+    override_pair(&mut pal.warning.base, colors, "warning_base");
+    override_pair(&mut pal.warning.weak, colors, "warning_weak");
+    override_pair(&mut pal.warning.strong, colors, "warning_strong");
+
+    override_pair(&mut pal.danger.base, colors, "danger_base");
+    override_pair(&mut pal.danger.weak, colors, "danger_weak");
+    override_pair(&mut pal.danger.strong, colors, "danger_strong");
+
+    override_pair(&mut pal.background.base, colors, "background_base");
+    override_pair(&mut pal.background.weakest, colors, "background_weakest");
+    override_pair(&mut pal.background.weaker, colors, "background_weaker");
+    override_pair(&mut pal.background.weak, colors, "background_weak");
+    override_pair(&mut pal.background.neutral, colors, "background_neutral");
+    override_pair(&mut pal.background.strong, colors, "background_strong");
+    override_pair(&mut pal.background.stronger, colors, "background_stronger");
+    override_pair(
+        &mut pal.background.strongest,
+        colors,
+        "background_strongest",
+    );
+}
+
+fn override_pair(
+    pair: &mut palette::Pair,
+    colors: &std::collections::BTreeMap<String, types::Color>,
+    key: &str,
+) {
+    if let Some(c) = colors.get(key) {
+        pair.color = color(c);
+    }
+    let text_key = format!("{}_text", key);
+    if let Some(c) = colors.get(&text_key) {
+        pair.text = color(c);
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -573,10 +749,11 @@ mod tests {
 
     #[test]
     fn color_invalid_hex_returns_none() {
-        // Color::hex() now validates, so invalid hex can't be
-        // constructed. Verify parse_hex_color handles it gracefully.
-        assert!(crate::theming::parse_hex_color("not-a-color").is_none());
-        assert!(crate::theming::parse_hex_color("#xyz").is_none());
+        // Color::hex() now validates, so invalid hex can't be constructed
+        // via that entry point. The raw hex_to_iced_color helper still
+        // needs to fail gracefully on bad input.
+        assert!(hex_to_iced_color("not-a-color").is_none());
+        assert!(hex_to_iced_color("#xyz").is_none());
     }
 
     #[test]

@@ -16,7 +16,7 @@ use plushie_core::protocol::Props;
 use plushie_core::types::PlushieType;
 use serde_json::Value;
 
-use crate::theming::parse_hex_color;
+use crate::iced_convert::hex_to_iced_color;
 
 // ---------------------------------------------------------------------------
 // Props type alias (deprecated)
@@ -413,7 +413,7 @@ pub fn prop_animated_color(
     if let Some(overrides) = interpolated.get(node_id)
         && let Some(val) = overrides.get(key)
     {
-        return val.as_str().and_then(parse_hex_color);
+        return val.as_str().and_then(hex_to_iced_color);
     }
     if let Some(val) = props.get(key)
         && val.is_object()

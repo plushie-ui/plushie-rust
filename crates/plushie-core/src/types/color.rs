@@ -549,9 +549,27 @@ impl Color {
     }
 }
 
+impl Color {
+    /// Strict hex parser used by the wire decoder.
+    ///
+    /// Accepts only `#rrggbb` and `#rrggbbaa`. Short forms (`#rgb`,
+    /// `#rgba`) are rejected because the wire protocol requires
+    /// canonical hex. Host SDKs must normalize before sending.
+    fn try_hex_strict(s: &str) -> Option<Self> {
+        let digits = s.strip_prefix('#').unwrap_or(s);
+        if !matches!(digits.len(), 6 | 8) {
+            return None;
+        }
+        if !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        Some(Self(format!("#{}", digits.to_ascii_lowercase())))
+    }
+}
+
 impl PlushieType for Color {
     fn wire_decode(value: &Value) -> Option<Self> {
-        value.as_str().and_then(Color::try_hex)
+        value.as_str().and_then(Color::try_hex_strict)
     }
 
     fn wire_encode(&self) -> PropValue {
@@ -559,7 +577,7 @@ impl PlushieType for Color {
     }
 
     fn extract(props: &Props, key: &str) -> Option<Self> {
-        props.get_str(key).and_then(Color::try_hex)
+        props.get_str(key).and_then(Color::try_hex_strict)
     }
 
     fn type_name() -> &'static str {

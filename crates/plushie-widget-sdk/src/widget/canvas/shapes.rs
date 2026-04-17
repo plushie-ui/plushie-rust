@@ -10,7 +10,7 @@ use plushie_core::types::{Color as CoreColor, PlushieType};
 use super::types::MAX_SHAPES_PER_LAYER;
 use crate::PlushieRenderer;
 use crate::iced_convert;
-use crate::theming::parse_hex_color;
+use crate::iced_convert::hex_to_iced_color;
 
 /// Parse a `fill_rule` string into a `canvas::fill::Rule`. Defaults to `NonZero`.
 pub(super) fn parse_fill_rule(value: Option<&Value>) -> canvas::fill::Rule {
@@ -566,7 +566,7 @@ pub(super) fn json_color_themed(val: &Value, key: &str, theme: &iced::Theme) -> 
 fn resolve_core_color(c: &plushie_core::types::Color, theme: &iced::Theme) -> Color {
     let s = c.as_hex();
     if s.starts_with('#') {
-        return parse_hex_color(s).unwrap_or(Color::WHITE);
+        return hex_to_iced_color(s).unwrap_or(Color::WHITE);
     }
     let palette = theme.palette();
     match s {
@@ -576,7 +576,7 @@ fn resolve_core_color(c: &plushie_core::types::Color, theme: &iced::Theme) -> Co
         "success" => palette.success.base.color,
         "danger" => palette.danger.base.color,
         "warning" => palette.warning.base.color,
-        _ => parse_hex_color(s).unwrap_or(Color::WHITE),
+        _ => hex_to_iced_color(s).unwrap_or(Color::WHITE),
     }
 }
 

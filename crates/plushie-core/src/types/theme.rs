@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
 
-use super::PlushieType;
+use super::{Color, PlushieType};
 
 /// Theme specification for the application or a widget subtree.
 ///
@@ -61,7 +61,11 @@ pub struct CustomTheme {
     /// Color overrides: seed colors ("background", "text", "primary",
     /// "success", "warning", "danger") and shade keys
     /// ("primary_strong", "background_weakest", etc.).
-    pub colors: BTreeMap<String, String>,
+    ///
+    /// Values are typed [`Color`]s so storage is always validated hex.
+    /// Constructed via [`Theme::color`] (which parses via [`Color::hex`])
+    /// or via wire decoding (which parses strictly).
+    pub colors: BTreeMap<String, Color>,
 }
 
 /// The 22 built-in theme names supported by the renderer.
@@ -296,9 +300,13 @@ impl Theme {
     /// Used internally by the named builder methods. Can also be
     /// used directly for future shade keys or custom keys without
     /// waiting for a named builder method.
+    ///
+    /// `hex` is parsed through [`Color::hex`] which accepts short forms
+    /// and expands them. The wire decoder is stricter and rejects
+    /// short hex.
     pub fn color(mut self, key: &str, hex: &str) -> Self {
         if let Self::Custom(ref mut c) = self {
-            c.colors.insert(key.to_string(), hex.to_string());
+            c.colors.insert(key.to_string(), Color::hex(hex));
         }
         self
     }
@@ -326,8 +334,12 @@ impl PlushieType for Theme {
                     if k == "name" || k == "base" {
                         continue;
                     }
-                    if let Some(hex) = v.as_str() {
-                        colors.insert(k.clone(), hex.to_string());
+                    // Each color field is validated strictly through
+                    // Color::wire_decode. Off-canonical values (short hex,
+                    // non-string values) are silently dropped here; higher
+                    // layers may emit a diagnostic.
+                    if let Some(color) = Color::wire_decode(v) {
+                        colors.insert(k.clone(), color);
                     }
                 }
                 Some(Self::Custom(CustomTheme { name, base, colors }))
@@ -347,7 +359,7 @@ impl PlushieType for Theme {
                     m.insert("base", PropValue::Str(base.clone()));
                 }
                 for (k, v) in &c.colors {
-                    m.insert(k, PropValue::Str(v.clone()));
+                    m.insert(k, v.wire_encode());
                 }
                 PropValue::Object(m)
             }
@@ -400,9 +412,9 @@ mod tests {
         if let Theme::Custom(c) = &theme {
             assert_eq!(c.name, "my-theme");
             assert_eq!(c.base.as_deref(), Some("dark"));
-            assert_eq!(c.colors.get("background").unwrap(), "#1a1a2e");
-            assert_eq!(c.colors.get("primary").unwrap(), "#0f3460");
-            assert_eq!(c.colors.get("primary_strong").unwrap(), "#1a5276");
+            assert_eq!(c.colors.get("background").unwrap().as_hex(), "#1a1a2e");
+            assert_eq!(c.colors.get("primary").unwrap().as_hex(), "#0f3460");
+            assert_eq!(c.colors.get("primary_strong").unwrap().as_hex(), "#1a5276");
         } else {
             panic!("expected Custom");
         }
@@ -422,8 +434,8 @@ mod tests {
         if let Theme::Custom(c) = decoded {
             assert_eq!(c.name, "test");
             assert_eq!(c.base.as_deref(), Some("light"));
-            assert_eq!(c.colors.get("primary").unwrap(), "#ff0000");
-            assert_eq!(c.colors.get("danger_strong").unwrap(), "#cc0000");
+            assert_eq!(c.colors.get("primary").unwrap().as_hex(), "#ff0000");
+            assert_eq!(c.colors.get("danger_strong").unwrap().as_hex(), "#cc0000");
         } else {
             panic!("expected Custom");
         }
@@ -440,8 +452,26 @@ mod tests {
         });
         let theme = Theme::wire_decode(&val).unwrap();
         if let Theme::Custom(c) = theme {
-            assert_eq!(c.colors.get("background").unwrap(), "#111111");
-            assert_eq!(c.colors.get("primary_strong").unwrap(), "#0000ff");
+            assert_eq!(c.colors.get("background").unwrap().as_hex(), "#111111");
+            assert_eq!(c.colors.get("primary_strong").unwrap().as_hex(), "#0000ff");
+        } else {
+            panic!("expected Custom");
+        }
+    }
+
+    #[test]
+    fn custom_theme_decode_rejects_short_hex() {
+        let val = json!({
+            "name": "custom",
+            "background": "#f00",
+            "text": "#ffffff",
+        });
+        let theme = Theme::wire_decode(&val).unwrap();
+        if let Theme::Custom(c) = theme {
+            // Short-hex background is dropped by the strict wire decoder;
+            // only the canonical text survives.
+            assert!(!c.colors.contains_key("background"));
+            assert_eq!(c.colors.get("text").unwrap().as_hex(), "#ffffff");
         } else {
             panic!("expected Custom");
         }

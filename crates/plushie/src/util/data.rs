@@ -22,7 +22,7 @@ pub struct QueryResult<T> {
     pub entries: Vec<T>,
     /// Total entries matching the filter (before pagination).
     pub total: usize,
-    /// The page number (0-indexed).
+    /// The page number (1-indexed; first page is 1).
     pub page: usize,
     /// The page size used.
     pub page_size: usize,
@@ -42,7 +42,7 @@ pub struct QueryResult<T> {
 ///     .sort_by(vec![
 ///         (SortDir::Asc, Box::new(|a, b| a.name.cmp(&b.name))),
 ///     ])
-///     .page(0)
+///     .page(1)
 ///     .page_size(10)
 ///     .group(|item| item.category.clone())
 ///     .run();
@@ -59,7 +59,7 @@ pub struct Query<'a, T> {
 
 impl<'a, T: Clone> Query<'a, T> {
     /// Start a query over the given records.
-    /// Defaults to page 0, page size 25, no filter, no sort.
+    /// Defaults to page 1, page size 25, no filter, no sort.
     pub fn new(records: &'a [T]) -> Self {
         Self {
             records,
@@ -67,7 +67,7 @@ impl<'a, T: Clone> Query<'a, T> {
             search: None,
             sort: None,
             group: None,
-            page: 0,
+            page: 1,
             page_size: 25,
         }
     }
@@ -141,7 +141,9 @@ impl<'a, T: Clone> Query<'a, T> {
         self
     }
 
-    /// Which page to return (0-indexed).
+    /// Which page to return (1-indexed; first page is 1).
+    ///
+    /// Values less than 1 are clamped to 1 at `run()` time.
     pub fn page(mut self, page: usize) -> Self {
         self.page = page;
         self
@@ -171,9 +173,10 @@ impl<'a, T: Clone> Query<'a, T> {
             results.sort_by(|a, b| sort_fn(a, b));
         }
 
-        // Paginate
+        // Paginate (1-based: page 1 is the first page)
         let total = results.len();
-        let start = self.page * self.page_size;
+        let page = self.page.max(1);
+        let start = (page - 1) * self.page_size;
         let entries = if start < total {
             results[start..total.min(start + self.page_size)].to_vec()
         } else {
@@ -193,7 +196,7 @@ impl<'a, T: Clone> Query<'a, T> {
         QueryResult {
             entries,
             total,
-            page: self.page,
+            page,
             page_size: self.page_size,
             groups,
         }

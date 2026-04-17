@@ -512,10 +512,26 @@ fn sort_orders_results() {
 #[test]
 fn pagination_slices_results() {
     let items: Vec<i32> = (1..=10).collect();
-    let result = Query::new(&items).page(1).page_size(3).run();
+    let result = Query::new(&items).page(2).page_size(3).run();
     assert_eq!(result.entries, vec![4, 5, 6]);
-    assert_eq!(result.page, 1);
+    assert_eq!(result.page, 2);
     assert_eq!(result.page_size, 3);
+}
+
+#[test]
+fn page_one_is_the_first_page() {
+    let items: Vec<i32> = (1..=10).collect();
+    let result = Query::new(&items).page(1).page_size(3).run();
+    assert_eq!(result.entries, vec![1, 2, 3]);
+    assert_eq!(result.page, 1);
+}
+
+#[test]
+fn page_zero_clamps_to_page_one() {
+    let items: Vec<i32> = (1..=10).collect();
+    let result = Query::new(&items).page(0).page_size(3).run();
+    assert_eq!(result.entries, vec![1, 2, 3]);
+    assert_eq!(result.page, 1);
 }
 
 #[test]
@@ -523,7 +539,7 @@ fn total_reflects_pre_pagination_count() {
     let items: Vec<i32> = (1..=20).collect();
     let result = Query::new(&items)
         .filter(|x| *x > 10)
-        .page(0)
+        .page(1)
         .page_size(5)
         .run();
     assert_eq!(result.entries, vec![11, 12, 13, 14, 15]);

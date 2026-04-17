@@ -35,12 +35,50 @@ impl RunResult {
 /// collected as failures rather than panicking, so all instructions
 /// are attempted. Returns a summary of passed and failed
 /// instructions.
+///
+/// Note: the `assert_model` instruction requires the app's `Model`
+/// type to implement `Debug`. Use [`run_with_model_debug`] if the
+/// script contains `assert_model` calls. This function reports them
+/// as failures with a descriptive message.
 pub fn run<A: App>(file: &PlushieFile, session: &mut TestSession<A>) -> RunResult {
     let mut passed = 0;
     let mut failures = Vec::new();
 
     for (line_no, instruction) in &file.instructions {
         match execute_instruction(session, instruction) {
+            Ok(()) => passed += 1,
+            Err(msg) => failures.push((*line_no, msg)),
+        }
+    }
+
+    RunResult { passed, failures }
+}
+
+/// Run a parsed `.plushie` file when the app's model implements
+/// `Debug`, enabling the `assert_model` instruction to match against
+/// the debug-formatted model string.
+pub fn run_with_model_debug<A: App>(file: &PlushieFile, session: &mut TestSession<A>) -> RunResult
+where
+    A::Model: std::fmt::Debug,
+{
+    let mut passed = 0;
+    let mut failures = Vec::new();
+
+    for (line_no, instruction) in &file.instructions {
+        let result = match instruction {
+            Instruction::AssertModel(expected) => {
+                let actual = format!("{:?}", session.model());
+                if actual.contains(expected.as_str()) {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "expected model debug string to contain \"{expected}\", got {actual}"
+                    ))
+                }
+            }
+            other => execute_instruction(session, other),
+        };
+        match result {
             Ok(()) => passed += 1,
             Err(msg) => failures.push((*line_no, msg)),
         }
@@ -137,6 +175,18 @@ fn execute_instruction<A: App>(
             } else {
                 Err(format!("expected {sel} to NOT exist"))
             }
+        }
+        Instruction::AssertModel(_expected) => {
+            // AssertModel matches against the Debug string of the
+            // model. The runner is generic over `A: App`, not
+            // `A: App where Model: Debug`, so we can't format here.
+            // Callers that need this instruction should resolve it
+            // against `session.model()` in a wrapper runner that
+            // adds the Debug bound.
+            Err(
+                "assert_model requires App::Model: Debug; use a wrapper runner with the bound"
+                    .to_string(),
+            )
         }
         Instruction::Screenshot(_name) => {
             // Screenshots are a no-op in headless TestSession.

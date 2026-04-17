@@ -64,6 +64,9 @@ pub enum Instruction {
     AssertText(Selector, String),
     AssertExists(Selector),
     AssertNotExists(Selector),
+    /// Assert that the `{:?}` string of the model contains the
+    /// given substring. Parity with Elixir's `assert_model`.
+    AssertModel(String),
 
     // Capture
     Screenshot(String),
@@ -294,6 +297,10 @@ fn parse_instruction(tokens: &[String]) -> Result<Instruction, String> {
         "assert_not_exists" => {
             require_args(cmd, args, 1)?;
             Ok(Instruction::AssertNotExists(sel(&args[0])))
+        }
+        "assert_model" => {
+            require_args(cmd, args, 1)?;
+            Ok(Instruction::AssertModel(args[0].clone()))
         }
         "screenshot" => {
             require_args(cmd, args, 1)?;

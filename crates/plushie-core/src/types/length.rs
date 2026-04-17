@@ -8,13 +8,15 @@ use super::PlushieType;
 
 /// How a widget should be sized along an axis.
 ///
-/// Wire format:
+/// Wire format (strict, encoder-symmetric):
 /// - `Fill`: the string `"fill"`
 /// - `Shrink`: the string `"shrink"`
-/// - `FillPortion(n)`: an object `{"fill_portion": n}`
+/// - `FillPortion(n)`: an object `{"fill_portion": n}` with a positive integer
 /// - `Fixed(px)`: a non-negative number (logical pixels)
 ///
-/// A numeric string (e.g. `"200"`) is also accepted as `Fixed`.
+/// Any other shape (numeric strings, objects without `fill_portion`, etc.) is
+/// rejected and the caller receives `None`. The decoder accepts exactly what
+/// the encoder emits.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Length {
     /// Fill all available space.
@@ -39,19 +41,15 @@ impl PlushieType for Length {
             Value::String(s) => match s.as_str() {
                 "fill" => Some(Self::Fill),
                 "shrink" => Some(Self::Shrink),
-                other => other
-                    .parse::<f32>()
-                    .ok()
-                    .filter(|v| *v >= 0.0)
-                    .map(Self::Fixed),
+                // Reject any other string, including numeric strings such as
+                // "200". The encoder never emits numeric strings; accepting
+                // them here would hide host-SDK bugs behind silent success.
+                _ => None,
             },
-            Value::Object(obj) => {
-                if let Some(n) = obj.get("fill_portion").and_then(|v| v.as_u64()) {
-                    Some(Self::FillPortion(u16::try_from(n).unwrap_or(1).max(1)))
-                } else {
-                    Some(Self::Shrink)
-                }
-            }
+            Value::Object(obj) => obj
+                .get("fill_portion")
+                .and_then(|v| v.as_u64())
+                .map(|n| Self::FillPortion(u16::try_from(n).unwrap_or(1).max(1))),
             _ => None,
         }
     }
@@ -95,9 +93,42 @@ impl From<u32> for Length {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn default_is_shrink() {
         assert_eq!(Length::default(), Length::Shrink);
+    }
+
+    #[test]
+    fn decode_accepts_canonical_encoder_shapes() {
+        assert_eq!(Length::wire_decode(&json!("fill")), Some(Length::Fill));
+        assert_eq!(Length::wire_decode(&json!("shrink")), Some(Length::Shrink));
+        assert_eq!(Length::wire_decode(&json!(200)), Some(Length::Fixed(200.0)));
+        assert_eq!(
+            Length::wire_decode(&json!({"fill_portion": 3})),
+            Some(Length::FillPortion(3))
+        );
+    }
+
+    #[test]
+    fn decode_rejects_numeric_strings() {
+        assert_eq!(Length::wire_decode(&json!("200")), None);
+        assert_eq!(Length::wire_decode(&json!("3.5")), None);
+    }
+
+    #[test]
+    fn decode_rejects_unknown_objects() {
+        assert_eq!(Length::wire_decode(&json!({"fill_porton": 3})), None);
+        assert_eq!(Length::wire_decode(&json!({})), None);
+        assert_eq!(Length::wire_decode(&json!({"foo": "bar"})), None);
+    }
+
+    #[test]
+    fn decode_rejects_other_shapes() {
+        assert_eq!(Length::wire_decode(&json!(null)), None);
+        assert_eq!(Length::wire_decode(&json!(true)), None);
+        assert_eq!(Length::wire_decode(&json!([1, 2])), None);
+        assert_eq!(Length::wire_decode(&json!(-1.0)), None);
     }
 }

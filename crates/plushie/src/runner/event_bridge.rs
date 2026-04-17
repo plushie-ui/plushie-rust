@@ -287,24 +287,11 @@ mod tests {
     use super::*;
 
     fn make_event(family: &str, id: &str) -> OutgoingEvent {
-        OutgoingEvent {
-            message_type: "event",
-            session: String::new(),
-            family: family.to_string(),
-            id: id.to_string(),
-            value: None,
-            tag: None,
-            modifiers: None,
-            captured: None,
-            coalesce: None,
-        }
+        OutgoingEvent::widget_event(family, id, None)
     }
 
     fn make_tagged(family: &str, tag: &str) -> OutgoingEvent {
-        OutgoingEvent {
-            tag: Some(tag.to_string()),
-            ..make_event(family, "")
-        }
+        OutgoingEvent::tagged(family, tag.to_string())
     }
 
     #[test]

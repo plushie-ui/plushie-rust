@@ -80,8 +80,13 @@ pub struct OutgoingEvent {
     pub captured: Option<bool>,
     /// Coalescing hint for rate-limited delivery.
     /// Not serialized to the wire (renderer-internal metadata).
+    ///
+    /// Kept private so nothing outside this crate can serialize or copy
+    /// the field into a typed wire message by accident. Set via
+    /// [`with_coalesce`](Self::with_coalesce), observe via
+    /// [`coalesce_hint`](Self::coalesce_hint).
     #[serde(skip)]
-    pub coalesce: Option<CoalesceHint>,
+    pub(crate) coalesce: Option<CoalesceHint>,
 }
 
 impl OutgoingEvent {
@@ -103,6 +108,19 @@ impl OutgoingEvent {
     pub fn with_coalesce(mut self, hint: CoalesceHint) -> Self {
         self.coalesce = Some(hint);
         self
+    }
+
+    /// Current coalesce hint, if any.
+    ///
+    /// Exposed for the renderer's event buffering pipeline; not part of
+    /// the wire protocol.
+    pub fn coalesce_hint(&self) -> Option<&CoalesceHint> {
+        self.coalesce.as_ref()
+    }
+
+    /// Consume the coalesce hint (renderer-internal).
+    pub fn take_coalesce(&mut self) -> Option<CoalesceHint> {
+        self.coalesce.take()
     }
 
     /// Set the primary `value` field on this event.

@@ -36,7 +36,7 @@ impl App {
                 let events = self.registry.process_message(&msg);
                 let mut task = Task::none();
                 for event in events {
-                    let t = if event.coalesce.is_some() {
+                    let t = if event.coalesce_hint().is_some() {
                         // Lazily cache event_rate from the widget's tree node.
                         if !event.id.is_empty()
                             && !self.emitter.has_widget_rate(&event.id)

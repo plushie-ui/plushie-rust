@@ -237,28 +237,19 @@ fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Ev
                 Some(f) => f.to_string(),
                 None => return vec![],
             };
-            let event = OutgoingEvent {
-                message_type: "event",
-                session: String::new(),
-                family,
-                id: msg
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                window_id: msg
-                    .get("window_id")
-                    .and_then(|v| v.as_str())
-                    .map(String::from),
-                value: msg.get("value").cloned(),
-                tag: msg.get("tag").and_then(|v| v.as_str()).map(String::from),
-                modifiers: msg
-                    .get("modifiers")
-                    .and_then(|v| serde_json::from_value::<KeyModifiers>(v.clone()).ok()),
-                data: msg.get("data").cloned(),
-                captured: msg.get("captured").and_then(|v| v.as_bool()),
-                coalesce: None,
-            };
+            let id = msg
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let mut event = OutgoingEvent::widget_event(family, id, msg.get("value").cloned());
+            if let Some(tag) = msg.get("tag").and_then(|v| v.as_str()) {
+                event.tag = Some(tag.to_string());
+            }
+            event.modifiers = msg
+                .get("modifiers")
+                .and_then(|v| serde_json::from_value::<KeyModifiers>(v.clone()).ok());
+            event.captured = msg.get("captured").and_then(|v| v.as_bool());
             SinkEvent::Event(event)
         }
         "effect_response" => {

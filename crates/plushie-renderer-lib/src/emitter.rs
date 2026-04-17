@@ -232,7 +232,7 @@ impl EventEmitter {
     pub fn coalesce(&mut self, key: CoalesceKey, mut event: OutgoingEvent) -> Task<Message> {
         // Take the hint out of the event: it's consumed by the emitter
         // and not needed downstream (not serialized to the wire).
-        let hint = match event.coalesce.take() {
+        let hint = match event.take_coalesce() {
             Some(h) => h,
             None => {
                 // No hint: treat as non-coalescable (immediate delivery).
@@ -503,31 +503,11 @@ mod tests {
     }
 
     fn make_event(family: &str, id: &str) -> OutgoingEvent {
-        OutgoingEvent {
-            message_type: "event",
-            session: String::new(),
-            family: family.to_string(),
-            id: id.to_string(),
-            value: None,
-            tag: None,
-            modifiers: None,
-            captured: None,
-            coalesce: None,
-        }
+        OutgoingEvent::widget_event(family, id, None)
     }
 
     fn make_event_with_data(family: &str, id: &str, data: serde_json::Value) -> OutgoingEvent {
-        OutgoingEvent {
-            message_type: "event",
-            session: String::new(),
-            family: family.to_string(),
-            id: id.to_string(),
-            value: Some(data),
-            tag: None,
-            modifiers: None,
-            captured: None,
-            coalesce: None,
-        }
+        OutgoingEvent::widget_event(family, id, Some(data))
     }
 
     // -- effective_rate hierarchy --
@@ -685,7 +665,7 @@ mod tests {
         ];
         for event in events {
             assert!(
-                matches!(event.coalesce, Some(CoalesceHint::Replace)),
+                matches!(event.coalesce_hint(), Some(CoalesceHint::Replace)),
                 "expected Replace hint on {}",
                 event.family
             );
@@ -708,7 +688,7 @@ mod tests {
         ];
         for event in events {
             assert!(
-                matches!(event.coalesce, Some(CoalesceHint::Accumulate(_))),
+                matches!(event.coalesce_hint(), Some(CoalesceHint::Accumulate(_))),
                 "expected Accumulate hint on {}",
                 event.family
             );
@@ -756,7 +736,7 @@ mod tests {
         ];
         for event in events {
             assert!(
-                event.coalesce.is_none(),
+                event.coalesce_hint().is_none(),
                 "expected no hint on {}",
                 event.family
             );

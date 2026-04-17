@@ -649,8 +649,8 @@ pub fn build_interact_response(
             vec![OutgoingEvent::scripting_key_release(key, modifiers)]
         }
         ("move_to", _) => {
-            let x = payload.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            let y = payload.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let x = payload.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            let y = payload.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
             vec![OutgoingEvent::scripting_cursor_moved(x, y)]
         }
         ("type_key", _) => {
@@ -686,11 +686,11 @@ pub fn build_interact_response(
             let delta_x = payload
                 .get("delta_x")
                 .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
+                .unwrap_or(0.0) as f32;
             let delta_y = payload
                 .get("delta_y")
                 .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
+                .unwrap_or(0.0) as f32;
             vec![OutgoingEvent::scripting_scroll(delta_x, delta_y)]
         }
         ("sort", Some((_window_id, wid))) => {

@@ -615,19 +615,31 @@ impl OutgoingEvent {
     }
 
     /// Cursor moved event from scripting.
-    pub fn scripting_cursor_moved(x: f64, y: f64) -> Self {
+    ///
+    /// Uses `f32` to match the real `cursor_moved` event shape (see
+    /// [`Self::cursor_moved`]). Scripting has no precision requirement f64
+    /// meets but f32 doesn't.
+    pub fn scripting_cursor_moved(x: f32, y: f32) -> Self {
         Self {
-            value: Some(serde_json::json!({"x": x, "y": y})),
+            value: Some(serde_json::json!({
+                "x": sanitize_f32(x),
+                "y": sanitize_f32(y),
+            })),
             ..Self::bare("cursor_moved", String::new())
         }
     }
 
     /// Scroll event from scripting.
-    pub fn scripting_scroll(delta_x: f64, delta_y: f64) -> Self {
+    ///
+    /// Uses `f32` to match the real `wheel_scrolled` event shape (see
+    /// [`Self::wheel_scrolled`]).
+    pub fn scripting_scroll(delta_x: f32, delta_y: f32) -> Self {
         Self {
-            value: Some(
-                serde_json::json!({"delta_x": delta_x, "delta_y": delta_y, "unit": "pixel"}),
-            ),
+            value: Some(serde_json::json!({
+                "delta_x": sanitize_f32(delta_x),
+                "delta_y": sanitize_f32(delta_y),
+                "unit": "pixel",
+            })),
             ..Self::bare("wheel_scrolled", String::new())
         }
     }

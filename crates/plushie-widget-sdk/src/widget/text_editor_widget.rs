@@ -243,7 +243,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
         }
     }
 
-    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+    fn handle_message(&mut self, msg: &Message) -> crate::registry::HandleResult {
+        use crate::registry::HandleResult;
         use crate::shared_state::hash_str;
 
         match msg {
@@ -255,15 +256,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
                     if is_edit {
                         let new_text = content.text();
                         self.content_hashes.insert(key, hash_str(&new_text));
-                        return Some(vec![crate::protocol::OutgoingEvent::input(
+                        return HandleResult::emit(vec![crate::protocol::OutgoingEvent::input(
                             id.clone(),
                             new_text,
                         )]);
                     }
                 }
-                Some(vec![])
+                HandleResult::consume()
             }
-            _ => None,
+            _ => HandleResult::Fallthrough,
         }
     }
 

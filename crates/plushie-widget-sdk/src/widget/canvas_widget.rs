@@ -38,7 +38,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
         self.engine.render(node, ctx, None)
     }
 
-    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+    fn handle_message(&mut self, msg: &Message) -> crate::registry::HandleResult {
         self.engine.handle_message(msg)
     }
 

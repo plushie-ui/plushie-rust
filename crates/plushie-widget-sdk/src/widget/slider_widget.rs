@@ -37,7 +37,8 @@ fn apply_rail_overrides(
 fn handle_slider_message(
     last_values: &mut std::collections::HashMap<(String, String), f64>,
     msg: &Message,
-) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+) -> crate::registry::HandleResult {
+    use crate::registry::HandleResult;
     match msg {
         Message::Event {
             window_id,
@@ -47,7 +48,7 @@ fn handle_slider_message(
         } if family == "slide" => {
             let v = value.as_f64().unwrap_or(0.0);
             last_values.insert((window_id.clone(), id.clone()), v);
-            Some(vec![crate::protocol::OutgoingEvent::slide(id.clone(), v)])
+            HandleResult::emit(vec![crate::protocol::OutgoingEvent::slide(id.clone(), v)])
         }
         Message::Event {
             window_id,
@@ -57,12 +58,12 @@ fn handle_slider_message(
         } if family == "slide_release" => {
             let key = (window_id.clone(), id.clone());
             let v = last_values.remove(&key).unwrap_or(0.0);
-            Some(vec![crate::protocol::OutgoingEvent::slide_release(
+            HandleResult::emit(vec![crate::protocol::OutgoingEvent::slide_release(
                 id.clone(),
                 v,
             )])
         }
-        _ => None,
+        _ => HandleResult::Fallthrough,
     }
 }
 
@@ -97,7 +98,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
         render_slider(node, *ctx)
     }
 
-    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+    fn handle_message(&mut self, msg: &Message) -> crate::registry::HandleResult {
         handle_slider_message(&mut self.last_values, msg)
     }
 
@@ -140,7 +141,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
         render_vertical_slider(node, *ctx)
     }
 
-    fn handle_message(&mut self, msg: &Message) -> Option<Vec<crate::protocol::OutgoingEvent>> {
+    fn handle_message(&mut self, msg: &Message) -> crate::registry::HandleResult {
         handle_slider_message(&mut self.last_values, msg)
     }
 

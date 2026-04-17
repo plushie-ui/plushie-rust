@@ -17,7 +17,8 @@ pub use crate::{PlushieElement, PlushieRenderer};
 
 // -- PlushieWidget trait, registry, and lifecycle types --
 pub use crate::registry::{
-    GenerationCounter, InitCtx, PlushieWidget, PlushieWidgetRender, WidgetRegistry, WidgetSet,
+    GenerationCounter, HandleResult, InitCtx, PlushieWidget, PlushieWidgetRender, WidgetRegistry,
+    WidgetSet,
 };
 
 // -- Derive macros for widget props, events, and commands --

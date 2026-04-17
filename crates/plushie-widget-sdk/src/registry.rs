@@ -277,14 +277,19 @@ pub trait PlushieWidget<R: PlushieRenderer> {
 
     /// Handle a message produced by this widget type.
     ///
-    /// Return `Some(events)` to emit custom outgoing events.
-    /// Return `None` to use the default message-to-event conversion
-    /// (which handles Click, Input, Toggle, Select, etc.).
+    /// Return [`HandleResult::Fallthrough`] to let the registry run
+    /// its default message-to-event conversion (Click, Input, Toggle,
+    /// Select, and other generic widget events).
+    ///
+    /// Return [`HandleResult::Handled`] (usually constructed via
+    /// [`HandleResult::consume`] or [`HandleResult::emit`]) to take
+    /// responsibility for the message. The registry emits the
+    /// returned events and skips the generic fallback for this call.
     ///
     /// Only override this for widgets that need stateful message
     /// processing (TextEditor, PaneGrid, Slider).
-    fn handle_message(&mut self, _msg: &Message) -> Option<Vec<OutgoingEvent>> {
-        None
+    fn handle_message(&mut self, _msg: &Message) -> HandleResult {
+        HandleResult::Fallthrough
     }
 
     /// Prune per-instance state for nodes no longer in the tree.
@@ -359,6 +364,37 @@ pub trait PlushieWidget<R: PlushieRenderer> {
     /// `docs/core-widget-guide.md` for the full contract and a worked
     /// stateful-widget example.
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>>;
+}
+
+/// Return value from [`PlushieWidget::handle_message`].
+///
+/// Makes the "did the widget handle this message" signal explicit.
+/// `Fallthrough` lets the registry run its default conversion;
+/// `Handled` means the widget took responsibility and the registry
+/// should emit the returned events without running the fallback.
+#[derive(Debug)]
+pub enum HandleResult {
+    /// The widget did not consume the message. The registry should
+    /// run its default message-to-event conversion.
+    Fallthrough,
+    /// The widget consumed the message. The registry should emit
+    /// the contained events and skip the generic fallback.
+    ///
+    /// An empty `Vec` is valid: it means "handled, emit nothing",
+    /// distinct from `Fallthrough`.
+    Handled(Vec<OutgoingEvent>),
+}
+
+impl HandleResult {
+    /// Shorthand for "consumed the message, emit nothing".
+    pub fn consume() -> Self {
+        HandleResult::Handled(Vec::new())
+    }
+
+    /// Shorthand for "consumed the message, emit these events".
+    pub fn emit(events: Vec<OutgoingEvent>) -> Self {
+        HandleResult::Handled(events)
+    }
 }
 
 /// Helper trait used by `#[derive(PlushieWidget)]`.
@@ -898,9 +934,9 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                 "handle_message",
                 node_id,
                 |factory| factory.handle_message(msg),
-                || None,
+                || HandleResult::Fallthrough,
             );
-            if let Some(events) = result {
+            if let HandleResult::Handled(events) = result {
                 return events;
             }
         }

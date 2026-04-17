@@ -29,7 +29,7 @@
 //!         self.canvas.render(node, ctx, None)
 //!     }
 //!
-//!     fn handle_message(&mut self, msg: &Message) -> Option<Vec<OutgoingEvent>> {
+//!     fn handle_message(&mut self, msg: &Message) -> HandleResult {
 //!         self.canvas.handle_message(msg)
 //!     }
 //!
@@ -176,9 +176,11 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     /// Process a canvas message.
     ///
     /// Handles CanvasElementFocusChanged by splitting into blur + focus
-    /// events. Returns None for all other message types (use default
-    /// message-to-event conversion).
-    pub fn handle_message(&mut self, msg: &Message) -> Option<Vec<OutgoingEvent>> {
+    /// events. Returns [`HandleResult::Fallthrough`] for all other
+    /// message types so the registry's default message-to-event
+    /// conversion runs.
+    pub fn handle_message(&mut self, msg: &Message) -> crate::registry::HandleResult {
+        use crate::registry::HandleResult;
         match msg {
             Message::CanvasElementFocusChanged {
                 old_element_id,
@@ -192,9 +194,9 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
                 if let Some(new_id) = new_element_id {
                     events.push(OutgoingEvent::generic("focused", new_id.clone(), None));
                 }
-                Some(events)
+                HandleResult::emit(events)
             }
-            _ => None,
+            _ => HandleResult::Fallthrough,
         }
     }
 

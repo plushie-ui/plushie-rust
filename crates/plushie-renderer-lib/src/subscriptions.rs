@@ -10,6 +10,19 @@ use crate::App;
 use crate::constants::*;
 
 impl App {
+    /// Whether any host-registered subscription or any widget-scoped
+    /// subscription is active for `kind`.
+    ///
+    /// The iced-source gating in [`renderer_subscriptions`] uses this
+    /// so widget authors don't have to manually register a host
+    /// subscription just to receive events. When a widget is the sole
+    /// subscriber, iced still composes the underlying subscription and
+    /// [`App::update`] fans the event out to the widget via
+    /// [`WidgetRegistry::dispatch_widget_subscription`].
+    fn has_host_or_widget_subscription(&self, kind: &str) -> bool {
+        self.core.has_subscription(kind) || self.registry.has_widget_subscription(kind)
+    }
+
     /// Build renderer subscriptions (everything except platform-specific
     /// input sources like stdin). The binary crate combines this with
     /// its own input subscription.
@@ -19,7 +32,7 @@ impl App {
             window::close_events().map(Message::WindowClosed),
         ];
 
-        let has_on_event = self.core.has_subscription(SUB_EVENT);
+        let has_on_event = self.has_host_or_widget_subscription(SUB_EVENT);
 
         self.keyboard_subscriptions(has_on_event, &mut subs);
         self.mouse_subscriptions(has_on_event, &mut subs);
@@ -36,7 +49,7 @@ impl App {
         // To avoid duplicate event delivery when both on_event and a specific
         // subscription (e.g. on_key_press) are active, skip event categories
         // that already have a dedicated subscription listener above.
-        if self.core.has_subscription(SUB_EVENT) {
+        if has_on_event {
             subs.push(event::listen_with(|evt, status, window| {
                 let captured = status == iced::event::Status::Captured;
                 match evt {
@@ -143,7 +156,7 @@ impl App {
         // When on_event is active, its catch-all listener already covers keyboard,
         // mouse, touch, and IME events. Skip specific subscriptions to avoid
         // duplicate event delivery.
-        if !has_on_event && self.core.has_subscription(SUB_KEY_PRESS) {
+        if !has_on_event && self.has_host_or_widget_subscription(SUB_KEY_PRESS) {
             subs.push(event::listen_with(|evt, status, window| {
                 if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                     key,
@@ -174,7 +187,7 @@ impl App {
             }));
         }
 
-        if !has_on_event && self.core.has_subscription(SUB_KEY_RELEASE) {
+        if !has_on_event && self.has_host_or_widget_subscription(SUB_KEY_RELEASE) {
             subs.push(event::listen_with(|evt, status, window| {
                 if let iced::Event::Keyboard(iced::keyboard::Event::KeyReleased {
                     key,
@@ -203,7 +216,7 @@ impl App {
             }));
         }
 
-        if !has_on_event && self.core.has_subscription(SUB_MODIFIERS_CHANGED) {
+        if !has_on_event && self.has_host_or_widget_subscription(SUB_MODIFIERS_CHANGED) {
             subs.push(event::listen_with(|evt, status, window| {
                 if let iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) = evt {
                     Some(Message::ModifiersChanged(
@@ -219,7 +232,7 @@ impl App {
     }
 
     fn mouse_subscriptions(&self, has_on_event: bool, subs: &mut Vec<Subscription<Message>>) {
-        if !has_on_event && self.core.has_subscription(SUB_POINTER_MOVE) {
+        if !has_on_event && self.has_host_or_widget_subscription(SUB_POINTER_MOVE) {
             subs.push(event::listen_with(|evt, status, window| {
                 let captured = status == iced::event::Status::Captured;
                 match evt {
@@ -237,7 +250,7 @@ impl App {
             }));
         }
 
-        if !has_on_event && self.core.has_subscription(SUB_POINTER_BUTTON) {
+        if !has_on_event && self.has_host_or_widget_subscription(SUB_POINTER_BUTTON) {
             subs.push(event::listen_with(|evt, status, window| {
                 let captured = status == iced::event::Status::Captured;
                 match evt {
@@ -252,7 +265,7 @@ impl App {
             }));
         }
 
-        if !has_on_event && self.core.has_subscription(SUB_POINTER_SCROLL) {
+        if !has_on_event && self.has_host_or_widget_subscription(SUB_POINTER_SCROLL) {
             subs.push(event::listen_with(|evt, status, window| {
                 if let iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta }) = evt {
                     Some(Message::WheelScrolled(
@@ -268,7 +281,7 @@ impl App {
     }
 
     fn touch_subscriptions(&self, has_on_event: bool, subs: &mut Vec<Subscription<Message>>) {
-        if !has_on_event && self.core.has_subscription(SUB_POINTER_TOUCH) {
+        if !has_on_event && self.has_host_or_widget_subscription(SUB_POINTER_TOUCH) {
             subs.push(event::listen_with(|evt, status, window| {
                 let captured = status == iced::event::Status::Captured;
                 match evt {
@@ -291,7 +304,7 @@ impl App {
     }
 
     fn ime_subscriptions(&self, has_on_event: bool, subs: &mut Vec<Subscription<Message>>) {
-        if !has_on_event && self.core.has_subscription(SUB_IME) {
+        if !has_on_event && self.has_host_or_widget_subscription(SUB_IME) {
             subs.push(event::listen_with(|evt, status, window| {
                 let captured = status == iced::event::Status::Captured;
                 match evt {
@@ -327,27 +340,32 @@ impl App {
             subs.push(window::events().map(|(id, evt)| Message::WindowEvent(id, evt)));
         }
 
-        if self.core.has_subscription(SUB_WINDOW_CLOSE) {
+        if self.has_host_or_widget_subscription(SUB_WINDOW_CLOSE) {
             subs.push(window::close_requests().map(Message::WindowCloseRequested));
         }
 
         // -- Animation frame subscription --
-        // Active when the SDK subscribes to animation_frame OR when the
-        // renderer has active transitions/springs (zero-traffic animation).
-        if self.core.has_subscription(SUB_ANIMATION_FRAME) || self.transition_manager.has_active() {
+        // Active when the SDK subscribes to animation_frame, when any
+        // widget has declared an animation-frame subscription, or when
+        // the renderer has active transitions/springs (zero-traffic
+        // animation).
+        if self.has_host_or_widget_subscription(SUB_ANIMATION_FRAME)
+            || self.transition_manager.has_active()
+        {
             subs.push(window::frames().map(Message::AnimationFrame));
         }
     }
 
     fn system_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
         // Track system theme changes when theme follows system OR when subscribed
-        if self.theme_follows_system || self.core.has_subscription(SUB_THEME_CHANGE) {
+        if self.theme_follows_system || self.has_host_or_widget_subscription(SUB_THEME_CHANGE) {
             subs.push(system::theme_changes().map(Message::ThemeChanged));
         }
     }
 
-    /// Check if any of the given subscription keys are registered.
+    /// Check if any of the given subscription keys are registered on
+    /// the host side or by any widget.
     fn has_any_subscription(&self, keys: &[&str]) -> bool {
-        keys.iter().any(|k| self.core.has_subscription(k))
+        keys.iter().any(|k| self.has_host_or_widget_subscription(k))
     }
 }

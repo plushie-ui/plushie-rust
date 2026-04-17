@@ -12,6 +12,17 @@ use crate::emitter::CoalesceKey;
 
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        // Fan subscription-source messages out to widgets that asked
+        // to be woken. Widget dispatch runs before the host-level
+        // handler so the widget's handle_message can observe the
+        // event and emit outgoing events, matching the contract
+        // process_message already uses for widget-owned messages.
+        let widget_task = self.dispatch_to_widget_subscribers(&message);
+        let host_task = self.update_inner(message);
+        Task::batch([widget_task, host_task])
+    }
+
+    fn update_inner(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Stdin(event) => self.handle_stdin(event),
             Message::NoOp | Message::TimerTick(_) => Task::none(),
@@ -233,6 +244,103 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Classify `message` against the subscription-kind taxonomy and
+    /// deliver it to every widget with an active subscription for the
+    /// matching kind.
+    ///
+    /// Non-subscription messages (stdin, NoOp, Timer, FlushCoalesce,
+    /// window lifecycle plumbing, etc.) return [`Task::none`]. Only
+    /// messages that originate from an iced [`Subscription`] source
+    /// are eligible, since those are the sources a widget would have
+    /// declared via [`PlushieWidget::subscriptions`].
+    ///
+    /// Keyboard, mouse, touch, and IME messages also fire any
+    /// widgets subscribed to the catch-all `on_event` kind, matching
+    /// how the host catch-all subscription works.
+    fn dispatch_to_widget_subscribers(&mut self, message: &Message) -> Task<Message> {
+        // (specific kind, whether the catch-all `on_event` also applies,
+        // optional window-scoped delivery). `None` for window_id means
+        // window-agnostic (e.g. theme change).
+        let (kind, catchall, window_id): (&str, bool, Option<String>) = match message {
+            Message::KeyPressed(_, iced_id) => (
+                SUB_KEY_PRESS,
+                true,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::KeyReleased(_, iced_id) => (
+                SUB_KEY_RELEASE,
+                true,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::ModifiersChanged(_, iced_id, _) => (
+                SUB_MODIFIERS_CHANGED,
+                true,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::CursorMoved(_, iced_id, _)
+            | Message::CursorEntered(iced_id, _)
+            | Message::CursorLeft(iced_id, _) => (
+                SUB_POINTER_MOVE,
+                true,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::MouseButtonPressed(_, iced_id, _)
+            | Message::MouseButtonReleased(_, iced_id, _) => (
+                SUB_POINTER_BUTTON,
+                true,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::WheelScrolled(_, iced_id, _) => (
+                SUB_POINTER_SCROLL,
+                true,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::FingerPressed(_, _, iced_id, _)
+            | Message::FingerMoved(_, _, iced_id, _)
+            | Message::FingerLifted(_, _, iced_id, _)
+            | Message::FingerLost(_, _, iced_id, _) => (
+                SUB_POINTER_TOUCH,
+                true,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::ImeOpened(iced_id, _)
+            | Message::ImePreedit(_, _, iced_id, _)
+            | Message::ImeCommit(_, iced_id, _)
+            | Message::ImeClosed(iced_id, _) => {
+                (SUB_IME, true, self.resolve_window_id_for_widget(*iced_id))
+            }
+            Message::WindowEvent(iced_id, _) => (
+                SUB_WINDOW_EVENT,
+                false,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::WindowCloseRequested(iced_id) => (
+                SUB_WINDOW_CLOSE,
+                false,
+                self.resolve_window_id_for_widget(*iced_id),
+            ),
+            Message::AnimationFrame(_) => (SUB_ANIMATION_FRAME, false, None),
+            Message::ThemeChanged(_) => (SUB_THEME_CHANGE, false, None),
+            _ => return Task::none(),
+        };
+        let specific = self.dispatch_widget_subscription(kind, window_id.as_deref(), message);
+        if catchall {
+            let event = self.dispatch_widget_subscription(SUB_EVENT, window_id.as_deref(), message);
+            Task::batch([specific, event])
+        } else {
+            specific
+        }
+    }
+
+    /// Resolve an iced window id to a string window id for widget
+    /// dispatch. Unresolved ids (e.g. late events after close) return
+    /// `None`, which delivers to window-agnostic widget subscriptions
+    /// only.
+    fn resolve_window_id_for_widget(&self, iced_id: window::Id) -> Option<String> {
+        let id = self.windows.window_id_for(&iced_id);
+        if id.is_empty() { None } else { Some(id) }
     }
 
     pub fn handle_stdin(&mut self, event: StdinEvent) -> Task<Message> {

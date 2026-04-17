@@ -232,4 +232,33 @@ impl App {
             .collect();
         Task::batch(tasks)
     }
+
+    /// Route a [`Message`] to every widget with an active subscription
+    /// for `kind` (optionally scoped to `window_id`) and emit the
+    /// resulting outgoing events.
+    ///
+    /// Fast path: returns [`Task::none`] when no widget cares about
+    /// `kind`, so handlers can call this unconditionally without
+    /// cloning message payloads in the common case.
+    pub fn dispatch_widget_subscription(
+        &mut self,
+        kind: &str,
+        window_id: Option<&str>,
+        msg: &Message,
+    ) -> Task<Message> {
+        if !self.registry.has_widget_subscription(kind) {
+            return Task::none();
+        }
+        let events = self
+            .registry
+            .dispatch_widget_subscription(kind, window_id, msg);
+        if events.is_empty() {
+            return Task::none();
+        }
+        let tasks: Vec<_> = events
+            .into_iter()
+            .map(|event| self.emitter.emit_immediate(event))
+            .collect();
+        Task::batch(tasks)
+    }
 }

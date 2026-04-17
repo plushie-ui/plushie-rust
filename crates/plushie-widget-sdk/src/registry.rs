@@ -386,7 +386,13 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                 );
             }
             self.type_index.insert(name.to_string(), idx);
-            if !set_name.is_empty() {
+            if set_name.is_empty() {
+                // Individual `.widget()` registration. Clear any
+                // inherited provenance so a widget that shadows a
+                // built-in type name no longer counts as trusted for
+                // panic isolation.
+                self.provenance.remove(name);
+            } else {
                 self.provenance
                     .insert(name.to_string(), set_name.to_string());
             }
@@ -1187,5 +1193,79 @@ mod tests {
         // that exceeds the depth cap.
         let mut shared = crate::shared_state::SharedState::new();
         registry.prepare_walk(&node, &mut shared, &Theme::Dark);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Provenance / panic isolation on `.widget()` overrides
+    //
+    // An individual `.widget()` registration that happens to use a type name
+    // already claimed by a trusted widget set (e.g. "button" from the iced
+    // set) must NOT inherit that set's trusted provenance. Otherwise the
+    // override is treated as trusted and a panic inside it skips
+    // `catch_unwind` and takes the renderer down.
+    // ---------------------------------------------------------------------------
+
+    struct PanickingButton;
+
+    impl PlushieWidget<iced::Renderer> for PanickingButton {
+        fn type_names(&self) -> &[&str] {
+            &["button"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, iced::Renderer>,
+        ) -> Element<'a, Message, Theme, iced::Renderer> {
+            panic!("intentional render panic");
+        }
+
+        fn clone_for_session(&self) -> Box<dyn PlushieWidget<iced::Renderer>> {
+            Box::new(PanickingButton)
+        }
+    }
+
+    #[test]
+    fn widget_override_of_iced_type_clears_trusted_provenance() {
+        let mut registry = WidgetRegistry::<iced::Renderer>::new();
+        registry.register_set(&crate::widget::widget_set::iced_widget_set());
+        assert_eq!(
+            registry.provenance.get("button").map(|s| s.as_str()),
+            Some("iced"),
+            "iced set should install provenance for `button`"
+        );
+
+        registry.register(Box::new(PanickingButton));
+        assert!(
+            registry.provenance.get("button").is_none(),
+            "`.widget()` override must drop inherited provenance so panic \
+             isolation wraps the new widget"
+        );
+    }
+
+    #[test]
+    fn widget_override_panic_is_contained_in_render() {
+        let mut registry = WidgetRegistry::<iced::Renderer>::new();
+        registry.register_set(&crate::widget::widget_set::iced_widget_set());
+        registry.register(Box::new(PanickingButton));
+
+        let node = leaf("b1", "button");
+        let caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = iced::Theme::Dark;
+        let ctx = RenderCtx {
+            caches: &caches,
+            images: &images,
+            theme: &theme,
+            registry: &registry,
+            default_text_size: None,
+            default_font: None,
+            window_id: "",
+            scale_factor: 1.0,
+        };
+
+        // The panicking override must produce the error placeholder
+        // instead of unwinding out of render_node.
+        let _elem = registry.render_node(&node, &ctx);
     }
 }

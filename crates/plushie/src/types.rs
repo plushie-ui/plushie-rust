@@ -54,8 +54,6 @@ pub use plushie_core::types::{
     PlushieType,
     Position,
     Radius,
-    // Value
-    ValueRange,
     Role,
     Shadow,
     Shaping,
@@ -66,6 +64,8 @@ pub use plushie_core::types::{
     Theme,
     // Untyped props escape hatch
     UntypedProps,
+    // Value
+    ValueRange,
     VerticalAlignment,
     WidgetEventEncode,
     // Text layout

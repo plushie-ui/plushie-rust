@@ -5,7 +5,7 @@
 //! can be committed or rolled back atomically.
 //!
 //! ```
-//! use plushie::util::State;
+//! use plushie::state::State;
 //! use serde_json::json;
 //!
 //! let mut state = State::new(json!({"count": 0, "items": []}));

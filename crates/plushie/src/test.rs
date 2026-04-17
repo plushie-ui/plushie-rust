@@ -5,6 +5,19 @@
 //! rendering. Composite widgets are expanded and their events
 //! are intercepted, matching runtime behavior.
 //!
+//! # Panics
+//!
+//! Interaction methods (`click`, `type_text`, `toggle`, `select`,
+//! `submit`, `slide`, `paste`, `scroll`, `sort`, `canvas_*`, etc.)
+//! panic if the selector does not match a widget in the current
+//! tree. This is intentional: tests should fail loudly when the
+//! target widget is missing. Use [`TestSession::find`] or
+//! [`TestSession::find_all`] for non-panicking lookups.
+//!
+//! Assertion methods (`assert_text`, `assert_role`, `assert_a11y`,
+//! `assert_model`, `assert_no_diagnostics`, etc.) panic on
+//! assertion failure with a descriptive message.
+//!
 //! Interactions accept [`Selector`] (or bare strings) for targeting
 //! and [`KeyPress`] (or combo strings) for keyboard input:
 //!

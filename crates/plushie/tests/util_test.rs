@@ -2,7 +2,10 @@
 
 use std::collections::HashMap;
 
-use plushie::util::{Query, Route, Selection, SelectionMode, UndoCommand, UndoStack};
+use plushie::query::Query;
+use plushie::route::Route;
+use plushie::selection::{Selection, SelectionMode};
+use plushie::undo::{UndoCommand, UndoStack};
 
 // ---------------------------------------------------------------------------
 // Selection
@@ -595,7 +598,7 @@ fn search_is_case_insensitive() {
 
 #[test]
 fn sort_by_multiple_fields() {
-    use plushie::util::SortDir;
+    use plushie::query::SortDir;
     let items = vec![(2, "b"), (1, "a"), (2, "a"), (1, "b")];
     let result = Query::new(&items)
         .sort_by(vec![

@@ -1,16 +1,19 @@
 //! Notes application demonstrating utility helpers working together.
 //!
 //! Demonstrates:
-//! - `util::Route` for stack-based view navigation (/list, /edit)
-//! - `util::UndoStack` for reversible edits with labels
-//! - `util::Selection` for multi-select with toggle
+//! - `route::Route` for stack-based view navigation (/list, /edit)
+//! - `undo::UndoStack` for reversible edits with labels
+//! - `selection::Selection` for multi-select with toggle
 //! - View routing based on current route
 //! - Complex state management in a single model
 //!
 //! Run with: `cargo run -p plushie --example notes`
 
 use plushie::prelude::*;
-use plushie::util::{Query, Route, Selection, SelectionMode, UndoCommand, UndoStack};
+use plushie::query::Query;
+use plushie::route::Route;
+use plushie::selection::{Selection, SelectionMode};
+use plushie::undo::{UndoCommand, UndoStack};
 
 #[derive(Clone)]
 struct NoteContent {

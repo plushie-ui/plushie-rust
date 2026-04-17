@@ -35,8 +35,14 @@ impl Color {
     /// - `#rrggbb` / `rrggbb` stored as `#rrggbb`
     /// - `#rrggbbaa` / `rrggbbaa` stored as `#rrggbbaa`
     ///
-    /// Panics on invalid hex characters or unsupported lengths.
-    /// Use [`try_hex`](Self::try_hex) for a fallible variant.
+    /// Use [`try_hex`](Self::try_hex) for a fallible variant that
+    /// returns `Option<Color>`.
+    ///
+    /// # Panics
+    ///
+    /// Panics on invalid hex characters, unsupported lengths, or
+    /// empty input. Intended for hard-coded hex literals where the
+    /// input is known at compile time.
     pub fn hex(s: &str) -> Self {
         match Self::try_hex(s) {
             Some(c) => c,

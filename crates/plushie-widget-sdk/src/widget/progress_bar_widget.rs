@@ -9,7 +9,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, PlushieType, ValueRange, Style as CoreStyle};
+use plushie_core::types::{Length, PlushieType, Style as CoreStyle, ValueRange};
 
 struct ProgressBarProps {
     range: Option<ValueRange>,

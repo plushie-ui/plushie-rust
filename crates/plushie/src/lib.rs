@@ -58,14 +58,18 @@ pub mod automation;
 pub mod command;
 pub mod event;
 pub mod prelude;
+pub mod query;
+pub mod route;
 pub mod runner;
 pub(crate) mod runtime;
+pub mod selection;
 pub mod settings;
+pub mod state;
 pub mod subscription;
 pub mod test;
 pub mod types;
 pub mod ui;
-pub mod util;
+pub mod undo;
 pub mod widget;
 
 // Re-export the widget SDK for widget authors who also use the app SDK.
@@ -174,6 +178,12 @@ pub type Result = std::result::Result<(), Box<dyn std::error::Error>>;
 ///
 /// This is the default and most common entry point. The renderer
 /// runs in the same process with no subprocess or serialization.
+///
+/// # Errors
+///
+/// Returns an error if iced fails to initialize the event loop, the
+/// app's [`App::init`] panics, or the renderer encounters an
+/// unrecoverable window-system failure.
 #[cfg(feature = "direct")]
 pub fn run<A: App>() -> Result {
     runner::direct::run::<A>()
@@ -183,6 +193,12 @@ pub fn run<A: App>() -> Result {
 ///
 /// Spawns the renderer binary at `binary_path` and communicates
 /// over stdin/stdout using the plushie wire protocol.
+///
+/// # Errors
+///
+/// Returns an error if the renderer binary cannot be spawned, the
+/// protocol handshake fails (version mismatch or malformed hello),
+/// or stdin/stdout I/O fails during the session.
 #[cfg(feature = "wire")]
 pub fn run_wire<A: App>(binary_path: &str) -> Result {
     runner::wire::run_wire::<A>(binary_path)

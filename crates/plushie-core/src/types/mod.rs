@@ -20,11 +20,11 @@ mod layout;
 mod length;
 mod line_height;
 mod padding;
-mod value_range;
 mod shadow;
 mod style;
 mod text;
 mod theme;
+mod value_range;
 
 use serde_json::Value;
 
@@ -72,11 +72,11 @@ pub use layout::{Anchor, ArrowMode, ContentFit, Direction, Position, SortOrder};
 pub use length::Length;
 pub use line_height::LineHeight;
 pub use padding::Padding;
-pub use value_range::ValueRange;
 pub use shadow::Shadow;
 pub use style::{Style, StyleMap};
 pub use text::{Ellipsis, Shaping, Wrapping};
 pub use theme::{BUILTIN_THEMES, CustomTheme, Theme};
+pub use value_range::ValueRange;
 
 /// Behaviour trait for Plushie property types.
 ///

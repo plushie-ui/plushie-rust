@@ -9,10 +9,10 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, PlushieType, Range, Style as CoreStyle};
+use plushie_core::types::{Length, PlushieType, ValueRange, Style as CoreStyle};
 
 struct ProgressBarProps {
-    range: Option<Range>,
+    range: Option<ValueRange>,
     value: Option<f32>,
     width: Option<Length>,
     height: Option<Length>,
@@ -25,7 +25,7 @@ impl ProgressBarProps {
     fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
-            range: Range::extract(p, "range"),
+            range: ValueRange::extract(p, "range"),
             value: f32::extract(p, "value"),
             width: Length::extract(p, "width"),
             height: Length::extract(p, "height"),
@@ -50,7 +50,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
     ) -> Element<'a, Message, Theme, R> {
         let pbp = ProgressBarProps::from_node(node);
 
-        let range = pbp.range.unwrap_or(Range::new(0.0, 100.0));
+        let range = pbp.range.unwrap_or(ValueRange::new(0.0, 100.0));
         let range_inclusive = range.min..=range.max;
         let value = prop_animated_f32(
             &ctx.caches.interpolated_props,

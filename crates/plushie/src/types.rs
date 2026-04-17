@@ -55,7 +55,7 @@ pub use plushie_core::types::{
     Position,
     Radius,
     // Value
-    Range,
+    ValueRange,
     Role,
     Shadow,
     Shaping,

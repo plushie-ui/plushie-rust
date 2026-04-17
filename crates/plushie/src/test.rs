@@ -104,6 +104,14 @@ pub struct TestSession<A: App> {
     /// Ops produced by the most recent subscription diff. Reset on
     /// every `advance_subscriptions` call.
     last_sub_ops: Vec<SubOp>,
+    /// Async tasks queued by [`Command::async_task`] and waiting to be
+    /// driven by the next [`run_pending_async`](Self::run_pending_async)
+    /// cycle. Queuing rather than running-inline gives
+    /// [`Command::cancel`] a window to drop a task before it
+    /// completes.
+    pending_async: Vec<(String, crate::command::AsyncTaskFn)>,
+    /// Stream tasks queued the same way; drained together.
+    pending_streams: Vec<(String, crate::command::StreamTaskFn)>,
 }
 
 impl<A: App> TestSession<A> {
@@ -124,8 +132,11 @@ impl<A: App> TestSession<A> {
             fail_on_diagnostics: true,
             sub_manager: SubscriptionManager::new(),
             last_sub_ops: Vec::new(),
+            pending_async: Vec::new(),
+            pending_streams: Vec::new(),
         };
         session.execute_command(init_cmd);
+        session.run_pending_async();
         session
     }
 
@@ -472,6 +483,7 @@ impl<A: App> TestSession<A> {
         };
 
         self.execute_command(cmd);
+        self.run_pending_async();
 
         // Re-render and expand widgets.
         let (tree, warnings) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
@@ -485,8 +497,10 @@ impl<A: App> TestSession<A> {
 
     /// Process a command returned from update.
     ///
-    /// Async tasks are executed synchronously and their results
-    /// stored for `await_async`. Effects with stubs get immediate
+    /// Async/Stream tasks are buffered in `pending_async`/`pending_streams`
+    /// and driven on the next [`run_pending_async`](Self::run_pending_async)
+    /// pass. This lets a subsequent `Command::Cancel` for the same tag
+    /// drop the task before it runs. Effects with stubs get immediate
     /// responses. Other commands are logged and ignored.
     fn execute_command(&mut self, cmd: Command) {
         match cmd {
@@ -497,42 +511,24 @@ impl<A: App> TestSession<A> {
                 }
             }
             Command::Async { tag, task } => {
-                // Execute the async task synchronously. TestSession
-                // runs without a persistent runtime, so each task
-                // gets a minimal current-thread runtime.
-                let result = run_async_sync(task);
-                self.async_results.insert(tag.clone(), result.clone());
-                // Deliver the result as an event immediately.
-                let event = Event::Async(AsyncEvent { tag, result });
-                let cmd = A::update(&mut self.model, event);
-                self.execute_command(cmd);
+                // Queue the task. Running is deferred to
+                // `run_pending_async` so a `Command::Cancel` returned
+                // before the drain can still preempt it.
+                self.pending_async.push((tag, task));
             }
             Command::Stream { tag, task } => {
-                // Drive the streaming task to completion. Intermediate
-                // emits are buffered by the emitter and drained as
-                // StreamEvents after the future resolves.
-                let emitter = crate::command::StreamEmitter::buffered(&tag);
-                let result = run_stream_sync(task, emitter.clone());
-                self.async_results.insert(tag.clone(), result.clone());
-                for value in emitter.drain_buffer() {
-                    let event = Event::Stream(crate::event::StreamEvent {
-                        tag: tag.clone(),
-                        value,
-                    });
-                    let cmd = A::update(&mut self.model, event);
-                    self.execute_command(cmd);
-                }
-                let event = Event::Async(AsyncEvent { tag, result });
-                let cmd = A::update(&mut self.model, event);
-                self.execute_command(cmd);
+                self.pending_streams.push((tag, task));
             }
             Command::SendAfter { event, .. } => {
                 // In tests, deliver immediately (ignore delay).
                 let cmd = A::update(&mut self.model, *event);
                 self.execute_command(cmd);
             }
-            Command::Cancel { .. } => {
-                // Nothing to cancel in synchronous test mode.
+            Command::Cancel { tag } => {
+                // Drop any pending async/stream task registered for
+                // this tag before it has a chance to run.
+                self.pending_async.retain(|(t, _)| t != &tag);
+                self.pending_streams.retain(|(t, _)| t != &tag);
             }
             Command::Renderer(ref op) => {
                 // Check for effect requests with stubs.
@@ -636,10 +632,13 @@ impl<A: App> TestSession<A> {
         self.effect_stubs.clear();
         self.sub_manager = SubscriptionManager::new();
         self.last_sub_ops.clear();
+        self.pending_async.clear();
+        self.pending_streams.clear();
         let (tree, warnings) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
         self.tree = tree;
         self.diagnostics = warnings;
         self.execute_command(init_cmd);
+        self.run_pending_async();
     }
 
     // -----------------------------------------------------------------------
@@ -726,6 +725,74 @@ impl<A: App> TestSession<A> {
     /// inspection. Deterministic within the same tree structure.
     pub fn tree_snapshot(&self) -> String {
         serde_json::to_string_pretty(&self.tree).expect("tree serialization failed")
+    }
+
+    // -----------------------------------------------------------------------
+    // Pending async / stream execution
+    // -----------------------------------------------------------------------
+
+    /// Drive every queued async/stream task to completion and
+    /// deliver the resulting `AsyncEvent`/`StreamEvent`s back into
+    /// `App::update`.
+    ///
+    /// Called automatically after every `dispatch` and `start`, so
+    /// most tests never need to invoke it directly. Exposed publicly
+    /// for scenarios that queue tasks and then explicitly cancel
+    /// them before the next drain.
+    ///
+    /// Tasks panic-guarded: a user future that panics resolves to
+    /// `Err(json!({"error": "panic", "message": ...}))` instead of
+    /// tearing down the harness, matching the direct + wire runners'
+    /// contract.
+    pub fn run_pending_async(&mut self) {
+        // Drain queues repeatedly: an async task can return a
+        // Command::Async/Stream/Cancel which queues more work or
+        // cancels pending work that hasn't started yet.
+        loop {
+            let async_batch: Vec<_> = std::mem::take(&mut self.pending_async);
+            let stream_batch: Vec<_> = std::mem::take(&mut self.pending_streams);
+            if async_batch.is_empty() && stream_batch.is_empty() {
+                break;
+            }
+
+            for (tag, task) in async_batch {
+                let result = run_async_sync(&tag, task);
+                self.async_results.insert(tag.clone(), result.clone());
+                let event = Event::Async(AsyncEvent { tag, result });
+                let cmd = A::update(&mut self.model, event);
+                self.execute_command(cmd);
+            }
+
+            for (tag, task) in stream_batch {
+                let emitter = crate::command::StreamEmitter::buffered(&tag);
+                let result = run_stream_sync(&tag, task, emitter.clone());
+                self.async_results.insert(tag.clone(), result.clone());
+                for value in emitter.drain_buffer() {
+                    let event = Event::Stream(crate::event::StreamEvent {
+                        tag: tag.clone(),
+                        value,
+                    });
+                    let cmd = A::update(&mut self.model, event);
+                    self.execute_command(cmd);
+                }
+                let event = Event::Async(AsyncEvent { tag, result });
+                let cmd = A::update(&mut self.model, event);
+                self.execute_command(cmd);
+            }
+        }
+    }
+
+    /// Discard any tasks queued under the given tag without running
+    /// them. Equivalent to emitting `Command::cancel(tag)` from an
+    /// update and then calling [`run_pending_async`](Self::run_pending_async).
+    pub fn cancel_pending(&mut self, tag: &str) {
+        self.pending_async.retain(|(t, _)| t != tag);
+        self.pending_streams.retain(|(t, _)| t != tag);
+    }
+
+    /// Number of async tasks currently queued.
+    pub fn pending_async_count(&self) -> usize {
+        self.pending_async.len()
     }
 
     // -----------------------------------------------------------------------
@@ -1209,16 +1276,33 @@ fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
 ///
 /// Creates a minimal tokio current-thread runtime to drive the
 /// future to completion. This handles tasks that use tokio
-/// primitives (timers, I/O, channels) internally.
-fn run_async_sync(task_fn: crate::command::AsyncTaskFn) -> Result<Value, Value> {
+/// primitives (timers, I/O, channels) internally. Panics inside
+/// the future are caught and converted to an
+/// `Err(json!({"error": "panic", "message": ...}))` payload so
+/// the MVU loop sees an `AsyncEvent(Err(..))` rather than unwinding
+/// the test harness. Matches the direct and wire runners'
+/// `run_task_with_panic_guard` contract.
+fn run_async_sync(tag: &str, task_fn: crate::command::AsyncTaskFn) -> Result<Value, Value> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("failed to create test tokio runtime");
-    rt.block_on((task_fn)())
+    rt.block_on(async move {
+        use futures::FutureExt;
+        let future = (task_fn)();
+        match std::panic::AssertUnwindSafe(future).catch_unwind().await {
+            Ok(result) => result,
+            Err(payload) => {
+                let msg = panic_message(&*payload);
+                log::error!("async task `{tag}` panicked: {msg}");
+                Err(serde_json::json!({ "error": "panic", "message": msg }))
+            }
+        }
+    })
 }
 
 fn run_stream_sync(
+    tag: &str,
     task_fn: crate::command::StreamTaskFn,
     emitter: crate::command::StreamEmitter,
 ) -> Result<Value, Value> {
@@ -1226,7 +1310,26 @@ fn run_stream_sync(
         .enable_all()
         .build()
         .expect("failed to create test tokio runtime");
-    rt.block_on((task_fn)(emitter))
+    rt.block_on(async move {
+        use futures::FutureExt;
+        let future = (task_fn)(emitter);
+        match std::panic::AssertUnwindSafe(future).catch_unwind().await {
+            Ok(result) => result,
+            Err(payload) => {
+                let msg = panic_message(&*payload);
+                log::error!("stream task `{tag}` panicked: {msg}");
+                Err(serde_json::json!({ "error": "panic", "message": msg }))
+            }
+        }
+    })
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&'static str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(|s| s.as_str()))
+        .unwrap_or("(non-string panic)")
 }
 
 fn key_event(

@@ -239,6 +239,20 @@ impl Command {
     ///     Ok(serde_json::json!(data))
     /// })
     /// ```
+    ///
+    /// # Delivery contract
+    ///
+    /// For every `async_task` the MVU loop sees exactly one of:
+    ///
+    /// - `AsyncEvent(Ok(value))` when the future resolves successfully.
+    /// - `AsyncEvent(Err(value))` when the future resolves to `Err`,
+    ///   or when it panics (the runner and
+    ///   [`TestSession`](crate::test::TestSession) wrap the future
+    ///   in a panic guard that converts panics to
+    ///   `Err(json!({"error": "panic", "message": ...}))` instead of
+    ///   unwinding).
+    /// - Nothing at all if the task is cancelled via
+    ///   [`Command::cancel`] with the same `tag` before it completes.
     pub fn async_task<F, Fut>(tag: &str, f: F) -> Self
     where
         F: FnOnce() -> Fut + Send + 'static,
@@ -250,7 +264,25 @@ impl Command {
         }
     }
 
-    /// Cancel a running async task by tag.
+    /// Cancel a running async task or stream by tag.
+    ///
+    /// # Semantics
+    ///
+    /// Cancellation is best-effort:
+    ///
+    /// - If a task with `tag` is still queued (has not started
+    ///   running), it is dropped without running and no
+    ///   `AsyncEvent`/`StreamEvent` is delivered.
+    /// - If a task with `tag` is already in flight, the runner
+    ///   aborts it where possible. The task's result is discarded
+    ///   and no `AsyncEvent` is delivered. A panic racing
+    ///   cancellation is swallowed.
+    /// - If no task with `tag` exists, the command is a no-op.
+    ///
+    /// Tags are how `Command::async_task`, `Command::stream`, and
+    /// `Command::cancel` rendezvous. Reusing a tag while an earlier
+    /// task is still in flight replaces the earlier task (the
+    /// runner cancels it on the author's behalf).
     pub fn cancel(tag: &str) -> Self {
         Self::Cancel {
             tag: tag.to_string(),

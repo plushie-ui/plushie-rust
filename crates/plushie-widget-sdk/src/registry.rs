@@ -350,6 +350,26 @@ pub trait PlushieWidget<R: PlushieRenderer> {
         vec![]
     }
 
+    /// Subscriptions this widget wants active while `node` is in
+    /// the tree.
+    ///
+    /// The registry calls this during [`prepare_walk`](WidgetRegistry::prepare_walk)
+    /// each cycle. Each returned [`WidgetSubscription`] carries an
+    /// inner tag that the registry namespaces to
+    /// `widget:{window_id}#{scope}/{node_id}:{inner_tag}` before
+    /// handing to the subscription manager. Subscriptions disappear
+    /// automatically when the owning node leaves the tree.
+    ///
+    /// Default impl returns an empty `Vec`. Timers, animation frames,
+    /// and per-widget event listeners are the primary use case.
+    fn subscriptions(
+        &self,
+        _node: &TreeNode,
+        _ctx: &SubscribeCtx<'_>,
+    ) -> Vec<WidgetSubscription> {
+        vec![]
+    }
+
     /// Produce a fresh widget instance for a new multiplexed session.
     ///
     /// Each session gets its own widget with independent per-instance
@@ -394,6 +414,58 @@ impl HandleResult {
     /// Shorthand for "consumed the message, emit these events".
     pub fn emit(events: Vec<OutgoingEvent>) -> Self {
         HandleResult::Handled(events)
+    }
+}
+
+/// Context passed to [`PlushieWidget::subscriptions`].
+///
+/// Carries everything the widget needs to decide what to subscribe
+/// to: the window id the node lives under, the current theme (for
+/// theme-conditional subs), and a short "scope" string the registry
+/// uses when namespacing the tag.
+#[derive(Debug)]
+pub struct SubscribeCtx<'a> {
+    /// Window id the node belongs to. Empty for unwindowed nodes.
+    pub window_id: &'a str,
+    /// Current theme, for theme-conditional subscription choices.
+    pub theme: &'a Theme,
+    /// Short scope identifier included in the namespaced tag. Set
+    /// by the registry to the widget's primary type name.
+    pub scope: &'a str,
+}
+
+/// A subscription request returned from [`PlushieWidget::subscriptions`].
+///
+/// The registry namespaces `tag` into the global subscription key
+/// space as `widget:{window_id}#{scope}/{node_id}:{tag}`. `kind`
+/// names the event source (e.g. `"animation_frame"`, `"on_key_press"`)
+/// the widget wants to listen to. `max_rate` optionally caps delivery
+/// rate in events per second.
+#[derive(Debug, Clone)]
+pub struct WidgetSubscription {
+    /// Inner tag chosen by the widget. Human-readable; namespaced by
+    /// the registry before use.
+    pub tag: String,
+    /// Event source kind (e.g. `"animation_frame"`, `"on_key_press"`).
+    pub kind: String,
+    /// Optional rate cap in events per second. None = uncapped.
+    pub max_rate: Option<u32>,
+}
+
+impl WidgetSubscription {
+    /// Short-hand constructor.
+    pub fn new(kind: impl Into<String>, tag: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            tag: tag.into(),
+            max_rate: None,
+        }
+    }
+
+    /// Attach a delivery-rate cap (events per second).
+    pub fn with_max_rate(mut self, rate: u32) -> Self {
+        self.max_rate = Some(rate);
+        self
     }
 }
 
@@ -463,6 +535,27 @@ pub struct WidgetRegistry<R: PlushieRenderer = iced::Renderer> {
 
     /// Type name -> set name (for introspection/logging).
     provenance: HashMap<String, String>,
+
+    /// Active widget subscriptions collected during the most recent
+    /// [`prepare_walk`](Self::prepare_walk). Tag is the fully
+    /// namespaced key (`widget:{window_id}#{scope}/{node_id}:{inner}`);
+    /// value carries the kind, max_rate, and originating node_id so
+    /// the engine can route events back to the owning widget's
+    /// [`PlushieWidget::handle_message`].
+    active_widget_subs: HashMap<String, CollectedSubscription>,
+}
+
+/// A collected widget subscription, keyed by its namespaced tag.
+#[derive(Debug, Clone)]
+pub struct CollectedSubscription {
+    /// Event source kind (e.g. "animation_frame", "on_key_press").
+    pub kind: String,
+    /// Rate cap in events per second, if any.
+    pub max_rate: Option<u32>,
+    /// Node id that produced this subscription (routing target).
+    pub node_id: String,
+    /// Window id the node belongs to, for window-scoped delivery.
+    pub window_id: String,
 }
 
 /// Shared mutable context threaded through [`WidgetRegistry::prepare_walk_inner`].
@@ -475,6 +568,7 @@ struct PrepareWalkCtx<'a> {
     theme: &'a Theme,
     live_ids: std::collections::HashSet<String>,
     live_keys: std::collections::HashSet<(String, String)>,
+    widget_subs: HashMap<String, CollectedSubscription>,
 }
 
 impl<R: PlushieRenderer> WidgetRegistry<R> {
@@ -485,6 +579,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             type_index: HashMap::new(),
             node_factory_map: HashMap::new(),
             provenance: HashMap::new(),
+            active_widget_subs: HashMap::new(),
         }
     }
 
@@ -766,6 +861,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             type_index: new_type_index,
             node_factory_map: HashMap::new(),
             provenance: self.provenance.clone(),
+            active_widget_subs: HashMap::new(),
         }
     }
 
@@ -923,6 +1019,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             theme,
             live_ids: std::collections::HashSet::new(),
             live_keys: std::collections::HashSet::new(),
+            widget_subs: HashMap::new(),
         };
         self.prepare_walk_inner(root, "", &mut ctx, 0);
         ctx.shared.prune_shared(&ctx.live_ids);
@@ -953,6 +1050,17 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                 || {},
             );
         }
+
+        // Replace the active subscription set with the one gathered
+        // this walk. Subscriptions whose owning nodes left the tree
+        // are dropped automatically.
+        self.active_widget_subs = ctx.widget_subs;
+    }
+
+    /// Active widget subscriptions collected during the most recent
+    /// [`prepare_walk`](Self::prepare_walk). Keyed by namespaced tag.
+    pub fn active_widget_subscriptions(&self) -> &HashMap<String, CollectedSubscription> {
+        &self.active_widget_subs
     }
 
     fn prepare_walk_inner(
@@ -1009,6 +1117,44 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                 |widget| widget.prepare(node_ref, &window_id_owned, theme_ref),
                 || {},
             );
+
+            // Collect widget-scoped subscriptions. Immutable call so
+            // we drop through call_widget (panic isolation still
+            // active via the helper).
+            let scope = type_name.clone();
+            let sub_node_id = node.id.clone();
+            let sub_window_id = current_window_id.to_string();
+            let subs = self.call_widget(
+                &type_name,
+                "subscriptions",
+                &node.id,
+                |widget| {
+                    widget.subscriptions(
+                        node_ref,
+                        &SubscribeCtx {
+                            window_id: &sub_window_id,
+                            theme: theme_ref,
+                            scope: &scope,
+                        },
+                    )
+                },
+                Vec::new,
+            );
+            for sub in subs {
+                let full_tag = format!(
+                    "widget:{}#{}/{}:{}",
+                    sub_window_id, scope, sub_node_id, sub.tag,
+                );
+                ctx.widget_subs.insert(
+                    full_tag,
+                    CollectedSubscription {
+                        kind: sub.kind,
+                        max_rate: sub.max_rate,
+                        node_id: sub_node_id.clone(),
+                        window_id: sub_window_id.clone(),
+                    },
+                );
+            }
         }
 
         for child in &node.children {
@@ -1870,6 +2016,79 @@ mod tests {
         fn fresh_for_session(&self) -> Box<dyn PlushieWidget<iced::Renderer>> {
             Box::new(PanickingButton)
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Widget subscriptions
+    // ---------------------------------------------------------------------------
+
+    struct TimerWidget;
+
+    impl PlushieWidget<()> for TimerWidget {
+        fn type_names(&self) -> &[&str] {
+            &["timer"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("timer").into()
+        }
+
+        fn subscriptions(
+            &self,
+            _node: &TreeNode,
+            _ctx: &SubscribeCtx<'_>,
+        ) -> Vec<WidgetSubscription> {
+            vec![WidgetSubscription::new("animation_frame", "tick")]
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(TimerWidget)
+        }
+    }
+
+    #[test]
+    fn widget_subscriptions_collected_and_namespaced_during_prepare_walk() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TimerWidget));
+
+        let tree = tree(vec![leaf("t1", "timer")]);
+        let mut shared = crate::shared_state::SharedState::new();
+        registry.prepare_walk(&tree, &mut shared, &Theme::Dark);
+
+        let subs = registry.active_widget_subscriptions();
+        // Namespace shape: widget:{window_id}#{scope}/{node_id}:{inner}
+        let expected_key = "widget:#timer/t1:tick";
+        assert!(
+            subs.contains_key(expected_key),
+            "expected namespaced subscription key {expected_key}, got keys: {:?}",
+            subs.keys().collect::<Vec<_>>()
+        );
+        let collected = subs.get(expected_key).unwrap();
+        assert_eq!(collected.kind, "animation_frame");
+        assert_eq!(collected.node_id, "t1");
+    }
+
+    #[test]
+    fn widget_subscriptions_dropped_when_node_leaves_tree() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TimerWidget));
+
+        let mut shared = crate::shared_state::SharedState::new();
+
+        let first = tree(vec![leaf("t1", "timer")]);
+        registry.prepare_walk(&first, &mut shared, &Theme::Dark);
+        assert!(!registry.active_widget_subscriptions().is_empty());
+
+        let empty_tree = tree(vec![]);
+        registry.prepare_walk(&empty_tree, &mut shared, &Theme::Dark);
+        assert!(
+            registry.active_widget_subscriptions().is_empty(),
+            "subscription must go away once the owning node leaves the tree"
+        );
     }
 
     // ---------------------------------------------------------------------------

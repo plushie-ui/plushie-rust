@@ -57,7 +57,7 @@ pub enum OutgoingMessage {
         session: String,
         op: String,
         window_id: String,
-        settings: Value,
+        payload: Value,
     },
     Effect {
         session: String,
@@ -99,8 +99,8 @@ pub enum OutgoingMessage {
     },
     SystemQuery {
         session: String,
-        query: String,
-        id: String,
+        op: String,
+        payload: Value,
     },
     ImageOp {
         session: String,

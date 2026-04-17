@@ -915,15 +915,7 @@ mod tests {
         use rmpv::Value as RmpvValue;
 
         let pixel_bytes: Vec<u8> = vec![255, 0, 0, 255, 0, 255, 0, 255]; // 2 RGBA pixels
-        let msg = RmpvValue::Map(vec![
-            (
-                RmpvValue::String("type".into()),
-                RmpvValue::String("image_op".into()),
-            ),
-            (
-                RmpvValue::String("op".into()),
-                RmpvValue::String("create_image".into()),
-            ),
+        let payload = RmpvValue::Map(vec![
             (
                 RmpvValue::String("handle".into()),
                 RmpvValue::String("test_img".into()),
@@ -941,26 +933,30 @@ mod tests {
                 RmpvValue::Integer(2.into()),
             ),
         ]);
+        let msg = RmpvValue::Map(vec![
+            (
+                RmpvValue::String("type".into()),
+                RmpvValue::String("image_op".into()),
+            ),
+            (
+                RmpvValue::String("op".into()),
+                RmpvValue::String("create_image".into()),
+            ),
+            (RmpvValue::String("payload".into()), payload),
+        ]);
 
         let mut buf = Vec::new();
         rmpv::encode::write_value(&mut buf, &msg).unwrap();
 
         let decoded: crate::protocol::IncomingMessage = Codec::MsgPack.decode(&buf).unwrap();
         match decoded {
-            crate::protocol::IncomingMessage::ImageOp {
-                op,
-                handle,
-                pixels,
-                width,
-                height,
-                data,
-            } => {
+            crate::protocol::IncomingMessage::ImageOp { op, payload } => {
                 assert_eq!(op, "create_image");
-                assert_eq!(handle, "test_img");
-                assert_eq!(pixels, Some(pixel_bytes));
-                assert_eq!(width, Some(1));
-                assert_eq!(height, Some(2));
-                assert!(data.is_none());
+                assert_eq!(payload.handle, "test_img");
+                assert_eq!(payload.pixels, Some(pixel_bytes));
+                assert_eq!(payload.width, Some(1));
+                assert_eq!(payload.height, Some(2));
+                assert!(payload.data.is_none());
             }
             other => panic!("expected ImageOp, got {other:?}"),
         }
@@ -978,17 +974,19 @@ mod tests {
         let json_msg = json!({
             "type": "image_op",
             "op": "create_image",
-            "handle": "test_img",
-            "pixels": b64,
-            "width": 1,
-            "height": 1
+            "payload": {
+                "handle": "test_img",
+                "pixels": b64,
+                "width": 1,
+                "height": 1
+            }
         });
         let json_str = serde_json::to_string(&json_msg).unwrap();
 
         let decoded: IncomingMessage = Codec::Json.decode(json_str.as_bytes()).unwrap();
         match decoded {
-            IncomingMessage::ImageOp { pixels, .. } => {
-                assert_eq!(pixels, Some(pixel_bytes));
+            IncomingMessage::ImageOp { payload, .. } => {
+                assert_eq!(payload.pixels, Some(pixel_bytes));
             }
             other => panic!("expected ImageOp, got {other:?}"),
         }
@@ -1407,6 +1405,136 @@ mod tests {
         assert_eq!(decoded["type"], "test");
         assert_eq!(decoded["count"], 42);
         assert_eq!(decoded["nested"]["a"][0], 1);
+    }
+
+    // -- Per-variant round-trip tests ----------------------------------------
+    //
+    // Encode an OutgoingMessage via Codec::encode, decode it back through
+    // Codec::read_message + Codec::decode as the renderer would, and assert
+    // the variant shape survives framing + wire encoding. Catches schema
+    // drift between SDK senders and renderer decoders the moment it happens.
+
+    mod op_roundtrip {
+        use super::*;
+        use crate::protocol::IncomingMessage;
+        use plushie_core::outgoing_message::OutgoingMessage;
+        use std::io::Cursor;
+
+        fn roundtrip(codec: Codec, msg: &OutgoingMessage) -> IncomingMessage {
+            // encode produces length-prefixed framed bytes for msgpack or a
+            // newline-terminated line for JSON. read_message unwraps the frame
+            // and hands us payload bytes ready for decode.
+            let bytes = codec.encode(msg).expect("encode");
+            let mut cursor = Cursor::new(&bytes);
+            let frame = codec
+                .read_message(&mut cursor)
+                .expect("read_message io")
+                .expect("frame present");
+            codec.decode::<IncomingMessage>(&frame).expect("decode")
+        }
+
+        fn roundtrip_both(msg: OutgoingMessage) -> (IncomingMessage, IncomingMessage) {
+            (
+                roundtrip(Codec::Json, &msg),
+                roundtrip(Codec::MsgPack, &msg),
+            )
+        }
+
+        #[test]
+        fn widget_op_roundtrip() {
+            let out = OutgoingMessage::WidgetOp {
+                session: "s1".into(),
+                op: "focus".into(),
+                payload: json!({"target": "btn1"}),
+            };
+            let (j, m) = roundtrip_both(out);
+            match j {
+                IncomingMessage::WidgetOp { op, payload } => {
+                    assert_eq!(op, "focus");
+                    assert_eq!(payload["target"], "btn1");
+                }
+                other => panic!("expected WidgetOp, got {other:?}"),
+            }
+            assert!(matches!(m, IncomingMessage::WidgetOp { .. }));
+        }
+
+        #[test]
+        fn window_op_roundtrip() {
+            let out = OutgoingMessage::WindowOp {
+                session: "s1".into(),
+                op: "resize".into(),
+                window_id: "main".into(),
+                payload: json!({"width": 800, "height": 600}),
+            };
+            let (j, m) = roundtrip_both(out);
+            match j {
+                IncomingMessage::WindowOp {
+                    op,
+                    window_id,
+                    payload,
+                } => {
+                    assert_eq!(op, "resize");
+                    assert_eq!(window_id, "main");
+                    assert_eq!(payload["width"], 800);
+                }
+                other => panic!("expected WindowOp, got {other:?}"),
+            }
+            assert!(matches!(m, IncomingMessage::WindowOp { .. }));
+        }
+
+        #[test]
+        fn system_op_roundtrip() {
+            let out = OutgoingMessage::SystemOp {
+                session: "s1".into(),
+                op: "allow_automatic_tabbing".into(),
+                payload: json!({"enabled": true}),
+            };
+            let (j, m) = roundtrip_both(out);
+            match j {
+                IncomingMessage::SystemOp { op, payload } => {
+                    assert_eq!(op, "allow_automatic_tabbing");
+                    assert_eq!(payload["enabled"], true);
+                }
+                other => panic!("expected SystemOp, got {other:?}"),
+            }
+            assert!(matches!(m, IncomingMessage::SystemOp { .. }));
+        }
+
+        #[test]
+        fn system_query_roundtrip() {
+            let out = OutgoingMessage::SystemQuery {
+                session: "s1".into(),
+                op: "get_system_theme".into(),
+                payload: json!({"tag": "theme-check"}),
+            };
+            let (j, m) = roundtrip_both(out);
+            match j {
+                IncomingMessage::SystemQuery { op, payload } => {
+                    assert_eq!(op, "get_system_theme");
+                    assert_eq!(payload["tag"], "theme-check");
+                }
+                other => panic!("expected SystemQuery, got {other:?}"),
+            }
+            assert!(matches!(m, IncomingMessage::SystemQuery { .. }));
+        }
+
+        #[test]
+        fn image_op_roundtrip() {
+            let out = OutgoingMessage::ImageOp {
+                session: "s1".into(),
+                op: "delete".into(),
+                payload: json!({"handle": "sprite"}),
+            };
+            let (j, m) = roundtrip_both(out);
+            match j {
+                IncomingMessage::ImageOp { op, payload } => {
+                    assert_eq!(op, "delete");
+                    assert_eq!(payload.handle, "sprite");
+                }
+                other => panic!("expected ImageOp, got {other:?}"),
+            }
+            assert!(matches!(m, IncomingMessage::ImageOp { .. }));
+        }
     }
 
     // -- Property-based tests -------------------------------------------------

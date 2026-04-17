@@ -143,17 +143,15 @@ impl Bridge {
     }
 
     /// Send a window operation.
-    pub fn send_window_op(
-        &mut self,
-        op: &str,
-        window_id: &str,
-        settings: &Value,
-    ) -> io::Result<()> {
+    ///
+    /// Uses the unified `_op` envelope: op-specific data lives under
+    /// `payload`; routing fields (`op`, `window_id`) stay flat.
+    pub fn send_window_op(&mut self, op: &str, window_id: &str, payload: &Value) -> io::Result<()> {
         self.send(&OutgoingMessage::WindowOp {
             session: String::new(),
             op: op.to_string(),
             window_id: window_id.to_string(),
-            settings: settings.clone(),
+            payload: payload.clone(),
         })
     }
 

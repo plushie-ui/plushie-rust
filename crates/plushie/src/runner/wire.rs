@@ -490,8 +490,8 @@ fn execute_wire_renderer_op(
             };
             bridge.send(&OutgoingMessage::SystemQuery {
                 session: String::new(),
-                query: op_name.to_string(),
-                id: tag.to_string(),
+                op: op_name.to_string(),
+                payload: json!({"tag": tag}),
             })
         }
         RendererOp::Effect {

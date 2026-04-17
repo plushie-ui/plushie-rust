@@ -435,22 +435,28 @@ impl Core {
             IncomingMessage::WindowOp {
                 op,
                 window_id,
-                settings,
+                payload,
             } => {
                 log::debug!("window_op: {op} ({window_id})");
                 effects.push(CoreEffect::WindowOp {
                     op,
                     window_id,
-                    settings,
+                    settings: payload,
                 });
             }
-            IncomingMessage::SystemOp { op, settings } => {
+            IncomingMessage::SystemOp { op, payload } => {
                 log::debug!("system_op: {op}");
-                effects.push(CoreEffect::SystemOp { op, settings });
+                effects.push(CoreEffect::SystemOp {
+                    op,
+                    settings: payload,
+                });
             }
-            IncomingMessage::SystemQuery { op, settings } => {
+            IncomingMessage::SystemQuery { op, payload } => {
                 log::debug!("system_query: {op}");
-                effects.push(CoreEffect::SystemQuery { op, settings });
+                effects.push(CoreEffect::SystemQuery {
+                    op,
+                    settings: payload,
+                });
             }
             IncomingMessage::Settings { settings } => {
                 log::debug!("settings received");
@@ -511,22 +517,15 @@ impl Core {
                     .unwrap_or(Value::Null);
                 effects.push(CoreEffect::WidgetConfig(ext_config));
             }
-            IncomingMessage::ImageOp {
-                op,
-                handle,
-                data,
-                pixels,
-                width,
-                height,
-            } => {
-                log::debug!("image_op: {op} ({handle})");
+            IncomingMessage::ImageOp { op, payload } => {
+                log::debug!("image_op: {op} ({handle})", handle = payload.handle);
                 effects.push(CoreEffect::ImageOp {
                     op,
-                    handle,
-                    data,
-                    pixels,
-                    width,
-                    height,
+                    handle: payload.handle,
+                    data: payload.data,
+                    pixels: payload.pixels,
+                    width: payload.width,
+                    height: payload.height,
                 });
             }
             // Scripting messages handled by the renderer binary (daemon /

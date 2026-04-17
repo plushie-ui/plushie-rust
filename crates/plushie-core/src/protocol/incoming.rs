@@ -49,23 +49,31 @@ pub enum IncomingMessage {
         tag: Option<String>,
     },
     /// Perform a window operation (resize, move, close, etc.).
+    ///
+    /// Unified `_op` shape: envelope carries routing (`session`, `op`,
+    /// `window_id`); command-specific data is nested under `payload`.
     WindowOp {
         op: String,
         window_id: String,
         #[serde(default)]
-        settings: Value,
+        payload: Value,
     },
     /// Perform a system-wide operation that does not target a specific window.
+    ///
+    /// Unified `_op` shape: `payload` carries the command-specific data.
     SystemOp {
         op: String,
         #[serde(default)]
-        settings: Value,
+        payload: Value,
     },
     /// Run a system-wide query that does not target a specific window.
+    ///
+    /// Unified `_op` shape: `payload` carries the command-specific data
+    /// (e.g. `{"tag": "..."}`).
     SystemQuery {
         op: String,
         #[serde(default)]
-        settings: Value,
+        payload: Value,
     },
     /// Apply or update renderer settings.
     Settings { settings: Value },
@@ -104,19 +112,20 @@ pub enum IncomingMessage {
     Reset { id: String },
     /// Image operation (create, update, delete in-memory image handles).
     ///
-    /// Binary fields (`data`, `pixels`) accept either raw bytes (from msgpack)
-    /// or base64-encoded strings (from JSON). The custom deserializer handles both.
+    /// Unified `_op` shape: `payload` carries op-specific fields.
+    ///
+    /// Payload shapes:
+    /// - `create_from_bytes` / `update`: `{handle, data}` (bytes field,
+    ///   either msgpack binary or base64-encoded string in JSON).
+    /// - `create_from_rgba` / `update_raw`: `{handle, pixels, width, height}`
+    ///   (pixels is RGBA bytes).
+    /// - `delete`: `{handle}`.
+    /// - `list`: `{tag}`.
+    /// - `clear`: `{}`.
     ImageOp {
         op: String,
-        handle: String,
-        #[serde(default, deserialize_with = "deserialize_binary_field")]
-        data: Option<Vec<u8>>,
-        #[serde(default, deserialize_with = "deserialize_binary_field")]
-        pixels: Option<Vec<u8>>,
         #[serde(default)]
-        width: Option<u32>,
-        #[serde(default)]
-        height: Option<u32>,
+        payload: ImageOpPayload,
     },
     /// A widget-targeted command (focus, scroll, text, native widget, etc).
     /// Bypasses the normal tree update / diff / patch cycle.
@@ -150,6 +159,27 @@ pub struct CommandItem {
     pub family: String,
     #[serde(default)]
     pub value: Value,
+}
+
+/// Payload of an [`IncomingMessage::ImageOp`] message.
+///
+/// Fields are union-style: individual ops use a subset. `data` and
+/// `pixels` accept either raw bytes (msgpack binary) or base64-encoded
+/// strings (JSON); see [`deserialize_binary_field`].
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ImageOpPayload {
+    #[serde(default)]
+    pub handle: String,
+    #[serde(default, deserialize_with = "deserialize_binary_field")]
+    pub data: Option<Vec<u8>>,
+    #[serde(default, deserialize_with = "deserialize_binary_field")]
+    pub pixels: Option<Vec<u8>>,
+    #[serde(default)]
+    pub width: Option<u32>,
+    #[serde(default)]
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -470,37 +500,37 @@ mod tests {
             "type": "window_op",
             "op": "resize",
             "window_id": "main",
-            "settings": { "width": 800, "height": 600 }
+            "payload": { "width": 800, "height": 600 }
         }))
         .unwrap();
         match msg {
             IncomingMessage::WindowOp {
                 op,
                 window_id,
-                settings,
+                payload,
             } => {
                 assert_eq!(op, "resize");
                 assert_eq!(window_id, "main");
-                assert_eq!(settings["width"], 800);
-                assert_eq!(settings["height"], 600);
+                assert_eq!(payload["width"], 800);
+                assert_eq!(payload["height"], 600);
             }
             _ => panic!("expected WindowOp"),
         }
     }
 
     #[test]
-    fn deserialize_window_op_no_settings() {
+    fn deserialize_window_op_no_payload() {
         let json = r#"{"type":"window_op","op":"close","window_id":"popup"}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
         match msg {
             IncomingMessage::WindowOp {
                 op,
                 window_id,
-                settings,
+                payload,
             } => {
                 assert_eq!(op, "close");
                 assert_eq!(window_id, "popup");
-                assert!(settings.is_null());
+                assert!(payload.is_null());
             }
             _ => panic!("expected WindowOp"),
         }

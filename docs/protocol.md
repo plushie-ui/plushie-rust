@@ -575,13 +575,16 @@ use the `op_query_response` outgoing message type.
 
 Manage windows directly (outside of tree-driven sync).
 
+Uses the unified `_op` envelope: op-specific data lives under
+`payload`; the `window_id` addressing field stays flat beside `op`.
+
 ```json
 {
   "type": "window_op",
   "session": "s1",
   "op": "open",
   "window_id": "win-1",
-  "settings": { "width": 800, "height": 600, "title": "New Window" }
+  "payload": { "width": 800, "height": 600, "title": "New Window" }
 }
 ```
 
@@ -626,19 +629,21 @@ Manage windows directly (outside of tree-driven sync).
 | `monitor_size` | width, height (logical pixels) |
 | `set_icon` | icon_data (base64 RGBA), width, height |
 
-These accept an optional `request_id` field in settings, echoed
+These accept an optional `request_id` field in the payload, echoed
 back in the response for correlation.
 
 ### SystemOp
 
 Run a system-level operation that is not tied to a specific window.
 
+Uses the unified `_op` envelope: op-specific data lives under `payload`.
+
 ```json
 {
   "type": "system_op",
   "session": "s1",
   "op": "allow_automatic_tabbing",
-  "settings": { "enabled": true }
+  "payload": { "enabled": true }
 }
 ```
 
@@ -652,12 +657,14 @@ Run a system-level operation that is not tied to a specific window.
 
 Query system-level state that is not tied to a specific window.
 
+Uses the unified `_op` envelope: query-specific data lives under `payload`.
+
 ```json
 {
   "type": "system_query",
   "session": "s1",
   "op": "get_system_theme",
-  "settings": { "tag": "theme-check" }
+  "payload": { "tag": "theme-check" }
 }
 ```
 
@@ -718,13 +725,18 @@ beyond `title` and `body`:
 
 Manage in-memory image handles for use by image widgets.
 
+Uses the unified `_op` envelope: op-specific data (including the image
+`handle`, `data`, `pixels`, `width`, `height`) lives under `payload`.
+
 ```json
 {
   "type": "image_op",
   "session": "s1",
   "op": "create_image",
-  "handle": "sprite-1",
-  "data": "<base64-encoded PNG/JPEG bytes>"
+  "payload": {
+    "handle": "sprite-1",
+    "data": "<base64-encoded PNG/JPEG bytes>"
+  }
 }
 ```
 
@@ -735,10 +747,12 @@ Or with raw RGBA pixels:
   "type": "image_op",
   "session": "s1",
   "op": "create_image",
-  "handle": "sprite-1",
-  "pixels": "<base64-encoded RGBA bytes>",
-  "width": 64,
-  "height": 64
+  "payload": {
+    "handle": "sprite-1",
+    "pixels": "<base64-encoded RGBA bytes>",
+    "width": 64,
+    "height": 64
+  }
 }
 ```
 

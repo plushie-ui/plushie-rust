@@ -73,11 +73,11 @@ impl Widget for StarRating {
             }
             Some(Enter(id)) if id.starts_with("star-") => {
                 state.hover = id["star-".len()..].parse::<usize>().ok().map(|n| n + 1);
-                EventResult::UpdateState
+                EventResult::Consumed
             }
             Some(Exit(_)) => {
                 state.hover = None;
-                EventResult::UpdateState
+                EventResult::Consumed
             }
             _ => EventResult::Ignored,
         }

@@ -243,10 +243,6 @@ impl<A: App> DirectApp<A> {
             Some(Interception {
                 result: WidgetEventResult::Consumed,
                 ..
-            })
-            | Some(Interception {
-                result: WidgetEventResult::UpdateState,
-                ..
             }) => None,
             Some(Interception {
                 result: WidgetEventResult::Emit { family, value },

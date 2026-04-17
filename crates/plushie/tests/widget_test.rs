@@ -101,12 +101,6 @@ fn event_result_emit_carries_family_and_value() {
 }
 
 #[test]
-fn event_result_update_state_is_constructible() {
-    let result = EventResult::UpdateState;
-    assert!(matches!(result, EventResult::UpdateState));
-}
-
-#[test]
 fn event_result_consumed_is_constructible() {
     let result = EventResult::Consumed;
     assert!(matches!(result, EventResult::Consumed));

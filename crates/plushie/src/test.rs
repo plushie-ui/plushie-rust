@@ -360,10 +360,6 @@ impl<A: App> TestSession<A> {
             Some(Interception {
                 result: EventResult::Consumed,
                 ..
-            })
-            | Some(Interception {
-                result: EventResult::UpdateState,
-                ..
             }) => {
                 // Widget handled it; don't deliver to app.
                 Command::None

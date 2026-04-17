@@ -116,12 +116,16 @@ pub trait Widget: Send + Sync + 'static {
 // ---------------------------------------------------------------------------
 
 /// The result of handling an event in a composite widget.
+///
+/// To update internal state, mutate the `&mut Self::State` argument
+/// in `handle_event` directly and return `Consumed` (or `Emit` if
+/// the event also emits upward). There is no separate `UpdateState`
+/// variant: it would be redundant with mutating state and returning
+/// `Consumed`.
 #[derive(Debug)]
 pub enum EventResult {
     /// Emit a transformed event to the parent.
     Emit { family: String, value: Value },
-    /// Update internal state only (no event emitted).
-    UpdateState,
     /// Event handled and suppressed.
     Consumed,
     /// Event not handled, pass to parent unchanged.

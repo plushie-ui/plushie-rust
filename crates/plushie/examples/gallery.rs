@@ -85,8 +85,8 @@ impl App for Gallery {
                         .child(
                             row()
                                 .spacing(16.0)
-                                .child(checkbox("check", model.checked))
-                                .child(toggler("toggler", model.toggled)),
+                                .child(checkbox("check", model.checked).label("I agree"))
+                                .child(toggler("toggler", model.toggled).label("Enable")),
                         )
                         // Slider
                         .child(section("Slider"))

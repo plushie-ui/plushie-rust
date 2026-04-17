@@ -78,6 +78,13 @@ pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
     let radio_groups = collect_radio_groups(&result);
     let rewritten = rewrite_a11y(&result, "", &declared_ids, &radio_groups, &mut warnings, 0);
 
+    // Third pass: walk the finished tree looking for interactive
+    // widgets that have no accessible name at all. Emits
+    // `missing_accessible_name` diagnostics with the scoped ID of
+    // the offender. Catches icon-only toolbars that would otherwise
+    // render a focusable node with no screen-reader label.
+    check_missing_accessible_name(&rewritten, &mut warnings);
+
     (rewritten, warnings)
 }
 
@@ -418,6 +425,87 @@ fn resolve_ref(raw: &str, scope: &str) -> String {
     }
 }
 
+/// Walk the tree, emit `missing_accessible_name` diagnostics for
+/// interactive widgets that would render without any name a screen
+/// reader can announce.
+///
+/// Checked widget types:
+///
+/// - `button`, `pointer_area`: need either a text child, a `label`
+///   prop, `a11y.label`, or `a11y.labelled_by`.
+/// - `toggler`, `checkbox`: same as above (their native role is
+///   announced, but the *name* still needs to come from somewhere).
+///
+/// Canvas interactive elements have their own diagnostic in
+/// `canvas/interaction.rs`; this check skips them.
+fn check_missing_accessible_name(node: &TreeNode, warnings: &mut Vec<String>) {
+    fn walk(node: &TreeNode, warnings: &mut Vec<String>) {
+        if widget_requires_accessible_name(&node.type_name) && !has_accessible_name(node) {
+            warnings.push(format!(
+                "missing_accessible_name: {type_name} \"{id}\" has no \
+                 label, text child, a11y.label, or a11y.labelled_by; \
+                 screen readers will announce no name",
+                type_name = node.type_name,
+                id = node.id,
+            ));
+        }
+        for child in &node.children {
+            walk(child, warnings);
+        }
+    }
+    walk(node, warnings);
+}
+
+fn widget_requires_accessible_name(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "button" | "toggler" | "checkbox" | "pointer_area"
+    )
+}
+
+/// Returns true if the node carries any source of accessible name.
+fn has_accessible_name(node: &TreeNode) -> bool {
+    // A `label` prop (checkbox / toggler carry their text here).
+    if node.props.get_str("label").is_some_and(|s| !s.is_empty()) {
+        return true;
+    }
+    // An a11y override with label or labelled_by.
+    if let Some(a11y) = node.props.get_value("a11y") {
+        if a11y
+            .get("label")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty())
+        {
+            return true;
+        }
+        if a11y
+            .get("labelled_by")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty())
+        {
+            return true;
+        }
+    }
+    // A non-empty text child anywhere in the subtree.
+    fn has_text_child(n: &TreeNode) -> bool {
+        for child in &n.children {
+            if child.type_name == "text"
+                && child
+                    .props
+                    .get_str("content")
+                    .is_some_and(|s| !s.is_empty())
+            {
+                return true;
+            }
+            if has_text_child(child) {
+                return true;
+            }
+        }
+        false
+    }
+    has_text_child(node)
+}
+
 /// Built-in widget-type -> accessible-role map.
 ///
 /// Uses the same role-name strings as iced's native `convert_role`
@@ -505,7 +593,10 @@ mod tests {
             vec![node("btn", "button", vec![])],
         );
         let (result, warnings) = normalize(&tree);
-        assert!(warnings.is_empty());
+        // The unnamed button triggers missing_accessible_name; that's
+        // expected given no label/text child, and is the only warning.
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("missing_accessible_name"));
         assert_eq!(result.children[0].id, "btn");
     }
 
@@ -568,8 +659,8 @@ mod tests {
             vec![node("btn", "button", vec![]), node("btn", "button", vec![])],
         );
         let (_, warnings) = normalize(&tree);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("duplicate ID"));
+        // Two unnamed buttons also trigger missing_accessible_name.
+        assert!(warnings.iter().any(|w| w.contains("duplicate ID")));
     }
 
     #[test]
@@ -721,6 +812,55 @@ mod tests {
                 .collect();
             assert_eq!(ids, vec!["form/r1", "form/r2", "form/r3"]);
         }
+    }
+
+    #[test]
+    fn missing_accessible_name_diagnostic_for_icon_only_button() {
+        let tree = node("root", "column", vec![node("save", "button", vec![])]);
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("missing_accessible_name") && w.contains("save")),
+            "expected missing_accessible_name for icon-only button, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn button_with_text_child_does_not_warn() {
+        let text_child = TreeNode {
+            id: "auto:text:1".to_string(),
+            type_name: "text".to_string(),
+            props: json!({"content": "Save"}).into(),
+            children: vec![],
+        };
+        let button = TreeNode {
+            id: "save".to_string(),
+            type_name: "button".to_string(),
+            props: json!({}).into(),
+            children: vec![text_child],
+        };
+        let tree = node("root", "column", vec![button]);
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            warnings.is_empty(),
+            "button with text child should be named; got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn checkbox_with_label_prop_does_not_warn() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "agree",
+                "checkbox",
+                json!({"label": "I agree", "checked": false}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(warnings.is_empty(), "got {warnings:?}");
     }
 
     #[test]

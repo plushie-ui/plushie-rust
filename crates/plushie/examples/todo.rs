@@ -132,7 +132,7 @@ fn todo_row(todo: &TodoItem) -> View {
         .child(
             row()
                 .spacing(8.0)
-                .child(checkbox("toggle", todo.done))
+                .child(checkbox("toggle", todo.done).a11y(&A11y::new().label(&todo.text)))
                 .child(text(&todo.text))
                 .child(button("delete", "x")),
         )

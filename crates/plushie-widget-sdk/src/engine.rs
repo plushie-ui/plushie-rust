@@ -192,6 +192,17 @@ pub struct Core {
     /// immediately without executing the real effect. Used for testing
     /// and scripting.
     pub effect_stubs: HashMap<String, Value>,
+    /// Per-session prop-validation override.
+    ///
+    /// `Some(true)` enables validation, `Some(false)` disables it.
+    /// `None` falls back to the process-wide
+    /// [`is_validate_props_enabled`](crate::validate::is_validate_props_enabled)
+    /// check (which itself defaults to `cfg(debug_assertions)` when
+    /// no global value has been set). The per-session override
+    /// isolates tests that run in the same process but need
+    /// different validation behaviour; the global flag is kept as a
+    /// fallback so no existing consumer regresses.
+    pub validate_props: Option<bool>,
 }
 
 impl Default for Core {
@@ -213,6 +224,18 @@ impl Core {
             cached_theme_hash: None,
             settings_applied: false,
             effect_stubs: HashMap::new(),
+            validate_props: None,
+        }
+    }
+
+    /// Resolve whether prop validation should run for this session.
+    ///
+    /// Checks the per-session override first; falls back to the
+    /// process-wide flag for backwards compatibility.
+    pub fn is_validate_props_enabled(&self) -> bool {
+        match self.validate_props {
+            Some(v) => v,
+            None => crate::validate::is_validate_props_enabled(),
         }
     }
 
@@ -353,7 +376,7 @@ impl Core {
                 }
                 self.caches.clear();
                 if let Some(root) = self.tree.root()
-                    && crate::validate::is_validate_props_enabled()
+                    && self.is_validate_props_enabled()
                 {
                     Self::emit_prop_validation_warnings(root, &mut effects);
                 }
@@ -373,7 +396,7 @@ impl Core {
                     self.resolve_and_cache_theme(&theme_val, &mut effects);
                 }
                 if let Some(root) = self.tree.root()
-                    && crate::validate::is_validate_props_enabled()
+                    && self.is_validate_props_enabled()
                 {
                     Self::emit_prop_validation_warnings(root, &mut effects);
                 }
@@ -496,6 +519,14 @@ impl Core {
                 self.default_font = settings.get("default_font").map(|v| {
                     resolve_font_with_fallback(v, /* known_loaded = */ &[])
                 });
+                // Per-session validate_props override. If the host
+                // sends the field, store it locally; it takes
+                // precedence over the process-global OnceLock so
+                // parallel test sessions in the same process can run
+                // with different validation modes.
+                if let Some(flag) = settings.get("validate_props").and_then(|v| v.as_bool()) {
+                    self.validate_props = Some(flag);
+                }
                 let ext_config = settings
                     .get("widget_config")
                     .cloned()

@@ -155,6 +155,13 @@ struct Session<R: PlushieRenderer> {
     /// Current keyboard modifier state, updated on every ModifiersChanged
     /// event. Included on all outgoing pointer events.
     current_modifiers: iced::keyboard::Modifiers,
+    /// Number of fonts this session has loaded via load_font.
+    ///
+    /// Attribution is per-session; the cap itself is process-global
+    /// because iced's font system is process-global. When a specific
+    /// session hits the cap, only that session gets a font_cap_exceeded
+    /// error, not every other session in the process.
+    fonts_loaded: u32,
 }
 
 impl<R: PlushieRenderer> Session<R> {
@@ -202,6 +209,7 @@ impl<R: PlushieRenderer> Session<R> {
             writer,
             ui,
             mode,
+            fonts_loaded: 0,
             transition_manager: plushie_widget_sdk::animation::TransitionManager::new(),
             current_modifiers: iced::keyboard::Modifiers::default(),
         }
@@ -615,7 +623,7 @@ fn handle_message<R: PlushieRenderer>(
                         ref op,
                         ref payload,
                     } if op == "load_font" => {
-                        load_font_from_payload(payload);
+                        load_font_from_payload(s, session_id, payload);
                     }
                     CoreEffect::WidgetOp {
                         ref op,
@@ -1146,8 +1154,19 @@ static LOADED_FONT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::Atom
 /// Load a font from a `load_font` WidgetOp payload (base64 or binary data).
 ///
 /// Every outcome is logged with a `[code=...]` tag so host SDKs can
-/// filter font lifecycle events.
-fn load_font_from_payload(payload: &serde_json::Value) {
+/// filter font lifecycle events. When the process-wide cap is hit, an
+/// outgoing `session_error` with code `font_cap_exceeded` is emitted
+/// to the specific session that tripped it.
+///
+/// The counter is bumped both per-session (`session.fonts_loaded`) and
+/// process-wide (`LOADED_FONT_COUNT`) so the cap is enforced globally
+/// but attribution is local; hosts can tell which session exhausted
+/// the budget.
+fn load_font_from_payload<R: PlushieRenderer>(
+    session: &mut Session<R>,
+    session_id: &str,
+    payload: &serde_json::Value,
+) {
     let Some(data_val) = payload.get("data") else {
         log::error!("[code=font_load_failed] load_font: missing 'data' field");
         return;
@@ -1169,18 +1188,31 @@ fn load_font_from_payload(payload: &serde_json::Value) {
         return;
     }
     if LOADED_FONT_COUNT.load(std::sync::atomic::Ordering::Relaxed) >= MAX_LOADED_FONTS {
-        log::error!(
-            "[code=font_load_failed] load_font: already loaded {MAX_LOADED_FONTS} fonts, \
-             rejecting to prevent unbounded memory growth"
+        let msg = format!(
+            "load_font rejected: process-wide cap of {MAX_LOADED_FONTS} fonts reached \
+             (this session has loaded {})",
+            session.fonts_loaded
         );
+        log::error!("[code=font_cap_exceeded] session '{session_id}': {msg}");
+        // Emit a session_error so the specific session knows it hit
+        // the cap rather than silently failing. The cap is shared
+        // across all sessions; other sessions are unaffected.
+        let event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
+            "session_error",
+            "",
+            Some(serde_json::json!({ "code": "font_cap_exceeded", "error": msg })),
+        );
+        let _ = session.writer.emit(&event.with_session(session_id));
         return;
     }
     LOADED_FONT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    session.fonts_loaded = session.fonts_loaded.saturating_add(1);
     let len = bytes.len();
     load_font_bytes(bytes);
-    // TODO(M-6): emit structured diagnostic event (code=font_loaded)
-    // once the M-6 stream is wired.
-    log::info!("[code=font_loaded] loaded font ({len} bytes)");
+    log::info!(
+        "[code=font_loaded] session '{session_id}': loaded font ({len} bytes, session total {})",
+        session.fonts_loaded
+    );
 }
 
 /// Register font bytes with the global font system.

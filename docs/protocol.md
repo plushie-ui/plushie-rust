@@ -100,6 +100,42 @@ thread exits.
 
 - Confirms the old session has fully torn down.
 - The host should wait for this before recycling the session ID.
+- Delivery is best-effort: if the renderer's stdout writer is already
+  gone by the time the session thread tries to emit `session_closed`,
+  the event is dropped. Hosts that wait for `session_closed` before
+  reusing the session ID should apply a timeout and fall back on a
+  plain `session_error` observation.
+
+**session_error code field**: `session_error` events include a
+stable `code` field in the payload so hosts can match by code rather
+than error text. Current codes:
+
+| Code | Meaning |
+|------|---------|
+| `max_sessions_reached` | `--max-sessions` limit reached |
+| `session_reset_in_progress` | New message arrived while the session is closing from Reset; wait for `session_closed` before reusing the ID |
+| `session_panic` | Session thread panicked; `error` carries the panic payload |
+| `session_backpressure_overflow` | Per-session queue + pending buffer both full; session ejected |
+| `session_channel_closed` | Session thread exited unexpectedly |
+| `writer_dead` | Renderer's stdout writer thread exited; affects every active session |
+| `font_cap_exceeded` | Process-wide `load_font` cap reached; this session tried to load another font |
+
+### Multiplex test-harness notes
+
+Multi-session mode is primarily a test-harness feature, so a few
+process-level resources are shared across sessions:
+
+- **Fonts.** iced's font system is a process-global. Every
+  `load_font` goes into the same backing store, so session A's
+  fonts are visible to session B's render. Tests that care about
+  isolation should load all required fonts at shared-setup time
+  before any concurrent session starts. The cap
+  (`load_font`-per-process) is global; per-session attribution is
+  reported via `font_cap_exceeded`.
+- **Clipboard and notifications.** OS-level singletons. Tests
+  should stub these via `register_effect_stub` to avoid both
+  cross-session contamination and the session-thread stall that
+  native clipboard APIs can cause.
 
 ---
 

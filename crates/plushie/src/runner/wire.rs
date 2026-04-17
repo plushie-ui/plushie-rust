@@ -156,7 +156,7 @@ fn run_wire_inner<A: App>(
         if restart_count > 0 {
             sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
         }
-        apply_wire_sub_ops(&mut bridge, sub_manager.sync(new_subs))?;
+        apply_wire_sub_ops(&mut bridge, &mut async_mgr, sub_manager.sync(new_subs))?;
 
         // After a restart, flush all in-flight effects with
         // RendererRestarted so the app can react (image re-upload,
@@ -389,7 +389,7 @@ fn process_event<A: App>(
 
     // Sync subscriptions.
     let new_subs = A::subscribe(model);
-    apply_wire_sub_ops(bridge, sub_manager.sync(new_subs))?;
+    apply_wire_sub_ops(bridge, async_mgr, sub_manager.sync(new_subs))?;
 
     Ok(())
 }
@@ -659,6 +659,13 @@ struct AsyncTaskManager {
     /// Aborted when a response arrives so the deadline task does
     /// not fire for a completed effect.
     effect_timeouts: HashMap<String, tokio::task::JoinHandle<()>>,
+    /// Recurring-timer tasks keyed by subscription tag.
+    ///
+    /// Each tagged `Subscription::every` spawns a tokio interval
+    /// task that pushes a `SinkEvent::DelayedEvent` carrying a
+    /// timer-tick event on each fire. Aborted on `stop_timer` or
+    /// AsyncTaskManager drop.
+    timers: HashMap<String, tokio::task::JoinHandle<()>>,
 }
 
 #[cfg(feature = "wire")]
@@ -687,6 +694,7 @@ impl AsyncTaskManager {
             rx,
             running: HashMap::new(),
             effect_timeouts: HashMap::new(),
+            timers: HashMap::new(),
         }
     }
 
@@ -720,6 +728,53 @@ impl AsyncTaskManager {
     /// scheduled SinkEvent::EffectTimeout is never emitted.
     fn cancel_effect_timeout(&mut self, wire_id: &str) {
         if let Some(handle) = self.effect_timeouts.remove(wire_id) {
+            handle.abort();
+        }
+    }
+
+    /// Start a recurring SDK-side timer for [`Subscription::every`].
+    ///
+    /// Spawns a tokio interval task on the runtime that pushes a
+    /// `SinkEvent::DelayedEvent(Event::Timer(...))` on each tick. The
+    /// main event loop picks those up via [`Self::drain`] and routes
+    /// them through the same path as async results.
+    ///
+    /// Replaces any existing timer with the same tag (matches the
+    /// direct mode behaviour where `active_timers.insert` replaces).
+    fn start_timer(&mut self, tag: String, interval: std::time::Duration) {
+        if let Some(handle) = self.timers.remove(&tag) {
+            handle.abort();
+        }
+        let tx = self.tx.clone();
+        let tag_for_task = tag.clone();
+        let handle = self.runtime.handle().spawn(async move {
+            let mut ticker = tokio::time::interval(interval);
+            // Skip the immediate tick (tokio::interval fires once at
+            // start); users expect the first fire to land after
+            // `interval` has elapsed, matching iced's `time::every`.
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let event = Event::Timer(crate::event::TimerEvent {
+                    tag: tag_for_task.clone(),
+                    timestamp,
+                });
+                if tx.send(SinkEvent::DelayedEvent(event)).is_err() {
+                    // Main loop tore down; stop ticking.
+                    break;
+                }
+            }
+        });
+        self.timers.insert(tag, handle);
+    }
+
+    /// Stop a recurring timer by tag.
+    fn stop_timer(&mut self, tag: &str) {
+        if let Some(handle) = self.timers.remove(tag) {
             handle.abort();
         }
     }
@@ -1170,9 +1225,16 @@ fn build_settings<A: App>() -> Value {
 }
 
 /// Apply subscription operations by sending wire messages.
+///
+/// Subscribe / Unsubscribe go over the wire to the renderer.
+/// StartTimer / StopTimer are SDK-side only and flow into the
+/// AsyncTaskManager's runtime for recurring delivery; each tick
+/// pushes a `SinkEvent::DelayedEvent` that the main loop drains
+/// alongside async results.
 #[cfg(feature = "wire")]
 fn apply_wire_sub_ops(
     bridge: &mut Bridge,
+    async_mgr: &mut AsyncTaskManager,
     ops: Vec<crate::runtime::subscriptions::SubOp>,
 ) -> crate::Result {
     use crate::runtime::subscriptions::SubOp;
@@ -1189,8 +1251,11 @@ fn apply_wire_sub_ops(
             SubOp::Unsubscribe { kind, tag } => {
                 bridge.send_unsubscribe(&kind, &tag)?;
             }
-            SubOp::StartTimer { tag, .. } | SubOp::StopTimer { tag, .. } => {
-                log::debug!("timer subscription not yet implemented in wire mode: {tag}");
+            SubOp::StartTimer { tag, interval } => {
+                async_mgr.start_timer(tag, interval);
+            }
+            SubOp::StopTimer { tag } => {
+                async_mgr.stop_timer(&tag);
             }
         }
     }

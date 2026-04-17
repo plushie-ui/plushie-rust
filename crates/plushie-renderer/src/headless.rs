@@ -1289,8 +1289,41 @@ fn run_single<R: PlushieRenderer>(
     let _ = writer_handle.join();
 }
 
+// ---------------------------------------------------------------------------
+// Multiplex machinery: dispatch, lifecycle, and back-channel signals
+// ---------------------------------------------------------------------------
+
+/// Per-session capacity for the reader -> session channel.
+///
+/// Reader never blocks on a single session: messages are pushed via
+/// `try_send`; if full, the pending buffer at [`PENDING_BUFFER_CAP`]
+/// absorbs the burst. If both the channel and the pending buffer are
+/// full, the session is ejected with a backpressure-overflow error.
+const SESSION_CHANNEL_CAP: usize = 512;
+
+/// Per-session overflow buffer. The reader drops into this buffer when
+/// the primary channel is full and flushes from it on the next read
+/// iteration. Each session can absorb up to
+/// `SESSION_CHANNEL_CAP + PENDING_BUFFER_CAP` queued messages before
+/// the dispatcher gives up and ejects it.
+const PENDING_BUFFER_CAP: usize = 512;
+
+/// Signals emitted by session threads for the reader to act on.
+enum SessionSignal {
+    /// Session finished normally (may or may not have emitted panic
+    /// event before). Reader removes it from `closing_sessions` so the
+    /// host can reuse the ID.
+    Closed(String),
+    /// Session thread panicked; the panic event has already been sent
+    /// to the writer. Reader proactively removes dispatch entry so a
+    /// follow-up message on the same ID doesn't silently create a new
+    /// session; it gets a structured rejection instead.
+    Panicked(String),
+}
+
 /// Multiplexed event loop (max_sessions > 1). Reader thread dispatches
 /// to per-session threads. Writer thread serializes output to stdout.
+#[allow(clippy::too_many_lines)]
 fn run_multiplexed<R: PlushieRenderer>(
     codec: Codec,
     mode: Mode,
@@ -1299,29 +1332,107 @@ fn run_multiplexed<R: PlushieRenderer>(
     initial: crate::startup::InitialSettings,
     session_factory: Option<plushie_widget_sdk::app::SessionRegistryFactory<R>>,
 ) {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     // Writer thread: drains the channel and writes to stdout.
     // Bounded channel (256) since this is the aggregation point for all
     // sessions; back-pressure blocks session threads when stdout is slow.
+    //
+    // `writer_alive` is toggled to false when the writer exits (EOF or
+    // write error). Session threads and the reader check it before
+    // enqueueing to avoid blocking on a dead channel.
+    let writer_alive = Arc::new(AtomicBool::new(true));
     let (writer_tx, writer_rx) = mpsc::sync_channel::<Vec<u8>>(256);
+    let writer_alive_for_thread = writer_alive.clone();
     let writer_handle = thread::spawn(move || {
         for bytes in writer_rx {
             if plushie_renderer_lib::emitters::write_output(&bytes).is_err() {
                 break;
             }
         }
+        // Flag down whether we broke out early or the channel closed.
+        writer_alive_for_thread.store(false, Ordering::SeqCst);
     });
 
-    // Session dispatch table: session_id -> sender to that session's thread.
-    let mut sessions: HashMap<String, mpsc::SyncSender<IncomingMessage>> = HashMap::new();
+    // Writer -> reader signal channel. Used by session threads to
+    // inform the reader when they close so the reader can proactively
+    // clean up its dispatch map (avoiding F-04's "host sees errors on
+    // unrelated follow-ups"), and to unblock the Reset / closing_sessions
+    // lifecycle (F-02).
+    let (signal_tx, signal_rx) = mpsc::channel::<SessionSignal>();
+
+    // Session dispatch table: session_id -> primary sender + pending
+    // overflow buffer. The pending buffer absorbs bursts when the
+    // primary channel is full so the reader never blocks on a single
+    // slow session.
+    struct Dispatch {
+        tx: mpsc::SyncSender<IncomingMessage>,
+        pending: VecDeque<IncomingMessage>,
+    }
+    let mut sessions: HashMap<String, Dispatch> = HashMap::new();
     let mut session_handles: Vec<thread::JoinHandle<()>> = Vec::new();
+
+    // Sessions that received Reset and are waiting on session_closed.
+    // New messages for an ID in this set are rejected with
+    // `session_reset_in_progress` until the session thread reports
+    // Closed on the signal channel.
+    let mut closing_sessions: HashSet<String> = HashSet::new();
 
     // The initial Settings was already validated by the startup gate.
     // Feed it as the first message so the first session gets Core.apply().
     let mut pending_initial_settings = Some(initial.into_incoming_message());
 
+    // Helper: emit a structured session_error on the writer channel.
+    let emit_session_error =
+        |writer_tx: &mpsc::SyncSender<Vec<u8>>, session_id: &str, code: &str, message: &str| {
+            let event = serde_json::json!({
+                "type": "event",
+                "session": session_id,
+                "family": "session_error",
+                "id": "",
+                "data": { "code": code, "error": message }
+            });
+            if let Ok(bytes) = codec.encode(&event) {
+                let _ = writer_tx.send(bytes);
+            }
+        };
+
     loop {
+        // Drain writer -> reader signals before each read so lifecycle
+        // cleanup runs promptly. A second drain runs after read_message
+        // returns (see below) to catch signals that arrived while we
+        // were blocked waiting for host input.
+        while let Ok(signal) = signal_rx.try_recv() {
+            match signal {
+                SessionSignal::Closed(sid) => {
+                    closing_sessions.remove(&sid);
+                    sessions.remove(&sid);
+                }
+                SessionSignal::Panicked(sid) => {
+                    sessions.remove(&sid);
+                    closing_sessions.remove(&sid);
+                }
+            }
+        }
+
+        // Bail if writer died: emit session_error to every still-active
+        // session so the host sees structured failure per session, then
+        // exit the dispatch loop.
+        if !writer_alive.load(Ordering::SeqCst) {
+            for sid in sessions.keys().cloned().collect::<Vec<_>>() {
+                emit_session_error(
+                    &writer_tx,
+                    &sid,
+                    "writer_dead",
+                    "renderer stdout writer thread exited unexpectedly",
+                );
+            }
+            log::error!("writer thread exited; dispatcher stopping");
+            break;
+        }
+
         match codec.read_message(reader) {
             Ok(None) => break,
             Ok(Some(bytes)) => {
@@ -1342,94 +1453,142 @@ fn run_multiplexed<R: PlushieRenderer>(
 
                 let session_id = sm.session.clone();
 
-                // Check if this is a Reset; if so, tear down the session.
+                // Drain any signals that arrived while we were blocked
+                // on read_message. A host can see session_closed on the
+                // wire and reuse the session ID faster than the reader
+                // can return to the top of the loop; without this
+                // second drain the new message would be rejected as
+                // "session_reset_in_progress" for a session that's
+                // actually finished closing.
+                while let Ok(signal) = signal_rx.try_recv() {
+                    match signal {
+                        SessionSignal::Closed(sid) => {
+                            closing_sessions.remove(&sid);
+                            sessions.remove(&sid);
+                        }
+                        SessionSignal::Panicked(sid) => {
+                            sessions.remove(&sid);
+                            closing_sessions.remove(&sid);
+                        }
+                    }
+                }
+
+                // Messages for a session that's in the middle of a Reset
+                // teardown: reject cleanly rather than spawn a fresh
+                // session under the same ID. Host should wait for
+                // session_closed before reusing the ID.
+                if closing_sessions.contains(&session_id) {
+                    log::debug!("session '{session_id}': message rejected during reset teardown");
+                    emit_session_error(
+                        &writer_tx,
+                        &session_id,
+                        "session_reset_in_progress",
+                        "session is closing; wait for session_closed before reusing this ID",
+                    );
+                    continue;
+                }
+
+                // Check if this is a Reset; if so, mark for teardown after
+                // forwarding the Reset itself.
                 let is_reset = matches!(sm.message, IncomingMessage::Reset { .. });
 
                 // Get or create the session thread.
-                let tx = if let Some(tx) = sessions.get(&session_id) {
-                    tx.clone()
-                } else {
+                let session_existed = sessions.contains_key(&session_id);
+                if !session_existed {
                     if sessions.len() >= max_sessions {
                         log::error!(
                             "max sessions ({max_sessions}) reached; \
                              rejecting session '{session_id}'"
                         );
-                        let error = serde_json::json!({
-                            "type": "event",
-                            "session": &session_id,
-                            "family": "session_error",
-                            "id": "",
-                            "data": {
-                                "error": format!(
-                                    "max sessions ({max_sessions}) reached; \
-                                     session '{session_id}' rejected"
-                                )
-                            }
-                        });
-
-                        if let Ok(bytes) = codec.encode(&error) {
-                            let _ = writer_tx.send(bytes);
-                        }
+                        emit_session_error(
+                            &writer_tx,
+                            &session_id,
+                            "max_sessions_reached",
+                            &format!(
+                                "max sessions ({max_sessions}) reached; session \
+                                 '{session_id}' rejected"
+                            ),
+                        );
                         continue;
                     }
 
-                    // Bounded channel (32) provides natural back-pressure
-                    // from the reader to slow sessions.
-                    let (tx, rx) = mpsc::sync_channel::<IncomingMessage>(32);
+                    // Per-session bounded channel; reader uses try_send so
+                    // a slow session never blocks the dispatcher.
+                    let (tx, rx) = mpsc::sync_channel::<IncomingMessage>(SESSION_CHANNEL_CAP);
                     let writer = WireWriter::channel(writer_tx.clone(), codec);
                     let sid = session_id.clone();
 
                     let closed_writer_tx = writer_tx.clone();
                     let thread_factory = session_factory.clone();
+                    let signal_tx_for_thread = signal_tx.clone();
                     let handle = thread::spawn(move || {
-                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            let mut session = match thread_factory {
-                                Some(factory) => {
-                                    Session::<R>::with_registry(mode, writer, factory())
+                        let panicked = {
+                            let result =
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    let mut session = match thread_factory {
+                                        Some(factory) => {
+                                            Session::<R>::with_registry(mode, writer, factory())
+                                        }
+                                        None => Session::<R>::new(mode, writer),
+                                    };
+                                    for msg in &rx {
+                                        let mut read_next = || rx.recv().ok();
+                                        if let Err(e) =
+                                            handle_message(&mut session, &sid, msg, &mut read_next)
+                                        {
+                                            log::error!("session '{sid}': write error: {e}");
+                                            break;
+                                        }
+                                    }
+                                    log::debug!("session '{sid}' thread exiting");
+                                }));
+                            if let Err(payload) = result {
+                                let msg = payload
+                                    .downcast_ref::<&str>()
+                                    .copied()
+                                    .or_else(|| {
+                                        payload.downcast_ref::<String>().map(|s| s.as_str())
+                                    })
+                                    .unwrap_or("(non-string panic)");
+                                log::error!("session '{sid}' thread panicked: {msg}");
+                                let error = serde_json::json!({
+                                    "type": "event",
+                                    "session": sid,
+                                    "family": "session_error",
+                                    "id": "",
+                                    "data": { "code": "session_panic", "error": msg }
+                                });
+                                if let Ok(bytes) = codec.encode(&error) {
+                                    let _ = closed_writer_tx.send(bytes);
                                 }
-                                None => Session::<R>::new(mode, writer),
-                            };
-                            for msg in &rx {
-                                let mut read_next = || rx.recv().ok();
-                                if let Err(e) =
-                                    handle_message(&mut session, &sid, msg, &mut read_next)
-                                {
-                                    log::error!("session '{sid}': write error: {e}");
-                                    break;
-                                }
+                                true
+                            } else {
+                                false
                             }
-                            log::debug!("session '{sid}' thread exiting");
-                        }));
-                        if let Err(payload) = result {
-                            let msg = payload
-                                .downcast_ref::<&str>()
-                                .copied()
-                                .or_else(|| payload.downcast_ref::<String>().map(|s| s.as_str()))
-                                .unwrap_or("(non-string panic)");
-                            log::error!("session '{sid}' thread panicked: {msg}");
-                            let error = serde_json::json!({
-                                "type": "event",
-                                "session": sid,
-                                "family": "session_error",
-                                "id": "",
-                                "data": { "error": msg }
-                            });
+                        };
 
-                            if let Ok(bytes) = codec.encode(&error) {
-                                let _ = closed_writer_tx.send(bytes);
-                            }
-                        }
+                        // Signal the reader BEFORE the wire-visible
+                        // session_closed. The reader drains signals at
+                        // the top of each dispatch iteration, so by
+                        // the time the host sees session_closed and
+                        // issues a follow-up message reusing the ID,
+                        // the reader has already removed the ID from
+                        // its closing set and will spawn a fresh
+                        // session. Reversing the order introduces a
+                        // race where a fast host gets rejected as
+                        // "reset in progress" for a session that has
+                        // in fact closed.
+                        let signal = if panicked {
+                            SessionSignal::Panicked(sid.clone())
+                        } else {
+                            SessionSignal::Closed(sid.clone())
+                        };
+                        let _ = signal_tx_for_thread.send(signal);
 
-                        // Emit session_closed as the last action, after all
-                        // processing is done and any panic error has been
-                        // reported. This ensures the host only sees this
-                        // event when the session is truly finished.
-                        //
-                        // session_closed delivery is best-effort: if the
-                        // writer thread is already gone (stdout closed),
-                        // the send fails silently. Log so the local trail
-                        // reflects that; hosts should already have timeouts
-                        // on any `await session_closed` loop.
+                        // Now emit session_closed on the wire so the
+                        // host sees its terminal event. Delivery is
+                        // best-effort: a dead writer just means the
+                        // send fails quietly.
                         let closed = serde_json::json!({
                             "type": "event",
                             "session": sid,
@@ -1437,7 +1596,6 @@ fn run_multiplexed<R: PlushieRenderer>(
                             "id": "",
                             "data": {}
                         });
-
                         match codec.encode(&closed) {
                             Ok(bytes) => {
                                 if closed_writer_tx.send(bytes).is_err() {
@@ -1453,7 +1611,13 @@ fn run_multiplexed<R: PlushieRenderer>(
                         }
                     });
 
-                    sessions.insert(session_id.clone(), tx.clone());
+                    sessions.insert(
+                        session_id.clone(),
+                        Dispatch {
+                            tx,
+                            pending: VecDeque::new(),
+                        },
+                    );
                     session_handles.push(handle);
                     log::info!(
                         "session '{}' created (active: {})",
@@ -1462,36 +1626,64 @@ fn run_multiplexed<R: PlushieRenderer>(
                     );
 
                     // Send the initial Settings to the first session so
-                    // Core.apply() processes it (default_event_rate, etc.).
+                    // Core.apply() processes it.
                     if let Some(settings_msg) = pending_initial_settings.take()
-                        && tx.send(settings_msg).is_err()
+                        && let Some(d) = sessions.get_mut(&session_id)
+                        && try_enqueue(&mut d.tx, &mut d.pending, settings_msg).is_err()
                     {
-                        log::error!("session '{session_id}': failed to send initial settings");
+                        log::error!("session '{session_id}': failed to queue initial settings");
                     }
+                }
 
-                    tx
+                // Deliver the message. Non-blocking dispatch via
+                // try_send + pending buffer; if both are full the
+                // session is ejected with a backpressure overflow error.
+                let (ejected, dispatch_error) = if let Some(d) = sessions.get_mut(&session_id) {
+                    match try_enqueue(&mut d.tx, &mut d.pending, sm.message) {
+                        Ok(()) => (false, None),
+                        Err(EnqueueError::Overflow) => (
+                            true,
+                            Some((
+                                "session_backpressure_overflow",
+                                format!(
+                                    "session '{session_id}' send queue saturated \
+                                     (channel + pending = {}); ejecting",
+                                    SESSION_CHANNEL_CAP + PENDING_BUFFER_CAP
+                                ),
+                            )),
+                        ),
+                        Err(EnqueueError::Disconnected) => (
+                            true,
+                            Some((
+                                "session_channel_closed",
+                                format!("session '{session_id}' channel closed unexpectedly"),
+                            )),
+                        ),
+                    }
+                } else {
+                    (false, None)
                 };
 
-                // Send the message to the session thread.
-                if tx.send(sm.message).is_err() {
+                if let Some((code, msg)) = dispatch_error {
+                    emit_session_error(&writer_tx, &session_id, code, &msg);
+                }
+                if ejected {
                     sessions.remove(&session_id);
-                    log::error!(
-                        "session '{session_id}' channel closed unexpectedly (active: {})",
-                        sessions.len()
-                    );
                     continue;
                 }
 
-                // If this was a Reset, tear down the session after it processes.
-                // The host must wait for reset_response before sending new
-                // messages to this session ID, otherwise stale responses
-                // from the old session thread may interleave with the new one.
+                // If this was a Reset, mark the session as closing so
+                // follow-up same-ID messages hit the reject path until
+                // the thread reports session_closed on the signal channel.
                 if is_reset {
-                    // Drop the sender so the session thread exits after
-                    // processing the Reset message. The session thread
-                    // emits session_closed as its last action.
+                    closing_sessions.insert(session_id.clone());
+                    // Drop the primary sender so the session thread
+                    // exits once it has drained the Reset message.
                     sessions.remove(&session_id);
-                    log::info!("session '{session_id}' reset (active: {})", sessions.len());
+                    log::info!(
+                        "session '{session_id}' reset in progress (active: {})",
+                        sessions.len()
+                    );
                 }
             }
             Err(e) => {
@@ -1505,6 +1697,7 @@ fn run_multiplexed<R: PlushieRenderer>(
     sessions.clear();
     // Drop the writer sender so the writer thread exits.
     drop(writer_tx);
+    drop(signal_tx);
 
     for handle in session_handles {
         if let Err(payload) = handle.join() {
@@ -1524,5 +1717,58 @@ fn run_multiplexed<R: PlushieRenderer>(
             .or_else(|| payload.downcast_ref::<String>().map(|s| s.as_str()))
             .unwrap_or("(non-string panic)");
         log::error!("writer thread panicked: {msg}");
+    }
+}
+
+/// Result of attempting to enqueue a message to a session thread.
+enum EnqueueError {
+    /// Channel full and pending buffer also full.
+    Overflow,
+    /// Receiver dropped (session thread exited).
+    Disconnected,
+}
+
+/// Non-blocking enqueue with overflow buffer.
+///
+/// Flushes any pending messages first, then tries the new message.
+/// When `try_send` reports full, the message goes into the pending
+/// buffer up to [`PENDING_BUFFER_CAP`]. Past that, the session is
+/// considered unrecoverable and the caller ejects it.
+fn try_enqueue(
+    tx: &mut mpsc::SyncSender<IncomingMessage>,
+    pending: &mut std::collections::VecDeque<IncomingMessage>,
+    msg: IncomingMessage,
+) -> Result<(), EnqueueError> {
+    // Drain the pending buffer first so ordering is preserved.
+    while let Some(buffered) = pending.pop_front() {
+        match tx.try_send(buffered) {
+            Ok(()) => {}
+            Err(mpsc::TrySendError::Full(back)) => {
+                pending.push_front(back);
+                break;
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => return Err(EnqueueError::Disconnected),
+        }
+    }
+
+    if pending.is_empty() {
+        // Pending drained successfully; try the new message directly.
+        match tx.try_send(msg) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full(back)) => {
+                if pending.len() >= PENDING_BUFFER_CAP {
+                    Err(EnqueueError::Overflow)
+                } else {
+                    pending.push_back(back);
+                    Ok(())
+                }
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => Err(EnqueueError::Disconnected),
+        }
+    } else if pending.len() >= PENDING_BUFFER_CAP {
+        Err(EnqueueError::Overflow)
+    } else {
+        pending.push_back(msg);
+        Ok(())
     }
 }

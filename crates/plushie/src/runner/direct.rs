@@ -492,12 +492,17 @@ impl<A: App> DirectApp<A> {
         }
     }
 
-    /// Iced daemon subscription callback. Returns active timer
-    /// subscriptions as `iced::time::every` subscriptions. Each tick
-    /// pushes a `TimerEvent` to the event queue, which is drained
-    /// on the next `update()` cycle.
+    /// Iced daemon subscription callback. Combines SDK-side timer
+    /// subscriptions (`Subscription::every`) with the renderer's own
+    /// subscription set (keyboard, pointer, animation, theme, ...)
+    /// so both app-declared subs and widget-scoped subs fire.
+    ///
+    /// Each timer tick pushes a `TimerEvent` onto the event queue
+    /// and is drained on the next `update()` cycle. Renderer-source
+    /// messages flow into `renderer.update`, which dispatches events
+    /// to both host-level subscribers and widget-scoped subscribers.
     fn subscriptions(&self) -> plushie_widget_sdk::iced::Subscription<Message> {
-        let subs: Vec<plushie_widget_sdk::iced::Subscription<Message>> = self
+        let mut subs: Vec<plushie_widget_sdk::iced::Subscription<Message>> = self
             .active_timers
             .iter()
             .map(|(tag, duration)| {
@@ -506,6 +511,7 @@ impl<A: App> DirectApp<A> {
                     .map(|(tag, _instant)| Message::TimerTick(tag))
             })
             .collect();
+        subs.push(self.renderer.renderer_subscriptions());
         plushie_widget_sdk::iced::Subscription::batch(subs)
     }
 

@@ -211,6 +211,42 @@ impl Subscription {
         self
     }
 
+    /// The tag identifying this subscription.
+    ///
+    /// Useful for inspecting the active subscription list in tests
+    /// (see [`TestSession::active_subscriptions`](crate::test::TestSession::active_subscriptions)).
+    pub fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    /// The wire kind string for this subscription.
+    ///
+    /// Stable, lowercase identifier (e.g. `"every"`, `"on_key_press"`).
+    /// Exposed for use in test assertions.
+    pub fn kind(&self) -> &str {
+        self.wire_kind()
+    }
+
+    /// Event-rate cap, if one was configured via
+    /// [`max_rate`](Self::max_rate).
+    pub fn max_rate_hint(&self) -> Option<u32> {
+        self.max_rate
+    }
+
+    /// The window scope, if set via [`for_window`](Self::for_window).
+    pub fn window_id(&self) -> Option<&str> {
+        self.window_id.as_deref()
+    }
+
+    /// The timer interval for [`Subscription::every`] subscriptions,
+    /// or `None` for renderer-side subscriptions.
+    pub fn interval(&self) -> Option<Duration> {
+        match self.kind {
+            SubscriptionKind::Every(d) => Some(d),
+            _ => None,
+        }
+    }
+
     /// Wire kind string for this subscription.
     pub(crate) fn wire_kind(&self) -> &str {
         match &self.kind {

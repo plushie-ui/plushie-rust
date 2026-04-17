@@ -63,6 +63,15 @@ pub mod query;
 pub mod route;
 pub mod runner;
 pub(crate) mod runtime;
+
+/// Re-export the subscription diff types used by
+/// [`test::TestSession::last_subscription_ops`]. The diff runs in
+/// every real runner (direct + wire) and in the test harness; tests
+/// can import `SubOp` from this module to pattern-match on diff
+/// output without dipping into private internals.
+pub mod runtime_internals {
+    pub use crate::runtime::subscriptions::{SubOp, SubscriptionManager};
+}
 pub mod selection;
 pub mod settings;
 pub mod state;

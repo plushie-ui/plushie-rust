@@ -15,6 +15,7 @@ pub struct SubscriptionManager {
 }
 
 /// An operation to apply after a subscription diff.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubOp {
     /// Tell the renderer to start receiving this event kind.
     Subscribe {
@@ -28,16 +29,31 @@ pub enum SubOp {
     /// Start an SDK-side timer (SubscriptionKind::Every).
     StartTimer {
         tag: String,
-        #[allow(dead_code)] // Used when timer implementation lands.
         interval: std::time::Duration,
     },
     /// Stop an SDK-side timer.
     StopTimer { tag: String },
 }
 
+impl Default for SubscriptionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SubscriptionManager {
     pub fn new() -> Self {
         Self { active: Vec::new() }
+    }
+
+    /// Snapshot of the currently active subscriptions.
+    ///
+    /// Exposed so [`TestSession`](crate::test::TestSession) can
+    /// assert subscription state without reaching into private
+    /// fields. Returned slice reflects the state after the last
+    /// [`sync`](Self::sync) call.
+    pub fn active(&self) -> &[Subscription] {
+        &self.active
     }
 
     /// Diff new subscriptions against active and return ops to apply.

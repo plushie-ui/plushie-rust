@@ -46,6 +46,8 @@ use crate::automation::Element;
 use crate::command::Command;
 use crate::event::{AsyncEvent, EffectEvent, EffectResult, Event, EventType, WidgetEvent};
 use crate::runtime;
+use crate::runtime::subscriptions::{SubOp, SubscriptionManager};
+use crate::subscription::Subscription;
 use crate::widget::{EventResult, Interception, WidgetStateStore};
 
 // ---------------------------------------------------------------------------
@@ -96,6 +98,12 @@ pub struct TestSession<A: App> {
     /// Defaults to true (strict by default). Disabled by
     /// [`allow_diagnostics`](Self::allow_diagnostics).
     fail_on_diagnostics: bool,
+    /// Diffs the app's declared subscriptions on each
+    /// [`advance_subscriptions`](Self::advance_subscriptions) call.
+    sub_manager: SubscriptionManager,
+    /// Ops produced by the most recent subscription diff. Reset on
+    /// every `advance_subscriptions` call.
+    last_sub_ops: Vec<SubOp>,
 }
 
 impl<A: App> TestSession<A> {
@@ -114,6 +122,8 @@ impl<A: App> TestSession<A> {
             // Strict by default; tests that expect warnings opt out
             // via `allow_diagnostics()`.
             fail_on_diagnostics: true,
+            sub_manager: SubscriptionManager::new(),
+            last_sub_ops: Vec::new(),
         };
         session.execute_command(init_cmd);
         session
@@ -624,6 +634,8 @@ impl<A: App> TestSession<A> {
         self.widget_store = WidgetStateStore::new();
         self.async_results.clear();
         self.effect_stubs.clear();
+        self.sub_manager = SubscriptionManager::new();
+        self.last_sub_ops.clear();
         let (tree, warnings) = runtime::prepare_tree::<A>(&self.model, &mut self.widget_store);
         self.tree = tree;
         self.diagnostics = warnings;
@@ -714,6 +726,43 @@ impl<A: App> TestSession<A> {
     /// inspection. Deterministic within the same tree structure.
     pub fn tree_snapshot(&self) -> String {
         serde_json::to_string_pretty(&self.tree).expect("tree serialization failed")
+    }
+
+    // -----------------------------------------------------------------------
+    // Subscription lifecycle
+    // -----------------------------------------------------------------------
+
+    /// Re-run `App::subscribe(&model)` and diff the result against
+    /// the previously active subscription set.
+    ///
+    /// The runtime normally does this after every update; TestSession
+    /// gives tests explicit control so subscription changes tied to
+    /// model state can be verified. Use
+    /// [`last_subscription_ops`](Self::last_subscription_ops) or
+    /// [`active_subscriptions`](Self::active_subscriptions) to
+    /// inspect the resulting state.
+    pub fn advance_subscriptions(&mut self) {
+        let new_subs = A::subscribe(&self.model);
+        self.last_sub_ops = self.sub_manager.sync(new_subs);
+    }
+
+    /// Currently active subscriptions, as of the last
+    /// [`advance_subscriptions`](Self::advance_subscriptions) call.
+    ///
+    /// Returns an empty slice if subscriptions have never been
+    /// advanced.
+    pub fn active_subscriptions(&self) -> &[Subscription] {
+        self.sub_manager.active()
+    }
+
+    /// Ops produced by the most recent subscription diff.
+    ///
+    /// Reset on each [`advance_subscriptions`](Self::advance_subscriptions)
+    /// call. Useful for asserting that a model change produced the
+    /// expected `Subscribe`/`Unsubscribe`/`StartTimer`/`StopTimer`
+    /// sequence.
+    pub fn last_subscription_ops(&self) -> &[SubOp] {
+        &self.last_sub_ops
     }
 
     // -----------------------------------------------------------------------

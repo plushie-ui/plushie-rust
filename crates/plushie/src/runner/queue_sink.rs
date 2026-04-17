@@ -39,17 +39,27 @@ impl QueueSink {
 }
 
 #[cfg(feature = "direct")]
+impl QueueSink {
+    /// Lock the queue, recovering from poisoning rather than aborting
+    /// the process. Poisoning means some upstream path panicked while
+    /// holding the lock; the queue contents are still valid to observe.
+    fn lock_queue(&self) -> std::sync::MutexGuard<'_, Vec<SinkEvent>> {
+        self.queue.lock().unwrap_or_else(|e| {
+            log::error!("QueueSink event queue lock poisoned; recovering");
+            e.into_inner()
+        })
+    }
+}
+
+#[cfg(feature = "direct")]
 impl plushie_renderer_lib::EventSink for QueueSink {
     fn emit_event(&mut self, event: OutgoingEvent) -> io::Result<()> {
-        self.queue.lock().unwrap().push(SinkEvent::Event(event));
+        self.lock_queue().push(SinkEvent::Event(event));
         Ok(())
     }
 
     fn emit_effect_response(&mut self, response: EffectResponse) -> io::Result<()> {
-        self.queue
-            .lock()
-            .unwrap()
-            .push(SinkEvent::EffectResponse(response));
+        self.lock_queue().push(SinkEvent::EffectResponse(response));
         Ok(())
     }
 
@@ -59,7 +69,7 @@ impl plushie_renderer_lib::EventSink for QueueSink {
         tag: &str,
         data: &serde_json::Value,
     ) -> io::Result<()> {
-        self.queue.lock().unwrap().push(SinkEvent::QueryResponse {
+        self.lock_queue().push(SinkEvent::QueryResponse {
             kind: kind.to_string(),
             tag: tag.to_string(),
             data: data.clone(),

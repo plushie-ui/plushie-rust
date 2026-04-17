@@ -3208,6 +3208,7 @@ version = "0.6.1"
 dependencies = [
  "arboard",
  "base64",
+ "futures",
  "log",
  "notify-rust",
  "plushie-core",

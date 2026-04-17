@@ -354,7 +354,9 @@ impl AsyncTaskManager {
         let tag_clone = tag.clone();
         let handle = self.runtime.spawn(async move {
             let future = (task_fn)();
-            let result = future.await;
+            // Guard against user-future panics so the app sees an
+            // AsyncEvent(Err(..)) instead of silently hanging.
+            let result = super::run_task_with_panic_guard(&tag_clone, future).await;
             let _ = tx.send(SinkEvent::AsyncResult {
                 tag: tag_clone,
                 result,
@@ -381,7 +383,7 @@ impl AsyncTaskManager {
 
         let handle = self.runtime.spawn(async move {
             let future = (task_fn)(emitter);
-            let result = future.await;
+            let result = super::run_task_with_panic_guard(&tag_for_result, future).await;
             let _ = tx_final.send(SinkEvent::AsyncResult {
                 tag: tag_for_result,
                 result,
@@ -399,7 +401,13 @@ impl AsyncTaskManager {
     fn send_after(&self, delay: std::time::Duration, event: crate::event::Event) {
         let tx = self.tx.clone();
         self.runtime.spawn(async move {
-            tokio::time::sleep(delay).await;
+            // tokio::time::sleep doesn't panic in practice, but we
+            // route through the panic guard for consistency with the
+            // other spawn paths. SendAfter carries a delivery-only
+            // future, so the result slot is unused.
+            use futures::FutureExt;
+            let fut = async move { tokio::time::sleep(delay).await };
+            let _ = std::panic::AssertUnwindSafe(fut).catch_unwind().await;
             let _ = tx.send(SinkEvent::DelayedEvent(event));
         });
     }

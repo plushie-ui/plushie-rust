@@ -177,7 +177,10 @@ impl<A: App> DirectApp<A> {
     /// to the user's App::update(), then refresh the view once.
     fn drain_event_queue(&mut self) -> Option<Task<Message>> {
         let events: Vec<SinkEvent> = {
-            let mut queue = self.event_queue.lock().unwrap();
+            let mut queue = self.event_queue.lock().unwrap_or_else(|e| {
+                log::error!("event_queue lock poisoned in drain_event_queue");
+                e.into_inner()
+            });
             if queue.is_empty() {
                 return None;
             }
@@ -343,12 +346,24 @@ impl<A: App> DirectApp<A> {
             Command::Async { tag, task } => {
                 let queue = self.event_queue.clone();
                 let tag_clone = tag.clone();
+                let tag_for_guard = tag.clone();
                 let future = (task)();
-                let (task, handle) = Task::perform(future, move |result| {
-                    queue.lock().unwrap().push(SinkEvent::AsyncResult {
-                        tag: tag_clone,
-                        result,
-                    });
+                // Guard against user-future panics. Without this, a
+                // panic would unwind iced's executor worker, drop the
+                // result channel, and leave the app waiting forever.
+                let guarded =
+                    async move { super::run_task_with_panic_guard(&tag_for_guard, future).await };
+                let (task, handle) = Task::perform(guarded, move |result| {
+                    queue
+                        .lock()
+                        .unwrap_or_else(|e| {
+                            log::error!("event_queue lock poisoned in Async completion");
+                            e.into_inner()
+                        })
+                        .push(SinkEvent::AsyncResult {
+                            tag: tag_clone,
+                            result,
+                        });
                     Message::NoOp
                 })
                 .abortable();
@@ -366,7 +381,10 @@ impl<A: App> DirectApp<A> {
                 emitter.attach_sink(Box::new(move |t, value| {
                     sink_queue
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|e| {
+                            log::error!("event_queue lock poisoned in Stream sink");
+                            e.into_inner()
+                        })
                         .push(SinkEvent::StreamValue { tag: t, value });
                     // Nudge iced so the queue drains on next update.
                     // (The renderer batches this naturally via its
@@ -374,12 +392,21 @@ impl<A: App> DirectApp<A> {
                     let _ = sink_tag;
                 }));
                 let final_tag = tag.clone();
+                let tag_for_guard = tag.clone();
                 let future = (task)(emitter);
-                let (task, handle) = Task::perform(future, move |result| {
-                    queue.lock().unwrap().push(SinkEvent::AsyncResult {
-                        tag: final_tag,
-                        result,
-                    });
+                let guarded =
+                    async move { super::run_task_with_panic_guard(&tag_for_guard, future).await };
+                let (task, handle) = Task::perform(guarded, move |result| {
+                    queue
+                        .lock()
+                        .unwrap_or_else(|e| {
+                            log::error!("event_queue lock poisoned in Stream completion");
+                            e.into_inner()
+                        })
+                        .push(SinkEvent::AsyncResult {
+                            tag: final_tag,
+                            result,
+                        });
                     Message::NoOp
                 })
                 .abortable();
@@ -396,10 +423,21 @@ impl<A: App> DirectApp<A> {
                 let queue = self.event_queue.clone();
                 Task::perform(
                     async move {
-                        std::thread::sleep(delay);
+                        // Cooperative sleep so iced's executor can drive
+                        // other tasks in parallel. `std::thread::sleep`
+                        // would block the executor thread for `delay`,
+                        // serialising concurrent SendAfter commands and
+                        // starving the thread pool.
+                        super::platform_sleep(delay).await;
                     },
                     move |_| {
-                        queue.lock().unwrap().push(SinkEvent::DelayedEvent(*event));
+                        queue
+                            .lock()
+                            .unwrap_or_else(|e| {
+                                log::error!("event_queue lock poisoned in SendAfter");
+                                e.into_inner()
+                            })
+                            .push(SinkEvent::DelayedEvent(*event));
                         Message::NoOp
                     },
                 )
@@ -432,7 +470,10 @@ impl<A: App> DirectApp<A> {
             .as_millis() as u64;
         self.event_queue
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| {
+                log::error!("event_queue lock poisoned in handle_timer_tick");
+                e.into_inner()
+            })
             .push(SinkEvent::DelayedEvent(Event::Timer(
                 crate::event::TimerEvent { tag, timestamp },
             )));

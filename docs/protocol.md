@@ -1088,7 +1088,7 @@ Every request message produces exactly one response. The `id` and
 | Request | Response type | Notes |
 |---------|--------------|-------|
 | Query | `query_response` | |
-| Interact | `interact_response` | May be preceded by `interact_step` messages in headless mode |
+| Interact | `interact_response` | May be followed by `interact_step` messages in headless mode |
 | TreeHash | `tree_hash_response` | |
 | Screenshot | `screenshot_response` | |
 | Reset | `reset_response` | |

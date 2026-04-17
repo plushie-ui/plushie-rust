@@ -276,6 +276,15 @@ impl Codec {
 /// - **Declared element counts** exceeding the remaining bytes (prevents
 ///   rmpv from pre-allocating `Vec::with_capacity(billions)` when the
 ///   declared count is larger than the payload can possibly contain).
+///
+/// The scan walks format bytes iteratively on purpose. `rmpv::read_value` is
+/// itself recursive, so a depth-bomb payload would blow rmpv's stack before
+/// any user-space depth check could observe it. This pre-scan uses an
+/// explicit `Vec` stack to track nesting, keeping scan depth bounded by heap
+/// rather than call stack. Every msgpack format marker is enumerated here so
+/// that any new marker rmpv starts decoding stays matched by an equivalent
+/// pre-scan case; a missing marker would mean the scan walks into an
+/// unexpected region and either under-counts children or mis-reports size.
 fn check_msgpack_depth(bytes: &[u8], max_depth: usize) -> Result<(), String> {
     let len = bytes.len();
     let mut pos: usize = 0;
@@ -555,6 +564,11 @@ fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> serde_json::Value {
             // the worst-case expansion stays under ~2.5 GiB, which is large but
             // finite. In practice, binary fields in real messages are much smaller
             // (e.g. pixel data in image_ops, font data in load_font).
+            //
+            // Future work: side-channel binary extraction to avoid the Value-tree
+            // expansion entirely. See
+            // `reports/plushie-rust/2026-04-17/future-backlog.md` under "Side-channel
+            // binary extraction during msgpack decode" for the full writeup.
             serde_json::Value::Array(
                 bytes
                     .into_iter()

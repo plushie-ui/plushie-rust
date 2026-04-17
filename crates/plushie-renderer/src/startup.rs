@@ -249,6 +249,14 @@ pub(crate) fn collect_font_bytes(settings: &Value) -> Vec<Vec<u8>> {
 /// Encodes a `{"type": "error", "message": ...}` JSON object using
 /// the provided codec and writes it to the output channel before
 /// exiting with status 1.
+///
+/// Note: this helper is only called once a codec has been determined.
+/// The earlier codec-detection step fails separately: when the very
+/// first byte cannot be classified as JSON or MessagePack, the process
+/// logs the reason to stderr and exits with status 1 without emitting
+/// a wire error. There is no safe codec to use at that point, and
+/// guessing would send bytes the host cannot decode. Do not "fix" this
+/// by picking a default codec.
 fn startup_exit(codec: &Codec, message: &str) -> ! {
     log::error!("{message}");
     let error = serde_json::json!({"type": "error", "message": message});

@@ -337,7 +337,7 @@ impl<A: App> DirectApp<A> {
             &mut self.widget_store,
             &fallback,
         );
-        let tree = match outcome {
+        let mut tree = match outcome {
             ViewOutcome::Ok(tree, warnings) => {
                 for warning in &warnings {
                     log::warn!("view normalization: {warning}");
@@ -348,7 +348,7 @@ impl<A: App> DirectApp<A> {
         };
 
         self.renderer.registry.prepare_walk(
-            &tree,
+            &mut tree,
             &mut self.renderer.core.caches,
             &self.renderer.theme,
         );

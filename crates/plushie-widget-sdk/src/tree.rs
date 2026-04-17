@@ -45,6 +45,15 @@ impl Tree {
         self.root.as_ref()
     }
 
+    /// Return a mutable reference to the current root, if any. Used
+    /// by transforms that drive the shared [`tree_walk`] walker, which
+    /// takes `&mut TreeNode` even for read-only passes.
+    ///
+    /// [`tree_walk`]: plushie_core::tree_walk
+    pub fn root_mut(&mut self) -> Option<&mut TreeNode> {
+        self.root.as_mut()
+    }
+
     /// Find a window node by its window ID, searching the entire tree recursively.
     pub fn find_window(&self, window_id: &str) -> Option<&TreeNode> {
         let root = self.root.as_ref()?;

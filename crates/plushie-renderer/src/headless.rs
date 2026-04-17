@@ -435,7 +435,7 @@ impl<R: PlushieRenderer> Session<R> {
                             _ => {}
                         }
                     }
-                    if is_tree_change && let Some(root) = self.core.tree.root() {
+                    if is_tree_change && let Some(root) = self.core.tree.root_mut() {
                         self.registry
                             .prepare_walk(root, &mut self.core.caches, &self.theme);
                     }
@@ -693,7 +693,7 @@ fn handle_message<R: PlushieRenderer>(
                 if is_snapshot {
                     s.transition_manager.clear();
                 }
-                if let Some(root) = s.core.tree.root() {
+                if let Some(root) = s.core.tree.root_mut() {
                     s.registry.prepare_walk(root, &mut s.core.caches, &s.theme);
                 }
 

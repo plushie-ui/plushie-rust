@@ -554,17 +554,182 @@ pub struct CollectedSubscription {
     pub window_id: String,
 }
 
-/// Shared mutable context threaded through [`WidgetRegistry::prepare_walk_inner`].
+/// Accumulator state taken out of [`PrepareTransform`] after a walk.
+/// The first element is the set of node IDs reached during the walk,
+/// used to prune stale [`crate::shared_state::SharedState`] entries.
+/// The second is a set of `(window_id, node_id)` pairs used by
+/// `cleanup_stale` dispatch. The third is the collected widget
+/// subscription map keyed by namespaced tag.
+type PrepareCollected = (
+    std::collections::HashSet<String>,
+    std::collections::HashSet<(String, String)>,
+    HashMap<String, CollectedSubscription>,
+);
+
+/// Tree transform that drives the mutable phase of the renderer's
+/// per-frame work.
 ///
-/// Groups the accumulator state (live ID sets, shared state, theme)
-/// so the recursion carries a single context argument instead of a
-/// long parameter list.
-struct PrepareWalkCtx<'a> {
+/// Populates `node_factory_map`, calls each widget's `prepare()`,
+/// collects widget-scoped subscriptions, and accumulates live node
+/// IDs for later stale-state pruning and `cleanup_stale` dispatch.
+///
+/// The transform borrows the registry, shared state, and theme for
+/// the duration of one walk. It keeps a depth counter and a
+/// `window_id` stack on itself because the walker is scope-agnostic
+/// and those values are specific to this pass.
+pub(crate) struct PrepareTransform<'a, R: PlushieRenderer> {
+    registry: &'a mut WidgetRegistry<R>,
     shared: &'a mut crate::shared_state::SharedState,
     theme: &'a Theme,
+    /// Stack of window IDs; topmost is the current enclosing window.
+    window_stack: Vec<String>,
+    /// Current recursion depth; matched against [`MAX_TREE_DEPTH`] to
+    /// halt descent on pathological trees.
+    depth: usize,
+    /// `skip_children` state per frame: true after the depth cap is
+    /// exceeded so the walker doesn't recurse.
+    skip_stack: Vec<bool>,
     live_ids: std::collections::HashSet<String>,
     live_keys: std::collections::HashSet<(String, String)>,
     widget_subs: HashMap<String, CollectedSubscription>,
+}
+
+impl<'a, R: PlushieRenderer> PrepareTransform<'a, R> {
+    pub(crate) fn new(
+        registry: &'a mut WidgetRegistry<R>,
+        shared: &'a mut crate::shared_state::SharedState,
+        theme: &'a Theme,
+    ) -> Self {
+        Self {
+            registry,
+            shared,
+            theme,
+            window_stack: Vec::new(),
+            depth: 0,
+            skip_stack: Vec::new(),
+            live_ids: std::collections::HashSet::new(),
+            live_keys: std::collections::HashSet::new(),
+            widget_subs: HashMap::new(),
+        }
+    }
+
+    /// Consume the transform, returning the accumulated live-id sets
+    /// and widget subscription map. Called after the walk finishes so
+    /// [`WidgetRegistry::prepare_walk`] can run post-walk cleanup.
+    pub(crate) fn take_collected(self) -> PrepareCollected {
+        (self.live_ids, self.live_keys, self.widget_subs)
+    }
+}
+
+impl<R: PlushieRenderer> plushie_core::tree_walk::TreeTransform for PrepareTransform<'_, R> {
+    fn enter(&mut self, node: &mut TreeNode, _ctx: &mut plushie_core::tree_walk::WalkCtx) {
+        // Defence-in-depth: bail out cleanly on pathological trees.
+        // Still record the current node as live so state tied to it
+        // isn't evicted by the post-walk cleanup.
+        if self.depth > crate::shared_state::MAX_TREE_DEPTH {
+            log::error!(
+                "[code=tree_too_deep][id={}] prepare_walk depth exceeds {}, truncating subtree",
+                node.id,
+                crate::shared_state::MAX_TREE_DEPTH
+            );
+            let current_window_id = self.window_stack.last().cloned().unwrap_or_default();
+            self.live_ids.insert(node.id.clone());
+            self.live_keys.insert((current_window_id, node.id.clone()));
+            self.skip_stack.push(true);
+            self.depth += 1;
+            return;
+        }
+
+        let current_window_id = self.window_stack.last().cloned().unwrap_or_default();
+
+        self.live_ids.insert(node.id.clone());
+        self.live_keys
+            .insert((current_window_id.clone(), node.id.clone()));
+
+        // Track which window we're in. Window nodes push; everyone
+        // else inherits via `last()`. The push pairs with a pop in
+        // `exit` for correct nesting through sibling windows.
+        let window_id_for_this_node = if node.type_name == "window" {
+            self.window_stack.push(node.id.clone());
+            node.id.clone()
+        } else {
+            current_window_id
+        };
+
+        // Cross-cutting: populate style overrides for any node with
+        // a style prop. Populated for all nodes during prepare_walk.
+        crate::shared_state::ensure_style_overrides_cache(node, self.shared);
+
+        // Factory-specific prepare.
+        if let Some(&idx) = self.registry.type_index.get(node.type_name.as_str()) {
+            self.registry.node_factory_map.insert(node.id.clone(), idx);
+            let type_name = node.type_name.clone();
+            let window_id_owned = window_id_for_this_node.clone();
+            let theme_ref = self.theme;
+            let node_ref: &TreeNode = node;
+            self.registry.call_widget_mut(
+                &type_name,
+                "prepare",
+                &node_ref.id,
+                |widget| widget.prepare(node_ref, &window_id_owned, theme_ref),
+                || {},
+            );
+
+            // Collect widget-scoped subscriptions. Immutable call so
+            // we drop through call_widget (panic isolation still
+            // active via the helper).
+            let scope = type_name.clone();
+            let sub_node_id = node_ref.id.clone();
+            let sub_window_id = window_id_for_this_node;
+            let subs = self.registry.call_widget(
+                &type_name,
+                "subscriptions",
+                &node_ref.id,
+                |widget| {
+                    widget.subscriptions(
+                        node_ref,
+                        &SubscribeCtx {
+                            window_id: &sub_window_id,
+                            theme: theme_ref,
+                            scope: &scope,
+                        },
+                    )
+                },
+                Vec::new,
+            );
+            for sub in subs {
+                let full_tag = format!(
+                    "widget:{}#{}/{}:{}",
+                    sub_window_id, scope, sub_node_id, sub.tag,
+                );
+                self.widget_subs.insert(
+                    full_tag,
+                    CollectedSubscription {
+                        kind: sub.kind,
+                        max_rate: sub.max_rate,
+                        node_id: sub_node_id.clone(),
+                        window_id: sub_window_id.clone(),
+                    },
+                );
+            }
+        }
+
+        self.skip_stack.push(false);
+        self.depth += 1;
+    }
+
+    fn exit(&mut self, node: &mut TreeNode, _ctx: &mut plushie_core::tree_walk::WalkCtx) {
+        // Matched pop for the window stack.
+        if node.type_name == "window" {
+            self.window_stack.pop();
+        }
+        self.skip_stack.pop();
+        self.depth = self.depth.saturating_sub(1);
+    }
+
+    fn skip_children(&self, _node: &TreeNode, _ctx: &plushie_core::tree_walk::WalkCtx) -> bool {
+        self.skip_stack.last().copied().unwrap_or(false)
+    }
 }
 
 impl<R: PlushieRenderer> WidgetRegistry<R> {
@@ -1005,25 +1170,24 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     ///    live tree.
     pub fn prepare_walk(
         &mut self,
-        root: &TreeNode,
+        root: &mut TreeNode,
         shared: &mut crate::shared_state::SharedState,
         theme: &Theme,
     ) {
         self.node_factory_map.clear();
-        let mut ctx = PrepareWalkCtx {
-            shared,
-            theme,
-            live_ids: std::collections::HashSet::new(),
-            live_keys: std::collections::HashSet::new(),
-            widget_subs: HashMap::new(),
+
+        let (live_ids, live_keys, widget_subs) = {
+            let mut transform = PrepareTransform::new(self, shared, theme);
+            let mut ctx = plushie_core::tree_walk::WalkCtx::default();
+            plushie_core::tree_walk::walk(root, &mut [&mut transform], &mut ctx);
+            transform.take_collected()
         };
-        self.prepare_walk_inner(root, "", &mut ctx, 0);
-        ctx.shared.prune_shared(&ctx.live_ids);
+
+        shared.prune_shared(&live_ids);
 
         // Dispatch cleanup_stale to every registered widget. This
         // shrinks factory-owned per-instance state keyed by
         // (window_id, node_id) when nodes leave the tree.
-        let live_keys = ctx.live_keys;
         let type_names: Vec<String> = self
             .impls
             .iter()
@@ -1050,112 +1214,13 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         // Replace the active subscription set with the one gathered
         // this walk. Subscriptions whose owning nodes left the tree
         // are dropped automatically.
-        self.active_widget_subs = ctx.widget_subs;
+        self.active_widget_subs = widget_subs;
     }
 
     /// Active widget subscriptions collected during the most recent
     /// [`prepare_walk`](Self::prepare_walk). Keyed by namespaced tag.
     pub fn active_widget_subscriptions(&self) -> &HashMap<String, CollectedSubscription> {
         &self.active_widget_subs
-    }
-
-    fn prepare_walk_inner(
-        &mut self,
-        node: &TreeNode,
-        window_id: &str,
-        ctx: &mut PrepareWalkCtx<'_>,
-        depth: usize,
-    ) {
-        // Guard against pathological tree depth. Normalize and render
-        // walk also cap at MAX_TREE_DEPTH; matching the cap here keeps
-        // all three passes consistent and avoids stack overflow on
-        // hostile inputs. The overflow path stops recursing but still
-        // records the node itself in live_ids/live_keys so state that
-        // belongs to the current node isn't incorrectly evicted.
-        if depth > crate::shared_state::MAX_TREE_DEPTH {
-            log::error!(
-                "[code=tree_too_deep][id={}] prepare_walk depth exceeds {}, truncating subtree",
-                node.id,
-                crate::shared_state::MAX_TREE_DEPTH
-            );
-            ctx.live_ids.insert(node.id.clone());
-            ctx.live_keys
-                .insert((window_id.to_string(), node.id.clone()));
-            return;
-        }
-
-        ctx.live_ids.insert(node.id.clone());
-        ctx.live_keys
-            .insert((window_id.to_string(), node.id.clone()));
-
-        // Track which window we're in.
-        let current_window_id = if node.type_name == "window" {
-            node.id.as_str()
-        } else {
-            window_id
-        };
-
-        // Cross-cutting: populate style overrides for any node with
-        // a style prop. Populated for all nodes during prepare_walk.
-        crate::shared_state::ensure_style_overrides_cache(node, ctx.shared);
-
-        // Factory-specific prepare.
-        if let Some(&idx) = self.type_index.get(node.type_name.as_str()) {
-            self.node_factory_map.insert(node.id.clone(), idx);
-            let type_name = node.type_name.clone();
-            let window_id_owned = current_window_id.to_string();
-            let node_ref = node;
-            let theme_ref = ctx.theme;
-            self.call_widget_mut(
-                &type_name,
-                "prepare",
-                &node.id,
-                |widget| widget.prepare(node_ref, &window_id_owned, theme_ref),
-                || {},
-            );
-
-            // Collect widget-scoped subscriptions. Immutable call so
-            // we drop through call_widget (panic isolation still
-            // active via the helper).
-            let scope = type_name.clone();
-            let sub_node_id = node.id.clone();
-            let sub_window_id = current_window_id.to_string();
-            let subs = self.call_widget(
-                &type_name,
-                "subscriptions",
-                &node.id,
-                |widget| {
-                    widget.subscriptions(
-                        node_ref,
-                        &SubscribeCtx {
-                            window_id: &sub_window_id,
-                            theme: theme_ref,
-                            scope: &scope,
-                        },
-                    )
-                },
-                Vec::new,
-            );
-            for sub in subs {
-                let full_tag = format!(
-                    "widget:{}#{}/{}:{}",
-                    sub_window_id, scope, sub_node_id, sub.tag,
-                );
-                ctx.widget_subs.insert(
-                    full_tag,
-                    CollectedSubscription {
-                        kind: sub.kind,
-                        max_rate: sub.max_rate,
-                        node_id: sub_node_id.clone(),
-                        window_id: sub_window_id.clone(),
-                    },
-                );
-            }
-        }
-
-        for child in &node.children {
-            self.prepare_walk_inner(child, current_window_id, ctx, depth + 1);
-        }
     }
 
     /// Convert an iced [`Message`] into outgoing protocol events.
@@ -1685,16 +1750,16 @@ mod tests {
         // indirectly through the node-factory map.
         let mut a = WidgetRegistry::<()>::new();
         a.register(Box::new(CountingWidget::default()));
-        let tree_a = tree(vec![leaf("n1", "counter"), leaf("n2", "counter")]);
+        let mut tree_a = tree(vec![leaf("n1", "counter"), leaf("n2", "counter")]);
         let mut shared_a = crate::shared_state::SharedState::new();
-        a.prepare_walk(&tree_a, &mut shared_a, &Theme::Dark);
+        a.prepare_walk(&mut tree_a, &mut shared_a, &Theme::Dark);
 
         // A fresh session registry must not carry node mappings or
         // per-widget state from `a`.
         let mut b = a.fresh_for_session();
-        let tree_b = tree(vec![leaf("n3", "counter")]);
+        let mut tree_b = tree(vec![leaf("n3", "counter")]);
         let mut shared_b = crate::shared_state::SharedState::new();
-        b.prepare_walk(&tree_b, &mut shared_b, &Theme::Dark);
+        b.prepare_walk(&mut tree_b, &mut shared_b, &Theme::Dark);
 
         assert!(a.get_for_node_id("n1").is_some());
         assert!(a.get_for_node_id("n2").is_some());
@@ -1947,12 +2012,12 @@ mod tests {
 
         // First prepare_walk: two nodes present. cleanup_stale runs
         // after prepare populates contents, so the spy sees size 2.
-        let first_tree = tree(vec![leaf("a", "spying"), leaf("b", "spying")]);
-        registry.prepare_walk(&first_tree, &mut shared, &theme);
+        let mut first_tree = tree(vec![leaf("a", "spying"), leaf("b", "spying")]);
+        registry.prepare_walk(&mut first_tree, &mut shared, &theme);
 
         // Second prepare_walk: only 'a' remains. 'b' must be evicted.
-        let second_tree = tree(vec![leaf("a", "spying")]);
-        registry.prepare_walk(&second_tree, &mut shared, &theme);
+        let mut second_tree = tree(vec![leaf("a", "spying")]);
+        registry.prepare_walk(&mut second_tree, &mut shared, &theme);
 
         let sizes = spy.sizes.lock().unwrap().clone();
         assert_eq!(
@@ -1981,7 +2046,7 @@ mod tests {
         // prepare_walk must not stack-overflow or panic on a tree
         // that exceeds the depth cap.
         let mut shared = crate::shared_state::SharedState::new();
-        registry.prepare_walk(&node, &mut shared, &Theme::Dark);
+        registry.prepare_walk(&mut node, &mut shared, &Theme::Dark);
     }
 
     // ---------------------------------------------------------------------------
@@ -2051,9 +2116,9 @@ mod tests {
         let mut registry = WidgetRegistry::<()>::new();
         registry.register(Box::new(TimerWidget));
 
-        let tree = tree(vec![leaf("t1", "timer")]);
+        let mut tree = tree(vec![leaf("t1", "timer")]);
         let mut shared = crate::shared_state::SharedState::new();
-        registry.prepare_walk(&tree, &mut shared, &Theme::Dark);
+        registry.prepare_walk(&mut tree, &mut shared, &Theme::Dark);
 
         let subs = registry.active_widget_subscriptions();
         // Namespace shape: widget:{window_id}#{scope}/{node_id}:{inner}
@@ -2075,12 +2140,12 @@ mod tests {
 
         let mut shared = crate::shared_state::SharedState::new();
 
-        let first = tree(vec![leaf("t1", "timer")]);
-        registry.prepare_walk(&first, &mut shared, &Theme::Dark);
+        let mut first = tree(vec![leaf("t1", "timer")]);
+        registry.prepare_walk(&mut first, &mut shared, &Theme::Dark);
         assert!(!registry.active_widget_subscriptions().is_empty());
 
-        let empty_tree = tree(vec![]);
-        registry.prepare_walk(&empty_tree, &mut shared, &Theme::Dark);
+        let mut empty_tree = tree(vec![]);
+        registry.prepare_walk(&mut empty_tree, &mut shared, &Theme::Dark);
         assert!(
             registry.active_widget_subscriptions().is_empty(),
             "subscription must go away once the owning node leaves the tree"
@@ -2254,10 +2319,10 @@ mod tests {
         let mut registry = WidgetRegistry::<()>::new();
         registry.register(Box::new(PanickingInPrepare));
 
-        let tree = tree(vec![leaf("p1", "prepare_panic")]);
+        let mut tree = tree(vec![leaf("p1", "prepare_panic")]);
         let mut shared = crate::shared_state::SharedState::new();
         // Must not panic out of prepare_walk.
-        registry.prepare_walk(&tree, &mut shared, &Theme::Dark);
+        registry.prepare_walk(&mut tree, &mut shared, &Theme::Dark);
     }
 
     #[test]

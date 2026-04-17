@@ -197,7 +197,7 @@ impl App {
             if is_snapshot {
                 self.transition_manager.clear();
             }
-            if let Some(root) = self.core.tree.root() {
+            if let Some(root) = self.core.tree.root_mut() {
                 self.registry
                     .prepare_walk(root, &mut self.core.caches, &self.theme);
             }

@@ -11,6 +11,15 @@
 //! prop as f64 but the renderer expects a string, the mismatch is
 //! caught immediately. This gives confidence that the wire format
 //! (which uses the same prop names and types) will also be correct.
+//!
+//! # Null-valued entries are wire-canonical "absent"
+//!
+//! The wire protocol encodes prop removal by sending `null` in an
+//! `update_props` op. There is no way to transmit "set this key to
+//! an explicit null value." As a result, equality on [`Props`] and
+//! [`PropMap`] treats null-valued entries as equivalent to absent
+//! entries, so round-tripping a tree through diff + apply is lossless.
+//! See the `PartialEq` impls below.
 
 use serde_json::Value;
 
@@ -206,11 +215,26 @@ impl From<PropValue> for Value {
 pub struct PropMap(Vec<(String, PropValue)>);
 
 impl PartialEq for PropMap {
+    /// Wire-canonical equality: null-valued entries are equivalent to
+    /// absent entries. The wire protocol encodes key removal by sending
+    /// `null`, so `{}` and `{"a": null}` are indistinguishable downstream
+    /// and must compare equal here. Without this, `tree_diff` +
+    /// `apply_patch` could not round-trip trees whose only difference
+    /// is a null-valued prop, because there is no protocol op that adds
+    /// an explicit null-valued key.
     fn eq(&self, other: &Self) -> bool {
-        if self.0.len() != other.0.len() {
+        let non_null =
+            |pairs: &[(String, PropValue)]| pairs.iter().filter(|(_, v)| !v.is_null()).count();
+        if non_null(&self.0) != non_null(&other.0) {
             return false;
         }
-        self.0.iter().all(|(k, v)| other.get(k) == Some(v))
+        self.0
+            .iter()
+            .filter(|(_, v)| !v.is_null())
+            .all(|(k, v)| match other.get(k) {
+                Some(ov) if !ov.is_null() => ov == v,
+                _ => false,
+            })
     }
 }
 
@@ -458,16 +482,45 @@ impl Default for Props {
 }
 
 impl PartialEq for Props {
+    /// Wire-canonical equality: null-valued keys in either map are
+    /// treated as absent. See [`PropMap::eq`] for the rationale; the
+    /// same invariant holds for the Wire variant so that `Typed` and
+    /// `Wire` forms agree and `tree_diff` + `apply_patch` can round-trip.
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Typed(a), Self::Typed(b)) => a == b,
-            (Self::Wire(a), Self::Wire(b)) => a == b,
+            (Self::Wire(a), Self::Wire(b)) => wire_values_eq(a, b),
             // Mixed comparison: convert typed to value for comparison.
             (Self::Typed(m), Self::Wire(v)) | (Self::Wire(v), Self::Typed(m)) => {
                 let typed_val = Value::Object(m.clone().into_json_map());
-                typed_val == *v
+                wire_values_eq(&typed_val, v)
             }
         }
+    }
+}
+
+/// Wire-canonical equality for `serde_json::Value`: recursively treats
+/// null-valued entries in JSON objects as absent. Non-object values
+/// compare with standard equality.
+fn wire_values_eq(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Object(ma), Value::Object(mb)) => {
+            let non_null_count =
+                |m: &serde_json::Map<String, Value>| m.iter().filter(|(_, v)| !v.is_null()).count();
+            if non_null_count(ma) != non_null_count(mb) {
+                return false;
+            }
+            ma.iter()
+                .filter(|(_, v)| !v.is_null())
+                .all(|(k, v)| match mb.get(k) {
+                    Some(ov) if !ov.is_null() => wire_values_eq(v, ov),
+                    _ => false,
+                })
+        }
+        (Value::Array(aa), Value::Array(ab)) => {
+            aa.len() == ab.len() && aa.iter().zip(ab.iter()).all(|(x, y)| wire_values_eq(x, y))
+        }
+        _ => a == b,
     }
 }
 

@@ -157,6 +157,12 @@ fn diff_node(old: &TreeNode, new: &TreeNode, path: &[usize]) -> Vec<PatchOp> {
 }
 
 /// Diff two props objects. Returns at most one UpdateProps op.
+///
+/// Null-valued entries in either map are treated as absent, matching
+/// the wire protocol contract (`update_props` uses `null` to signal
+/// key removal). This keeps diff/apply self-consistent: the patch
+/// format cannot represent "add an explicit null-valued key," so the
+/// diff never produces one.
 fn diff_props(old_props: &Value, new_props: &Value, path: &[usize]) -> Vec<PatchOp> {
     if old_props == new_props {
         return vec![];
@@ -181,25 +187,39 @@ fn diff_props(old_props: &Value, new_props: &Value, path: &[usize]) -> Vec<Patch
 
     let mut changed = serde_json::Map::new();
 
-    // Find added and changed keys.
+    // Find added and changed keys. A null value on the new side is
+    // equivalent to "key absent" (wire protocol contract), so we emit
+    // a null only when we need to clear a previously-set value.
     for (k, new_v) in new_map {
-        match old_map.get(k) {
-            Some(old_v) if old_v == new_v => {}
-            Some(old_v) => {
+        match (old_map.get(k), new_v.is_null()) {
+            (Some(old_v), _) if old_v == new_v => {}
+            (Some(old_v), false) => {
                 // Check if both are ID-keyed lists that are semantically equal.
                 if !id_keyed_list_equal(old_v, new_v) {
                     changed.insert(k.clone(), new_v.clone());
                 }
             }
-            None => {
+            (Some(old_v), true) => {
+                // new is null, old is not. Emit null to clear the key.
+                // (Skip if old was also null: caught by the equal arm above
+                // when both are null; otherwise fall through to emit null.)
+                if !old_v.is_null() {
+                    changed.insert(k.clone(), Value::Null);
+                }
+            }
+            (None, false) => {
                 changed.insert(k.clone(), new_v.clone());
+            }
+            (None, true) => {
+                // new is null, old is absent: both encode "no value." Skip.
             }
         }
     }
 
-    // Find removed keys (in old but not in new) and set to null.
-    for k in old_map.keys() {
-        if !new_map.contains_key(k) {
+    // Find removed keys (in old but not in new) and set to null. Skip
+    // old entries that were already null (nothing to clear).
+    for (k, old_v) in old_map {
+        if !new_map.contains_key(k) && !old_v.is_null() {
             changed.insert(k.clone(), Value::Null);
         }
     }
@@ -921,6 +941,41 @@ mod tests {
         let serialized = serde_json::to_value(&op).unwrap();
         assert_eq!(serialized["op"], "insert_child");
         assert_eq!(serialized["index"], 2);
+    }
+
+    #[test]
+    fn diff_apply_round_trips_when_new_has_null_valued_prop() {
+        // {"a": null} is wire-equivalent to absent per the protocol.
+        // Round-trip must hold in both directions even if one side
+        // carries an explicit null-valued entry.
+        let empty = node("root", "text", json!({}), vec![]);
+        let with_null = node("root", "text", json!({"a": null}), vec![]);
+
+        let ops = diff_tree(&empty, &with_null);
+        let mut copy = empty.clone();
+        apply_patch(&mut copy, &ops);
+        assert_eq!(copy, with_null);
+
+        let ops = diff_tree(&with_null, &empty);
+        let mut copy = with_null.clone();
+        apply_patch(&mut copy, &ops);
+        assert_eq!(copy, empty);
+    }
+
+    #[test]
+    fn diff_apply_round_trips_when_changing_non_null_to_null() {
+        let with_value = node("root", "text", json!({"a": 5}), vec![]);
+        let with_null = node("root", "text", json!({"a": null}), vec![]);
+
+        let ops = diff_tree(&with_value, &with_null);
+        let mut copy = with_value.clone();
+        apply_patch(&mut copy, &ops);
+        assert_eq!(copy, with_null);
+
+        let ops = diff_tree(&with_null, &with_value);
+        let mut copy = with_null.clone();
+        apply_patch(&mut copy, &ops);
+        assert_eq!(copy, with_value);
     }
 
     #[test]

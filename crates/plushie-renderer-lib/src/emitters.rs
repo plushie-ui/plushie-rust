@@ -425,13 +425,12 @@ mod tests {
         assert_eq!(panic_payload_message(&*other_payload), "(non-string panic)");
     }
 
-    // Regression for hat-04 3.11: a panic must produce BOTH
-    // session_error (with the panic message) AND session_closed
-    // (with reason="panic") on the wire before the default hook
-    // runs. We exercise emit_panic_events directly; install_panic_hook
-    // is global state that interferes with other tests and with the
-    // test harness, so it's covered by the renderer binary's
-    // startup path (renderer/run.rs).
+    // A panic must produce BOTH session_error (with the panic
+    // message) AND session_closed (with reason="panic") on the wire
+    // before the default hook runs. We exercise emit_panic_events
+    // directly; install_panic_hook is global state that interferes
+    // with other tests and with the test harness, so it's covered
+    // by the renderer binary's startup path (renderer/run.rs).
     #[test]
     fn emit_panic_events_writes_error_then_closed() {
         // The global EVENT_SINK OnceLock may already be set by other

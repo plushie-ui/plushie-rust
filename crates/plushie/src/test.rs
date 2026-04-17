@@ -94,7 +94,7 @@ pub struct TestSession<A: App> {
     diagnostics: Vec<String>,
     /// When true, Drop panics if any diagnostics have accumulated.
     /// Defaults to true (strict by default). Disabled by
-    /// [`allow_diagnostics`](Self::allow_diagnostics). F-2.13.3.
+    /// [`allow_diagnostics`](Self::allow_diagnostics).
     fail_on_diagnostics: bool,
 }
 
@@ -112,7 +112,7 @@ impl<A: App> TestSession<A> {
             effect_stubs: HashMap::new(),
             diagnostics: warnings,
             // Strict by default; tests that expect warnings opt out
-            // via `allow_diagnostics()`. F-2.13.3.
+            // via `allow_diagnostics()`.
             fail_on_diagnostics: true,
         };
         session.execute_command(init_cmd);
@@ -122,7 +122,7 @@ impl<A: App> TestSession<A> {
     /// Disable the strict-diagnostics default, so the session does
     /// not panic on Drop when normalization warnings have
     /// accumulated. Use for tests that intentionally exercise
-    /// diagnostic paths (e.g. assert_diagnostic_count). F-2.13.3.
+    /// diagnostic paths (e.g. assert_diagnostic_count).
     pub fn allow_diagnostics(mut self) -> Self {
         self.fail_on_diagnostics = false;
         self
@@ -154,7 +154,7 @@ impl<A: App> TestSession<A> {
 
     /// Resolve a selector to a tree node, panicking with a clear
     /// message if the widget is not found. Lists the available IDs
-    /// in the tree to aid debugging. F-2.13.2.
+    /// in the tree to aid debugging.
     fn resolve(&self, selector: impl Into<Selector>) -> &TreeNode {
         let sel = selector.into();
         sel.find(&self.tree).unwrap_or_else(|| {

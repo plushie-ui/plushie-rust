@@ -251,7 +251,7 @@ pub(crate) fn collect_font_bytes(settings: &Value) -> Vec<Vec<u8>> {
 /// panics with the message so stack unwinding runs `Drop` for
 /// `TransportGuard` (socket file removal, child reap, etc.). The
 /// renderer binary's main installs a panic hook that sets exit
-/// status to 1. F-2.10.2.
+/// status to 1.
 ///
 /// Note: this helper is only called once a codec has been determined.
 /// The earlier codec-detection step fails separately: when the very

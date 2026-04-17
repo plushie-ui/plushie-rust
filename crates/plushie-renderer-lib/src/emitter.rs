@@ -41,7 +41,7 @@ async fn platform_sleep(duration: Duration) {
 
 /// Hard cap on the pending coalesce map. When exceeded the map is
 /// fully flushed and a diagnostic emitted. Defensive only; typical
-/// subscription-tag counts are well below this. F-2.7.3.
+/// subscription-tag counts are well below this.
 const PENDING_CAP: usize = 4096;
 
 // ---------------------------------------------------------------------------
@@ -389,7 +389,7 @@ impl EventEmitter {
     /// prevent unbounded growth under pathological
     /// (subscription-tag * widgets) combinations. When the cap is
     /// exceeded we flush the entire pending map and log a diagnostic
-    /// with code `emitter_coalesce_cap_exceeded`. F-2.7.3.
+    /// with code `emitter_coalesce_cap_exceeded`.
     fn buffer_event(&mut self, key: &CoalesceKey, event: OutgoingEvent, hint: &CoalesceHint) {
         if let Some(existing) = self.pending.get_mut(key) {
             // Check for strategy mismatch. Replace-vs-Replace is always compatible.

@@ -1066,12 +1066,11 @@ mod tests {
     // ---------------------------------------------------------------------------
     // cleanup_stale dispatch from prepare_walk
     //
-    // Regression for hat-04 3.1: the previous `cleanup(node_id,
-    // window_id)` trait method was never invoked. Factory-owned
-    // per-instance HashMaps grew monotonically as nodes left the
-    // tree. cleanup_stale now dispatches from prepare_walk after
-    // prune_shared, so factories can evict entries whose
-    // (window_id, node_id) key is absent from the live set.
+    // Factory-owned per-instance HashMaps must shrink as nodes leave
+    // the tree; otherwise widget state keyed by (window_id, node_id)
+    // leaks forever. cleanup_stale dispatches from prepare_walk
+    // after prune_shared, letting factories evict entries whose key
+    // is absent from the live set.
     // ---------------------------------------------------------------------------
 
     fn tree(children: Vec<TreeNode>) -> TreeNode {

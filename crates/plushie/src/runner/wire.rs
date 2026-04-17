@@ -363,8 +363,7 @@ fn classify_exit(bridge: &mut Bridge, err: &io::Error) -> ExitReason {
 /// Mirrors the outgoing shapes in plushie-core's OutgoingEvent /
 /// response families. Unknown messages decode into
 /// [`IncomingRendererMessage::Unknown`] so a SDK/renderer version
-/// skew produces a diagnostic rather than a silent drop. F-2.3.2 +
-/// F-2.3.3.
+/// skew produces a diagnostic rather than a silent drop.
 #[cfg(feature = "wire")]
 #[derive(Debug)]
 enum IncomingRendererMessage {
@@ -566,7 +565,7 @@ fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Ev
 /// delayed events are sent through a bounded mpsc channel that the
 /// main event loop polls between renderer messages. The 1024 slot
 /// capacity matches the backpressure pattern used by the headless
-/// multiplex writer (F-2.4.3).
+/// multiplex writer.
 #[cfg(feature = "wire")]
 struct AsyncTaskManager {
     runtime: tokio::runtime::Runtime,

@@ -463,11 +463,11 @@ impl Core {
 
                 // Protocol version was already validated by
                 // renderer::startup::perform_handshake before we got
-                // here; no second check needed. F-2.15.2.
+                // here; no second check needed.
 
                 // Typed deny_unknown_fields pass: logs per-field
                 // diagnostics for unknown keys and type mismatches
-                // without failing the whole parse. F-2.15.1.
+                // without failing the whole parse.
                 validate_wire_settings(&settings);
 
                 // Startup-only fields are extracted by run.rs before the
@@ -593,7 +593,6 @@ impl Core {
 /// Resolve a font family from a `default_font` settings entry,
 /// walking the optional fallback chain. Emits a
 /// `font_family_not_found` diagnostic on each unresolved family.
-/// F-2.11.4.
 ///
 /// `known_loaded` is the list of font family names the renderer has
 /// loaded at runtime (via `fonts: [...]` or `Command::load_font`);
@@ -637,7 +636,7 @@ fn resolve_font_with_fallback(v: &Value, known_loaded: &[&str]) -> Font {
 /// validation. Field-level decode failures emit diagnostics but do
 /// not fail the whole parse; the caller continues extracting fields
 /// via the existing `get`-and-coerce pattern so partial settings
-/// still take effect. F-2.15.1.
+/// still take effect.
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 #[allow(dead_code)] // fields observed via Debug only; real extraction is field-by-field

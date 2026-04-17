@@ -155,7 +155,7 @@ impl Bridge {
     /// Send a typed message to the renderer's stdin.
     ///
     /// Encode failures return [`crate::Error::WireEncode`]; I/O
-    /// failures return [`crate::Error::Io`]. F-2.3.4.
+    /// failures return [`crate::Error::Io`].
     pub fn send(&mut self, message: &OutgoingMessage) -> crate::Result {
         let stdin = self.child.stdin.as_mut().ok_or_else(|| {
             crate::Error::Io(io::Error::new(io::ErrorKind::BrokenPipe, "stdin closed"))
@@ -400,7 +400,7 @@ impl Drop for Bridge {
         let _ = self.kill();
         // Reap the child to capture the exit code and avoid zombies
         // on platforms where kill() returns before the process is
-        // actually reaped. F-2.2.4.
+        // actually reaped.
         let _ = self.child.wait();
     }
 }

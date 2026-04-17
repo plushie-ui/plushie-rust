@@ -566,9 +566,11 @@ fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> serde_json::Value {
             // (e.g. pixel data in image_ops, font data in load_font).
             //
             // Future work: side-channel binary extraction to avoid the Value-tree
-            // expansion entirely. See
-            // `reports/plushie-rust/2026-04-17/future-backlog.md` under "Side-channel
-            // binary extraction during msgpack decode" for the full writeup.
+            // expansion entirely. Route Binary values around the rmpv -> Value
+            // conversion, keeping the byte buffer out of the intermediate tree,
+            // then splice back in at the typed-deserializer layer. Bounded by
+            // the 64 MiB message cap either way, but side-channel keeps memory
+            // proportional to the actual payload, not ~40x the payload.
             serde_json::Value::Array(
                 bytes
                     .into_iter()

@@ -101,13 +101,12 @@ mod tests {
     // ---------------------------------------------------------------------------
     // platform_sleep is cooperative
     //
-    // Regression for hat-04 3.3: direct-mode SendAfter used
-    // `std::thread::sleep` inside a Task::perform future, which blocks
-    // the executor worker and serialises concurrent delays. The fix
-    // uses `platform_sleep` (tokio::time::sleep) so multiple delays
-    // actually run in parallel.
+    // Direct-mode SendAfter must not block the executor worker.
+    // `std::thread::sleep` inside a Task::perform future would
+    // serialise concurrent delays; `platform_sleep`
+    // (tokio::time::sleep) lets multiple delays run in parallel.
     //
-    // With a two-worker runtime and four 100 ms sleeps, the total wall
+    // With a two-worker runtime and four 100 ms sleeps, total wall
     // time must be much closer to 100 ms than 400 ms. Pick a generous
     // ceiling (250 ms) to avoid flakiness under loaded CI.
     // ---------------------------------------------------------------------------
@@ -143,10 +142,9 @@ mod tests {
     // ---------------------------------------------------------------------------
     // run_task_with_panic_guard surfaces panics as Err(...)
     //
-    // Regression for hat-04 3.4 / 3.13: without the guard, a panic in
-    // a user future unwinds the executor worker and drops the result
-    // channel. The app then waits forever for an AsyncEvent that
-    // never arrives.
+    // Without the guard, a panic in a user future unwinds the
+    // executor worker and drops the result channel. The app then
+    // waits forever for an AsyncEvent that never arrives.
     // ---------------------------------------------------------------------------
 
     #[test]

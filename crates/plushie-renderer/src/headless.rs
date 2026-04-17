@@ -72,7 +72,7 @@ pub(crate) enum Mode {
 /// Encoded bytes flow through a bounded channel to a dedicated
 /// writer thread that owns stdout. Single-session and multiplexed
 /// modes share this shape so stdout backpressure pauses the
-/// session thread consistently. F-2.7.2.
+/// session thread consistently.
 struct WireWriter {
     inner: WriterInner,
     codec: Codec,
@@ -1102,7 +1102,7 @@ static LOADED_FONT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::Atom
 /// Load a font from a `load_font` WidgetOp payload (base64 or binary data).
 ///
 /// Every outcome is logged with a `[code=...]` tag so host SDKs can
-/// filter font lifecycle events. F-2.11.3.
+/// filter font lifecycle events.
 fn load_font_from_payload(payload: &serde_json::Value) {
     let Some(data_val) = payload.get("data") else {
         log::error!("[code=font_load_failed] load_font: missing 'data' field");
@@ -1183,7 +1183,7 @@ fn read_message(codec: Codec, reader: &mut impl BufRead) -> Option<SessionMessag
 /// Uses the same bounded channel + dedicated writer thread as the
 /// multiplexed path so backpressure from a slow host pauses the
 /// session thread instead of silently growing buffers inside
-/// stdout. F-2.7.2.
+/// stdout.
 fn run_single<R: PlushieRenderer>(
     codec: Codec,
     mode: Mode,

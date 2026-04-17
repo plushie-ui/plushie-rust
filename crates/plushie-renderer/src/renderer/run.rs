@@ -29,10 +29,10 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
 
     // Wrap startup in catch_unwind so a panic from startup_exit
     // runs Drop for TransportGuard (socket cleanup) before exiting
-    // non-zero. F-2.10.2. Note: this wrapper is local to pre-daemon
-    // startup; once iced::daemon runs it installs its own loop.
-    // A dedicated startup catch sits here so startup-time panics
-    // don't leak /tmp sockets.
+    // non-zero. This wrapper is local to pre-daemon startup; once
+    // iced::daemon runs it installs its own loop. A dedicated
+    // startup catch sits here so startup-time panics don't leak
+    // /tmp sockets.
     let startup_result =
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_inner(builder, args)));
     match startup_result {
@@ -202,7 +202,7 @@ fn run_inner(
     let (tx, rx) = tokio::sync::mpsc::channel::<StdinEvent>(64);
     spawn_stdin_reader(codec, tx, reader);
     // Lock poisoning here is never fatal: recover the inner value so
-    // startup continues. Aligned with hat 4 3.5 recovery pattern.
+    // startup continues.
     *STDIN_RX.lock().unwrap_or_else(|e| e.into_inner()) = Some(rx);
 
     let settings_slot: Mutex<Option<(serde_json::Value, Vec<Vec<u8>>)>> =
@@ -214,7 +214,7 @@ fn run_inner(
         move || {
             // Poison-recover on these slot locks: the previous holder
             // panicking does not invalidate the contents for our
-            // purposes. F-2.10.3.
+            // purposes.
             let (settings, fonts) = settings_slot
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())

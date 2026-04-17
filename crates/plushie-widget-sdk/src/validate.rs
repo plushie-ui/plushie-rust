@@ -32,7 +32,7 @@ pub fn set_validate_props(enabled: bool) -> bool {
 /// Debug builds auto-enable validation by default so prop warnings
 /// surface during development without the host SDK having to opt
 /// in. Release builds require explicit `validate_props: true` in
-/// Settings. F-2.6.3.
+/// Settings.
 pub fn is_validate_props_enabled() -> bool {
     if let Some(v) = VALIDATE_PROPS.get() {
         return *v;
@@ -67,7 +67,7 @@ fn prop_type_matches(val: &Value, expected: PropType) -> bool {
 ///
 /// Exposed for drift detection: CI tests can cross-check this list
 /// against the registry's active type names so a new widget cannot
-/// ship without a corresponding schema entry. F-2.6.2.
+/// ship without a corresponding schema entry.
 #[allow(dead_code)] // consumed by the drift test in `tests`
 pub const VALIDATED_WIDGET_TYPES: &[&str] = &[
     "window",
@@ -710,7 +710,7 @@ mod tests {
     /// the iced widget set registers must appear in
     /// `VALIDATED_WIDGET_TYPES`. A new widget added to the set but
     /// not to the validation schema would silently ship without
-    /// prop validation. F-2.6.2.
+    /// prop validation.
     #[test]
     fn validation_schema_covers_registered_widget_types() {
         use crate::widget::widget_set::IcedWidgetSet;

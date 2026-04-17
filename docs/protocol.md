@@ -1843,7 +1843,7 @@ accessibility behaviour. All fields are optional.
 | `expanded` | bool | Expanded/collapsed state |
 | `required` | bool | Required field indicator |
 | `level` | number | Heading level (1-6) |
-| `live` | string | Live region: `"off"`, `"polite"`, `"assertive"` |
+| `live` | string | Live region: `"polite"` or `"assertive"`. Omit (or send `null` in a patch) to clear the live-region attribute. |
 | `busy` | bool | Suppresses AT announcements until cleared (maps to `aria-busy`). Omit to use widget auto-detection (e.g. sliders set busy during drag). Set explicitly to override. |
 | `invalid` | bool | Validation failed |
 | `modal` | bool | Modal container |
@@ -1865,6 +1865,30 @@ accessibility behaviour. All fields are optional.
 `label` from the alt text. Text input and text editor widgets auto-populate
 `description` from their `placeholder` prop. Explicit `a11y` values always
 take priority.
+
+### Precedence
+
+Host SDKs, the tree normalizer, and the renderer each contribute defaults
+and overrides. Fields resolve highest-priority-first:
+
+1. **Author explicit overrides.** Any `a11y.<field>` set by app code on
+   a widget builder wins for that field. Other fields are unaffected:
+   setting `a11y.label` does not clear an inferred `description`.
+2. **Host SDK builder defaults.** Builders like `tooltip(...)`,
+   `text_input(...).placeholder(...)`, `pick_list(...)`, etc. author
+   common a11y fields directly on the tree (`role`, `described_by`,
+   `description`). These are visible to test harnesses.
+3. **Normalizer auto-population.** The tree normalizer fills in
+   `a11y.role` from the widget type when unset and wires implicit
+   radio groups from the shared `group` prop.
+4. **widget-sdk fallback.** The widget SDK's `infer_a11y` provides a
+   safety net for custom widgets not using the host builder defaults
+   (placeholder -> description, alt -> label).
+5. **iced native widget defaults.** At the bottom, the fork's iced
+   widgets contribute baseline attributes (e.g. a button's `role`).
+
+All levels compose through `A11y::merge` semantics so a widget-level
+default never clobbers an explicit override and vice versa.
 
 ### Widget-specific accessibility props
 

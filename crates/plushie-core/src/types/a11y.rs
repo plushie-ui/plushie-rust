@@ -85,6 +85,12 @@ pub enum Role {
 // ---------------------------------------------------------------------------
 
 /// Live region urgency level.
+///
+/// Two variants only. Absence of a `live` value on an `A11y` struct
+/// (the `None` case on `Option<Live>`) means "no live region": the
+/// AccessKit node simply does not carry a live-region attribute.
+/// There is no `Off` variant; demoting a region back to non-live is
+/// done by clearing the field, not by setting a third value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 #[plushie_type(name = "live")]
 pub enum Live {

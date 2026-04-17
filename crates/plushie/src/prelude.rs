@@ -49,7 +49,7 @@ pub use crate::types::{
 };
 
 // A11y sub-types for typed accessibility builders
-pub use plushie_core::types::a11y::{Live, Role};
+pub use plushie_core::types::a11y::{HasPopup, Live, Orientation, Role};
 
 // Animation
 pub use crate::animation::{

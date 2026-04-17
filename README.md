@@ -68,7 +68,13 @@ All crates live under `crates/`:
 - **Platform effects** - native file dialogs, clipboard, OS
   notifications
 - **Accessibility** - keyboard navigation, screen readers, and focus
-  management via [AccessKit](https://accesskit.dev)
+  management via [AccessKit](https://accesskit.dev). Platform
+  requirements:
+  - **Linux**: `at-spi2-core` package plus a running D-Bus session.
+    Orca or another AT-SPI2 client handles the actual announcements.
+  - **macOS**: first run prompts the user for accessibility
+    permissions; VoiceOver picks up the app after that.
+  - **Windows**: UIA is built into the OS; no extra setup.
 - **Custom widgets** - implement `PlushieWidget` in Rust for full
   control over rendering, state, and event handling
 - **Three modes** - windowed (default), headless (tiny-skia, no

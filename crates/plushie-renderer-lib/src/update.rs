@@ -343,7 +343,9 @@ impl App {
                                 let hash = format!("{:x}", hasher.finalize());
                                 let w = shot.size.width;
                                 let h = shot.size.height;
-                                let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                                // sink lock is the innermost; no
+                                // nested locks in this continuation.
+                                let mut guard = sink.lock();
                                 if let Err(e) =
                                     guard.emit_screenshot_response(&id, &name, &hash, w, h, rgba)
                                 {

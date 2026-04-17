@@ -3502,6 +3502,7 @@ version = "0.6.1"
 dependencies = [
  "base64",
  "log",
+ "parking_lot",
  "plushie-core",
  "plushie-iced",
  "plushie-widget-sdk",

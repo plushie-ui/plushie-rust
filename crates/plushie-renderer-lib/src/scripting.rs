@@ -1031,7 +1031,9 @@ mod tests {
 
     /// No-op emitter for tests that verify logic, not wire output.
     fn test_emitter() -> crate::emitter::EventEmitter {
-        use std::sync::{Arc, Mutex};
+        use std::sync::Arc;
+
+        use parking_lot::Mutex;
         struct NullSink;
         impl crate::emitters::EventSink for NullSink {
             fn emit_event(

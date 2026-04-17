@@ -22,6 +22,7 @@ categories = ["gui", "rendering"]
 
 [workspace.dependencies]
 thiserror = "2"
+parking_lot = "0.12"
 
 # Lint configuration. CI also passes RUSTFLAGS="-D warnings" (via justfile)
 # which promotes ALL warnings to errors. The lints below catch things that

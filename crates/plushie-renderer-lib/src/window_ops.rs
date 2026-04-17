@@ -368,11 +368,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -397,11 +393,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -429,11 +421,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -456,11 +444,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -483,11 +467,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -510,11 +490,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -546,11 +522,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -656,11 +628,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -689,11 +657,7 @@ impl App {
                         }
                         let resp =
                             plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .emit_effect_response(resp)
-                        {
+                        if let Err(e) = sink.lock().emit_effect_response(resp) {
                             log::error!("write error: {e}");
                         }
                         Message::NoOp
@@ -743,7 +707,8 @@ impl App {
                         iced::theme::Mode::Dark => "dark",
                         iced::theme::Mode::None => "none",
                     };
-                    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                    // sink lock is the innermost; no nested locks.
+                    let mut guard = sink.lock();
                     if let Err(e) = guard.emit_query_response(
                         "system_theme",
                         &tag,
@@ -775,7 +740,8 @@ impl App {
                         "graphics_backend": info.graphics_backend,
                         "graphics_adapter": info.graphics_adapter,
                     });
-                    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                    // sink lock is the innermost; no nested locks.
+                    let mut guard = sink.lock();
                     if let Err(e) = guard.emit_query_response("system_info", &tag, &data) {
                         log::error!("write error: {e}");
                     }

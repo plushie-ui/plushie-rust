@@ -175,7 +175,8 @@ impl App {
                 let sink = self.emitter.sink();
                 iced::widget::operation::find_focused().map(move |maybe_id| {
                     let focused = maybe_id.map(|id| id.to_string());
-                    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                    // sink lock is the innermost; no nested locks.
+                    let mut guard = sink.lock();
                     if let Err(e) = guard.emit_query_response(
                         "find_focused",
                         &tag,

@@ -10,7 +10,9 @@
 //! 3. Global `default_event_rate` in Settings
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use iced::time::{Duration, Instant};
 
@@ -19,7 +21,7 @@ use iced::Task;
 use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::{CoalesceHint, OutgoingEvent};
 
-use crate::emitters::EventSink;
+use crate::emitters::{EventSink, SinkMutex};
 
 // ---------------------------------------------------------------------------
 // Platform-aware sleep
@@ -147,7 +149,7 @@ impl PendingEvent {
 /// rate; non-coalescable events flush the buffer and emit immediately.
 pub struct EventEmitter {
     /// The output sink for emitted events.
-    sink: Arc<Mutex<Box<dyn EventSink>>>,
+    sink: Arc<SinkMutex>,
     /// Pending coalescable events, keyed by coalesce key.
     pending: HashMap<CoalesceKey, PendingEvent>,
     /// Timestamp of last emission per coalesce key.
@@ -175,7 +177,7 @@ struct BatchState {
 
 impl EventEmitter {
     /// Create a new EventEmitter that writes to the given sink.
-    pub fn new(sink: Arc<Mutex<Box<dyn EventSink>>>) -> Self {
+    pub fn new(sink: Arc<SinkMutex>) -> Self {
         Self {
             sink,
             pending: HashMap::new(),
@@ -193,7 +195,7 @@ impl EventEmitter {
     /// depth. Nested calls are counted so callers don't have to
     /// coordinate.
     pub fn begin_batch(&self) {
-        let mut state = self.batch.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = self.batch.lock();
         state.depth = state.depth.saturating_add(1);
     }
 
@@ -201,7 +203,7 @@ impl EventEmitter {
     /// buffered events are emitted through the sink in order.
     pub fn end_batch(&self) {
         let buffered = {
-            let mut state = self.batch.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = self.batch.lock();
             if state.depth == 0 {
                 return;
             }
@@ -220,7 +222,7 @@ impl EventEmitter {
     }
 
     /// Get a clone of the sink Arc for passing to async callbacks.
-    pub fn sink(&self) -> Arc<Mutex<Box<dyn EventSink>>> {
+    pub fn sink(&self) -> Arc<SinkMutex> {
         self.sink.clone()
     }
 
@@ -486,7 +488,7 @@ impl EventEmitter {
 
     fn do_emit(&self, event: OutgoingEvent) -> Task<Message> {
         {
-            let mut state = self.batch.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = self.batch.lock();
             if state.depth > 0 {
                 state.buffer.push(event);
                 return Task::none();
@@ -505,7 +507,9 @@ impl EventEmitter {
         &self,
         f: impl FnOnce(&mut dyn EventSink) -> std::io::Result<R>,
     ) -> std::io::Result<R> {
-        let mut guard = self.sink.lock().unwrap_or_else(|e| e.into_inner());
+        // sink is the innermost lock on this path: do not add nested
+        // locks (no calling back into iced or user code while held).
+        let mut guard = self.sink.lock();
         f(&mut **guard)
     }
 }
@@ -573,7 +577,7 @@ mod tests {
     }
 
     fn test_emitter() -> EventEmitter {
-        let sink: Arc<Mutex<Box<dyn EventSink>>> = Arc::new(Mutex::new(Box::new(NullSink)));
+        let sink: Arc<SinkMutex> = Arc::new(Mutex::new(Box::new(NullSink)));
         EventEmitter::new(sink)
     }
 

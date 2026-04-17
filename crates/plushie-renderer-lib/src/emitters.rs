@@ -10,9 +10,18 @@
 //! [`emit_hello`], [`write_output`].
 
 use std::io;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
+
+use parking_lot::Mutex;
 
 use plushie_widget_sdk::protocol::OutgoingEvent;
+
+/// Alias for the sink mutex.
+///
+/// Uses `parking_lot::Mutex` on hot paths: faster under contention
+/// and never poisons on panic, so no `unwrap_or_else(|e| e.into_inner())`
+/// boilerplate is needed at lock sites.
+pub type SinkMutex = parking_lot::Mutex<Box<dyn EventSink>>;
 
 // ---------------------------------------------------------------------------
 // EventSink trait
@@ -69,7 +78,7 @@ pub trait EventSink: Send {
 // Global sink
 // ---------------------------------------------------------------------------
 
-static EVENT_SINK: OnceLock<Arc<Mutex<Box<dyn EventSink>>>> = OnceLock::new();
+static EVENT_SINK: OnceLock<Arc<SinkMutex>> = OnceLock::new();
 
 /// Initialize the global event sink.
 ///
@@ -89,7 +98,7 @@ pub fn init_sink(sink: Box<dyn EventSink>) {
 /// the same underlying sink via this Arc.
 ///
 /// Panics if the sink has not been initialized.
-pub fn sink_arc() -> Arc<Mutex<Box<dyn EventSink>>> {
+pub fn sink_arc() -> Arc<SinkMutex> {
     EVENT_SINK
         .get()
         .expect("event sink not initialized")
@@ -100,7 +109,10 @@ fn with_sink<R>(f: impl FnOnce(&mut dyn EventSink) -> io::Result<R>) -> io::Resu
     let sink = EVENT_SINK
         .get()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "event sink not initialized"))?;
-    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+    // parking_lot::Mutex never poisons; one lock, no nested locks -
+    // the sink lock is the innermost and is held only long enough to
+    // invoke `f`.
+    let mut guard = sink.lock();
     f(&mut **guard)
 }
 
@@ -302,7 +314,8 @@ fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> &str {
 /// behaviour without touching the process-global panic hook.
 fn emit_panic_events(msg: &str, location: &str) {
     if let Some(sink_lock) = EVENT_SINK.get() {
-        let mut guard = sink_lock.lock().unwrap_or_else(|e| e.into_inner());
+        // sink lock is the innermost; no nested locks held here.
+        let mut guard = sink_lock.lock();
 
         let error_event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
             "session_error",
@@ -359,6 +372,8 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use std::sync::Mutex as StdMutex;
+
+    use parking_lot::Mutex as PlMutex;
 
     /// In-memory EventSink that records every emitted event. Used
     /// to verify panic-hook and emit_panic_events behaviour without
@@ -443,7 +458,7 @@ mod tests {
             events: events.clone(),
         };
         // Only init if no other test has claimed the sink.
-        let arc = Arc::new(StdMutex::new(Box::new(recording) as Box<dyn EventSink>));
+        let arc = Arc::new(PlMutex::new(Box::new(recording) as Box<dyn EventSink>));
         let fresh_init = EVENT_SINK.set(arc).is_ok();
         if !fresh_init {
             eprintln!(

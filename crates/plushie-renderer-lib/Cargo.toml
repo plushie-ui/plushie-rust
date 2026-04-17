@@ -28,6 +28,7 @@ smol_str = "0.2"
 log = "0.4"
 sha2 = "0.10"
 base64 = "0.22"
+parking_lot = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 iced = { version = "0.8", package = "plushie-iced", features = ["sysinfo"] }

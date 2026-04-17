@@ -4,7 +4,7 @@
 //! that the rest of the renderer uses to query window titles, themes,
 //! scale factors, and emit subscription events.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use iced::{Task, Theme, keyboard, window};
 
@@ -15,7 +15,7 @@ use plushie_widget_sdk::registry::WidgetRegistry;
 use crate::constants::*;
 use crate::effects::EffectHandler;
 use crate::emitter::{CoalesceKey, EventEmitter};
-use crate::emitters::EventSink;
+use crate::emitters::SinkMutex;
 use crate::window_map;
 
 /// Validate and clamp a scale factor. Returns 1.0 for invalid values
@@ -80,7 +80,7 @@ impl App {
     pub fn new(
         registry: WidgetRegistry,
         effect_handler: Box<dyn EffectHandler>,
-        sink: Arc<Mutex<Box<dyn EventSink>>>,
+        sink: Arc<SinkMutex>,
     ) -> Self {
         Self {
             core: plushie_widget_sdk::engine::Core::new(),

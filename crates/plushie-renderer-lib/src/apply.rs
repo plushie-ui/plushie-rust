@@ -104,7 +104,9 @@ impl App {
                             let sink = self.emitter.sink();
                             let task =
                                 plushie_widget_sdk::iced::Task::perform(future, move |response| {
-                                    let mut guard = sink.lock().unwrap_or_else(|e| e.into_inner());
+                                    // sink lock is the innermost; no
+                                    // nested locks in this continuation.
+                                    let mut guard = sink.lock();
                                     if let Err(e) = guard.emit_effect_response(response) {
                                         log::error!("effect response write error: {e}");
                                     }

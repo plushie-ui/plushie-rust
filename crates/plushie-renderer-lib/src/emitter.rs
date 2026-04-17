@@ -151,6 +151,17 @@ pub struct EventEmitter {
     subscription_rates: HashMap<String, u32>,
     /// Per-widget rates from event_rate prop.
     widget_rates: HashMap<String, u32>,
+    /// Batch-suppression state. When the depth is > 0, outgoing
+    /// events are buffered here in order; they flush when the
+    /// outermost batch closes. Protected by a Mutex so the sink
+    /// emit paths (which take `&self`) can still buffer safely.
+    batch: Arc<Mutex<BatchState>>,
+}
+
+#[derive(Default)]
+struct BatchState {
+    depth: u32,
+    buffer: Vec<OutgoingEvent>,
 }
 
 impl EventEmitter {
@@ -164,6 +175,38 @@ impl EventEmitter {
             default_rate: None,
             subscription_rates: HashMap::new(),
             widget_rates: HashMap::new(),
+            batch: Arc::new(Mutex::new(BatchState::default())),
+        }
+    }
+
+    /// Begin an atomic batch: outgoing events are buffered until
+    /// [`end_batch`](Self::end_batch) is called at the matching
+    /// depth. Nested calls are counted so callers don't have to
+    /// coordinate.
+    pub fn begin_batch(&self) {
+        let mut state = self.batch.lock().unwrap_or_else(|e| e.into_inner());
+        state.depth = state.depth.saturating_add(1);
+    }
+
+    /// End an atomic batch. When the outermost batch closes, all
+    /// buffered events are emitted through the sink in order.
+    pub fn end_batch(&self) {
+        let buffered = {
+            let mut state = self.batch.lock().unwrap_or_else(|e| e.into_inner());
+            if state.depth == 0 {
+                return;
+            }
+            state.depth -= 1;
+            if state.depth == 0 {
+                std::mem::take(&mut state.buffer)
+            } else {
+                Vec::new()
+            }
+        };
+        for event in buffered {
+            if let Err(e) = self.with_sink(|sink| sink.emit_event(event)) {
+                log::error!("event sink write error: {e}");
+            }
         }
     }
 
@@ -417,6 +460,13 @@ impl EventEmitter {
     }
 
     fn do_emit(&self, event: OutgoingEvent) -> Task<Message> {
+        {
+            let mut state = self.batch.lock().unwrap_or_else(|e| e.into_inner());
+            if state.depth > 0 {
+                state.buffer.push(event);
+                return Task::none();
+            }
+        }
         match self.with_sink(|sink| sink.emit_event(event)) {
             Ok(()) => Task::none(),
             Err(e) => {

@@ -80,6 +80,24 @@ fn command_stream_carries_tag() {
 }
 
 #[test]
+fn command_widget_batch_wraps_a_commands_op() {
+    use plushie_core::ops::WidgetCommand;
+    let cmd = Command::widget_batch(vec![
+        WidgetCommand::raw("a", "focus", serde_json::Value::Null),
+        WidgetCommand::raw("b", "scroll_by", serde_json::json!({"x": 0, "y": 10})),
+    ]);
+    match cmd {
+        Command::Renderer(RendererOp::Commands(commands)) => {
+            assert_eq!(commands.len(), 2);
+            assert_eq!(commands[0].id, "a");
+            assert_eq!(commands[0].family, "focus");
+            assert_eq!(commands[1].family, "scroll_by");
+        }
+        _ => panic!("expected Renderer(Commands)"),
+    }
+}
+
+#[test]
 fn command_scroll_to_carries_coordinates() {
     match Command::scroll_to("list", 0.0, 100.0) {
         Command::Renderer(RendererOp::Command { id, family, value }) => {

@@ -989,11 +989,11 @@ impl Command {
     /// Command::widget("temp-gauge", GaugeCommand::SetValue(72.0))
     /// ```
     pub fn widget<C: plushie_core::WidgetCommandEncode>(id: &str, cmd: C) -> Self {
-        let (family, prop_value) = cmd.to_wire();
+        let wc = plushie_core::ops::WidgetCommand::new(id, cmd);
         Self::Renderer(RendererOp::Command {
-            id: id.to_string(),
-            family: family.to_string(),
-            value: Value::from(prop_value),
+            id: wc.id,
+            family: wc.family,
+            value: wc.value,
         })
     }
 
@@ -1002,10 +1002,34 @@ impl Command {
     /// Low-level generic builder. Prefer `Command::widget()` with a
     /// typed command enum derived via `#[derive(WidgetCommand)]`.
     pub fn send(id: &str, family: &str, value: Value) -> Self {
+        let wc = plushie_core::ops::WidgetCommand::raw(id, family, value);
         Self::Renderer(RendererOp::Command {
-            id: id.to_string(),
-            family: family.to_string(),
-            value,
+            id: wc.id,
+            family: wc.family,
+            value: wc.value,
         })
+    }
+
+    /// Apply a batch of widget commands atomically.
+    ///
+    /// Unlike [`Command::batch`], which dispatches each command
+    /// independently, `widget_batch` buffers intermediate events so
+    /// observers only see a single consistent state after all
+    /// commands commit. Build items with
+    /// [`WidgetCommand::new`](plushie_core::ops::WidgetCommand::new)
+    /// for typed commands and
+    /// [`WidgetCommand::raw`](plushie_core::ops::WidgetCommand::raw)
+    /// for ad-hoc ones:
+    ///
+    /// ```ignore
+    /// use plushie_core::ops::WidgetCommand;
+    ///
+    /// Command::widget_batch(vec![
+    ///     WidgetCommand::new("pane", SelectPane(1)),
+    ///     WidgetCommand::raw("footer", "refresh", Value::Null),
+    /// ])
+    /// ```
+    pub fn widget_batch(cmds: impl IntoIterator<Item = plushie_core::ops::WidgetCommand>) -> Self {
+        Self::Renderer(RendererOp::Commands(cmds.into_iter().collect()))
     }
 }

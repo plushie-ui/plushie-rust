@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
 use super::types::{PatchOp, TreeNode};
+use crate::ops::WidgetCommand;
 
 /// Messages sent from the host to the renderer over stdin.
 #[derive(Debug, Clone, Deserialize)]
@@ -136,7 +137,7 @@ pub enum IncomingMessage {
         value: Value,
     },
     /// A batch of widget-targeted commands processed in one cycle.
-    Commands { commands: Vec<CommandItem> },
+    Commands { commands: Vec<WidgetCommand> },
     /// Advance the animation clock by one frame (headless/test mode).
     /// Emits an `animation_frame` event if `on_animation_frame` is subscribed.
     AdvanceFrame { timestamp: u64 },
@@ -150,15 +151,6 @@ pub enum IncomingMessage {
     RegisterEffectStub { kind: String, response: Value },
     /// Remove a previously registered effect stub.
     UnregisterEffectStub { kind: String },
-}
-
-/// A single item within a `Commands` batch.
-#[derive(Debug, Clone, Deserialize)]
-pub struct CommandItem {
-    pub id: String,
-    pub family: String,
-    #[serde(default)]
-    pub value: Value,
 }
 
 /// Payload of an [`IncomingMessage::ImageOp`] message.

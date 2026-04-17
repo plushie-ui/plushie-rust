@@ -473,12 +473,7 @@ fn execute_wire_renderer_op(
 
     match op {
         RendererOp::Command { id, family, value } => bridge.send_command(id, family, value),
-        RendererOp::Commands(commands) => {
-            for cmd in commands {
-                bridge.send_command(&cmd.id, &cmd.family, &cmd.value)?;
-            }
-            Ok(())
-        }
+        RendererOp::Commands(commands) => bridge.send_commands(commands.clone()),
         RendererOp::FocusNext => bridge.send_widget_op("focus_next", &json!({})),
         RendererOp::FocusPrevious => bridge.send_widget_op("focus_previous", &json!({})),
         RendererOp::Window(op) => execute_wire_window_op(bridge, op),

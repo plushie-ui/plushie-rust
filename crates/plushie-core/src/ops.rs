@@ -90,7 +90,7 @@ pub enum RendererOp {
         value: Value,
     },
     /// Send multiple widget commands in a batch.
-    Commands(Vec<CommandItem>),
+    Commands(Vec<WidgetCommand>),
 
     // -- Focus (global, no target widget) --
     /// Move keyboard focus to the next focusable widget.
@@ -442,15 +442,44 @@ pub enum ImageOp {
 // Widget commands
 // ---------------------------------------------------------------------------
 
-/// A single widget command within a batch.
-#[derive(Debug, Clone)]
-pub struct CommandItem {
+/// A single widget-targeted command.
+///
+/// Used as the element type for atomic widget batches
+/// ([`RendererOp::Commands`]) and as the payload of single widget
+/// commands built via [`RendererOp::Command`]. Construct via
+/// [`WidgetCommand::new`] (typed) or [`WidgetCommand::raw`]
+/// (family + value).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WidgetCommand {
     /// The target widget's scoped ID.
     pub id: String,
     /// The command family name.
     pub family: String,
     /// Command-specific data.
+    #[serde(default)]
     pub value: Value,
+}
+
+impl WidgetCommand {
+    /// Build a typed widget command. The family name and wire value
+    /// are derived from the typed command via [`WidgetCommandEncode`].
+    pub fn new<C: crate::WidgetCommandEncode>(id: &str, cmd: C) -> Self {
+        let (family, value) = cmd.to_wire();
+        Self {
+            id: id.to_string(),
+            family: family.to_string(),
+            value: Value::from(value),
+        }
+    }
+
+    /// Build a widget command from raw family string and value.
+    pub fn raw(id: &str, family: &str, value: impl Into<Value>) -> Self {
+        Self {
+            id: id.to_string(),
+            family: family.to_string(),
+            value: value.into(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

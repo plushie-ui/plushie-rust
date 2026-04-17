@@ -142,6 +142,17 @@ impl Bridge {
         })
     }
 
+    /// Send an atomic batch of widget-targeted commands.
+    pub fn send_commands(
+        &mut self,
+        commands: Vec<plushie_core::ops::WidgetCommand>,
+    ) -> io::Result<()> {
+        self.send(&OutgoingMessage::Commands {
+            session: String::new(),
+            commands,
+        })
+    }
+
     /// Send a window operation.
     ///
     /// Uses the unified `_op` envelope: op-specific data lives under

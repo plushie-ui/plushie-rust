@@ -22,10 +22,14 @@ impl App {
                 return Ok(());
             }
             IncomingMessage::Commands { commands } => {
+                // Atomic batch: suppress outgoing events until all
+                // commands have been applied, then flush in order.
+                self.emitter.begin_batch();
                 for cmd in commands {
                     let task = self.execute_command(&cmd.id, &cmd.family, &cmd.value);
                     self.pending_tasks.push(task);
                 }
+                self.emitter.end_batch();
                 return Ok(());
             }
             _ => {}

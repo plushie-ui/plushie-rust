@@ -28,10 +28,15 @@ impl App {
                 ref value,
             } => self.execute_command(id, family, value),
             RendererOp::Commands(commands) => {
+                // Atomic batch: buffer outgoing events so observers
+                // see a single consistent state after all commands
+                // commit.
+                self.emitter.begin_batch();
                 let tasks: Vec<_> = commands
                     .iter()
                     .map(|cmd| self.execute_command(&cmd.id, &cmd.family, &cmd.value))
                     .collect();
+                self.emitter.end_batch();
                 Task::batch(tasks)
             }
 

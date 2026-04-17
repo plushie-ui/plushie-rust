@@ -53,6 +53,10 @@ pub enum OutgoingMessage {
         family: String,
         value: Value,
     },
+    Commands {
+        session: String,
+        commands: Vec<crate::ops::WidgetCommand>,
+    },
     WindowOp {
         session: String,
         op: String,

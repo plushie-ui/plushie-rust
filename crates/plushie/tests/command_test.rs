@@ -349,8 +349,8 @@ fn command_set_min_size() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn command_get_window_size() {
-    match Command::get_window_size("main", "size_check") {
+fn command_window_size() {
+    match Command::window_size("main", "size_check") {
         Command::Renderer(RendererOp::WindowQuery(WindowQuery::GetSize { window_id, tag })) => {
             assert_eq!(window_id, "main");
             assert_eq!(tag, "size_check");
@@ -360,8 +360,8 @@ fn command_get_window_size() {
 }
 
 #[test]
-fn command_get_scale_factor() {
-    match Command::get_scale_factor("main", "dpi") {
+fn command_scale_factor() {
+    match Command::scale_factor("main", "dpi") {
         Command::Renderer(RendererOp::WindowQuery(WindowQuery::GetScaleFactor {
             window_id,
             tag,
@@ -378,8 +378,8 @@ fn command_get_scale_factor() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn command_get_system_theme() {
-    match Command::get_system_theme("theme_check") {
+fn command_system_theme() {
+    match Command::system_theme("theme_check") {
         Command::Renderer(RendererOp::SystemQuery(SystemQuery::GetTheme { tag })) => {
             assert_eq!(tag, "theme_check");
         }
@@ -388,8 +388,8 @@ fn command_get_system_theme() {
 }
 
 #[test]
-fn command_get_system_info() {
-    match Command::get_system_info("info") {
+fn command_system_info() {
+    match Command::system_info("info") {
         Command::Renderer(RendererOp::SystemQuery(SystemQuery::GetInfo { tag })) => {
             assert_eq!(tag, "info");
         }

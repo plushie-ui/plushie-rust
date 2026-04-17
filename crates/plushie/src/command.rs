@@ -580,7 +580,7 @@ impl Command {
     // tag you provide, allowing correlation in your update function.
 
     /// Query the size of a window.
-    pub fn get_window_size(window_id: &str, tag: &str) -> Self {
+    pub fn window_size(window_id: &str, tag: &str) -> Self {
         Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetSize {
             window_id: window_id.to_string(),
             tag: tag.to_string(),
@@ -588,7 +588,7 @@ impl Command {
     }
 
     /// Query the position of a window.
-    pub fn get_window_position(window_id: &str, tag: &str) -> Self {
+    pub fn window_position(window_id: &str, tag: &str) -> Self {
         Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetPosition {
             window_id: window_id.to_string(),
             tag: tag.to_string(),
@@ -612,7 +612,7 @@ impl Command {
     }
 
     /// Query the display mode of a window.
-    pub fn get_mode(window_id: &str, tag: &str) -> Self {
+    pub fn window_mode(window_id: &str, tag: &str) -> Self {
         Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetMode {
             window_id: window_id.to_string(),
             tag: tag.to_string(),
@@ -620,7 +620,7 @@ impl Command {
     }
 
     /// Query the scale factor of a window.
-    pub fn get_scale_factor(window_id: &str, tag: &str) -> Self {
+    pub fn scale_factor(window_id: &str, tag: &str) -> Self {
         Self::Renderer(RendererOp::WindowQuery(WindowQuery::GetScaleFactor {
             window_id: window_id.to_string(),
             tag: tag.to_string(),
@@ -653,14 +653,14 @@ impl Command {
     }
 
     /// Query the current OS theme (light/dark).
-    pub fn get_system_theme(tag: &str) -> Self {
+    pub fn system_theme(tag: &str) -> Self {
         Self::Renderer(RendererOp::SystemQuery(SystemQuery::GetTheme {
             tag: tag.to_string(),
         }))
     }
 
     /// Query system information (OS, renderer version, etc.).
-    pub fn get_system_info(tag: &str) -> Self {
+    pub fn system_info(tag: &str) -> Self {
         Self::Renderer(RendererOp::SystemQuery(SystemQuery::GetInfo {
             tag: tag.to_string(),
         }))

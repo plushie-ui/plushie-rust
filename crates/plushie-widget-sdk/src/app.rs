@@ -95,9 +95,24 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
 
     /// Register a [`PlushieWidget`] implementation.
     ///
-    /// If the widget's type name is already registered, the new widget
-    /// replaces it (last-registered wins).
+    /// # Panics
+    ///
+    /// Panics if any of the widget's type names is already
+    /// registered. Use [`widget_override`](Self::widget_override) for
+    /// an intentional override (e.g. a custom Button that shadows
+    /// the built-in one).
+    ///
+    /// Collision here is almost always a typo (the widget picked
+    /// "button" when the author meant "my_button"); failing loud
+    /// catches it instead of silently hijacking the built-in.
     pub fn widget(mut self, widget: impl PlushieWidget<R> + 'static) -> Self {
+        self.registry.register_strict(Box::new(widget));
+        self
+    }
+
+    /// Register a widget, replacing any existing registration for the
+    /// same type names. Use this when the override is deliberate.
+    pub fn widget_override(mut self, widget: impl PlushieWidget<R> + 'static) -> Self {
         self.registry.register(Box::new(widget));
         self
     }

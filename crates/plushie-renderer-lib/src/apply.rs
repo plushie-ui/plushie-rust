@@ -167,6 +167,9 @@ impl App {
                         default_font: self.core.default_font,
                     };
                     self.registry.init_all(&ctx);
+                    for diag in self.registry.family_collision_diagnostics() {
+                        self.emitter.emit_event(diag)?;
+                    }
                 }
                 CoreEffect::ExitNodes(nodes) => {
                     for (parent_id, index, node) in nodes {

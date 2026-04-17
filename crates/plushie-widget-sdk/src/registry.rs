@@ -490,7 +490,40 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
 
     /// Register a single widget. If the type name is already registered,
     /// the new widget replaces it (last-registered wins).
+    ///
+    /// Prefer [`register_strict`](Self::register_strict) for app-level
+    /// registration: it fails loud on accidental type-name collisions
+    /// with already-registered widgets. This looser variant stays
+    /// available for intentional overrides.
     pub fn register(&mut self, widget: Box<dyn PlushieWidget<R>>) {
+        self.register_with_set_name(widget, "");
+    }
+
+    /// Register a single widget, panicking if any of its type names
+    /// already has an implementation registered.
+    ///
+    /// # Panics
+    ///
+    /// Panics with a message listing the colliding type names. The
+    /// panic covers both same-set collisions (two built-in widgets
+    /// claim the same name, which is a programmer bug) and
+    /// cross-set collisions (a `.widget()` call shadows a built-in
+    /// type, which is usually a typo).
+    pub fn register_strict(&mut self, widget: Box<dyn PlushieWidget<R>>) {
+        let collisions: Vec<String> = widget
+            .type_names()
+            .iter()
+            .filter(|name| self.type_index.contains_key(**name))
+            .map(|s| (*s).to_string())
+            .collect();
+        if !collisions.is_empty() {
+            panic!(
+                "widget registration collides with existing type name(s): [{}]. \
+                 Rename the widget, or use `widget_override` (on the builder) / \
+                 `register` (on the registry) if the override is intentional.",
+                collisions.join(", "),
+            );
+        }
         self.register_with_set_name(widget, "");
     }
 
@@ -734,6 +767,81 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             node_factory_map: HashMap::new(),
             provenance: self.provenance.clone(),
         }
+    }
+
+    /// Collect diagnostics for widgets that declare the same
+    /// event/command family with mismatched payload specs.
+    ///
+    /// Widgets that declare identical specs for a shared family name
+    /// (the common "click", "submit" taxonomy) are silent. Only
+    /// genuine shape collisions produce a diagnostic, so a host SDK
+    /// can surface them as a widget contract issue.
+    pub fn family_collision_diagnostics(&self) -> Vec<OutgoingEvent> {
+        use plushie_core::spec::{CommandSpec, EventSpec, PayloadSpec};
+
+        let mut out = Vec::new();
+        let mut events: HashMap<String, (String, PayloadSpec)> = HashMap::new();
+        let mut commands: HashMap<String, (String, PayloadSpec)> = HashMap::new();
+
+        for widget in &self.impls {
+            let type_name = widget
+                .type_names()
+                .first()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+
+            for EventSpec { family, payload } in widget.event_specs() {
+                match events.get(&family) {
+                    Some((prev_type, prev_payload)) => {
+                        // PayloadSpec doesn't derive PartialEq upstream; compare via Debug format.
+                        if format!("{prev_payload:?}") != format!("{payload:?}") {
+                            out.push(OutgoingEvent::generic(
+                                "widget_family_collision",
+                                "",
+                                Some(serde_json::json!({
+                                    "kind": "event",
+                                    "type_a": prev_type,
+                                    "type_b": type_name,
+                                    "family": family,
+                                    "spec_a": format!("{:?}", prev_payload),
+                                    "spec_b": format!("{:?}", payload),
+                                })),
+                            ));
+                        }
+                    }
+                    None => {
+                        events.insert(family, (type_name.clone(), payload));
+                    }
+                }
+            }
+
+            for CommandSpec { family, payload } in widget.command_specs() {
+                match commands.get(&family) {
+                    Some((prev_type, prev_payload)) => {
+                        // PayloadSpec doesn't derive PartialEq upstream; compare via Debug format.
+                        if format!("{prev_payload:?}") != format!("{payload:?}") {
+                            out.push(OutgoingEvent::generic(
+                                "widget_family_collision",
+                                "",
+                                Some(serde_json::json!({
+                                    "kind": "command",
+                                    "type_a": prev_type,
+                                    "type_b": type_name,
+                                    "family": family,
+                                    "spec_a": format!("{:?}", prev_payload),
+                                    "spec_b": format!("{:?}", payload),
+                                })),
+                            ));
+                        }
+                    }
+                    None => {
+                        commands.insert(family, (type_name.clone(), payload));
+                    }
+                }
+            }
+        }
+
+        out
     }
 
     /// Broadcast init to every registered widget.
@@ -1762,6 +1870,122 @@ mod tests {
         fn fresh_for_session(&self) -> Box<dyn PlushieWidget<iced::Renderer>> {
             Box::new(PanickingButton)
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Registration policy
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    #[should_panic(expected = "collides with existing type name")]
+    fn register_strict_panics_on_type_name_collision() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["button"])));
+        // register_strict must fail loud here; it's almost certainly a typo.
+        registry.register_strict(Box::new(TestWidget::new(&["button"])));
+    }
+
+    #[test]
+    fn register_strict_succeeds_without_collision() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register_strict(Box::new(TestWidget::new(&["one"])));
+        registry.register_strict(Box::new(TestWidget::new(&["two"])));
+        assert!(registry.handles_type("one"));
+        assert!(registry.handles_type("two"));
+    }
+
+    // Family collision diagnostics: identical specs on the same family
+    // (shared taxonomy) are silent; mismatched specs emit a diagnostic.
+
+    struct SpecFamilyA;
+    impl PlushieWidget<()> for SpecFamilyA {
+        fn type_names(&self) -> &[&str] {
+            &["a"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("a").into()
+        }
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            vec![EventSpec {
+                family: "select".into(),
+                payload: PayloadSpec::Value(ValueType::Integer),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(SpecFamilyA)
+        }
+    }
+
+    struct SpecFamilyBMatching;
+    impl PlushieWidget<()> for SpecFamilyBMatching {
+        fn type_names(&self) -> &[&str] {
+            &["b"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("b").into()
+        }
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            // Same family, same spec: intentional shared taxonomy.
+            vec![EventSpec {
+                family: "select".into(),
+                payload: PayloadSpec::Value(ValueType::Integer),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(SpecFamilyBMatching)
+        }
+    }
+
+    struct SpecFamilyBConflicting;
+    impl PlushieWidget<()> for SpecFamilyBConflicting {
+        fn type_names(&self) -> &[&str] {
+            &["b"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("b").into()
+        }
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            // Same family, different spec: genuine collision.
+            vec![EventSpec {
+                family: "select".into(),
+                payload: PayloadSpec::Value(ValueType::String),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(SpecFamilyBConflicting)
+        }
+    }
+
+    #[test]
+    fn family_collision_silent_for_matching_specs() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecFamilyA));
+        registry.register(Box::new(SpecFamilyBMatching));
+        assert!(registry.family_collision_diagnostics().is_empty());
+    }
+
+    #[test]
+    fn family_collision_emitted_for_mismatched_specs() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecFamilyA));
+        registry.register(Box::new(SpecFamilyBConflicting));
+        let diags = registry.family_collision_diagnostics();
+        assert_eq!(diags.len(), 1, "mismatched spec must produce one diagnostic");
     }
 
     #[test]

@@ -125,7 +125,8 @@ protocol version:
   "backend": "tiny-skia",
   "transport": "stdio",
   "native_widgets": ["charts", "editor"],
-  "widgets": ["button", "text", "column", "charts", "editor"]
+  "widget_sets": ["iced"],
+  "widgets": ["button", "charts", "column", "editor", "text"]
 }
 ```
 
@@ -137,8 +138,9 @@ protocol version:
 | `mode` | string | Execution mode: `"windowed"`, `"headless"`, or `"mock"` |
 | `backend` | string | Rendering backend: `"wgpu"`, `"tiny-skia"`, or `"mock"` |
 | `transport` | string | Transport backend: `"stdio"`, `"exec"`, `"listen"`, or `"wasm"` |
-| `native_widgets` | array | Type names handled by registered native (Rust-backed) widgets |
-| `widgets` | array | All compiled widget type names (built-in + native) |
+| `native_widgets` | array | Type names handled by registered native (Rust-backed) widgets, sorted alphabetically |
+| `widget_sets` | array | Names of the widget-set groups that registered the built-in widgets (e.g. `"iced"`). Lets hosts detect the widget-provider groups compiled into the renderer without enumerating every widget type. |
+| `widgets` | array | All compiled widget type names (built-in + native), sorted alphabetically |
 
 All fields are required. The host should check that `protocol` matches the version it expects.
 The `mode` field tells the SDK what capabilities are available (e.g.
@@ -158,8 +160,9 @@ are not accepted; the host must normalize before sending.
 **Lengths** are numbers (pixels), `"fill"`, `"shrink"`, or
 `{"fill_portion": n}`.
 
-**Padding** is a number (uniform), `[vertical, horizontal]`, or
-`[top, right, bottom, left]`.
+**Padding** is either a number (uniform) or a four-key object
+`{"top": n, "right": n, "bottom": n, "left": n}`. Array forms are
+not accepted.
 
 **Angles** are numbers in degrees (rotations, arc sweeps, etc.).
 
@@ -221,6 +224,24 @@ children of root).
 All messages are JSON objects with a `"type"` field that determines
 the message kind and a `"session"` field identifying the session.
 Field names use `snake_case`.
+
+### Decoding policy
+
+**Unknown fields.** Unknown fields in any incoming message are
+silently ignored during decoding so the protocol can evolve without
+breaking older hosts. The renderer surfaces each unknown field as
+a non-fatal `diagnostic` event (code `unknown_field`) carrying the
+message type and field path, so host-side typos and stale field
+names are still visible during development.
+
+**Duplicate JSON keys.** JSON parsers used on the renderer side
+follow last-wins semantics for duplicate keys. Hosts should avoid
+emitting duplicates; if they appear, the last occurrence in document
+order takes effect. MessagePack maps with duplicate keys follow the
+same rule via the underlying parser.
+
+See also the `diagnostic` event under "Outgoing messages" for the
+full list of protocol-level diagnostic codes.
 
 ### Settings
 

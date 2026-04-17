@@ -4,6 +4,7 @@
 
 use plushie::prelude::*;
 use plushie::test::TestSession;
+use serde_json::json;
 
 // ---------------------------------------------------------------------------
 // Counter app
@@ -482,4 +483,59 @@ fn prop_reads_widget_property() {
     let session = TestSession::<Form>::start();
     let placeholder = session.prop_str("name", "placeholder");
     assert_eq!(placeholder.as_deref(), Some("Your name"));
+}
+
+// ---------------------------------------------------------------------------
+// Streaming command
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+struct Importer {
+    chunks: Vec<String>,
+    done: bool,
+}
+
+impl App for Importer {
+    type Model = Self;
+
+    fn init() -> (Self, Command) {
+        (
+            Importer::default(),
+            Command::stream("import", |emitter| async move {
+                emitter.emit(json!("alpha"));
+                emitter.emit(json!("beta"));
+                emitter.emit(json!("gamma"));
+                Ok(json!({"count": 3}))
+            }),
+        )
+    }
+
+    fn update(model: &mut Self, event: Event) -> Command {
+        match event {
+            Event::Stream(s) if s.tag == "import" => {
+                if let Some(chunk) = s.value.as_str() {
+                    model.chunks.push(chunk.to_string());
+                }
+            }
+            Event::Async(a) if a.tag == "import" => {
+                model.done = a.result.is_ok();
+            }
+            _ => {}
+        }
+        Command::none()
+    }
+
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
+        window("main").child(text("importer")).into()
+    }
+}
+
+#[test]
+fn stream_delivers_intermediate_emits_and_final_result() {
+    let session = TestSession::<Importer>::start();
+    assert_eq!(
+        session.model().chunks,
+        vec!["alpha".to_string(), "beta".to_string(), "gamma".to_string()]
+    );
+    assert!(session.model().done);
 }

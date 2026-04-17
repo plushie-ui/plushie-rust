@@ -363,6 +363,33 @@ impl AsyncTaskManager {
         self.running.insert(tag, handle);
     }
 
+    fn spawn_stream(&mut self, tag: String, task_fn: crate::command::StreamTaskFn) {
+        if let Some(handle) = self.running.remove(&tag) {
+            handle.abort();
+        }
+
+        let tx_stream = self.tx.clone();
+        let tx_final = self.tx.clone();
+        let tag_for_sink = tag.clone();
+        let tag_for_result = tag.clone();
+
+        let emitter = crate::command::StreamEmitter::buffered(&tag);
+        emitter.attach_sink(Box::new(move |t, value| {
+            let _ = tx_stream.send(SinkEvent::StreamValue { tag: t, value });
+            let _ = &tag_for_sink;
+        }));
+
+        let handle = self.runtime.spawn(async move {
+            let future = (task_fn)(emitter);
+            let result = future.await;
+            let _ = tx_final.send(SinkEvent::AsyncResult {
+                tag: tag_for_result,
+                result,
+            });
+        });
+        self.running.insert(tag, handle);
+    }
+
     fn cancel(&mut self, tag: &str) {
         if let Some(handle) = self.running.remove(tag) {
             handle.abort();
@@ -420,6 +447,9 @@ fn execute_wire_command(
         }
         Command::Async { tag, task } => {
             async_mgr.spawn_async(tag, task);
+        }
+        Command::Stream { tag, task } => {
+            async_mgr.spawn_stream(tag, task);
         }
         Command::Cancel { tag } => {
             async_mgr.cancel(&tag);

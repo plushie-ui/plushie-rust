@@ -54,6 +54,32 @@ fn command_send_after_carries_delay_and_event() {
 }
 
 #[test]
+fn command_dispatch_is_zero_delay_send_after() {
+    let event = Event::Timer(TimerEvent {
+        tag: "now".into(),
+        timestamp: 0,
+    });
+    match Command::dispatch(event) {
+        Command::SendAfter { delay, .. } => {
+            assert_eq!(delay, Duration::ZERO);
+        }
+        _ => panic!("expected SendAfter with zero delay"),
+    }
+}
+
+#[test]
+fn command_stream_carries_tag() {
+    let cmd = Command::stream("import", |emitter| async move {
+        emitter.emit(serde_json::json!({"row": 1}));
+        Ok(serde_json::json!({"done": true}))
+    });
+    match cmd {
+        Command::Stream { tag, .. } => assert_eq!(tag, "import"),
+        _ => panic!("expected Stream"),
+    }
+}
+
+#[test]
 fn command_scroll_to_carries_coordinates() {
     match Command::scroll_to("list", 0.0, 100.0) {
         Command::Renderer(RendererOp::Command { id, family, value }) => {

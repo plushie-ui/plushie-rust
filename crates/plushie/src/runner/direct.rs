@@ -355,6 +355,37 @@ impl<A: App> DirectApp<A> {
                 self.running_tasks.insert(tag, handle);
                 task
             }
+            Command::Stream { tag, task } => {
+                // Stream tasks attach a sink that pushes StreamValue
+                // SinkEvents to the queue as the task emits them. The
+                // final future result pushes an AsyncResult.
+                let queue = self.event_queue.clone();
+                let emitter = crate::command::StreamEmitter::buffered(&tag);
+                let sink_queue = queue.clone();
+                let sink_tag = tag.clone();
+                emitter.attach_sink(Box::new(move |t, value| {
+                    sink_queue
+                        .lock()
+                        .unwrap()
+                        .push(SinkEvent::StreamValue { tag: t, value });
+                    // Nudge iced so the queue drains on next update.
+                    // (The renderer batches this naturally via its
+                    // existing event loop.)
+                    let _ = sink_tag;
+                }));
+                let final_tag = tag.clone();
+                let future = (task)(emitter);
+                let (task, handle) = Task::perform(future, move |result| {
+                    queue.lock().unwrap().push(SinkEvent::AsyncResult {
+                        tag: final_tag,
+                        result,
+                    });
+                    Message::NoOp
+                })
+                .abortable();
+                self.running_tasks.insert(tag, handle);
+                task
+            }
             Command::Cancel { tag } => {
                 if let Some(handle) = self.running_tasks.remove(&tag) {
                     handle.abort();

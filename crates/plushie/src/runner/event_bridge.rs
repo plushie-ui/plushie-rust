@@ -38,6 +38,8 @@ pub(crate) enum SinkEvent {
         tag: String,
         result: Result<Value, Value>,
     },
+    /// Intermediate value from a streaming task (Command::Stream).
+    StreamValue { tag: String, value: Value },
     /// A delayed event (Command::SendAfter).
     DelayedEvent(crate::event::Event),
 }
@@ -51,6 +53,9 @@ pub(crate) fn sink_event_to_sdk(sink_event: SinkEvent) -> Option<Event> {
             Some(query_response_to_sdk(&kind, &tag, data))
         }
         SinkEvent::AsyncResult { tag, result } => Some(Event::Async(AsyncEvent { tag, result })),
+        SinkEvent::StreamValue { tag, value } => {
+            Some(Event::Stream(crate::event::StreamEvent { tag, value }))
+        }
         SinkEvent::DelayedEvent(event) => Some(event),
     }
 }

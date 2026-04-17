@@ -1,6 +1,6 @@
 //! Side effects returned from [`App::update`](crate::App::update).
 //!
-//! Commands are data, not closures (except `Async`).
+//! Commands are data, not closures (except `Async` and `Stream`).
 //! This makes them testable: you can assert which commands an
 //! update call returns without executing them.
 //!
@@ -9,6 +9,8 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -25,6 +27,98 @@ pub use plushie_core::ops::*;
 /// [`AsyncEvent`](crate::event::AsyncEvent).
 pub type AsyncTaskFn =
     Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<Value, Value>> + Send>> + Send>;
+
+/// A boxed streaming async closure. Receives a [`StreamEmitter`] to push
+/// intermediate values as [`StreamEvent`](crate::event::StreamEvent)s;
+/// returns a final [`AsyncEvent`](crate::event::AsyncEvent) when the
+/// future resolves.
+pub type StreamTaskFn = Box<
+    dyn FnOnce(StreamEmitter) -> Pin<Box<dyn Future<Output = Result<Value, Value>> + Send>> + Send,
+>;
+
+/// A cloneable sink for pushing values from a streaming task.
+///
+/// Runtime-specific sinks are installed when the command begins
+/// executing. Until then (and in test mode), emits are buffered
+/// locally and drained by the runner.
+#[derive(Clone)]
+pub struct StreamEmitter {
+    tag: String,
+    inner: Arc<Mutex<StreamEmitterInner>>,
+}
+
+enum StreamEmitterInner {
+    /// Values accumulated before a runtime sink is attached.
+    Buffer(Vec<Value>),
+    /// Values routed through the runtime sink.
+    Sink(Box<dyn FnMut(String, Value) + Send>),
+}
+
+impl StreamEmitter {
+    /// Create an emitter backed by an in-memory buffer. Used by test
+    /// runners and as the default until a runtime installs a sink.
+    pub fn buffered(tag: &str) -> Self {
+        Self {
+            tag: tag.to_string(),
+            inner: Arc::new(Mutex::new(StreamEmitterInner::Buffer(Vec::new()))),
+        }
+    }
+
+    /// Replace the underlying delivery mechanism with a sink closure.
+    /// Any buffered values are flushed through the new sink in order.
+    pub fn attach_sink(&self, mut sink: Box<dyn FnMut(String, Value) + Send>) {
+        let mut guard = self.inner.lock().unwrap();
+        if let StreamEmitterInner::Buffer(values) = &mut *guard {
+            for v in values.drain(..) {
+                sink(self.tag.clone(), v);
+            }
+        }
+        *guard = StreamEmitterInner::Sink(sink);
+    }
+
+    /// Drain buffered values. Only meaningful when the emitter is
+    /// still in buffer mode; returns empty otherwise.
+    pub fn drain_buffer(&self) -> Vec<Value> {
+        let mut guard = self.inner.lock().unwrap();
+        match &mut *guard {
+            StreamEmitterInner::Buffer(v) => std::mem::take(v),
+            StreamEmitterInner::Sink(_) => Vec::new(),
+        }
+    }
+
+    /// The tag this emitter is bound to.
+    pub fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    /// Emit an intermediate value to the runtime. Delivered as
+    /// [`StreamEvent`](crate::event::StreamEvent) with this emitter's
+    /// tag.
+    pub fn emit(&self, value: impl Into<Value>) {
+        let value = value.into();
+        let mut guard = self.inner.lock().unwrap();
+        match &mut *guard {
+            StreamEmitterInner::Buffer(buf) => buf.push(value),
+            StreamEmitterInner::Sink(sink) => sink(self.tag.clone(), value),
+        }
+    }
+
+    /// Emit a typed widget event, encoding it to the wire format first.
+    /// The tag used is the emitter's tag; the event's family is not
+    /// inspected.
+    pub fn emit_event(&self, event: impl plushie_core::types::WidgetEventEncode) {
+        let (_family, value) = event.to_wire();
+        self.emit(Value::from(value));
+    }
+}
+
+impl std::fmt::Debug for StreamEmitter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamEmitter")
+            .field("tag", &self.tag)
+            .finish()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Command
@@ -51,6 +145,10 @@ pub enum Command {
     /// Run an async task. Result delivered as
     /// [`AsyncEvent`](crate::event::AsyncEvent).
     Async { tag: String, task: AsyncTaskFn },
+    /// Run a streaming async task. Intermediate emits deliver as
+    /// [`StreamEvent`](crate::event::StreamEvent); the final result
+    /// delivers as [`AsyncEvent`](crate::event::AsyncEvent).
+    Stream { tag: String, task: StreamTaskFn },
     /// Cancel a running async task or stream by tag.
     Cancel { tag: String },
     /// Deliver an event after a delay.
@@ -68,6 +166,7 @@ impl std::fmt::Debug for Command {
             Self::Batch(cmds) => f.debug_tuple("Batch").field(cmds).finish(),
             Self::Exit => write!(f, "Exit"),
             Self::Async { tag, .. } => f.debug_struct("Async").field("tag", tag).finish(),
+            Self::Stream { tag, .. } => f.debug_struct("Stream").field("tag", tag).finish(),
             Self::Cancel { tag } => f.debug_struct("Cancel").field("tag", tag).finish(),
             Self::SendAfter { delay, .. } => {
                 f.debug_struct("SendAfter").field("delay", delay).finish()
@@ -105,6 +204,26 @@ impl Command {
         }
     }
 
+    /// Deliver an event through the normal update pipeline as soon
+    /// as possible. Equivalent to
+    /// [`send_after`](Self::send_after) with a zero delay, but named
+    /// to make the intent clear at the call site.
+    ///
+    /// Useful for lifting a locally-derived value back into the MVU
+    /// loop, e.g. kicking off a follow-up update after computing a
+    /// value in the current `update`:
+    ///
+    /// ```ignore
+    /// Command::dispatch(Event::Widget(WidgetEvent {
+    ///     event_type: EventType::Click,
+    ///     scoped_id: ScopedId::new("next", vec![], None),
+    ///     value: Value::Null,
+    /// }))
+    /// ```
+    pub fn dispatch(event: Event) -> Self {
+        Self::send_after(Duration::ZERO, event)
+    }
+
     /// Run an async task. The result is delivered as
     /// [`AsyncEvent`](crate::event::AsyncEvent).
     ///
@@ -134,6 +253,34 @@ impl Command {
     pub fn cancel(tag: &str) -> Self {
         Self::Cancel {
             tag: tag.to_string(),
+        }
+    }
+
+    /// Run a streaming async task. Intermediate emits deliver as
+    /// [`StreamEvent`](crate::event::StreamEvent)s; the final future
+    /// result delivers as [`AsyncEvent`](crate::event::AsyncEvent).
+    ///
+    /// The task receives a cloneable [`StreamEmitter`] it can pass
+    /// around to produce values over time:
+    ///
+    /// ```ignore
+    /// Command::stream("import", |emitter| async move {
+    ///     for line in fetch_lines().await? {
+    ///         emitter.emit(line);
+    ///     }
+    ///     Ok(serde_json::json!({"done": true}))
+    /// })
+    /// ```
+    ///
+    /// Cancel via [`Command::cancel`] with the same tag.
+    pub fn stream<F, Fut>(tag: &str, f: F) -> Self
+    where
+        F: FnOnce(StreamEmitter) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<Value, Value>> + Send + 'static,
+    {
+        Self::Stream {
+            tag: tag.to_string(),
+            task: Box::new(move |emitter| Box::pin(f(emitter))),
         }
     }
 

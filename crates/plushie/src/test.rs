@@ -472,6 +472,25 @@ impl<A: App> TestSession<A> {
                 let cmd = A::update(&mut self.model, event);
                 self.execute_command(cmd);
             }
+            Command::Stream { tag, task } => {
+                // Drive the streaming task to completion. Intermediate
+                // emits are buffered by the emitter and drained as
+                // StreamEvents after the future resolves.
+                let emitter = crate::command::StreamEmitter::buffered(&tag);
+                let result = run_stream_sync(task, emitter.clone());
+                self.async_results.insert(tag.clone(), result.clone());
+                for value in emitter.drain_buffer() {
+                    let event = Event::Stream(crate::event::StreamEvent {
+                        tag: tag.clone(),
+                        value,
+                    });
+                    let cmd = A::update(&mut self.model, event);
+                    self.execute_command(cmd);
+                }
+                let event = Event::Async(AsyncEvent { tag, result });
+                let cmd = A::update(&mut self.model, event);
+                self.execute_command(cmd);
+            }
             Command::SendAfter { event, .. } => {
                 // In tests, deliver immediately (ignore delay).
                 let cmd = A::update(&mut self.model, *event);
@@ -1105,6 +1124,17 @@ fn run_async_sync(task_fn: crate::command::AsyncTaskFn) -> Result<Value, Value> 
         .build()
         .expect("failed to create test tokio runtime");
     rt.block_on((task_fn)())
+}
+
+fn run_stream_sync(
+    task_fn: crate::command::StreamTaskFn,
+    emitter: crate::command::StreamEmitter,
+) -> Result<Value, Value> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to create test tokio runtime");
+    rt.block_on((task_fn)(emitter))
 }
 
 fn key_event(

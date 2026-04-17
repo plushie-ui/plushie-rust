@@ -64,53 +64,22 @@ impl<R: PlushieRenderer> WidgetSet<R> for IcedWidgetSet {
 }
 
 impl IcedWidgetSet {
-    /// The complete list of built-in widget type names.
+    /// The complete, sorted, deduplicated list of built-in widget type names.
     ///
-    /// This is the canonical source of truth for which types the iced
-    /// widget set provides. Matches the widgets registered by
-    /// `create_widgets()`.
-    pub fn type_names() -> &'static [&'static str] {
-        &[
-            "column",
-            "row",
-            "container",
-            "stack",
-            "grid",
-            "pin",
-            "keyed_column",
-            "float",
-            "responsive",
-            "scrollable",
-            "pane_grid",
-            "text",
-            "rich_text",
-            "rich",
-            "space",
-            "rule",
-            "progress_bar",
-            "image",
-            "svg",
-            "markdown",
-            "qr_code",
-            "text_input",
-            "text_editor",
-            "checkbox",
-            "toggler",
-            "radio",
-            "slider",
-            "vertical_slider",
-            "pick_list",
-            "combo_box",
-            "button",
-            "pointer_area",
-            "sensor",
-            "tooltip",
-            "themer",
-            "window",
-            "overlay",
-            "canvas",
-            "table",
-        ]
+    /// Derived at call time by walking the widgets produced by
+    /// `create_widgets()`. This guarantees the list cannot drift from the
+    /// actual registered widgets: a widget add, remove, or rename here is
+    /// reflected automatically, closing the single-point-of-drift that
+    /// previously existed between two hand-edited lists.
+    pub fn type_names() -> Vec<String> {
+        let widgets = <IcedWidgetSet as WidgetSet<iced::Renderer>>::create_widgets(&IcedWidgetSet);
+        let mut names: Vec<String> = widgets
+            .iter()
+            .flat_map(|w| w.type_names().iter().map(|s| s.to_string()))
+            .collect();
+        names.sort();
+        names.dedup();
+        names
     }
 }
 

@@ -33,7 +33,7 @@ pub(crate) struct PointerAreaWidget;
 
 impl<R: PlushieRenderer> PlushieWidget<R> for PointerAreaWidget {
     fn type_names(&self) -> &[&str] {
-        &["mouse_area"]
+        &["pointer_area"]
     }
 
     fn render<'a>(

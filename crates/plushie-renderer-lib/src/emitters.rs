@@ -149,6 +149,11 @@ impl EventSink for WriterSink {
         tag: &str,
         data: &serde_json::Value,
     ) -> io::Result<()> {
+        // `session` is a write-path placeholder. Headless routes every response
+        // through `OutgoingEvent::op_query_response(...).with_session(...)` and
+        // bypasses this helper. Windowed mode is single-session and threads
+        // the session value into the emitter at App construction time; see
+        // the `session` plumbing in App for how the field is populated.
         let msg = serde_json::json!({
             "type": "op_query_response",
             "session": "",
@@ -173,6 +178,9 @@ impl EventSink for WriterSink {
         use serde_json::json;
         let mut map = serde_json::Map::new();
         map.insert("type".to_string(), json!("screenshot_response"));
+        // `session` is a write-path placeholder; the caller populates it via
+        // `with_session(...)` on the outgoing event path. Same pattern as
+        // `emit_query_response` above.
         map.insert("session".to_string(), json!(""));
         map.insert("id".to_string(), json!(id));
         map.insert("name".to_string(), json!(name));
@@ -202,12 +210,22 @@ impl EventSink for WriterSink {
         transport: &str,
     ) -> io::Result<()> {
         let builtin = plushie_widget_sdk::widget::widget_set::IcedWidgetSet::type_names();
-        let all_widgets: Vec<&str> = builtin
+        // Union of builtin + native widget type names, sorted alphabetically for
+        // stable, predictable output. `native_widgets` itself is emitted sorted
+        // to match.
+        let mut all_widgets: Vec<String> = builtin
             .iter()
-            .copied()
-            .chain(native_widgets.iter().copied())
+            .cloned()
+            .chain(native_widgets.iter().map(|s| s.to_string()))
             .collect();
+        all_widgets.sort();
+        all_widgets.dedup();
+        let mut native_sorted: Vec<&str> = native_widgets.to_vec();
+        native_sorted.sort_unstable();
 
+        // Hello carries `session: ""` by design: it is emitted before any
+        // host session is known, in response to Settings. The handshake is
+        // not per-session.
         let msg = serde_json::json!({
             "type": "hello",
             "session": "",
@@ -217,7 +235,7 @@ impl EventSink for WriterSink {
             "mode": mode,
             "backend": backend,
             "transport": transport,
-            "native_widgets": native_widgets,
+            "native_widgets": native_sorted,
             "widget_sets": widget_set_names,
             "widgets": all_widgets,
         });

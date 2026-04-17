@@ -84,7 +84,7 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
         self.registry
             .type_names()
             .into_iter()
-            .filter(|name| !builtins.contains(name))
+            .filter(|name| !builtins.iter().any(|b| b == name))
             .collect()
     }
 }

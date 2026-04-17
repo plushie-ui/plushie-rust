@@ -27,6 +27,30 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
     // RUST_LOG=plushie=debug (or =info, =trace) for more output.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
+    // Wrap startup in catch_unwind so a panic from startup_exit
+    // runs Drop for TransportGuard (socket cleanup) before exiting
+    // non-zero. F-2.10.2. Note: this wrapper is local to pre-daemon
+    // startup; once iced::daemon runs it installs its own loop.
+    // A dedicated startup catch sits here so startup-time panics
+    // don't leak /tmp sockets.
+    let startup_result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_inner(builder, args)));
+    match startup_result {
+        Ok(r) => r,
+        Err(_) => {
+            // Panic payload already logged by the panic hook (if any)
+            // or by Rust's default; the important part is that Drop
+            // ran during unwind. Exit non-zero so supervisors treat
+            // this as a failure.
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_inner(
+    builder: plushie_widget_sdk::app::PlushieAppBuilder,
+    args: Vec<String>,
+) -> iced::Result {
     // Parse codec flags early so all modes (headless, test, normal) can use them.
     let has_flag = |flag: &str| args.iter().any(|a| a == flag);
     let forced_codec = if has_flag("--msgpack") {
@@ -53,7 +77,11 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
 
     let listen_arg = if has_flag("--listen") {
         // --listen may have an optional argument (next arg if it doesn't start with --)
-        let idx = args.iter().position(|a| a == "--listen").unwrap();
+        // SAFETY: has_flag("--listen") above guarantees position() returns Some.
+        let idx = args
+            .iter()
+            .position(|a| a == "--listen")
+            .expect("has_flag(--listen) gates this branch");
         let next = args.get(idx + 1);
         match next {
             Some(s) if !s.starts_with("--") => Some(Some(s.as_str())),
@@ -173,7 +201,9 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
     // Spawn stdin reader thread with tokio channel.
     let (tx, rx) = tokio::sync::mpsc::channel::<StdinEvent>(64);
     spawn_stdin_reader(codec, tx, reader);
-    *STDIN_RX.lock().expect("STDIN_RX lock poisoned") = Some(rx);
+    // Lock poisoning here is never fatal: recover the inner value so
+    // startup continues. Aligned with hat 4 3.5 recovery pattern.
+    *STDIN_RX.lock().unwrap_or_else(|e| e.into_inner()) = Some(rx);
 
     let settings_slot: Mutex<Option<(serde_json::Value, Vec<Vec<u8>>)>> =
         Mutex::new(Some((initial.settings, font_bytes)));
@@ -182,15 +212,18 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
 
     iced::daemon(
         move || {
+            // Poison-recover on these slot locks: the previous holder
+            // panicking does not invalidate the contents for our
+            // purposes. F-2.10.3.
             let (settings, fonts) = settings_slot
                 .lock()
-                .expect("settings_slot lock poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .take()
                 .unwrap_or_default();
 
             let builder = builder_slot
                 .lock()
-                .expect("builder_slot lock poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .take()
                 .expect("daemon init closure called more than once")
                 .widget_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());

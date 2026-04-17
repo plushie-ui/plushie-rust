@@ -93,7 +93,8 @@ pub struct TestSession<A: App> {
     /// reserved characters). Collected on every view render cycle.
     diagnostics: Vec<String>,
     /// When true, Drop panics if any diagnostics have accumulated.
-    /// Set via [`strict_diagnostics`](Self::strict_diagnostics).
+    /// Defaults to true (strict by default). Disabled by
+    /// [`allow_diagnostics`](Self::allow_diagnostics). F-2.13.3.
     fail_on_diagnostics: bool,
 }
 
@@ -110,19 +111,30 @@ impl<A: App> TestSession<A> {
             async_results: HashMap::new(),
             effect_stubs: HashMap::new(),
             diagnostics: warnings,
-            fail_on_diagnostics: false,
+            // Strict by default; tests that expect warnings opt out
+            // via `allow_diagnostics()`. F-2.13.3.
+            fail_on_diagnostics: true,
         };
         session.execute_command(init_cmd);
         session
     }
 
-    /// Enable strict diagnostic mode: the session will panic on Drop
-    /// if any normalization warnings have accumulated.
-    ///
-    /// This catches accidental prop validation issues without
-    /// requiring an explicit `assert_no_diagnostics()` call.
-    pub fn strict_diagnostics(mut self) -> Self {
-        self.fail_on_diagnostics = true;
+    /// Disable the strict-diagnostics default, so the session does
+    /// not panic on Drop when normalization warnings have
+    /// accumulated. Use for tests that intentionally exercise
+    /// diagnostic paths (e.g. assert_diagnostic_count). F-2.13.3.
+    pub fn allow_diagnostics(mut self) -> Self {
+        self.fail_on_diagnostics = false;
+        self
+    }
+
+    /// Legacy alias for the old explicit opt-in strict mode.
+    /// Deprecated: strict is now the default; prefer
+    /// [`allow_diagnostics`](Self::allow_diagnostics) to opt out.
+    #[deprecated(
+        note = "strict diagnostics is now the default; use allow_diagnostics() to opt out"
+    )]
+    pub fn strict_diagnostics(self) -> Self {
         self
     }
 
@@ -141,11 +153,19 @@ impl<A: App> TestSession<A> {
     // -----------------------------------------------------------------------
 
     /// Resolve a selector to a tree node, panicking with a clear
-    /// message if the widget is not found.
+    /// message if the widget is not found. Lists the available IDs
+    /// in the tree to aid debugging. F-2.13.2.
     fn resolve(&self, selector: impl Into<Selector>) -> &TreeNode {
         let sel = selector.into();
         sel.find(&self.tree).unwrap_or_else(|| {
-            panic!("widget not found: {sel}");
+            let ids = collect_tree_ids(&self.tree);
+            if ids.is_empty() {
+                panic!("widget not found: {sel}\n  tree has no IDs");
+            }
+            panic!(
+                "widget not found: {sel}\n  available IDs:\n    {}",
+                ids.join("\n    ")
+            );
         })
     }
 
@@ -1193,4 +1213,20 @@ fn key_event(
         captured: false,
         window_id: Some("main".to_string()),
     })
+}
+
+/// Walk the tree and collect non-empty IDs. Used to enrich
+/// "widget not found" panic messages.
+fn collect_tree_ids(tree: &TreeNode) -> Vec<String> {
+    fn walk(node: &TreeNode, out: &mut Vec<String>) {
+        if !node.id.is_empty() {
+            out.push(node.id.clone());
+        }
+        for child in &node.children {
+            walk(child, out);
+        }
+    }
+    let mut ids = Vec::new();
+    walk(tree, &mut ids);
+    ids
 }

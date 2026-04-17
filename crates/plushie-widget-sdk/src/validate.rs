@@ -27,9 +27,17 @@ pub fn set_validate_props(enabled: bool) -> bool {
     VALIDATE_PROPS.set(enabled).is_ok()
 }
 
-/// Returns true if prop validation is enabled (explicit opt-in only).
+/// Returns true if prop validation is enabled.
+///
+/// Debug builds auto-enable validation by default so prop warnings
+/// surface during development without the host SDK having to opt
+/// in. Release builds require explicit `validate_props: true` in
+/// Settings. F-2.6.3.
 pub fn is_validate_props_enabled() -> bool {
-    *VALIDATE_PROPS.get().unwrap_or(&false)
+    if let Some(v) = VALIDATE_PROPS.get() {
+        return *v;
+    }
+    cfg!(debug_assertions)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,6 +62,55 @@ fn prop_type_matches(val: &Value, expected: PropType) -> bool {
         PropType::Any => true,
     }
 }
+
+/// Widget type names covered by the built-in validation schema.
+///
+/// Exposed for drift detection: CI tests can cross-check this list
+/// against the registry's active type names so a new widget cannot
+/// ship without a corresponding schema entry. F-2.6.2.
+#[allow(dead_code)] // consumed by the drift test in `tests`
+pub const VALIDATED_WIDGET_TYPES: &[&str] = &[
+    "window",
+    "button",
+    "text",
+    "column",
+    "row",
+    "container",
+    "text_input",
+    "slider",
+    "checkbox",
+    "toggler",
+    "progress_bar",
+    "image",
+    "svg",
+    "scrollable",
+    "grid",
+    "radio",
+    "tooltip",
+    "pointer_area",
+    "sensor",
+    "space",
+    "rule",
+    "pick_list",
+    "combo_box",
+    "text_editor",
+    "overlay",
+    "themer",
+    "stack",
+    "pin",
+    "floating",
+    "float",
+    "keyed_column",
+    "responsive",
+    "rich_text",
+    "rich",
+    "vertical_slider",
+    "table",
+    "pane_grid",
+    "markdown",
+    "canvas",
+    "qr_code",
+];
 
 /// Collect prop validation warnings for a node without logging them.
 ///
@@ -647,5 +704,32 @@ mod tests {
         let node = make_node("window", json!({"title": "My App"}));
         let warnings = collect_prop_warnings(&node);
         assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
+    }
+
+    /// Guard against schema drift: every built-in widget type that
+    /// the iced widget set registers must appear in
+    /// `VALIDATED_WIDGET_TYPES`. A new widget added to the set but
+    /// not to the validation schema would silently ship without
+    /// prop validation. F-2.6.2.
+    #[test]
+    fn validation_schema_covers_registered_widget_types() {
+        use crate::widget::widget_set::IcedWidgetSet;
+
+        let registered = IcedWidgetSet::type_names();
+        let covered: std::collections::HashSet<&str> =
+            VALIDATED_WIDGET_TYPES.iter().copied().collect();
+
+        let mut missing: Vec<String> = registered
+            .iter()
+            .filter(|name| !covered.contains(name.as_str()))
+            .cloned()
+            .collect();
+        missing.sort();
+
+        assert!(
+            missing.is_empty(),
+            "the following widget types are registered but have no validation schema entry: {:?}",
+            missing
+        );
     }
 }

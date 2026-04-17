@@ -461,18 +461,14 @@ impl Core {
             IncomingMessage::Settings { settings } => {
                 log::debug!("settings received");
 
-                // Protocol version check
-                if let Some(v) = settings.get("protocol_version").and_then(|v| v.as_u64()) {
-                    if v != u64::from(crate::protocol::PROTOCOL_VERSION) {
-                        log::error!(
-                            "protocol version mismatch: expected {}, got {}",
-                            crate::protocol::PROTOCOL_VERSION,
-                            v
-                        );
-                    }
-                } else {
-                    log::error!("no protocol_version in Settings, assuming compatible");
-                }
+                // Protocol version was already validated by
+                // renderer::startup::perform_handshake before we got
+                // here; no second check needed. F-2.15.2.
+
+                // Typed deny_unknown_fields pass: logs per-field
+                // diagnostics for unknown keys and type mismatches
+                // without failing the whole parse. F-2.15.1.
+                validate_wire_settings(&settings);
 
                 // Startup-only fields are extracted by run.rs before the
                 // daemon starts. Subsequent Settings messages can't change
@@ -498,18 +494,7 @@ impl Core {
                     .and_then(|v| v.as_f64())
                     .map(crate::prop_helpers::f64_to_f32);
                 self.default_font = settings.get("default_font").map(|v| {
-                    let family = v.get("family").and_then(|f| f.as_str());
-                    match family {
-                        Some("monospace") => Font::MONOSPACE,
-                        Some(other) => {
-                            log::warn!(
-                                "unsupported default_font family `{other}`, \
-                                 using system default"
-                            );
-                            Font::DEFAULT
-                        }
-                        None => Font::DEFAULT,
-                    }
+                    resolve_font_with_fallback(v, /* known_loaded = */ &[])
                 });
                 let ext_config = settings
                     .get("widget_config")
@@ -601,6 +586,98 @@ impl Core {
         }
         for child in &node.children {
             Self::validate_node_recursive(child, effects);
+        }
+    }
+}
+
+/// Resolve a font family from a `default_font` settings entry,
+/// walking the optional fallback chain. Emits a
+/// `font_family_not_found` diagnostic on each unresolved family.
+/// F-2.11.4.
+///
+/// `known_loaded` is the list of font family names the renderer has
+/// loaded at runtime (via `fonts: [...]` or `Command::load_font`);
+/// currently empty because the engine does not yet track loaded
+/// font family names. The fallback chain still shortcuts known
+/// built-ins (currently just `monospace`).
+fn resolve_font_with_fallback(v: &Value, known_loaded: &[&str]) -> Font {
+    let primary = v.get("family").and_then(|f| f.as_str());
+    let fallback_iter = v.get("fallback").and_then(|a| a.as_array());
+    let mut chain: Vec<&str> = Vec::new();
+    if let Some(p) = primary {
+        chain.push(p);
+    }
+    if let Some(arr) = fallback_iter {
+        for entry in arr {
+            if let Some(s) = entry.as_str() {
+                chain.push(s);
+            }
+        }
+    }
+    for name in &chain {
+        if matches!(*name, "monospace") {
+            return Font::MONOSPACE;
+        }
+        if known_loaded.iter().any(|loaded| loaded == name) {
+            // Placeholder: iced's font resolution by family name is
+            // not yet threaded through here. Fall back to the
+            // default but note the hit.
+            log::debug!("font family `{name}` resolved (loaded at runtime)");
+            return Font::DEFAULT;
+        }
+        log::warn!(
+            "[code=font_family_not_found] font family `{name}` not resolvable; \
+             trying next fallback"
+        );
+    }
+    Font::DEFAULT
+}
+
+/// Typed shape of the Settings payload, for `deny_unknown_fields`
+/// validation. Field-level decode failures emit diagnostics but do
+/// not fail the whole parse; the caller continues extracting fields
+/// via the existing `get`-and-coerce pattern so partial settings
+/// still take effect. F-2.15.1.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)] // fields observed via Debug only; real extraction is field-by-field
+struct WireSettings {
+    #[serde(default)]
+    protocol_version: Option<u64>,
+    #[serde(default)]
+    default_event_rate: Option<u64>,
+    #[serde(default)]
+    default_text_size: Option<f64>,
+    #[serde(default)]
+    default_font: Option<serde_json::Value>,
+    #[serde(default)]
+    antialiasing: Option<bool>,
+    #[serde(default)]
+    vsync: Option<bool>,
+    #[serde(default)]
+    fonts: Option<Vec<String>>,
+    #[serde(default)]
+    scale_factor: Option<f64>,
+    #[serde(default)]
+    theme: Option<serde_json::Value>,
+    #[serde(default)]
+    widget_config: Option<serde_json::Value>,
+    #[serde(default)]
+    validate_props: Option<bool>,
+    #[serde(default)]
+    log_level: Option<String>,
+}
+
+/// Run the typed `deny_unknown_fields` validation. Unknown keys
+/// and type mismatches produce a tagged log diagnostic but do not
+/// fail the parse: the caller proceeds with per-field extraction.
+fn validate_wire_settings(settings: &Value) {
+    match serde_json::from_value::<WireSettings>(settings.clone()) {
+        Ok(_) => {}
+        Err(e) => {
+            // TODO(M-6): emit a structured diagnostic event with
+            // code=invalid_settings once the M-6 stream is wired.
+            log::warn!("[code=invalid_settings] settings decode: {e}");
         }
     }
 }

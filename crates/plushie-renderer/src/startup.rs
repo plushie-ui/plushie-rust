@@ -243,12 +243,15 @@ pub(crate) fn collect_font_bytes(settings: &Value) -> Vec<Vec<u8>> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Emit a wire error message and exit the process.
+/// Emit a wire error message and abort startup.
 ///
 /// Used for fatal startup failures where the renderer cannot proceed.
 /// Encodes a `{"type": "error", "message": ...}` JSON object using
-/// the provided codec and writes it to the output channel before
-/// exiting with status 1.
+/// the provided codec and writes it to the output channel, then
+/// panics with the message so stack unwinding runs `Drop` for
+/// `TransportGuard` (socket file removal, child reap, etc.). The
+/// renderer binary's main installs a panic hook that sets exit
+/// status to 1. F-2.10.2.
 ///
 /// Note: this helper is only called once a codec has been determined.
 /// The earlier codec-detection step fails separately: when the very
@@ -263,7 +266,7 @@ fn startup_exit(codec: &Codec, message: &str) -> ! {
     if let Ok(bytes) = codec.encode(&error) {
         let _ = plushie_renderer_lib::emitters::write_output(&bytes);
     }
-    std::process::exit(1);
+    panic!("plushie renderer startup failed: {message}");
 }
 
 /// Constant-time byte comparison to prevent timing attacks on token

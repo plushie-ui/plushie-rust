@@ -36,6 +36,15 @@ async fn platform_sleep(duration: Duration) {
 }
 
 // ---------------------------------------------------------------------------
+// Capacity cap
+// ---------------------------------------------------------------------------
+
+/// Hard cap on the pending coalesce map. When exceeded the map is
+/// fully flushed and a diagnostic emitted. Defensive only; typical
+/// subscription-tag counts are well below this. F-2.7.3.
+const PENDING_CAP: usize = 4096;
+
+// ---------------------------------------------------------------------------
 // Coalesce key
 // ---------------------------------------------------------------------------
 
@@ -375,6 +384,12 @@ impl EventEmitter {
     /// Accumulate), the old entry is flushed first and a fresh buffer is
     /// started. This handles the edge case where a widget changes
     /// its coalesce hint between events for the same key.
+    ///
+    /// The pending map is hard-capped at [`PENDING_CAP`] entries to
+    /// prevent unbounded growth under pathological
+    /// (subscription-tag * widgets) combinations. When the cap is
+    /// exceeded we flush the entire pending map and log a diagnostic
+    /// with code `emitter_coalesce_cap_exceeded`. F-2.7.3.
     fn buffer_event(&mut self, key: &CoalesceKey, event: OutgoingEvent, hint: &CoalesceHint) {
         if let Some(existing) = self.pending.get_mut(key) {
             // Check for strategy mismatch. Replace-vs-Replace is always compatible.
@@ -399,6 +414,16 @@ impl EventEmitter {
             // Strategy changed (or Accumulate field list changed); flush the old
             // entry and start fresh.
             self.flush_key(key);
+        }
+        if self.pending.len() >= PENDING_CAP {
+            // TODO(M-6): emit a structured diagnostic event with
+            // code=emitter_coalesce_cap_exceeded once the M-6
+            // stream is wired. Until then, a tagged log line plus
+            // a forced flush keeps the memory bounded.
+            log::warn!(
+                "[code=emitter_coalesce_cap_exceeded] pending coalesce map hit cap ({PENDING_CAP}); flushing all"
+            );
+            self.flush_all();
         }
         self.pending
             .insert(key.clone(), PendingEvent::from_hint(event, hint));

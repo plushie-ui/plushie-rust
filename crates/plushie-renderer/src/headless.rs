@@ -69,28 +69,21 @@ pub(crate) enum Mode {
 
 /// Encodes and writes wire messages. Each session owns one.
 ///
-/// In single-session mode, writes directly to stdout. In multiplexed
-/// mode, sends encoded bytes through a channel to the writer thread.
+/// Encoded bytes flow through a bounded channel to a dedicated
+/// writer thread that owns stdout. Single-session and multiplexed
+/// modes share this shape so stdout backpressure pauses the
+/// session thread consistently. F-2.7.2.
 struct WireWriter {
     inner: WriterInner,
     codec: Codec,
 }
 
 enum WriterInner {
-    /// Write directly to stdout (single-session mode).
-    Stdout,
-    /// Send encoded bytes to the writer thread (multiplexed mode).
+    /// Send encoded bytes to the writer thread.
     Channel(mpsc::SyncSender<Vec<u8>>),
 }
 
 impl WireWriter {
-    fn stdout(codec: Codec) -> Self {
-        Self {
-            inner: WriterInner::Stdout,
-            codec,
-        }
-    }
-
     fn channel(tx: mpsc::SyncSender<Vec<u8>>, codec: Codec) -> Self {
         Self {
             inner: WriterInner::Channel(tx),
@@ -120,7 +113,6 @@ impl WireWriter {
 
     fn write_bytes(&self, bytes: &[u8]) -> io::Result<()> {
         match &self.inner {
-            WriterInner::Stdout => plushie_renderer_lib::emitters::write_output(bytes),
             WriterInner::Channel(tx) => tx
                 .send(bytes.to_vec())
                 .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "writer channel closed")),
@@ -1108,30 +1100,33 @@ const MAX_LOADED_FONTS: u32 = 256;
 static LOADED_FONT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// Load a font from a `load_font` WidgetOp payload (base64 or binary data).
+///
+/// Every outcome is logged with a `[code=...]` tag so host SDKs can
+/// filter font lifecycle events. F-2.11.3.
 fn load_font_from_payload(payload: &serde_json::Value) {
     let Some(data_val) = payload.get("data") else {
-        log::warn!("load_font: missing 'data' field");
+        log::error!("[code=font_load_failed] load_font: missing 'data' field");
         return;
     };
     let Some(bytes) = plushie_renderer_lib::settings::decode_font_data(data_val) else {
-        log::warn!("load_font: failed to decode font data");
+        log::error!("[code=font_load_failed] load_font: failed to decode font data");
         return;
     };
     if bytes.is_empty() {
-        log::warn!("load_font: empty font data");
+        log::error!("[code=font_load_failed] load_font: empty font data");
         return;
     }
     if bytes.len() > MAX_FONT_BYTES {
-        log::warn!(
-            "load_font: font data ({} bytes) exceeds {} byte limit, rejecting",
+        log::error!(
+            "[code=font_load_failed] load_font: font data ({} bytes) exceeds {} byte limit, rejecting",
             bytes.len(),
             MAX_FONT_BYTES
         );
         return;
     }
     if LOADED_FONT_COUNT.load(std::sync::atomic::Ordering::Relaxed) >= MAX_LOADED_FONTS {
-        log::warn!(
-            "load_font: already loaded {MAX_LOADED_FONTS} fonts, \
+        log::error!(
+            "[code=font_load_failed] load_font: already loaded {MAX_LOADED_FONTS} fonts, \
              rejecting to prevent unbounded memory growth"
         );
         return;
@@ -1139,7 +1134,9 @@ fn load_font_from_payload(payload: &serde_json::Value) {
     LOADED_FONT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let len = bytes.len();
     load_font_bytes(bytes);
-    log::info!("loaded font ({len} bytes)");
+    // TODO(M-6): emit structured diagnostic event (code=font_loaded)
+    // once the M-6 stream is wired.
+    log::info!("[code=font_loaded] loaded font ({len} bytes)");
 }
 
 /// Register font bytes with the global font system.
@@ -1181,15 +1178,30 @@ fn read_message(codec: Codec, reader: &mut impl BufRead) -> Option<SessionMessag
     }
 }
 
-/// Single-session event loop (max_sessions=1). Behaves like the
-/// original design: one session, direct stdout writes.
+/// Single-session event loop (max_sessions=1).
+///
+/// Uses the same bounded channel + dedicated writer thread as the
+/// multiplexed path so backpressure from a slow host pauses the
+/// session thread instead of silently growing buffers inside
+/// stdout. F-2.7.2.
 fn run_single<R: PlushieRenderer>(
     codec: Codec,
     mode: Mode,
     reader: &mut impl BufRead,
     initial: crate::startup::InitialSettings,
 ) {
-    let mut session = Session::<R>::new(mode, WireWriter::stdout(codec));
+    // Writer thread: drains the channel and writes to stdout. Same
+    // capacity (256) as the multiplexed path.
+    let (writer_tx, writer_rx) = mpsc::sync_channel::<Vec<u8>>(256);
+    let writer_handle = thread::spawn(move || {
+        for bytes in writer_rx {
+            if plushie_renderer_lib::emitters::write_output(&bytes).is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut session = Session::<R>::new(mode, WireWriter::channel(writer_tx.clone(), codec));
 
     // Process the initial Settings through the session so Core.apply()
     // picks up default_event_rate, default_text_size, widget config, etc.
@@ -1198,6 +1210,12 @@ fn run_single<R: PlushieRenderer>(
         let mut read_next = || read_message(codec, reader).map(|sm| sm.message);
         if let Err(e) = handle_message(&mut session, &session_id, msg, &mut read_next) {
             log::error!("write error processing initial settings: {e}");
+            // Drop session FIRST so its WireWriter (which holds a
+            // clone of writer_tx) releases the sender before we
+            // join the writer thread - otherwise join() deadlocks.
+            drop(session);
+            drop(writer_tx);
+            let _ = writer_handle.join();
             return;
         }
     }
@@ -1213,6 +1231,13 @@ fn run_single<R: PlushieRenderer>(
             break;
         }
     }
+
+    // Drop session (and its cloned writer_tx) BEFORE joining the
+    // writer thread, otherwise the thread's for-loop over writer_rx
+    // never exits because a sender is still alive.
+    drop(session);
+    drop(writer_tx);
+    let _ = writer_handle.join();
 }
 
 /// Multiplexed event loop (max_sessions > 1). Reader thread dispatches

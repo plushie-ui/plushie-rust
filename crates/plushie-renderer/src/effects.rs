@@ -340,8 +340,15 @@ fn with_clipboard(
 }
 
 fn handle_clipboard_read(id: String) -> EffectResponse {
+    // Normalise platform variance: some backends return
+    // `Err(ContentNotAvailable)` for an empty clipboard while others
+    // return `Ok("")`. Map both to `{"text": ""}` so apps see a
+    // consistent "empty-is-empty" semantic. F-2.8.2.
     with_clipboard(&id, |clipboard, id| match clipboard.get_text() {
         Ok(text) => EffectResponse::ok(id.to_string(), json!({"text": text})),
+        Err(arboard::Error::ContentNotAvailable) => {
+            EffectResponse::ok(id.to_string(), json!({"text": ""}))
+        }
         Err(e) => EffectResponse::error(id.to_string(), format!("clipboard read failed: {e}")),
     })
 }

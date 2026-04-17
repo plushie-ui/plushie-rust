@@ -1183,6 +1183,50 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             transform.take_collected()
         };
 
+        self.finish_prepare(shared, live_ids, live_keys, widget_subs);
+    }
+
+    /// Drive prepare + animation-descriptor scan through one walk.
+    ///
+    /// Composes [`PrepareTransform`] and
+    /// [`crate::animation::ScanTransform`] through the shared
+    /// [`plushie_core::tree_walk::walk`] driver so both passes share
+    /// a single depth-first traversal. Post-walk cleanup (shared-
+    /// state pruning, per-widget `cleanup_stale`, active-subscription
+    /// replacement) runs exactly once after the combined walk.
+    pub fn prepare_and_scan(
+        &mut self,
+        root: &mut TreeNode,
+        shared: &mut crate::shared_state::SharedState,
+        theme: &Theme,
+        animations: &mut crate::animation::TransitionManager,
+    ) {
+        self.node_factory_map.clear();
+
+        let (live_ids, live_keys, widget_subs) = {
+            let mut prepare = PrepareTransform::new(self, shared, theme);
+            let mut scan = crate::animation::ScanTransform {
+                manager: animations,
+            };
+            let mut ctx = plushie_core::tree_walk::WalkCtx::default();
+            plushie_core::tree_walk::walk(root, &mut [&mut prepare, &mut scan], &mut ctx);
+            prepare.take_collected()
+        };
+
+        self.finish_prepare(shared, live_ids, live_keys, widget_subs);
+    }
+
+    /// Post-walk cleanup shared by [`Self::prepare_walk`] and
+    /// [`Self::prepare_and_scan`]: prune stale shared state, dispatch
+    /// `cleanup_stale` to every widget, and replace the active
+    /// subscription set with the freshly-collected one.
+    fn finish_prepare(
+        &mut self,
+        shared: &mut crate::shared_state::SharedState,
+        live_ids: std::collections::HashSet<String>,
+        live_keys: std::collections::HashSet<(String, String)>,
+        widget_subs: HashMap<String, CollectedSubscription>,
+    ) {
         shared.prune_shared(&live_ids);
 
         // Dispatch cleanup_stale to every registered widget. This

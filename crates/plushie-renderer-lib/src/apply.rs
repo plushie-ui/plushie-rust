@@ -197,13 +197,17 @@ impl App {
             if is_snapshot {
                 self.transition_manager.clear();
             }
+            // Single depth-first walk drives both the widget-prepare
+            // pass and the animation-descriptor scan. Each concern is
+            // isolated behind its own `TreeTransform`.
             if let Some(root) = self.core.tree.root_mut() {
-                self.registry
-                    .prepare_walk(root, &mut self.core.caches, &self.theme);
+                self.registry.prepare_and_scan(
+                    root,
+                    &mut self.core.caches,
+                    &self.theme,
+                    &mut self.transition_manager,
+                );
             }
-
-            // Scan tree for animation descriptors and start/update animations.
-            self.transition_manager.scan_tree(self.core.tree.root());
         }
 
         Ok(())

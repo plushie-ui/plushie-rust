@@ -274,16 +274,21 @@ impl TransitionManager {
     /// animation descriptor, starts a new animation or updates the target
     /// if it changed. For props that are raw values, cancels any active
     /// animation.
-    pub fn scan_tree(&mut self, root: Option<&crate::protocol::TreeNode>) {
+    pub fn scan_tree(&mut self, root: Option<&mut crate::protocol::TreeNode>) {
         if self.reduced_motion {
             return;
         }
         if let Some(node) = root {
-            self.scan_node(node);
+            let mut transform = ScanTransform { manager: self };
+            let mut ctx = plushie_core::tree_walk::WalkCtx::default();
+            plushie_core::tree_walk::walk(node, &mut [&mut transform], &mut ctx);
         }
     }
 
-    fn scan_node(&mut self, node: &crate::protocol::TreeNode) {
+    /// Apply the per-node scan for a single node. Separated so
+    /// [`ScanTransform`] and the renderer's combined prepare+scan walk
+    /// can both drive it.
+    pub(crate) fn scan_node_inner(&mut self, node: &crate::protocol::TreeNode) {
         let props_cow = node.props.as_value_cow();
         if let Some(props) = props_cow.as_object() {
             for (key, value) in props {
@@ -318,10 +323,31 @@ impl TransitionManager {
                 }
             }
         }
+    }
+}
 
-        for child in &node.children {
-            self.scan_node(child);
+/// Tree transform that detects animation descriptors on each node's
+/// props and starts, updates, or cancels the corresponding animations
+/// on the owning [`TransitionManager`].
+///
+/// The transform does not mutate nodes; it reads props and updates
+/// the manager's internal maps. It's decoupled from prepare so
+/// renderer hosts can compose `[PrepareTransform, ScanTransform]` in
+/// a single walk.
+pub struct ScanTransform<'a> {
+    pub manager: &'a mut TransitionManager,
+}
+
+impl plushie_core::tree_walk::TreeTransform for ScanTransform<'_> {
+    fn enter(
+        &mut self,
+        node: &mut crate::protocol::TreeNode,
+        _ctx: &mut plushie_core::tree_walk::WalkCtx,
+    ) {
+        if self.manager.reduced_motion {
+            return;
         }
+        self.manager.scan_node_inner(node);
     }
 }
 

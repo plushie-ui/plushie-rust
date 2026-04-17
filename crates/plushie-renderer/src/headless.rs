@@ -694,11 +694,13 @@ fn handle_message<R: PlushieRenderer>(
                     s.transition_manager.clear();
                 }
                 if let Some(root) = s.core.tree.root_mut() {
-                    s.registry.prepare_walk(root, &mut s.core.caches, &s.theme);
+                    s.registry.prepare_and_scan(
+                        root,
+                        &mut s.core.caches,
+                        &s.theme,
+                        &mut s.transition_manager,
+                    );
                 }
-
-                // Scan tree for animation descriptors.
-                s.transition_manager.scan_tree(s.core.tree.root());
 
                 let settle_events = s.settle_ui(session_id);
                 for event in settle_events {

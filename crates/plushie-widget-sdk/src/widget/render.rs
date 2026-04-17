@@ -67,13 +67,21 @@ pub fn render<'a, R: PlushieRenderer>(
 
     let element = ctx.registry.render_node(node, &ctx);
 
-    // Explicit a11y overrides take precedence. When no explicit a11y prop
-    // exists, try widget-specific auto-inference via the registry.
-    let overrides = crate::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
-        ctx.registry
-            .get_for_type(node.type_name.as_str())
-            .and_then(|widget| widget.infer_a11y(node))
-    });
+    // Merge widget-inferred defaults with the author's explicit a11y prop.
+    // Explicit values win per field; inferred values fill in the gaps so a
+    // single `a11y.label` override doesn't silently discard an inferred
+    // `description` (e.g. a text_input's placeholder).
+    let inferred = ctx
+        .registry
+        .get_for_type(node.type_name.as_str())
+        .and_then(|widget| widget.infer_a11y(node));
+    let explicit = crate::a11y::A11yOverrides::from_props(&node.props);
+    let overrides = match (inferred, explicit) {
+        (Some(inf), Some(exp)) => Some(crate::a11y::A11yOverrides::merge(&inf, &exp)),
+        (Some(inf), None) => Some(inf),
+        (None, Some(exp)) => Some(exp),
+        (None, None) => None,
+    };
 
     if let Some(overrides) = overrides {
         return crate::a11y::A11yOverride::wrap(element, overrides).into();
@@ -364,17 +372,22 @@ mod tests {
     /// Helper: extract auto-inferred overrides the same way render() does,
     /// without actually rendering (avoids needing image handles etc.).
     fn infer_a11y_overrides(node: &TreeNode) -> Option<crate::a11y::A11yOverrides> {
-        crate::a11y::A11yOverrides::from_props(&node.props).or_else(|| {
-            let props = &node.props;
-            match node.type_name.as_str() {
-                // Image and SVG use iced's native .alt()/.description() methods
-                // directly, so no A11yOverride wrapping needed for those.
-                "text_input" | "text_editor" | "combo_box" => {
-                    prop_str(props, "placeholder").map(crate::a11y::A11yOverrides::with_description)
-                }
-                _ => None,
+        let props = &node.props;
+        let inferred = match node.type_name.as_str() {
+            // Image and SVG use iced's native .alt()/.description() methods
+            // directly, so no A11yOverride wrapping needed for those.
+            "text_input" | "text_editor" | "combo_box" => {
+                prop_str(props, "placeholder").map(crate::a11y::A11yOverrides::with_description)
             }
-        })
+            _ => None,
+        };
+        let explicit = crate::a11y::A11yOverrides::from_props(props);
+        match (inferred, explicit) {
+            (Some(inf), Some(exp)) => Some(crate::a11y::A11yOverrides::merge(&inf, &exp)),
+            (Some(inf), None) => Some(inf),
+            (None, Some(exp)) => Some(exp),
+            (None, None) => None,
+        }
     }
 
     #[test]
@@ -501,6 +514,33 @@ mod tests {
         assert!(
             infer_a11y_overrides(&node).is_none(),
             "text_input without placeholder should not get a11y wrapping"
+        );
+    }
+
+    #[test]
+    fn a11y_explicit_label_merges_with_inferred_description() {
+        // Before the merge fix, an explicit `a11y.label` on a text_input
+        // would discard the inferred description from the placeholder.
+        // After the fix, both survive on the merged result.
+        let node = smoke_node(
+            "search",
+            "text_input",
+            serde_json::json!({
+                "placeholder": "Search...",
+                "a11y": {"label": "Global search"}
+            }),
+        );
+        let overrides = infer_a11y_overrides(&node)
+            .expect("merged overrides should be present when either side sets fields");
+        assert_eq!(
+            overrides.label(),
+            Some("Global search"),
+            "explicit label should win"
+        );
+        assert_eq!(
+            overrides.description(),
+            Some("Search..."),
+            "inferred description should survive merge"
         );
     }
 }

@@ -216,6 +216,18 @@ impl A11yOverrides {
         Self::from_core(&A11y::new().role(role))
     }
 
+    /// Access the underlying core [`A11y`].
+    pub fn core(&self) -> &A11y {
+        &self.core
+    }
+
+    /// Merge two [`A11yOverrides`]. Fields set on `explicit` win; fields
+    /// only set on `inferred` are preserved. Delegates to
+    /// [`A11y::merge`] for per-field semantics.
+    pub fn merge(inferred: &Self, explicit: &Self) -> Self {
+        Self::from_core(&A11y::merge(&inferred.core, &explicit.core))
+    }
+
     /// Whether the widget is hidden from the accessibility tree.
     pub(crate) fn hidden(&self) -> bool {
         self.core.hidden.unwrap_or(false)

@@ -588,7 +588,13 @@ fn command_specs(&self) -> Vec<CommandSpec> {
 
 ### Testing
 
-Test the widget crate and wrapper crate independently:
+Test the widget crate and wrapper crate independently.
+
+For wrapper-crate tests, the `plushie_widget_sdk::testing` module
+carries the canonical harness (node builders, `TestEnv`,
+`prepare_and_render`, `handle_message_events`). See the "Testing
+your widget" section in [widget-development.md](widget-development.md)
+for the full rundown.
 
 **Widget crate:** Standard iced widget testing. Construct the
 widget, verify it doesn't panic with various inputs.
@@ -669,6 +675,228 @@ The plushie-iced fork stays close to upstream iced. Only add to the
 fork for: new accessible roles, Widget trait extensions, or bug
 fixes not yet upstream. plushie-specific code (prop parsing, event
 emission, validation) belongs in plushie-widget-sdk.
+
+## Session multiplexing
+
+The renderer binary multiplexes concurrent sessions (headless and
+mock modes) via `--max-sessions N`. Each session gets its own
+`WidgetRegistry`, and every registered widget must produce a fresh
+instance for each new session.
+
+`PlushieWidget::fresh_for_session` is the callback. The contract:
+
+- Return a widget with **no per-instance state** carried over.
+- Shared, read-only configuration is fine to clone (wrap it in an
+  `Arc` so the clone is cheap).
+
+The `#[derive(PlushieWidget)]` macro generates a correct
+`fresh_for_session` by calling `Self::default()` (or `Self` for
+unit structs). Stateful widgets that own non-trivial state should
+implement `fresh_for_session` explicitly so the intent is visible.
+
+### Worked example
+
+A counter widget keyed by `(window_id, node_id)` must not share
+its count map across sessions:
+
+```rust
+use std::collections::HashMap;
+use std::sync::Arc;
+
+pub struct Counter {
+    // Per-session, per-instance state. Not shared across sessions.
+    counts: HashMap<(String, String), u32>,
+    // Read-only config. Can be Arc-shared across sessions cheaply.
+    palette: Arc<Palette>,
+}
+
+impl<R: PlushieRenderer> PlushieWidget<R> for Counter {
+    // type_names, render, ... as usual.
+
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+        Box::new(Counter {
+            counts: HashMap::new(),       // fresh per session
+            palette: Arc::clone(&self.palette),  // shared read-only
+        })
+    }
+}
+```
+
+The session-isolation test in
+`crates/plushie-widget-sdk/src/registry.rs` drives two registries
+off a shared template and asserts the per-instance state does not
+leak between them.
+
+## Widget configuration
+
+`init` fires for every widget on every Settings message, regardless
+of whether the widget declares a namespace. Widgets that want
+config-driven setup declare a namespace and a typed config struct:
+
+```rust
+use serde::Deserialize;
+
+#[derive(Default, Deserialize)]
+struct GaugeConfig {
+    #[serde(default = "default_warn_threshold")]
+    warn_threshold: f32,
+    #[serde(default)]
+    show_percent: bool,
+}
+
+fn default_warn_threshold() -> f32 { 80.0 }
+
+impl<R: PlushieRenderer> PlushieWidget<R> for Gauge {
+    fn type_names(&self) -> &[&str] { &["gauge"] }
+
+    fn namespace(&self) -> &str { "gauge" }
+
+    fn init(&mut self, ctx: &InitCtx<'_>) {
+        let cfg = ctx.config_or_default::<GaugeConfig>();
+        self.warn_threshold = cfg.warn_threshold;
+        self.show_percent = cfg.show_percent;
+    }
+    // render, fresh_for_session...
+}
+```
+
+The host's Settings message carries a `widget_config` object keyed
+by namespace. When `namespace()` returns `"gauge"`, the widget
+receives `widget_config["gauge"]` as `ctx.config`. Widgets without
+a namespace see `Value::Null`.
+
+Two helpers on `InitCtx`:
+
+- `config_as::<T>() -> Result<T, serde_json::Error>` returns the
+  deserialization error so the widget can log or bail.
+- `config_or_default::<T>() -> T` returns the default on missing or
+  malformed config. Prefer this when the widget has sensible
+  defaults.
+
+## Panic isolation
+
+Widget code is third-party by default. A panic in a widget entry
+point must not crash the renderer. Every dispatch through
+`WidgetRegistry` is wrapped in `catch_unwind` for untrusted widgets:
+
+- `render`, `prepare`, `handle_message`, `handle_widget_op`,
+  `init`, `cleanup_stale`, `infer_a11y`.
+
+On panic, the registry logs a diagnostic and either returns a red
+error placeholder (render) or skips the widget's contribution
+(everything else). The rest of the tree keeps drawing.
+
+**Trusted widgets bypass the wrapping.** Widgets registered via a
+`WidgetSet` whose provenance is `"iced"` are considered trusted
+(shipped with the renderer, audited). Any widget registered
+individually (via `.widget()` on the builder or `.register()` on
+the registry) is untrusted even if its `type_name` shadows a
+built-in.
+
+**Debug escape hatch.** Set `PLUSHIE_NO_CATCH_UNWIND=1` to disable
+wrapping and let panics propagate. Useful when debugging a widget;
+never set it in production.
+
+## Name collisions
+
+`.widget()` (on `PlushieAppBuilder`) and `register_strict` (on
+`WidgetRegistry`) panic when a widget's `type_names()` clashes with
+an already-registered type. Collision is almost always a typo ("I
+meant `my_button`, not `button`"); panicking catches it instead of
+silently hijacking the built-in.
+
+When an override is deliberate, call:
+
+- `PlushieAppBuilder::widget_override(widget)` at app level, or
+- `WidgetRegistry::register(...)` inside a custom registration
+  path.
+
+### Event and command family diagnostics
+
+At Settings time the registry scans every widget's `event_specs`
+and `command_specs`. Two widgets declaring the same family name
+with the **same** `PayloadSpec` (e.g. both use `click` with
+`PayloadSpec::None`) is silent - that is the intended shared
+taxonomy. Two widgets declaring the same family with **different**
+shapes emit a `widget_family_collision` diagnostic event:
+
+```json
+{
+  "family": "widget_family_collision",
+  "value": {
+    "kind": "event",
+    "type_a": "gauge",
+    "type_b": "speedometer",
+    "family": "change",
+    "spec_a": "Value(Float)",
+    "spec_b": "Value(String)"
+  }
+}
+```
+
+Host SDKs typically surface these as widget contract warnings.
+
+## Derive type-support matrix
+
+`#[derive(WidgetEvent)]` and `#[derive(WidgetCommand)]` map Rust
+types in payload positions to wire `ValueType`:
+
+| Rust type          | Wire `ValueType`      |
+|--------------------|-----------------------|
+| `f32`, `f64`       | `ValueType::Float`    |
+| `i32`, `i64`, `u32`, `u64`, `usize`, `isize` | `ValueType::Integer` |
+| `bool`             | `ValueType::Bool`     |
+| `String`, `&str`   | `ValueType::String`   |
+| Anything else      | `ValueType::Any`      |
+
+Custom types (e.g. `plushie_core::types::Color`) fall into
+`ValueType::Any`, which still round-trips via `PlushieType` but
+loses the runtime validation hint. If your payload is a named
+struct variant with multiple primitive fields, the generated
+`PayloadSpec::Fields` carries the per-field types explicitly.
+
+## Event shape guide
+
+`#[derive(WidgetEvent)]` handles three enum variant shapes:
+
+- **Unit**: `Cleared` wire-encodes to family `"cleared"` with
+  `null` payload. Use for events that carry no data ("a thing
+  happened").
+- **Single-field tuple**: `Select(u64)` wire-encodes to family
+  `"select"` with the field value as payload. Use when the event
+  carries exactly one piece of data.
+- **Named fields**: `Change { x: f32, y: f32 }` wire-encodes to
+  family `"change"` with payload `{"x": ..., "y": ...}`. Use when
+  the event carries multiple values that need labels.
+
+Multi-field tuple variants are rejected at derive time because the
+encoding would be ambiguous. Name the fields instead. The same
+rules apply to `#[derive(WidgetCommand)]`.
+
+## Memory and resources
+
+Widget authors are responsible for their per-instance state.
+Patterns to follow:
+
+- **Key state by `(window_id, node_id)`.** Both parts matter:
+  multiple windows can host the same scoped node id, and pruning
+  on node id alone mixes them up.
+- **Implement `cleanup_stale`.** The registry passes in the set of
+  live keys after every tree walk. Drop entries not in the set.
+  The canonical one-liner is
+  `self.my_state.retain(|k, _| live_ids.contains(k));`.
+- **Cap heavy caches.** Large tile sets or rendered glyph atlases
+  should use an LRU or explicit size cap. The renderer does not
+  GC widget state.
+- **Use the shared `ImageRegistry`.** `RenderCtx::images` is an
+  `&ImageRegistry` populated by the host via `image_op` messages.
+  It enforces a 4096-image count and 1 GiB byte cap. Widgets that
+  render images read from it rather than allocating per-instance
+  image handles.
+- **Do not touch `SharedState` internals.** Only
+  `interpolated_props` is intended for third-party reads
+  (animation interp). Everything else is an internal cache; treat
+  it as implementation detail.
 
 ## Further reading
 

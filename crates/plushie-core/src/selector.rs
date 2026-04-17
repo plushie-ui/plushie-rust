@@ -47,8 +47,10 @@ pub enum Selector {
     ///
     /// The `widget_id` may be a bare local name (`"save"`), a scoped
     /// path (`"form/save"`), or a window-qualified ID (`"main#save"`).
-    /// When `window_id` is set, the search is restricted to that
-    /// window's subtree.
+    /// Bare names and partial scoped paths also match as trailing
+    /// segments, so `"form/save"` finds a node with the fully
+    /// qualified id `"main#form/save"`. When `window_id` is set, the
+    /// search is restricted to that window's subtree.
     Id {
         widget_id: String,
         window_id: Option<String>,
@@ -285,10 +287,12 @@ fn search_all<'a>(
 
 /// Find a node by ID, optionally scoped to a specific window.
 ///
-/// Matches against the full scoped ID (`main#form/email`) and also
-/// against the local name (the segment after the last `/` or `#`).
-/// This lets callers use bare names like `"email"` without knowing
-/// the full scope path.
+/// Matches against the full scoped ID (`main#form/email`), the
+/// local name (the segment after the last `/` or `#`), and any
+/// trailing scoped-path suffix (so target `"todo-1/done"` matches
+/// a node with id `"main#todo-1/done"`). This lets callers use
+/// bare names, partial scoped paths, or fully qualified ids
+/// interchangeably.
 fn find_by_id<'a>(
     node: &'a TreeNode,
     target_id: &str,
@@ -306,7 +310,10 @@ fn find_by_id<'a>(
         current_window
     };
 
-    let matches_id = node.id == target_id || local_name(&node.id) == target_id;
+    let matches_id = node.id == target_id
+        || local_name(&node.id) == target_id
+        || node.id.ends_with(&format!("/{target_id}"))
+        || node.id.ends_with(&format!("#{target_id}"));
     if matches_id && target_window.is_none_or(|win| current_window == Some(win)) {
         return Some(node);
     }

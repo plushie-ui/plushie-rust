@@ -1582,6 +1582,19 @@ mod tests {
                     Codec::Json.decode(&bytes[..bytes.len() - 1]).unwrap();
                 prop_assert_eq!(decoded, val);
             }
+
+            /// MsgPack round-trip mirroring the JSON proptest. The
+            /// encoded frame is `[u32 BE length][msgpack payload]`;
+            /// strip the 4-byte prefix before decoding.
+            #[test]
+            fn msgpack_encode_decode_roundtrip(val in arb_json_value()) {
+                let bytes = Codec::MsgPack.encode(&val).unwrap();
+                prop_assert!(bytes.len() >= 4, "encoded frame must include length prefix");
+                let payload = &bytes[4..];
+                let decoded: serde_json::Value =
+                    Codec::MsgPack.decode(payload).unwrap();
+                prop_assert_eq!(decoded, val);
+            }
         }
     }
 }

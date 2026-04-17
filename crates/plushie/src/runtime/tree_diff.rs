@@ -59,6 +59,80 @@ pub fn diff_tree(old: &TreeNode, new: &TreeNode) -> Vec<PatchOp> {
     diff_node(old, new, &[])
 }
 
+/// Apply a patch sequence to a tree in place.
+///
+/// The inverse of [`diff_tree`]: after
+/// `apply_patch(&mut t, &diff_tree(&t_prev, &t_new))`, `t` equals
+/// `t_new`. Used by the tree-diff property test to verify that the
+/// diff algorithm and the renderer's apply path stay consistent.
+pub fn apply_patch(tree: &mut TreeNode, ops: &[PatchOp]) {
+    for op in ops {
+        apply_one(tree, op);
+    }
+}
+
+fn apply_one(tree: &mut TreeNode, op: &PatchOp) {
+    match op {
+        PatchOp::ReplaceNode { path, node } => {
+            let new_node: TreeNode = serde_json::from_value(node.clone())
+                .expect("TreeNode deserialization from diff output cannot fail");
+            if path.is_empty() {
+                *tree = new_node;
+            } else {
+                let target = navigate_mut(tree, path);
+                *target = new_node;
+            }
+        }
+        PatchOp::UpdateProps { path, props } => {
+            let target = navigate_mut(tree, path);
+            // Merge-update: keys in `props` overwrite; keys absent
+            // from the patch are preserved. Null values delete the
+            // key, matching diff_props's removal encoding.
+            let mut target_value = target.props.to_value();
+            if let (Some(target_map), Some(patch_map)) =
+                (target_value.as_object_mut(), props.as_object())
+            {
+                for (k, v) in patch_map {
+                    if v.is_null() {
+                        target_map.remove(k);
+                    } else {
+                        target_map.insert(k.clone(), v.clone());
+                    }
+                }
+                target.props = plushie_core::protocol::Props::Wire(target_value);
+            } else {
+                // Fall back to whole-props replacement when either side
+                // isn't an object.
+                target.props = plushie_core::protocol::Props::Wire(props.clone());
+            }
+        }
+        PatchOp::InsertChild { path, index, node } => {
+            let new_node: TreeNode = serde_json::from_value(node.clone())
+                .expect("TreeNode deserialization from diff output cannot fail");
+            let target = navigate_mut(tree, path);
+            let idx = (*index).min(target.children.len());
+            target.children.insert(idx, new_node);
+        }
+        PatchOp::RemoveChild { path, index } => {
+            let target = navigate_mut(tree, path);
+            if *index < target.children.len() {
+                target.children.remove(*index);
+            }
+        }
+    }
+}
+
+fn navigate_mut<'a>(tree: &'a mut TreeNode, path: &[usize]) -> &'a mut TreeNode {
+    let mut cursor = tree;
+    for &i in path {
+        cursor = cursor
+            .children
+            .get_mut(i)
+            .expect("patch path must refer to an existing child");
+    }
+    cursor
+}
+
 /// Recursively diff two nodes at the given path.
 fn diff_node(old: &TreeNode, new: &TreeNode, path: &[usize]) -> Vec<PatchOp> {
     if old == new {

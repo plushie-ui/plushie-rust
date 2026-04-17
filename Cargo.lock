@@ -3215,6 +3215,7 @@ dependencies = [
  "plushie-core-macros",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
+ "proptest",
  "rfd",
  "rmp-serde",
  "serde",
@@ -3230,6 +3231,7 @@ dependencies = [
  "base64",
  "log",
  "plushie-core-macros",
+ "proptest",
  "serde",
  "serde_json",
 ]

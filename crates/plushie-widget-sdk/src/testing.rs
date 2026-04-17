@@ -152,6 +152,48 @@ impl TestEnv {
             scale_factor: 1.0,
         }
     }
+
+    /// Drive a stateful widget's prepare/render cycle in one call.
+    ///
+    /// Calls `widget.prepare(node, window_id, &theme)` then
+    /// `widget.render(node, ctx)`. Prefer this over calling the two
+    /// separately so the mutable and immutable borrows don't fight.
+    pub fn prepare_and_render<'a, W>(
+        &'a self,
+        widget: &'a mut W,
+        node: &'a TreeNode,
+        window_id: &str,
+    ) -> iced::Element<'a, crate::message::Message, iced::Theme, iced::Renderer>
+    where
+        W: crate::registry::PlushieWidget<iced::Renderer>,
+    {
+        widget.prepare(node, window_id, &self.theme);
+        let ctx = self.render_ctx();
+        widget.render(node, &ctx)
+    }
+
+    /// Drive a widget's `handle_message` and return the emitted
+    /// events directly.
+    ///
+    /// `HandleResult::Handled(v)` yields `v`. `HandleResult::Fallthrough`
+    /// yields an empty `Vec`. This flattening matches what a host
+    /// actually observes over the wire: a widget that returned
+    /// Fallthrough lets the registry run its default conversion, but
+    /// for unit-testing the widget alone the distinction is rarely
+    /// what the author wants to assert.
+    pub fn handle_message_events<W>(
+        &self,
+        widget: &mut W,
+        msg: &crate::message::Message,
+    ) -> Vec<crate::protocol::OutgoingEvent>
+    where
+        W: crate::registry::PlushieWidget<iced::Renderer>,
+    {
+        match widget.handle_message(msg) {
+            crate::registry::HandleResult::Handled(v) => v,
+            crate::registry::HandleResult::Fallthrough => Vec::new(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -59,7 +59,6 @@ pub(crate) mod validate;
 pub mod codec;
 #[doc(hidden)]
 pub mod engine;
-#[doc(hidden)]
 pub mod image_registry;
 #[doc(hidden)]
 pub mod message;

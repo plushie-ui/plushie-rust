@@ -654,7 +654,7 @@ fn rust_type_to_value_type(ty: &syn::Type) -> proc_macro2::TokenStream {
 /// let value = props.value.unwrap_or(0.0);
 /// let label = props.label.unwrap_or_default();
 /// ```
-#[proc_macro_derive(WidgetProps, attributes(widget, field))]
+#[proc_macro_derive(WidgetProps, attributes(widget, field, widget_props))]
 pub fn derive_plushie_widget(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -666,6 +666,7 @@ pub fn derive_plushie_widget(input: TokenStream) -> TokenStream {
 
 fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let widget_name = extract_widget_name(input)?;
+    let is_container = has_widget_props_container_attr(input);
 
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -824,6 +825,24 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
         widget_name
     );
 
+    let container_methods = if is_container {
+        quote! {
+            /// Append a child node to this container widget.
+            pub fn child(mut self, child: ::plushie_core::protocol::TreeNode) -> Self {
+                self.0.children.push(child);
+                self
+            }
+
+            /// Replace all children with the given list.
+            pub fn children(mut self, children: ::std::vec::Vec<::plushie_core::protocol::TreeNode>) -> Self {
+                self.0.children = children;
+                self
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     Ok(quote! {
         #[doc = #props_doc]
         pub struct #props_name {
@@ -885,6 +904,8 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
                 self.0.props.insert(key, value.into());
                 self
             }
+
+            #container_methods
         }
     })
 }
@@ -1011,6 +1032,24 @@ fn extract_plushie_widget_type_name(input: &DeriveInput) -> syn::Result<String> 
         &input.ident,
         "PlushieWidget derive requires #[plushie_widget(type_name = \"...\")] attribute",
     ))
+}
+
+fn has_widget_props_container_attr(input: &DeriveInput) -> bool {
+    for attr in &input.attrs {
+        if attr.path().is_ident("widget_props") {
+            let mut is_container = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("container") {
+                    is_container = true;
+                }
+                Ok(())
+            });
+            if is_container {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn extract_widget_name(input: &DeriveInput) -> syn::Result<String> {

@@ -33,6 +33,9 @@ pub use plushie_core_macros::PlushieWidget;
 // -- Rendering context --
 pub use crate::render_ctx::RenderCtx;
 
+// -- Image registry (widgets that render images read from ctx.images) --
+pub use crate::image_registry::ImageRegistry;
+
 // -- A11y types (needed for PlushieWidget::infer_a11y) --
 pub use crate::a11y::A11yOverrides;
 

@@ -728,6 +728,32 @@ impl<A: App> TestSession<A> {
     }
 
     // -----------------------------------------------------------------------
+    // Multi-window support
+    // -----------------------------------------------------------------------
+
+    /// Scope a chain of interactions to a specific window.
+    ///
+    /// Interactions returned by [`WindowScope`] dispatch events whose
+    /// `window_id` is set to the given window, matching how real
+    /// renderer events are targeted. Window lifecycle helpers
+    /// (`opened`, `closed`, `resized`, `focused`, `unfocused`)
+    /// synthesise [`WindowEvent`](crate::event::WindowEvent)s with
+    /// the same window scope.
+    ///
+    /// ```ignore
+    /// let mut session = TestSession::<MyApp>::start();
+    /// session.window("modal").opened();
+    /// session.window("modal").click("close");
+    /// session.window("modal").closed();
+    /// ```
+    pub fn window<'a>(&'a mut self, window_id: &str) -> WindowScope<'a, A> {
+        WindowScope {
+            session: self,
+            window_id: window_id.to_string(),
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Pending async / stream execution
     // -----------------------------------------------------------------------
 
@@ -1051,6 +1077,129 @@ pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir
         hash, expected,
         "tree hash mismatch for \"{name}\" (run with PLUSHIE_UPDATE_SNAPSHOTS=1 to update)"
     );
+}
+
+// ---------------------------------------------------------------------------
+// WindowScope: per-window interaction helper
+// ---------------------------------------------------------------------------
+
+/// Per-window chained-interaction helper returned by
+/// [`TestSession::window`].
+///
+/// Re-routes interactions so events carry the correct `window_id`
+/// and exposes a small set of lifecycle helpers for synthesising
+/// [`WindowEvent`](crate::event::WindowEvent)s (opened, closed,
+/// resized, focused, unfocused).
+pub struct WindowScope<'a, A: App> {
+    session: &'a mut TestSession<A>,
+    window_id: String,
+}
+
+impl<A: App> WindowScope<'_, A> {
+    /// Dispatch a click event scoped to this window.
+    pub fn click(&mut self, selector: impl Into<Selector>) {
+        let id = self.session.resolve(selector).id.clone();
+        let event = widget_event_in_window(EventType::Click, &id, Value::Null, &self.window_id);
+        self.session.dispatch(event);
+    }
+
+    /// Dispatch a text-input event scoped to this window.
+    pub fn type_text(&mut self, selector: impl Into<Selector>, text: &str) {
+        let id = self.session.resolve(selector).id.clone();
+        let event = widget_event_in_window(
+            EventType::Input,
+            &id,
+            Value::String(text.to_string()),
+            &self.window_id,
+        );
+        self.session.dispatch(event);
+    }
+
+    /// Deliver a synthetic `Opened` window event for this window.
+    pub fn opened(&mut self) {
+        self.session.dispatch(window_lifecycle(
+            &self.window_id,
+            crate::event::WindowEventType::Opened,
+        ));
+    }
+
+    /// Deliver a synthetic `CloseRequested` followed by `Closed`.
+    ///
+    /// Matches the iced sequence: a close intent arrives first so the
+    /// app can veto or run teardown, and the runtime then emits a
+    /// terminal `Closed` once the window is actually gone.
+    pub fn closed(&mut self) {
+        self.session.dispatch(window_lifecycle(
+            &self.window_id,
+            crate::event::WindowEventType::CloseRequested,
+        ));
+        self.session.dispatch(window_lifecycle(
+            &self.window_id,
+            crate::event::WindowEventType::Closed,
+        ));
+    }
+
+    /// Deliver a synthetic `Resized` event carrying new dimensions.
+    pub fn resized(&mut self, width: f32, height: f32) {
+        let event = Event::Window(crate::event::WindowEvent {
+            event_type: crate::event::WindowEventType::Resized,
+            window_id: self.window_id.clone(),
+            x: None,
+            y: None,
+            width: Some(width),
+            height: Some(height),
+            position: None,
+            path: None,
+            scale_factor: None,
+        });
+        self.session.dispatch(event);
+    }
+
+    /// Deliver a synthetic `Focused` event.
+    pub fn focused(&mut self) {
+        self.session.dispatch(window_lifecycle(
+            &self.window_id,
+            crate::event::WindowEventType::Focused,
+        ));
+    }
+
+    /// Deliver a synthetic `Unfocused` (blurred) event.
+    pub fn unfocused(&mut self) {
+        self.session.dispatch(window_lifecycle(
+            &self.window_id,
+            crate::event::WindowEventType::Unfocused,
+        ));
+    }
+}
+
+fn widget_event_in_window(event_type: EventType, id: &str, value: Value, window_id: &str) -> Event {
+    // `id` comes from a normalized tree node, which already includes
+    // the window prefix (`"main#open_modal"`). Parse it so scoped_id
+    // picks up the right window; fall back to an explicit window when
+    // the id is bare (no prefix).
+    let mut parsed = plushie_core::ScopedId::parse(id);
+    if parsed.window_id.is_none() {
+        parsed = plushie_core::ScopedId::new(parsed.id, parsed.scope, Some(window_id.to_string()));
+    }
+    Event::Widget(WidgetEvent {
+        event_type,
+        scoped_id: parsed,
+        value,
+    })
+}
+
+fn window_lifecycle(window_id: &str, event_type: crate::event::WindowEventType) -> Event {
+    Event::Window(crate::event::WindowEvent {
+        event_type,
+        window_id: window_id.to_string(),
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        position: None,
+        path: None,
+        scale_factor: None,
+    })
 }
 
 // ---------------------------------------------------------------------------

@@ -101,9 +101,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
         handle_slider_message(&mut self.last_values, msg)
     }
 
-    fn cleanup(&mut self, node_id: &str, window_id: &str) {
-        self.last_values
-            .remove(&(window_id.to_string(), node_id.to_string()));
+    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+        self.last_values.retain(|k, _| live_ids.contains(k));
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {
@@ -145,9 +144,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
         handle_slider_message(&mut self.last_values, msg)
     }
 
-    fn cleanup(&mut self, node_id: &str, window_id: &str) {
-        self.last_values
-            .remove(&(window_id.to_string(), node_id.to_string()));
+    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+        self.last_values.retain(|k, _| live_ids.contains(k));
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {

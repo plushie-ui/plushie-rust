@@ -67,9 +67,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
         iced::widget::Themer::new(themer_theme, child).into()
     }
 
-    fn cleanup(&mut self, node_id: &str, window_id: &str) {
-        let key = (window_id.to_string(), node_id.to_string());
-        self.themes.remove(&key);
+    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+        self.themes.retain(|k, _| live_ids.contains(k));
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {

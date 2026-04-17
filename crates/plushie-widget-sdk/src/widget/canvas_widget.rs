@@ -56,8 +56,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CanvasWidget<R> {
         }
     }
 
-    fn cleanup(&mut self, node_id: &str, window_id: &str) {
-        self.engine.cleanup(node_id, window_id);
+    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+        self.engine.cleanup_stale(live_ids);
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {

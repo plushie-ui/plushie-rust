@@ -272,10 +272,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
-    fn cleanup(&mut self, node_id: &str, window_id: &str) {
-        let key = (window_id.to_string(), node_id.to_string());
-        self.contents.remove(&key);
-        self.content_hashes.remove(&key);
+    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+        self.contents.retain(|k, _| live_ids.contains(k));
+        self.content_hashes.retain(|k, _| live_ids.contains(k));
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {

@@ -215,11 +215,23 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     }
 
     /// Remove all state for a canvas instance.
+    #[allow(dead_code)]
     pub fn cleanup(&mut self, node_id: &str, window_id: &str) {
         let key = (window_id.to_string(), node_id.to_string());
         self.layer_caches.remove(&key);
         self.interactions.remove(&key);
         self.pending_focus.remove(&key);
+    }
+
+    /// Prune per-instance state for canvas nodes that have left the tree.
+    ///
+    /// Paired with [`crate::registry::PlushieWidget::cleanup_stale`].
+    /// `live_ids` contains every `(window_id, node_id)` still present;
+    /// drop entries whose keys aren't in the set.
+    pub fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+        self.layer_caches.retain(|k, _| live_ids.contains(k));
+        self.interactions.retain(|k, _| live_ids.contains(k));
+        self.pending_focus.retain(|k, _| live_ids.contains(k));
     }
 }
 

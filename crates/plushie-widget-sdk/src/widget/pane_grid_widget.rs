@@ -298,9 +298,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
         }
     }
 
-    fn cleanup(&mut self, node_id: &str, window_id: &str) {
-        let key = (window_id.to_string(), node_id.to_string());
-        self.states.remove(&key);
+    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+        self.states.retain(|k, _| live_ids.contains(k));
     }
 
     fn clone_for_session(&self) -> Box<dyn PlushieWidget<R>> {

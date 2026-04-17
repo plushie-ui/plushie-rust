@@ -22,10 +22,20 @@
 //! - `/` is reserved as the scope separator and rejected in
 //!   user-provided IDs.
 //! - Duplicate explicit IDs within a tree produce a warning.
+//!
+//! ## Depth cap
+//!
+//! Recursion is capped at
+//! [`plushie_widget_sdk::shared_state::MAX_TREE_DEPTH`]. Beyond the
+//! cap the subtree is truncated (the returned node has no children)
+//! and a `tree_too_deep` diagnostic is appended. Render and
+//! prepare_walk apply the same cap so defence-in-depth holds even
+//! if the host sends a pathologically nested tree.
 
 use std::collections::HashSet;
 
 use plushie_core::protocol::TreeNode;
+use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
 
 /// Normalize a view tree: apply scope prefixes and validate IDs.
 ///
@@ -34,7 +44,7 @@ use plushie_core::protocol::TreeNode;
 pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
     let mut warnings = Vec::new();
     let mut seen_ids = HashSet::new();
-    let result = normalize_node(tree, "", &mut seen_ids, &mut warnings);
+    let result = normalize_node(tree, "", &mut seen_ids, &mut warnings, 0);
     (result, warnings)
 }
 
@@ -43,7 +53,28 @@ fn normalize_node(
     scope: &str,
     seen_ids: &mut HashSet<String>,
     warnings: &mut Vec<String>,
+    depth: usize,
 ) -> TreeNode {
+    if depth > MAX_TREE_DEPTH {
+        // Truncate the subtree to stop runaway recursion. The current
+        // node is returned with no children; a diagnostic records the
+        // truncation so hosts can surface it.
+        log::error!(
+            "[code=tree_too_deep][id={}] normalize depth exceeds {}, truncating subtree",
+            node.id,
+            MAX_TREE_DEPTH
+        );
+        warnings.push(format!(
+            "tree_too_deep: subtree rooted at \"{}\" exceeds MAX_TREE_DEPTH={}, truncating",
+            node.id, MAX_TREE_DEPTH
+        ));
+        return TreeNode {
+            id: node.id.clone(),
+            type_name: node.type_name.clone(),
+            props: node.props.clone(),
+            children: vec![],
+        };
+    }
     let id = &node.id;
     let type_name = &node.type_name;
 
@@ -98,7 +129,7 @@ fn normalize_node(
     let children = node
         .children
         .iter()
-        .map(|child| normalize_node(child, &child_scope, seen_ids, warnings))
+        .map(|child| normalize_node(child, &child_scope, seen_ids, warnings, depth + 1))
         .collect();
 
     TreeNode {
@@ -217,6 +248,23 @@ mod tests {
         let (_, warnings) = normalize(&tree);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("reserved character"));
+    }
+
+    #[test]
+    fn excessive_depth_is_truncated_with_diagnostic() {
+        // Build a tree deeper than MAX_TREE_DEPTH. The normalize pass
+        // must not stack-overflow and must emit a tree_too_deep
+        // diagnostic at the cap boundary.
+        let mut tree = node("leaf", "text", vec![]);
+        for i in 0..(MAX_TREE_DEPTH + 20) {
+            tree = node(&format!("n{i}"), "container", vec![tree]);
+        }
+
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            warnings.iter().any(|w| w.contains("tree_too_deep")),
+            "expected tree_too_deep diagnostic; got {warnings:?}"
+        );
     }
 
     #[test]

@@ -214,8 +214,21 @@ pub trait PlushieWidget<R: PlushieRenderer> {
         None
     }
 
-    /// Clean up per-instance state when a node leaves the tree.
-    fn cleanup(&mut self, _node_id: &str, _window_id: &str) {}
+    /// Prune per-instance state for nodes no longer in the tree.
+    ///
+    /// `live_ids` contains every `(window_id, node_id)` pair present
+    /// in the current tree. Stateful widgets that key per-instance
+    /// state by `(window_id, node_id)` should drop entries whose keys
+    /// are not in the set. Stateless widgets can ignore this.
+    ///
+    /// Called by [`WidgetRegistry::prepare_walk`] after
+    /// [`SharedState::prune_shared`], so implementations only need to
+    /// worry about their own keyed state. Canonical one-liner:
+    ///
+    /// ```ignore
+    /// self.contents.retain(|k, _| live_ids.contains(k));
+    /// ```
+    fn cleanup_stale(&mut self, _live_ids: &std::collections::HashSet<(String, String)>) {}
 
     /// Settings message arrived. Receive per-namespace config.
     fn init(&mut self, _ctx: &InitCtx<'_>) {}
@@ -315,6 +328,18 @@ pub struct WidgetRegistry<R: PlushieRenderer = iced::Renderer> {
 
     /// Type name -> set name (for introspection/logging).
     provenance: HashMap<String, String>,
+}
+
+/// Shared mutable context threaded through [`WidgetRegistry::prepare_walk_inner`].
+///
+/// Groups the accumulator state (live ID sets, shared state, theme)
+/// so the recursion carries a single context argument instead of a
+/// long parameter list.
+struct PrepareWalkCtx<'a> {
+    shared: &'a mut crate::shared_state::SharedState,
+    theme: &'a Theme,
+    live_ids: std::collections::HashSet<String>,
+    live_keys: std::collections::HashSet<(String, String)>,
 }
 
 impl<R: PlushieRenderer> WidgetRegistry<R> {
@@ -519,6 +544,9 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// 4. Computes style override caches for nodes with a `style` prop.
     /// 5. Prunes stale `SharedState` entries for nodes no longer in the
     ///    tree (prevents unbounded memory growth across tree updates).
+    /// 6. Calls `cleanup_stale` on every registered widget so
+    ///    factory-owned per-instance state stays in sync with the
+    ///    live tree.
     pub fn prepare_walk(
         &mut self,
         root: &TreeNode,
@@ -526,20 +554,52 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         theme: &Theme,
     ) {
         self.node_factory_map.clear();
-        let mut live_ids = std::collections::HashSet::new();
-        self.prepare_walk_inner(root, "", shared, theme, &mut live_ids);
-        shared.prune_shared(&live_ids);
+        let mut ctx = PrepareWalkCtx {
+            shared,
+            theme,
+            live_ids: std::collections::HashSet::new(),
+            live_keys: std::collections::HashSet::new(),
+        };
+        self.prepare_walk_inner(root, "", &mut ctx, 0);
+        ctx.shared.prune_shared(&ctx.live_ids);
+
+        // Dispatch cleanup_stale to every registered widget. This
+        // shrinks factory-owned per-instance state keyed by
+        // (window_id, node_id) when nodes leave the tree.
+        let live_keys = ctx.live_keys;
+        for widget in &mut self.impls {
+            widget.cleanup_stale(&live_keys);
+        }
     }
 
     fn prepare_walk_inner(
         &mut self,
         node: &TreeNode,
         window_id: &str,
-        shared: &mut crate::shared_state::SharedState,
-        theme: &Theme,
-        live_ids: &mut std::collections::HashSet<String>,
+        ctx: &mut PrepareWalkCtx<'_>,
+        depth: usize,
     ) {
-        live_ids.insert(node.id.clone());
+        // Guard against pathological tree depth. Normalize and render
+        // walk also cap at MAX_TREE_DEPTH; matching the cap here keeps
+        // all three passes consistent and avoids stack overflow on
+        // hostile inputs. The overflow path stops recursing but still
+        // records the node itself in live_ids/live_keys so state that
+        // belongs to the current node isn't incorrectly evicted.
+        if depth > crate::shared_state::MAX_TREE_DEPTH {
+            log::error!(
+                "[code=tree_too_deep][id={}] prepare_walk depth exceeds {}, truncating subtree",
+                node.id,
+                crate::shared_state::MAX_TREE_DEPTH
+            );
+            ctx.live_ids.insert(node.id.clone());
+            ctx.live_keys
+                .insert((window_id.to_string(), node.id.clone()));
+            return;
+        }
+
+        ctx.live_ids.insert(node.id.clone());
+        ctx.live_keys
+            .insert((window_id.to_string(), node.id.clone()));
 
         // Track which window we're in.
         let current_window_id = if node.type_name == "window" {
@@ -550,16 +610,16 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
 
         // Cross-cutting: populate style overrides for any node with
         // a style prop. Populated for all nodes during prepare_walk.
-        crate::shared_state::ensure_style_overrides_cache(node, shared);
+        crate::shared_state::ensure_style_overrides_cache(node, ctx.shared);
 
         // Factory-specific prepare.
         if let Some(&idx) = self.type_index.get(node.type_name.as_str()) {
             self.node_factory_map.insert(node.id.clone(), idx);
-            self.impls[idx].prepare(node, current_window_id, theme);
+            self.impls[idx].prepare(node, current_window_id, ctx.theme);
         }
 
         for child in &node.children {
-            self.prepare_walk_inner(child, current_window_id, shared, theme, live_ids);
+            self.prepare_walk_inner(child, current_window_id, ctx, depth + 1);
         }
     }
 
@@ -1001,5 +1061,132 @@ mod tests {
         // No specs declared: no panic regardless of value
         registry.validate_event_payload("b1", "click", &serde_json::json!("wrong type"));
         registry.validate_command_payload(idx, "b1", "anything", &serde_json::json!(true));
+    }
+
+    // ---------------------------------------------------------------------------
+    // cleanup_stale dispatch from prepare_walk
+    //
+    // Regression for hat-04 3.1: the previous `cleanup(node_id,
+    // window_id)` trait method was never invoked. Factory-owned
+    // per-instance HashMaps grew monotonically as nodes left the
+    // tree. cleanup_stale now dispatches from prepare_walk after
+    // prune_shared, so factories can evict entries whose
+    // (window_id, node_id) key is absent from the live set.
+    // ---------------------------------------------------------------------------
+
+    fn tree(children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            id: "root".into(),
+            type_name: "container".into(),
+            props: serde_json::json!({}).into(),
+            children,
+        }
+    }
+
+    fn leaf(id: &str, type_name: &str) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props: serde_json::json!({}).into(),
+            children: vec![],
+        }
+    }
+
+    // Shared counter used to expose live-key set sizes for
+    // cleanup_stale tests without smuggling typed references out of
+    // the registry.
+    use std::sync::Arc;
+
+    #[derive(Default)]
+    struct ContentsSpy {
+        /// Snapshot of contents size after each cleanup_stale call.
+        sizes: std::sync::Mutex<Vec<usize>>,
+    }
+
+    struct SpyingWidget {
+        contents: std::collections::HashMap<(String, String), String>,
+        spy: Arc<ContentsSpy>,
+    }
+
+    impl PlushieWidget<()> for SpyingWidget {
+        fn type_names(&self) -> &[&str] {
+            &["spying"]
+        }
+
+        fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &Theme) {
+            self.contents
+                .insert((window_id.to_string(), node.id.clone()), node.id.clone());
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("spy").into()
+        }
+
+        fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+            self.contents.retain(|k, _| live_ids.contains(k));
+            self.spy.sizes.lock().unwrap().push(self.contents.len());
+        }
+
+        fn clone_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(SpyingWidget {
+                contents: std::collections::HashMap::new(),
+                spy: self.spy.clone(),
+            })
+        }
+    }
+
+    #[test]
+    fn cleanup_stale_removes_keys_for_nodes_not_in_tree() {
+        let mut registry = WidgetRegistry::<()>::new();
+        let spy = Arc::new(ContentsSpy::default());
+        registry.register(Box::new(SpyingWidget {
+            contents: std::collections::HashMap::new(),
+            spy: spy.clone(),
+        }));
+
+        let mut shared = crate::shared_state::SharedState::new();
+        let theme = Theme::Dark;
+
+        // First prepare_walk: two nodes present. cleanup_stale runs
+        // after prepare populates contents, so the spy sees size 2.
+        let first_tree = tree(vec![leaf("a", "spying"), leaf("b", "spying")]);
+        registry.prepare_walk(&first_tree, &mut shared, &theme);
+
+        // Second prepare_walk: only 'a' remains. 'b' must be evicted.
+        let second_tree = tree(vec![leaf("a", "spying")]);
+        registry.prepare_walk(&second_tree, &mut shared, &theme);
+
+        let sizes = spy.sizes.lock().unwrap().clone();
+        assert_eq!(
+            sizes,
+            vec![2, 1],
+            "cleanup_stale should observe 2 contents after first walk and 1 after the second"
+        );
+    }
+
+    #[test]
+    fn prepare_walk_caps_depth_and_logs() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["stacked"])));
+
+        // Build a tree deeper than MAX_TREE_DEPTH.
+        let mut node = leaf("leaf", "stacked");
+        for i in 0..(crate::shared_state::MAX_TREE_DEPTH + 20) {
+            node = TreeNode {
+                id: format!("n{i}"),
+                type_name: "stacked".into(),
+                props: serde_json::json!({}).into(),
+                children: vec![node],
+            };
+        }
+
+        // prepare_walk must not stack-overflow or panic on a tree
+        // that exceeds the depth cap.
+        let mut shared = crate::shared_state::SharedState::new();
+        registry.prepare_walk(&node, &mut shared, &Theme::Dark);
     }
 }

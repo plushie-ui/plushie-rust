@@ -121,20 +121,12 @@ impl<A: App> TestSession<A> {
 
     /// Disable the strict-diagnostics default, so the session does
     /// not panic on Drop when normalization warnings have
-    /// accumulated. Use for tests that intentionally exercise
-    /// diagnostic paths (e.g. assert_diagnostic_count).
+    /// accumulated. Use as the opt-out for tests that intentionally
+    /// exercise diagnostic paths (e.g. assert_diagnostic_count).
+    /// Sessions default to strict mode: any accumulated diagnostic
+    /// at drop time is a test failure.
     pub fn allow_diagnostics(mut self) -> Self {
         self.fail_on_diagnostics = false;
-        self
-    }
-
-    /// Legacy alias for the old explicit opt-in strict mode.
-    /// Deprecated: strict is now the default; prefer
-    /// [`allow_diagnostics`](Self::allow_diagnostics) to opt out.
-    #[deprecated(
-        note = "strict diagnostics is now the default; use allow_diagnostics() to opt out"
-    )]
-    pub fn strict_diagnostics(self) -> Self {
         self
     }
 
@@ -890,7 +882,7 @@ impl<A: App> Drop for TestSession<A> {
                     .map(|d| format!("  - {d}"))
                     .collect();
                 panic!(
-                    "TestSession (strict_diagnostics): diagnostics detected on drop:\n{}",
+                    "TestSession: diagnostics detected on drop (use allow_diagnostics() to opt out):\n{}",
                     details.join("\n")
                 );
             }

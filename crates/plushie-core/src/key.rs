@@ -794,6 +794,39 @@ mod tests {
     }
 
     #[test]
+    fn keypress_from_str_malformed() {
+        // Empty string: no modifiers, falls through to Named("").
+        let kp = KeyPress::from("");
+        assert_eq!(kp.key, Key::Named(String::new()));
+        assert_eq!(kp.modifiers, KeyModifiers::default());
+
+        // Bare '+': both segments empty. No known modifiers set,
+        // key parses as Named("").
+        let kp = KeyPress::from("+");
+        assert_eq!(kp.key, Key::Named(String::new()));
+        assert_eq!(kp.modifiers, KeyModifiers::default());
+
+        // Trailing '+': modifier present but key segment empty.
+        // Modifier is applied, key falls through to Named("").
+        let kp = KeyPress::from("Ctrl+");
+        assert_eq!(kp.key, Key::Named(String::new()));
+        assert!(kp.modifiers.ctrl);
+
+        // Unknown modifier segment: silently dropped, remaining
+        // segment parses as the key. This is the documented
+        // contract; change it carefully.
+        let kp = KeyPress::from("Foo+s");
+        assert_eq!(kp.key, Key::Char('s'));
+        assert_eq!(kp.modifiers, KeyModifiers::default());
+
+        // Leading '+': empty modifier segment dropped, key parses
+        // normally.
+        let kp = KeyPress::from("+s");
+        assert_eq!(kp.key, Key::Char('s'));
+        assert_eq!(kp.modifiers, KeyModifiers::default());
+    }
+
+    #[test]
     fn keypress_from_wire_combo() {
         let payload = serde_json::json!({"combo": "Shift+Enter"});
         let kp = KeyPress::from_wire(&payload).unwrap();

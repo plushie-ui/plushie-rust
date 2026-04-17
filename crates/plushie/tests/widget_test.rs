@@ -3,10 +3,12 @@
 //! Defines a ToggleButton widget and exercises the public API
 //! without needing a running app or renderer.
 
+mod common;
+
+use common::{click_event, input_event};
 use plushie::WidgetEvent;
 use plushie::prelude::*;
 use plushie::widget::{EventResult, Widget};
-use plushie_core::ScopedId;
 use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
@@ -56,24 +58,6 @@ impl Widget for ToggleButton {
 /// Build an UntypedProps from a serde_json::Value.
 fn props(value: Value) -> UntypedProps {
     UntypedProps(value)
-}
-
-/// Build a synthetic click event for testing handle_event directly.
-fn click_event(id: &str) -> Event {
-    Event::Widget(plushie::event::WidgetEvent {
-        event_type: plushie::event::EventType::Click,
-        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
-        value: Value::Null,
-    })
-}
-
-/// Build a synthetic input event (non-click) for ignored-path testing.
-fn input_event(id: &str, text: &str) -> Event {
-    Event::Widget(plushie::event::WidgetEvent {
-        event_type: plushie::event::EventType::Input,
-        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
-        value: Value::String(text.to_string()),
-    })
 }
 
 // ---------------------------------------------------------------------------

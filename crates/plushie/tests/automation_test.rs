@@ -1,60 +1,11 @@
 //! Tests for the automation module: Selector and Element.
 
+mod common;
+
+use common::{a11y_node, button_node, container_node, text_node, window_node};
+use plushie::automation::Element;
 use plushie_core::Selector;
 use plushie_core::protocol::{Props, TreeNode};
-
-use plushie::automation::Element;
-
-fn text_node(id: &str, content: &str) -> TreeNode {
-    let mut props = serde_json::Map::new();
-    props.insert("content".to_string(), serde_json::json!(content));
-    TreeNode {
-        id: id.to_string(),
-        type_name: "text".to_string(),
-        props: Props::Wire(serde_json::Value::Object(props)),
-        children: vec![],
-    }
-}
-
-fn button_node(id: &str, label: &str) -> TreeNode {
-    let mut props = serde_json::Map::new();
-    props.insert("label".to_string(), serde_json::json!(label));
-    TreeNode {
-        id: id.to_string(),
-        type_name: "button".to_string(),
-        props: Props::Wire(serde_json::Value::Object(props)),
-        children: vec![],
-    }
-}
-
-fn container_node(id: &str, children: Vec<TreeNode>) -> TreeNode {
-    TreeNode {
-        id: id.to_string(),
-        type_name: "column".to_string(),
-        props: Props::Wire(serde_json::Value::Object(Default::default())),
-        children,
-    }
-}
-
-fn window_node(id: &str, children: Vec<TreeNode>) -> TreeNode {
-    TreeNode {
-        id: id.to_string(),
-        type_name: "window".to_string(),
-        props: Props::Wire(serde_json::Value::Object(Default::default())),
-        children,
-    }
-}
-
-fn a11y_node(id: &str, type_name: &str, role: &str) -> TreeNode {
-    let mut props = serde_json::Map::new();
-    props.insert("a11y".to_string(), serde_json::json!({"role": role}));
-    TreeNode {
-        id: id.to_string(),
-        type_name: type_name.to_string(),
-        props: Props::Wire(serde_json::Value::Object(props)),
-        children: vec![],
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Selector::find by ID

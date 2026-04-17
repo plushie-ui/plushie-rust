@@ -1,56 +1,11 @@
 //! Tests for event types and matching.
 
+mod common;
+
+use common::{click_event, input_event, scoped_click, slide_event, toggle_event};
 use plushie::event::*;
 use plushie_core::ScopedId;
 use serde_json::json;
-
-// ---------------------------------------------------------------------------
-// WidgetEvent construction and value accessors
-// ---------------------------------------------------------------------------
-
-fn click_event(id: &str) -> Event {
-    Event::Widget(WidgetEvent {
-        event_type: EventType::Click,
-        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
-        value: serde_json::Value::Null,
-    })
-}
-
-fn input_event(id: &str, text: &str) -> Event {
-    Event::Widget(WidgetEvent {
-        event_type: EventType::Input,
-        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
-        value: json!(text),
-    })
-}
-
-fn toggle_event(id: &str, checked: bool) -> Event {
-    Event::Widget(WidgetEvent {
-        event_type: EventType::Toggle,
-        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
-        value: json!(checked),
-    })
-}
-
-fn slide_event(id: &str, value: f64) -> Event {
-    Event::Widget(WidgetEvent {
-        event_type: EventType::Slide,
-        scoped_id: ScopedId::new(id, vec![], Some("main".to_string())),
-        value: json!(value),
-    })
-}
-
-fn scoped_click(id: &str, scope: Vec<&str>) -> Event {
-    Event::Widget(WidgetEvent {
-        event_type: EventType::Click,
-        scoped_id: ScopedId::new(
-            id,
-            scope.into_iter().map(String::from).collect(),
-            Some("main".to_string()),
-        ),
-        value: serde_json::Value::Null,
-    })
-}
 
 // ---------------------------------------------------------------------------
 // Event accessor methods

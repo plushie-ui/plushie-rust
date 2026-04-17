@@ -4,9 +4,10 @@
 //! sends interleaved messages with different session IDs, and verifies
 //! that responses come back tagged with the correct session.
 
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::process::{Child, ChildStderr, Command, Stdio};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Default timeout for reading a single response from the subprocess.
@@ -108,15 +109,80 @@ fn plushie_binary() -> String {
     path.to_string_lossy().to_string()
 }
 
-#[test]
-fn hello_message_has_empty_session() {
+/// Capture the child's stderr in a background thread and expose a
+/// drop-time guard that dumps the captured text to the test's stderr
+/// if the test panics. Non-panic drops stay silent so successful runs
+/// don't leak log spam.
+struct StderrCapture {
+    buffer: Arc<Mutex<Vec<u8>>>,
+    _handle: std::thread::JoinHandle<()>,
+}
+
+impl StderrCapture {
+    fn spawn(stderr: ChildStderr) -> Self {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let buf_for_thread = Arc::clone(&buffer);
+        let handle = std::thread::spawn(move || {
+            let mut reader = stderr;
+            let mut chunk = [0u8; 4096];
+            loop {
+                match reader.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if let Ok(mut guard) = buf_for_thread.lock() {
+                            guard.extend_from_slice(&chunk[..n]);
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        Self {
+            buffer,
+            _handle: handle,
+        }
+    }
+
+    fn snapshot(&self) -> String {
+        let guard = self.buffer.lock().unwrap();
+        String::from_utf8_lossy(&guard).into_owned()
+    }
+}
+
+impl Drop for StderrCapture {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            let text = self.snapshot();
+            if !text.is_empty() {
+                eprintln!("---- captured renderer stderr ----\n{text}\n---- end ----");
+            }
+        }
+    }
+}
+
+/// Spawn the renderer with stdin/stdout piped and stderr captured
+/// into a guard that dumps on test panic. Replaces the prior
+/// `Stdio::null()` usage so renderer diagnostics are visible when
+/// subprocess-driven tests fail.
+fn spawn_renderer(args: &[&str]) -> (Child, StderrCapture) {
     let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--json"])
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn plushie");
+    let stderr = child
+        .stderr
+        .take()
+        .expect("renderer subprocess should expose stderr");
+    let capture = StderrCapture::spawn(stderr);
+    (child, capture)
+}
+
+#[test]
+fn hello_message_has_empty_session() {
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = LineReceiver::new(child.stdout.take().unwrap());
@@ -137,13 +203,7 @@ fn hello_message_has_empty_session() {
 
 #[test]
 fn hello_message_fields() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = LineReceiver::new(child.stdout.take().unwrap());
@@ -190,13 +250,7 @@ fn hello_message_fields() {
 
 #[test]
 fn single_session_echoes_session_id() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = LineReceiver::new(child.stdout.take().unwrap());
@@ -223,13 +277,7 @@ fn single_session_echoes_session_id() {
 
 #[test]
 fn multiplexed_sessions_are_isolated() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--max-sessions", "4", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--max-sessions", "4", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = LineReceiver::new(child.stdout.take().unwrap());
@@ -306,13 +354,7 @@ fn multiplexed_sessions_are_isolated() {
 
 #[test]
 fn reset_tears_down_session() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--max-sessions", "4", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--max-sessions", "4", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = LineReceiver::new(child.stdout.take().unwrap());
@@ -337,17 +379,26 @@ fn reset_tears_down_session() {
         &serde_json::json!({"session": "s1", "type": "reset", "id": "r1"}),
     );
 
-    // After reset, the session thread emits reset_response during
-    // message processing, then session_closed as its last action
-    // before exiting. The ordering is deterministic.
-    let r1 = stdout.recv();
-    assert_eq!(
-        r1["type"], "reset_response",
-        "expected reset_response first"
-    );
-    let r2 = stdout.recv();
-    assert_eq!(r2["type"], "event");
-    assert_eq!(r2["family"], "session_closed");
+    // After reset, the session thread emits both a reset_response
+    // (for the reset request) and a session_closed event (as the
+    // final lifecycle message before the session thread exits).
+    // The relative order is not load-bearing; collect both and
+    // assert on the multiset.
+    let first = stdout.recv();
+    let second = stdout.recv();
+    let messages = [first, second];
+
+    let reset_response = messages
+        .iter()
+        .find(|m| m["type"] == "reset_response")
+        .unwrap_or_else(|| panic!("expected a reset_response, got: {messages:?}"));
+    assert_eq!(reset_response["id"], "r1");
+
+    let closed_event = messages
+        .iter()
+        .find(|m| m["type"] == "event" && m["family"] == "session_closed")
+        .unwrap_or_else(|| panic!("expected a session_closed event, got: {messages:?}"));
+    assert_eq!(closed_event["session"], "s1");
 
     // Reuse the same session ID: should get a fresh session.
     send(
@@ -372,13 +423,7 @@ fn reset_tears_down_session() {
 
 #[test]
 fn headless_interact_step_round_trip() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--headless", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--headless", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let stdout = LineReceiver::new(child.stdout.take().unwrap());
@@ -448,13 +493,7 @@ fn headless_interact_step_round_trip() {
 
 #[test]
 fn mock_text_input_emits_input_event() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let receiver = LineReceiver::new(child.stdout.take().unwrap());
@@ -546,13 +585,7 @@ fn mock_text_input_emits_input_event() {
 
 #[test]
 fn mock_checkbox_emits_toggle_event() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let receiver = LineReceiver::new(child.stdout.take().unwrap());
@@ -650,13 +683,7 @@ fn mock_checkbox_emits_toggle_event() {
 
 #[test]
 fn mock_slider_emits_slide_event() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let receiver = LineReceiver::new(child.stdout.take().unwrap());
@@ -723,13 +750,7 @@ fn mock_slider_emits_slide_event() {
 
 #[test]
 fn concurrent_sessions_interleaved() {
-    let mut child = Command::new(plushie_binary())
-        .args(["--mock", "--max-sessions", "4", "--json"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to spawn plushie");
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--max-sessions", "4", "--json"]);
 
     let mut stdin = child.stdin.take().unwrap();
     let receiver = LineReceiver::new(child.stdout.take().unwrap());

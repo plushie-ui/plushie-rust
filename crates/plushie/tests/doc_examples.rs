@@ -1,0 +1,230 @@
+//! Compile-check for the rustdoc patterns in the plushie SDK crate.
+//!
+//! Mirrors `plushie-widget-sdk/tests/doc_examples.rs`. The tests here
+//! build the same snippets shown in the docs for `test.rs`,
+//! `command.rs`, `event.rs`, and `widget.rs`. They never call `run`
+//! and don't start any runtime; the point is to fail the build if
+//! the public surface drifts away from the documented shape.
+//!
+//! Because rustdoc snippets in those modules are tagged `ignore`
+//! (they reference user-defined `App` impls and can't run standalone),
+//! rebuilding the patterns here is the cheapest way to keep the docs
+//! honest.
+
+#![allow(dead_code)]
+
+use plushie::prelude::*;
+use plushie::test::TestSession;
+use plushie::widget::{EventResult, Widget, WidgetView};
+use plushie_core::ScopedId;
+use plushie_core::protocol::{PropMap, TreeNode};
+use plushie_core::types::FromNode;
+use serde_json::{Value, json};
+
+// ---------------------------------------------------------------------------
+// Counter app: mirrors the `lib.rs` quick-start snippet.
+// ---------------------------------------------------------------------------
+
+struct Counter {
+    count: i32,
+}
+
+impl App for Counter {
+    type Model = Self;
+
+    fn init() -> (Self, Command) {
+        (Counter { count: 0 }, Command::none())
+    }
+
+    fn update(model: &mut Self, event: Event) -> Command {
+        match event.widget_match() {
+            Some(Click("inc")) => model.count += 1,
+            Some(Click("dec")) => model.count -= 1,
+            _ => {}
+        }
+        Command::none()
+    }
+
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
+        window("main")
+            .title("Counter")
+            .child(
+                column()
+                    .spacing(8.0)
+                    .padding(16)
+                    .child(text(&format!("Count: {}", model.count)))
+                    .child(
+                        row()
+                            .spacing(8.0)
+                            .child(button("inc", "+"))
+                            .child(button("dec", "-")),
+                    ),
+            )
+            .into()
+    }
+}
+
+#[test]
+fn counter_init_and_update_compile() {
+    let (mut model, _cmd) = Counter::init();
+    let click = Event::Widget(plushie::event::WidgetEvent {
+        event_type: plushie::event::EventType::Click,
+        scoped_id: ScopedId::new("inc", vec![], Some("main".to_string())),
+        value: Value::Null,
+    });
+    let _ = Counter::update(&mut model, click);
+    assert_eq!(model.count, 1);
+}
+
+// ---------------------------------------------------------------------------
+// TestSession: the module-level doc example.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_session_interactions_compile() {
+    // Counter only has button IDs; canvas interactions from the docs
+    // are type-checked here by taking a function pointer rather than
+    // calling them (no canvas widget to target in this fixture).
+    let mut session = TestSession::<Counter>::start();
+    session.click("inc");
+    session.click(Selector::role("button"));
+    session.press("Ctrl+s");
+    session.press(Key::Enter);
+    let _press: fn(&mut TestSession<Counter>, &str, f32, f32, &str) = |s, sel, x, y, btn| {
+        s.canvas_press(sel, x, y, btn);
+    };
+    let _ = session.model();
+}
+
+// ---------------------------------------------------------------------------
+// Command builders: mirror the `Command::async_task` / `Command::stream`
+// snippets, plus the widget-command example.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn async_task_builder_compiles() {
+    let _cmd = Command::async_task("fetch", || async {
+        let value: Result<Value, Value> = Ok(json!("data"));
+        value
+    });
+}
+
+#[test]
+fn stream_builder_compiles() {
+    let _cmd = Command::stream("import", |emitter| async move {
+        for chunk in ["alpha", "beta"] {
+            emitter.emit(json!(chunk));
+        }
+        Ok(json!({"done": true}))
+    });
+}
+
+#[test]
+fn cancel_builder_compiles() {
+    let _cmd = Command::cancel("fetch");
+}
+
+#[derive(plushie::WidgetCommand)]
+enum GaugeCommand {
+    SetValue(f32),
+    Reset,
+    SetRange { min: f32, max: f32 },
+}
+
+#[test]
+fn widget_command_builder_compiles() {
+    let _ = Command::widget("temp-gauge", GaugeCommand::SetValue(72.0));
+    let _ = Command::widget("temp-gauge", GaugeCommand::Reset);
+    let _ = Command::widget(
+        "temp-gauge",
+        GaugeCommand::SetRange {
+            min: 0.0,
+            max: 100.0,
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Widget trait: mirrors the composite-widget rustdoc example.
+// ---------------------------------------------------------------------------
+
+struct StarRating;
+
+#[derive(plushie::WidgetEvent)]
+enum StarRatingEvent {
+    Select(u64),
+}
+
+#[derive(Default)]
+struct StarState {
+    hover: Option<usize>,
+}
+
+impl Widget for StarRating {
+    type State = StarState;
+    type Props = UntypedProps;
+
+    fn view(id: &str, _props: &UntypedProps, _state: &StarState) -> View {
+        let mut r = row().id(id).spacing(4.0);
+        for i in 0..5 {
+            r = r.child(button(&format!("star-{i}"), "*"));
+        }
+        r.into()
+    }
+
+    fn handle_event(event: &Event, _state: &mut StarState) -> EventResult {
+        match event.widget_match() {
+            Some(Click(id)) if id.starts_with("star-") => {
+                EventResult::emit_event(StarRatingEvent::Select(1))
+            }
+            _ => EventResult::Consumed,
+        }
+    }
+}
+
+#[test]
+fn widget_trait_compiles() {
+    let state = StarState::default();
+    let props = UntypedProps::from_node(&TreeNode {
+        id: "w".to_string(),
+        type_name: "__widget__".to_string(),
+        props: plushie_core::protocol::Props::Typed(PropMap::new()),
+        children: vec![],
+    });
+    let _view = StarRating::view("rating", &props, &state);
+}
+
+// ---------------------------------------------------------------------------
+// Widget view registration path: mirrors the `WidgetView` snippets.
+// ---------------------------------------------------------------------------
+
+struct WrappedApp;
+
+impl App for WrappedApp {
+    type Model = ();
+
+    fn init() -> ((), Command) {
+        ((), Command::none())
+    }
+
+    fn update(_model: &mut (), _event: Event) -> Command {
+        Command::none()
+    }
+
+    fn view(_model: &(), widgets: &mut WidgetRegistrar) -> View {
+        window("main")
+            .child(
+                WidgetView::<StarRating>::new("rating")
+                    .prop("rating", 3i64)
+                    .register(widgets),
+            )
+            .into()
+    }
+}
+
+#[test]
+fn wrapped_widget_view_compiles() {
+    let (_m, _cmd) = WrappedApp::init();
+    let mut registrar = WidgetRegistrar::new();
+    let _view = WrappedApp::view(&(), &mut registrar);
+}

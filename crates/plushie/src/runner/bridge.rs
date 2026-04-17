@@ -3,11 +3,25 @@
 //! The bridge spawns a plushie renderer binary as a child process and
 //! communicates over stdin/stdout using length-prefixed MessagePack
 //! or JSONL framing.
+//!
+//! Reading is handled by a background thread that feeds a bounded
+//! channel so the main event loop can `recv_timeout` and detect
+//! heartbeat silence without blocking forever on a stuck renderer.
 
 #[cfg(feature = "wire")]
 use std::io::{self, BufRead, BufReader, Read, Write};
 #[cfg(feature = "wire")]
-use std::process::{Child, Command as ProcessCommand, Stdio};
+use std::process::{Child, ChildStdout, Command as ProcessCommand, Stdio};
+#[cfg(feature = "wire")]
+use std::sync::Arc;
+#[cfg(feature = "wire")]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "wire")]
+use std::sync::mpsc;
+#[cfg(feature = "wire")]
+use std::thread::{self, JoinHandle};
+#[cfg(feature = "wire")]
+use std::time::Duration;
 
 #[cfg(feature = "wire")]
 use plushie_core::outgoing_message::OutgoingMessage;
@@ -29,6 +43,29 @@ pub enum Codec {
 pub struct Bridge {
     child: Child,
     codec: Codec,
+    /// Background reader thread state. `None` between spawn() and
+    /// the first start_reader() call (used by tests that don't need
+    /// a reader).
+    reader: Option<ReaderHandle>,
+}
+
+/// Background reader thread and its incoming-message channel.
+#[cfg(feature = "wire")]
+struct ReaderHandle {
+    rx: mpsc::Receiver<io::Result<Value>>,
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+/// Result of waiting for the next renderer message.
+#[cfg(feature = "wire")]
+pub enum Incoming {
+    /// A message was decoded successfully.
+    Message(Value),
+    /// Bridge read failed. Typed to support classify_exit downstream.
+    Error(io::Error),
+    /// No message received within the requested timeout.
+    Timeout,
 }
 
 #[cfg(feature = "wire")]
@@ -44,7 +81,75 @@ impl Bridge {
         Ok(Self {
             child,
             codec: Codec::Json, // default, may be negotiated via hello
+            reader: None,
         })
+    }
+
+    /// Start the background reader thread.
+    ///
+    /// Must be called after codec negotiation (i.e. after `set_codec`
+    /// if the hello message changed the codec). Takes ownership of
+    /// the child's stdout handle.
+    pub fn start_reader(&mut self) -> io::Result<()> {
+        if self.reader.is_some() {
+            return Ok(());
+        }
+        let stdout = self
+            .child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout already taken"))?;
+        let (tx, rx) = mpsc::sync_channel::<io::Result<Value>>(256);
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_for_thread = stop.clone();
+        let codec = self.codec;
+        let thread = thread::Builder::new()
+            .name("plushie-wire-reader".into())
+            .spawn(move || reader_loop(stdout, codec, tx, stop_for_thread))?;
+        self.reader = Some(ReaderHandle {
+            rx,
+            stop,
+            thread: Some(thread),
+        });
+        Ok(())
+    }
+
+    /// Wait for the next message or report a timeout.
+    ///
+    /// If `timeout` is `None`, blocks until a message arrives or the
+    /// channel is closed (indicates the reader thread exited, i.e.
+    /// the renderer disconnected).
+    pub fn recv_timeout(&mut self, timeout: Option<Duration>) -> Incoming {
+        let Some(reader) = self.reader.as_ref() else {
+            return Incoming::Error(io::Error::other("reader not started"));
+        };
+        let recv_result = match timeout {
+            Some(dur) => reader.rx.recv_timeout(dur),
+            None => reader
+                .rx
+                .recv()
+                .map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+        };
+        match recv_result {
+            Ok(Ok(msg)) => Incoming::Message(msg),
+            Ok(Err(e)) => Incoming::Error(e),
+            Err(mpsc::RecvTimeoutError::Timeout) => Incoming::Timeout,
+            Err(mpsc::RecvTimeoutError::Disconnected) => Incoming::Error(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "reader disconnected",
+            )),
+        }
+    }
+
+    /// Stop the background reader thread (if running) and reset so
+    /// `start_reader` can be called again after a restart.
+    pub fn stop_reader(&mut self) {
+        if let Some(mut reader) = self.reader.take() {
+            reader.stop.store(true, Ordering::SeqCst);
+            if let Some(handle) = reader.thread.take() {
+                let _ = handle.join();
+            }
+        }
     }
 
     /// Send a typed message to the renderer's stdin.
@@ -237,6 +342,12 @@ impl Bridge {
     }
 
     /// Read the next message from the renderer's stdout.
+    ///
+    /// Reads inline from the child's stdout (no reader thread).
+    /// Used for the hello handshake before the main event loop
+    /// starts the background reader. Prefer
+    /// [`recv_timeout`](Self::recv_timeout) in the main loop so
+    /// heartbeat silence can be detected.
     pub fn receive(&mut self) -> io::Result<Value> {
         let stdout = self
             .child
@@ -244,35 +355,7 @@ impl Bridge {
             .as_mut()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout closed"))?;
 
-        match self.codec {
-            Codec::Json => {
-                let mut reader = BufReader::new(stdout);
-                let mut line = String::new();
-                reader.read_line(&mut line)?;
-                if line.is_empty() {
-                    return Err(io::Error::new(
-                        io::ErrorKind::UnexpectedEof,
-                        "renderer closed",
-                    ));
-                }
-                serde_json::from_str(&line).map_err(io::Error::other)
-            }
-            Codec::MsgPack => {
-                const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MB
-                let mut len_buf = [0u8; 4];
-                stdout.read_exact(&mut len_buf)?;
-                let len = u32::from_be_bytes(len_buf) as usize;
-                if len > MAX_MESSAGE_SIZE {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("message size {len} exceeds {MAX_MESSAGE_SIZE} byte limit"),
-                    ));
-                }
-                let mut buf = vec![0u8; len];
-                stdout.read_exact(&mut buf)?;
-                rmp_serde::from_slice(&buf).map_err(io::Error::other)
-            }
-        }
+        read_one(stdout, self.codec)
     }
 
     /// Check if the child process is still running.
@@ -311,10 +394,76 @@ impl Bridge {
 #[cfg(feature = "wire")]
 impl Drop for Bridge {
     fn drop(&mut self) {
+        // Signal the reader to stop before killing the child; the
+        // read call inside the reader will return on pipe close.
+        self.stop_reader();
         let _ = self.kill();
         // Reap the child to capture the exit code and avoid zombies
         // on platforms where kill() returns before the process is
         // actually reaped. F-2.2.4.
         let _ = self.child.wait();
+    }
+}
+
+/// Read a single message from a stdout handle, with codec-specific
+/// framing. Helper shared by synchronous `receive()` and the
+/// background reader loop.
+#[cfg(feature = "wire")]
+fn read_one<R: Read>(mut stdout: R, codec: Codec) -> io::Result<Value> {
+    match codec {
+        Codec::Json => {
+            let mut reader = BufReader::new(&mut stdout);
+            let mut line = String::new();
+            reader.read_line(&mut line)?;
+            if line.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "renderer closed",
+                ));
+            }
+            serde_json::from_str(&line).map_err(io::Error::other)
+        }
+        Codec::MsgPack => {
+            const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MB
+            let mut len_buf = [0u8; 4];
+            stdout.read_exact(&mut len_buf)?;
+            let len = u32::from_be_bytes(len_buf) as usize;
+            if len > MAX_MESSAGE_SIZE {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("message size {len} exceeds {MAX_MESSAGE_SIZE} byte limit"),
+                ));
+            }
+            let mut buf = vec![0u8; len];
+            stdout.read_exact(&mut buf)?;
+            rmp_serde::from_slice(&buf).map_err(io::Error::other)
+        }
+    }
+}
+
+/// Background reader thread. Reads frames from `stdout` until an I/O
+/// error occurs or `stop` flips. Every frame (or terminating error)
+/// is sent to the receiver; when the sender is dropped, the main
+/// loop's `recv_timeout` returns Disconnected.
+#[cfg(feature = "wire")]
+fn reader_loop(
+    mut stdout: ChildStdout,
+    codec: Codec,
+    tx: mpsc::SyncSender<io::Result<Value>>,
+    stop: Arc<AtomicBool>,
+) {
+    loop {
+        if stop.load(Ordering::SeqCst) {
+            return;
+        }
+        let result = read_one(&mut stdout, codec);
+        let is_err = result.is_err();
+        if tx.send(result).is_err() {
+            // Main loop dropped the receiver; exit quietly.
+            return;
+        }
+        if is_err {
+            return;
+        }
     }
 }

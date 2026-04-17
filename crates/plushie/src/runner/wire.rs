@@ -40,149 +40,209 @@ use crate::settings::ExitReason;
 ///
 /// Spawns the renderer binary at `binary_path` and communicates
 /// over stdin/stdout using the plushie wire protocol.
+///
+/// Auto-restart is governed by [`App::restart_policy`]. On every
+/// unexpected renderer exit the app's [`App::handle_renderer_exit`]
+/// hook is called with the matching [`ExitReason`]; if the policy
+/// allows, the runner then respawns the subprocess and resends
+/// Settings + tree snapshot + subscription state. After
+/// `max_restarts` exhaustion the hook fires once more with
+/// [`ExitReason::MaxRestartsReached`] and the function returns
+/// [`crate::Error::RendererExit`].
 #[cfg(feature = "wire")]
 pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
-    // Build settings from the app.
     let settings = build_settings::<A>();
+    let policy = A::restart_policy();
 
-    // Spawn the renderer. Map io::Error -> Error::Spawn so callers
-    // can distinguish "binary not found" from runtime I/O failures.
-    let mut bridge =
-        Bridge::spawn(binary_path).map_err(|e| crate::Error::spawn(binary_path.to_string(), e))?;
-
-    // Send initial settings.
-    bridge.send_settings(&settings)?;
-
-    // Read the hello message.
-    let hello = bridge.receive()?;
-    log::info!(
-        "renderer hello: {}",
-        hello
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-    );
-
-    // Initialize the app.
+    // Initialize the app once. The model persists across restarts.
     let (mut model, init_cmd) = A::init();
 
     let mut sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
     let mut effect_tracker = EffectTracker::new();
     let mut async_mgr = AsyncTaskManager::new();
 
-    // First render: full snapshot.
+    // Initial view; shared across restarts as the "current tree".
     let view = A::view(&model, &mut crate::widget::WidgetRegistrar::new());
     let (normalized, _) = normalize::normalize(&view);
     let mut current_tree = normalized;
-    let snapshot_value = serde_json::to_value(&current_tree)
-        .map_err(|e| crate::Error::WireEncode(format!("initial snapshot: {e}")))?;
-    bridge.send_snapshot(&snapshot_value)?;
 
-    // Execute the initial command (e.g. focus a field, start
-    // async work) so apps work from the first frame.
-    if let Err(e) = execute_wire_command(&mut bridge, init_cmd, &mut effect_tracker, &mut async_mgr)
-    {
-        log::error!("initial command execution failed: {e}");
-    }
+    let mut restart_count: u32 = 0;
+    let mut pending_init: Option<Command> = Some(init_cmd);
 
-    // Initial subscription sync.
-    let new_subs = A::subscribe(&model);
-    apply_wire_sub_ops(&mut bridge, sub_manager.sync(new_subs))?;
+    loop {
+        // Bring up (or respawn) the renderer and establish the
+        // reader thread. On respawn we resend settings + snapshot +
+        // subscription state so the renderer catches up.
+        let mut bridge = Bridge::spawn(binary_path)
+            .map_err(|e| crate::Error::spawn(binary_path.to_string(), e))?;
 
-    // Helper closure: process a single SDK event through the full MVU
-    // cycle (update -> view -> normalize -> diff -> patch -> sub sync).
-    let process_event = |model: &mut A::Model,
-                         event: Event,
-                         bridge: &mut Bridge,
-                         current_tree: &mut plushie_core::protocol::TreeNode,
-                         effect_tracker: &mut EffectTracker,
-                         async_mgr: &mut AsyncTaskManager,
-                         sub_manager: &mut crate::runtime::subscriptions::SubscriptionManager|
-     -> crate::Result {
-        let cmd = A::update(model, event);
-        execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
+        bridge.send_settings(&settings)?;
 
-        // Re-render and diff.
-        let view = A::view(model, &mut crate::widget::WidgetRegistrar::new());
-        let (new_tree, warnings) = normalize::normalize(&view);
-        for warning in &warnings {
-            log::warn!("view normalization: {warning}");
+        // Synchronous hello read (reader thread not started yet).
+        let hello = bridge.receive()?;
+        log::info!(
+            "renderer hello: {}",
+            hello
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+        );
+
+        bridge.start_reader()?;
+
+        // Send snapshot so the renderer has the current tree.
+        let snapshot_value = serde_json::to_value(&current_tree)
+            .map_err(|e| crate::Error::WireEncode(format!("snapshot: {e}")))?;
+        bridge.send_snapshot(&snapshot_value)?;
+
+        // Execute the initial command once (only on the first spawn).
+        // Subscriptions and in-flight commands are replayed below.
+        if let Some(cmd) = pending_init.take()
+            && let Err(e) =
+                execute_wire_command(&mut bridge, cmd, &mut effect_tracker, &mut async_mgr)
+        {
+            log::error!("initial command execution failed: {e}");
         }
 
-        let patches = tree_diff::diff_tree(current_tree, &new_tree);
-        if !patches.is_empty() {
-            let ops: Vec<Value> = patches
-                .iter()
-                .filter_map(|op| serde_json::to_value(op).ok())
-                .collect();
-            bridge.send_patch(&ops)?;
+        // Subscription sync. On restart this replays the full set.
+        let new_subs = A::subscribe(&model);
+        // Force a full resync by clearing the manager state so every
+        // current subscription is re-emitted as a Subscribe op.
+        if restart_count > 0 {
+            sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
         }
+        apply_wire_sub_ops(&mut bridge, sub_manager.sync(new_subs))?;
 
-        *current_tree = new_tree;
-
-        // Sync subscriptions.
-        let new_subs = A::subscribe(model);
-        apply_wire_sub_ops(bridge, sub_manager.sync(new_subs))?;
-
-        Ok(())
-    };
-
-    // Event loop.
-    let exit_reason = loop {
-        // Read next event from renderer.
-        let raw = match bridge.receive() {
-            Ok(msg) => msg,
-            Err(e) => {
-                log::error!("renderer connection lost: {e}");
-
-                // Flush all pending effects so the app gets
-                // RendererRestarted events for in-flight effects.
-                for (tag, _kind) in effect_tracker.flush_all() {
-                    let event = Event::Effect(EffectEvent {
-                        tag,
-                        result: EffectResult::RendererRestarted,
-                    });
-                    A::update(&mut model, event);
-                }
-
-                break classify_exit(&mut bridge, &e);
+        // After a restart, flush all in-flight effects with
+        // RendererRestarted so the app can react (image re-upload,
+        // etc.). On first spawn this is a no-op.
+        if restart_count > 0 {
+            for (tag, _kind) in effect_tracker.flush_all() {
+                let event = Event::Effect(EffectEvent {
+                    tag,
+                    result: EffectResult::RendererRestarted,
+                });
+                A::update(&mut model, event);
             }
-        };
+        }
 
-        // Convert wire event(s) to SDK Events via the shared event
-        // bridge. Interact responses may contain multiple events.
-        let events = wire_to_sdk_events(&raw, &mut effect_tracker);
+        // Run the main event loop until the renderer exits. The
+        // inner function returns the classified ExitReason on break.
+        let reason = run_session::<A>(
+            &mut bridge,
+            &mut model,
+            &mut current_tree,
+            &mut effect_tracker,
+            &mut async_mgr,
+            &mut sub_manager,
+            policy.heartbeat_interval,
+        );
 
-        for event in events {
-            if let Err(e) = process_event(
-                &mut model,
-                event,
-                &mut bridge,
-                &mut current_tree,
-                &mut effect_tracker,
-                &mut async_mgr,
-                &mut sub_manager,
-            ) {
-                log::error!("command execution failed: {e}");
+        log::warn!(
+            "plushie wire: renderer exited ({}); restart count = {}",
+            reason.label(),
+            restart_count
+        );
+
+        // Always call the app's exit hook; this lets apps save state
+        // or log before the (potentially final) restart attempt.
+        A::handle_renderer_exit(&mut model, reason.clone());
+
+        // Shutdown: do not restart. Return Ok so clean exit is not
+        // reported as an error.
+        if matches!(reason, ExitReason::Shutdown) {
+            return Ok(());
+        }
+
+        // Restart policy: if we're out of attempts, fire a final
+        // hook call and return the typed error.
+        if restart_count >= policy.max_restarts {
+            let final_reason = ExitReason::MaxRestartsReached {
+                last_reason: Box::new(reason.clone()),
+            };
+            A::handle_renderer_exit(&mut model, final_reason.clone());
+            return Err(crate::Error::RendererExit(final_reason));
+        }
+
+        // Exponential backoff before respawning.
+        let delay = policy
+            .restart_delay
+            .saturating_mul(2u32.saturating_pow(restart_count));
+        log::info!(
+            "plushie wire: restarting renderer in {}ms (attempt {}/{})",
+            delay.as_millis(),
+            restart_count + 1,
+            policy.max_restarts
+        );
+        std::thread::sleep(delay);
+        restart_count += 1;
+
+        // Bridge is dropped here; its Drop kills + reaps the old
+        // child. We rebuild cleanly next iteration.
+        drop(bridge);
+    }
+}
+
+/// Run one session against an already-spawned renderer. Returns the
+/// classified [`ExitReason`] when the session ends (renderer
+/// disconnect, crash, heartbeat timeout, or explicit shutdown).
+#[cfg(feature = "wire")]
+fn run_session<A: App>(
+    bridge: &mut Bridge,
+    model: &mut A::Model,
+    current_tree: &mut plushie_core::protocol::TreeNode,
+    effect_tracker: &mut EffectTracker,
+    async_mgr: &mut AsyncTaskManager,
+    sub_manager: &mut crate::runtime::subscriptions::SubscriptionManager,
+    heartbeat_interval: Option<std::time::Duration>,
+) -> ExitReason {
+    loop {
+        let incoming = bridge.recv_timeout(heartbeat_interval);
+        match incoming {
+            super::bridge::Incoming::Message(raw) => {
+                let events = wire_to_sdk_events(&raw, effect_tracker);
+                for event in events {
+                    if let Err(e) = process_event::<A>(
+                        model,
+                        event,
+                        bridge,
+                        current_tree,
+                        effect_tracker,
+                        async_mgr,
+                        sub_manager,
+                    ) {
+                        log::error!("command execution failed: {e}");
+                    }
+                }
+            }
+            super::bridge::Incoming::Error(e) => {
+                log::error!("renderer connection lost: {e}");
+                return classify_exit(bridge, &e);
+            }
+            super::bridge::Incoming::Timeout => {
+                log::warn!(
+                    "plushie wire: no message in {:?}, triggering restart",
+                    heartbeat_interval
+                );
+                return ExitReason::HeartbeatTimeout;
             }
         }
 
         // Drain async results and delayed events that arrived while
-        // we were waiting on the bridge. Each result is a full MVU
-        // cycle (update -> view -> diff -> patch).
+        // we were waiting on the bridge.
         for sink_event in async_mgr.drain() {
-            if let Some(event) = super::event_bridge::sink_event_to_sdk(sink_event) {
-                if let Err(e) = process_event(
-                    &mut model,
+            if let Some(event) = super::event_bridge::sink_event_to_sdk(sink_event)
+                && let Err(e) = process_event::<A>(
+                    model,
                     event,
-                    &mut bridge,
-                    &mut current_tree,
-                    &mut effect_tracker,
-                    &mut async_mgr,
-                    &mut sub_manager,
-                ) {
-                    log::error!("async event processing failed: {e}");
-                }
+                    bridge,
+                    current_tree,
+                    effect_tracker,
+                    async_mgr,
+                    sub_manager,
+                )
+            {
+                log::error!("async event processing failed: {e}");
             }
         }
 
@@ -192,24 +252,59 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
                 tag,
                 result: EffectResult::Timeout,
             });
-            if let Err(e) = process_event(
-                &mut model,
+            if let Err(e) = process_event::<A>(
+                model,
                 event,
-                &mut bridge,
-                &mut current_tree,
-                &mut effect_tracker,
-                &mut async_mgr,
-                &mut sub_manager,
+                bridge,
+                current_tree,
+                effect_tracker,
+                async_mgr,
+                sub_manager,
             ) {
                 log::error!("timeout command execution failed: {e}");
             }
         }
-    };
+    }
+}
 
-    // Give the app a chance to clean up or log before returning.
-    A::handle_renderer_exit(&mut model, exit_reason.clone());
+/// Process a single SDK event through the full MVU cycle:
+/// update -> view -> normalize -> diff -> patch -> sub sync.
+#[cfg(feature = "wire")]
+fn process_event<A: App>(
+    model: &mut A::Model,
+    event: Event,
+    bridge: &mut Bridge,
+    current_tree: &mut plushie_core::protocol::TreeNode,
+    effect_tracker: &mut EffectTracker,
+    async_mgr: &mut AsyncTaskManager,
+    sub_manager: &mut crate::runtime::subscriptions::SubscriptionManager,
+) -> crate::Result {
+    let cmd = A::update(model, event);
+    execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
 
-    Err(crate::Error::RendererExit(exit_reason))
+    // Re-render and diff.
+    let view = A::view(model, &mut crate::widget::WidgetRegistrar::new());
+    let (new_tree, warnings) = normalize::normalize(&view);
+    for warning in &warnings {
+        log::warn!("view normalization: {warning}");
+    }
+
+    let patches = tree_diff::diff_tree(current_tree, &new_tree);
+    if !patches.is_empty() {
+        let ops: Vec<Value> = patches
+            .iter()
+            .filter_map(|op| serde_json::to_value(op).ok())
+            .collect();
+        bridge.send_patch(&ops)?;
+    }
+
+    *current_tree = new_tree;
+
+    // Sync subscriptions.
+    let new_subs = A::subscribe(model);
+    apply_wire_sub_ops(bridge, sub_manager.sync(new_subs))?;
+
+    Ok(())
 }
 
 /// Classify a bridge receive error into a typed [`ExitReason`].
@@ -348,25 +443,32 @@ fn wire_to_sdk_events(msg: &Value, effect_tracker: &mut EffectTracker) -> Vec<Ev
 /// Manages SDK-local async tasks and delayed events for wire mode.
 ///
 /// Spawns a background tokio runtime for async work. Results and
-/// delayed events are sent through an mpsc channel that the main
-/// event loop polls between renderer messages.
+/// delayed events are sent through a bounded mpsc channel that the
+/// main event loop polls between renderer messages. The 1024 slot
+/// capacity matches the backpressure pattern used by the headless
+/// multiplex writer (F-2.4.3).
 #[cfg(feature = "wire")]
 struct AsyncTaskManager {
     runtime: tokio::runtime::Runtime,
-    tx: std::sync::mpsc::Sender<SinkEvent>,
+    tx: std::sync::mpsc::SyncSender<SinkEvent>,
     rx: std::sync::mpsc::Receiver<SinkEvent>,
     running: HashMap<String, tokio::task::JoinHandle<()>>,
 }
 
 #[cfg(feature = "wire")]
 impl AsyncTaskManager {
+    /// Bounded capacity for async-result delivery. Matches the
+    /// headless multiplex writer pattern; generous for typical
+    /// workloads while preventing runaway growth.
+    const CHANNEL_CAPACITY: usize = 1024;
+
     fn new() -> Self {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
             .build()
             .expect("failed to create tokio runtime for wire async");
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::sync_channel(Self::CHANNEL_CAPACITY);
         Self {
             runtime: rt,
             tx,

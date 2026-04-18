@@ -92,7 +92,24 @@ pub struct WalkCtx {
 
     /// Diagnostic messages accumulated during the walk.
     pub warnings: Vec<String>,
+
+    /// Current descent depth, maintained by [`walk`]. Zero at the
+    /// root; incremented on descent into children, decremented on
+    /// ascent. Transforms can read this when they need depth-aware
+    /// behaviour, but the depth cap is enforced centrally by the
+    /// walker.
+    pub depth: usize,
 }
+
+/// Maximum descent depth the walker will traverse. Nodes beyond this
+/// depth are skipped with a `tree_depth_exceeded` warning. Mirrors
+/// `plushie-widget-sdk::shared_state::MAX_TREE_DEPTH` so defence-in-
+/// depth stays consistent: the walker halts descent, the widget
+/// registry pruning sees the warning, and the SDK snapshot path bails
+/// with the same diagnostic.
+///
+/// 256 is generous; real UI trees rarely exceed 20-30 levels.
+pub const MAX_TREE_DEPTH: usize = 256;
 
 /// A single pass over a tree node.
 ///
@@ -126,21 +143,43 @@ pub trait TreeTransform {
 /// 2. If any transform reports `skip_children`, child recursion is
 ///    skipped; otherwise the walker recurses into `node.children`.
 /// 3. Each transform's `exit` is called in reverse slice order.
+///
+/// The walker also enforces a single depth cap ([`MAX_TREE_DEPTH`]).
+/// If `ctx.depth` reaches the cap before descending, children are not
+/// walked and a `tree_depth_exceeded` warning is appended to
+/// `ctx.warnings` exactly once per overflowing subtree. Transforms
+/// still run `enter` and `exit` on the current node so per-node state
+/// like scope and factory maps stays consistent.
 pub fn walk(node: &mut TreeNode, transforms: &mut [&mut dyn TreeTransform], ctx: &mut WalkCtx) {
     for t in transforms.iter_mut() {
         t.enter(node, ctx);
     }
 
-    let skip = transforms.iter().any(|t| t.skip_children(node, ctx));
+    let transform_skip = transforms.iter().any(|t| t.skip_children(node, ctx));
 
-    if !skip {
+    // Depth cap: once we're at the cap, refuse to descend. The cap is
+    // enforced centrally so every transform benefits without needing
+    // its own depth counter.
+    let depth_cap_hit = ctx.depth >= MAX_TREE_DEPTH && !node.children.is_empty();
+    if depth_cap_hit {
+        ctx.warnings.push(format!(
+            "tree_depth_exceeded: subtree rooted at \"{id}\" exceeds \
+             MAX_TREE_DEPTH={cap}, skipping descent",
+            id = node.id,
+            cap = MAX_TREE_DEPTH,
+        ));
+    }
+
+    if !transform_skip && !depth_cap_hit {
         // Children are walked in place. The walker does not manage
         // `ctx.scope` or `ctx.window_id`; transforms that care about
         // scope state push in `enter` and pop in `exit`.
+        ctx.depth += 1;
         let child_count = node.children.len();
         for i in 0..child_count {
             walk(&mut node.children[i], transforms, ctx);
         }
+        ctx.depth -= 1;
     }
 
     for t in transforms.iter_mut().rev() {
@@ -305,6 +344,40 @@ mod tests {
 
         assert_eq!(tree.id, "x:root");
         assert_eq!(tree.children[0].id, "x:child");
+    }
+
+    #[test]
+    fn depth_cap_skips_subtree_with_diagnostic() {
+        // Build a tree deeper than MAX_TREE_DEPTH. The walker must
+        // not stack-overflow, must skip descent at the cap boundary,
+        // and must emit a single tree_depth_exceeded warning.
+        let mut leaf = node("leaf", vec![]);
+        for i in 0..(MAX_TREE_DEPTH + 20) {
+            leaf = node(&format!("n{i}"), vec![leaf]);
+        }
+
+        let trace = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut rec = Recorder {
+            name: "R",
+            trace: trace.clone(),
+        };
+        let mut ctx = WalkCtx::default();
+        walk(&mut leaf, &mut [&mut rec], &mut ctx);
+
+        // At least one warning, all of them the depth diagnostic.
+        assert!(
+            ctx.warnings
+                .iter()
+                .any(|w| w.contains("tree_depth_exceeded")),
+            "expected tree_depth_exceeded warning, got {:?}",
+            ctx.warnings,
+        );
+        // The deepest "leaf" node must not have been entered: descent
+        // stopped at the cap.
+        assert!(
+            !trace.borrow().iter().any(|line| line == "R:enter:leaf"),
+            "walker descended past the cap"
+        );
     }
 
     #[test]

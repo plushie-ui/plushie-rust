@@ -14,18 +14,13 @@ use std::hash::{Hash, Hasher};
 
 use crate::protocol::TreeNode;
 
-/// Maximum recursion depth for tree walks (render, prepare_walk,
-/// and the SDK's normalize pass). Prevents stack overflow from
-/// pathologically nested trees (hostile hosts, runaway builder
-/// code). Normal UI trees rarely exceed 20-30 levels; 256 is
-/// generous.
-///
-/// All three passes cap at the same depth so defence-in-depth
-/// holds: normalize truncates the subtree; prepare_walk stops
-/// recursing but preserves the current node's live-key entry;
-/// render returns a placeholder. Each pass emits a `tree_too_deep`
-/// error-level diagnostic at the overflow boundary.
-pub const MAX_TREE_DEPTH: usize = 256;
+/// Maximum recursion depth for tree walks. Re-exported from
+/// [`plushie_core::tree_walk::MAX_TREE_DEPTH`] so the walker and the
+/// widget SDK agree on the cap. The walker enforces descent; per-
+/// widget passes and render use the same constant for defence-in-
+/// depth on paths the walker does not drive (render.rs, tree.rs
+/// search helpers).
+pub use plushie_core::tree_walk::MAX_TREE_DEPTH;
 
 /// Maximum recursion depth for [`hash_json_value`]. JSON values within
 /// props (e.g. canvas shapes) can be arbitrarily nested. Bounded to

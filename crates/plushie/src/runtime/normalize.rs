@@ -60,8 +60,7 @@ use std::collections::{BTreeMap, HashSet};
 use plushie_core::protocol::{PropValue, TreeNode};
 #[cfg(any(test, feature = "wire"))]
 use plushie_core::tree_walk::walk;
-use plushie_core::tree_walk::{TreeTransform, WalkCtx};
-use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
+use plushie_core::tree_walk::{MAX_TREE_DEPTH, TreeTransform, WalkCtx};
 
 /// Normalize a view tree: apply scope prefixes, validate IDs,
 /// rewrite cross-widget a11y references, and auto-populate a11y
@@ -115,11 +114,9 @@ pub(crate) struct NormalizeTransform<'a> {
     /// Length to truncate `ctx.scope` to on `exit` for each node on
     /// the stack. Mirrors the recursion frames.
     scope_stack: Vec<usize>,
-    /// Current walk depth. Increments on `enter`, decrements on `exit`.
-    depth: usize,
-    /// Once the depth cap has been exceeded, children are elided.
-    /// Mirrored via `skip_children` (children are never truncated
-    /// destructively; the walker just doesn't recurse into them).
+    /// Per-node truncation flag. Non-empty at a cache hit so `exit`
+    /// knows not to store back into the memo cache when the subtree
+    /// was served from the cache rather than freshly walked.
     truncate_children: Vec<bool>,
     /// Per-node memo state: if the node was a memo hit we suppress
     /// descent and skip writing back to the cache; if it was a miss
@@ -152,7 +149,6 @@ impl<'a> NormalizeTransform<'a> {
         Self {
             seen_ids: HashSet::new(),
             scope_stack: Vec::new(),
-            depth: 0,
             truncate_children: Vec::new(),
             memo_stack: Vec::new(),
             memo_cache,
@@ -162,28 +158,10 @@ impl<'a> NormalizeTransform<'a> {
 
 impl TreeTransform for NormalizeTransform<'_> {
     fn enter(&mut self, node: &mut TreeNode, ctx: &mut WalkCtx) {
-        // Defence-in-depth against runaway recursion. The walker is
-        // recursive itself, so halting here matters. We still run
-        // exit/pop bookkeeping for symmetry.
-        if self.depth > MAX_TREE_DEPTH {
-            log::error!(
-                "[code=tree_too_deep][id={}] normalize depth exceeds {}, truncating subtree",
-                node.id,
-                MAX_TREE_DEPTH
-            );
-            ctx.warnings.push(format!(
-                "tree_too_deep: subtree rooted at \"{}\" exceeds MAX_TREE_DEPTH={}, truncating",
-                node.id, MAX_TREE_DEPTH
-            ));
-            // Drop the children so the walker has nothing to descend
-            // into, then record a no-op scope stack entry.
-            node.children.clear();
-            self.scope_stack.push(ctx.scope.len());
-            self.truncate_children.push(true);
-            self.memo_stack.push(None);
-            self.depth += 1;
-            return;
-        }
+        // Depth enforcement lives in `plushie_core::tree_walk::walk`,
+        // which halts descent at MAX_TREE_DEPTH and pushes a
+        // `tree_depth_exceeded` warning. We still run scope/memo
+        // bookkeeping here so `exit` restores state symmetrically.
 
         // Snapshot where the enclosing scope ended so `exit` can
         // restore `ctx.scope` to exactly this length.
@@ -264,7 +242,6 @@ impl TreeTransform for NormalizeTransform<'_> {
         self.scope_stack.push(prev_scope_len);
         self.truncate_children.push(truncate);
         self.memo_stack.push(memo_frame);
-        self.depth += 1;
     }
 
     fn exit(&mut self, node: &mut TreeNode, ctx: &mut WalkCtx) {
@@ -277,7 +254,6 @@ impl TreeTransform for NormalizeTransform<'_> {
             ctx.scope.truncate(prev_len);
         }
         self.truncate_children.pop();
-        self.depth = self.depth.saturating_sub(1);
     }
 
     fn skip_children(&self, _node: &TreeNode, _ctx: &WalkCtx) -> bool {
@@ -1027,9 +1003,9 @@ mod tests {
 
     #[test]
     fn excessive_depth_is_truncated_with_diagnostic() {
-        // Build a tree deeper than MAX_TREE_DEPTH. The normalize pass
-        // must not stack-overflow and must emit a tree_too_deep
-        // diagnostic at the cap boundary.
+        // Build a tree deeper than MAX_TREE_DEPTH. The walker enforces
+        // the cap and emits tree_depth_exceeded at the boundary; the
+        // normalize pass must not stack-overflow in the process.
         let mut tree = node("leaf", "text", vec![]);
         for i in 0..(MAX_TREE_DEPTH + 20) {
             tree = node(&format!("n{i}"), "container", vec![tree]);
@@ -1037,8 +1013,8 @@ mod tests {
 
         let (_result, warnings) = normalize(&tree);
         assert!(
-            warnings.iter().any(|w| w.contains("tree_too_deep")),
-            "expected tree_too_deep diagnostic; got {warnings:?}"
+            warnings.iter().any(|w| w.contains("tree_depth_exceeded")),
+            "expected tree_depth_exceeded diagnostic; got {warnings:?}"
         );
     }
 

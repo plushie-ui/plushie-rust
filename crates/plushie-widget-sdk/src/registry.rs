@@ -583,12 +583,6 @@ pub(crate) struct PrepareTransform<'a, R: PlushieRenderer> {
     theme: &'a Theme,
     /// Stack of window IDs; topmost is the current enclosing window.
     window_stack: Vec<String>,
-    /// Current recursion depth; matched against [`MAX_TREE_DEPTH`] to
-    /// halt descent on pathological trees.
-    depth: usize,
-    /// `skip_children` state per frame: true after the depth cap is
-    /// exceeded so the walker doesn't recurse.
-    skip_stack: Vec<bool>,
     live_ids: std::collections::HashSet<String>,
     live_keys: std::collections::HashSet<(String, String)>,
     widget_subs: HashMap<String, CollectedSubscription>,
@@ -605,8 +599,6 @@ impl<'a, R: PlushieRenderer> PrepareTransform<'a, R> {
             shared,
             theme,
             window_stack: Vec::new(),
-            depth: 0,
-            skip_stack: Vec::new(),
             live_ids: std::collections::HashSet::new(),
             live_keys: std::collections::HashSet::new(),
             widget_subs: HashMap::new(),
@@ -623,22 +615,10 @@ impl<'a, R: PlushieRenderer> PrepareTransform<'a, R> {
 
 impl<R: PlushieRenderer> plushie_core::tree_walk::TreeTransform for PrepareTransform<'_, R> {
     fn enter(&mut self, node: &mut TreeNode, _ctx: &mut plushie_core::tree_walk::WalkCtx) {
-        // Defence-in-depth: bail out cleanly on pathological trees.
-        // Still record the current node as live so state tied to it
-        // isn't evicted by the post-walk cleanup.
-        if self.depth > crate::shared_state::MAX_TREE_DEPTH {
-            log::error!(
-                "[code=tree_too_deep][id={}] prepare_walk depth exceeds {}, truncating subtree",
-                node.id,
-                crate::shared_state::MAX_TREE_DEPTH
-            );
-            let current_window_id = self.window_stack.last().cloned().unwrap_or_default();
-            self.live_ids.insert(node.id.clone());
-            self.live_keys.insert((current_window_id, node.id.clone()));
-            self.skip_stack.push(true);
-            self.depth += 1;
-            return;
-        }
+        // Depth enforcement lives in the walker; see
+        // `plushie_core::tree_walk::walk`. By the time we're here the
+        // walker has already short-circuited descent past the cap, so
+        // every node we see is in-bounds.
 
         let current_window_id = self.window_stack.last().cloned().unwrap_or_default();
 
@@ -713,9 +693,6 @@ impl<R: PlushieRenderer> plushie_core::tree_walk::TreeTransform for PrepareTrans
                 );
             }
         }
-
-        self.skip_stack.push(false);
-        self.depth += 1;
     }
 
     fn exit(&mut self, node: &mut TreeNode, _ctx: &mut plushie_core::tree_walk::WalkCtx) {
@@ -723,12 +700,6 @@ impl<R: PlushieRenderer> plushie_core::tree_walk::TreeTransform for PrepareTrans
         if node.type_name == "window" {
             self.window_stack.pop();
         }
-        self.skip_stack.pop();
-        self.depth = self.depth.saturating_sub(1);
-    }
-
-    fn skip_children(&self, _node: &TreeNode, _ctx: &plushie_core::tree_walk::WalkCtx) -> bool {
-        self.skip_stack.last().copied().unwrap_or(false)
     }
 }
 

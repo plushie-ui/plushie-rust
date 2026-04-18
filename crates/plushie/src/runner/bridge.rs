@@ -71,8 +71,15 @@ pub enum Incoming {
 #[cfg(feature = "wire")]
 impl Bridge {
     /// Spawn a renderer subprocess and negotiate the codec.
+    ///
+    /// The child env is filtered down to the canonical whitelist (see
+    /// [`crate::runner::env::renderer_env`]). Host secrets, tokens, or
+    /// other unrelated variables do not reach the renderer even when
+    /// they are present in the host process env.
     pub fn spawn(binary_path: &str) -> io::Result<Self> {
         let child = ProcessCommand::new(binary_path)
+            .env_clear()
+            .envs(crate::runner::env::renderer_env())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

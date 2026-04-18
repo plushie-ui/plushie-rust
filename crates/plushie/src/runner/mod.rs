@@ -24,6 +24,9 @@ mod queue_sink;
 pub mod bridge;
 
 #[cfg(feature = "wire")]
+pub(crate) mod env;
+
+#[cfg(feature = "wire")]
 pub mod wire;
 
 // ---------------------------------------------------------------------------

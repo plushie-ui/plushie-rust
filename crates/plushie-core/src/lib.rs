@@ -10,6 +10,7 @@ extern crate self as plushie_core;
 pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent};
 
 pub mod animation;
+pub mod codec_safety;
 pub mod event_type;
 pub mod key;
 pub mod ops;

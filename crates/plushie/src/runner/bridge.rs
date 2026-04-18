@@ -443,6 +443,19 @@ fn read_one<R: Read>(mut stdout: R, codec: Codec) -> io::Result<Value> {
             }
             let mut buf = vec![0u8; len];
             stdout.read_exact(&mut buf)?;
+            // Share the widget-sdk's depth pre-check so a pathological
+            // msgpack payload cannot blow rmp_serde's recursive parser
+            // even when the renderer is the peer. Today the renderer is
+            // trusted; this keeps the invariant if that ever changes.
+            if let Err(e) = plushie_core::codec_safety::check_msgpack_depth(
+                &buf,
+                plushie_core::codec_safety::MAX_RMPV_DEPTH,
+            ) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("msgpack depth check: {e}"),
+                ));
+            }
             rmp_serde::from_slice(&buf).map_err(io::Error::other)
         }
     }

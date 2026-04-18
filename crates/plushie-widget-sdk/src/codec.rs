@@ -18,13 +18,11 @@ use serde::de::DeserializeOwned;
 use std::fmt;
 use std::io::{self, BufRead, Read};
 
+use plushie_core::codec_safety::{MAX_RMPV_DEPTH, check_msgpack_depth};
+
 /// Maximum size for a single wire message (64 MiB). Applied to both JSON
 /// line reads and msgpack length-prefixed frames.
 pub const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
-
-/// Maximum nesting depth for `rmpv_to_json` conversion. Prevents stack
-/// overflow from deeply nested (or maliciously crafted) msgpack payloads.
-const MAX_RMPV_DEPTH: usize = 128;
 
 /// Wire codec for the stdin/stdout protocol.
 ///
@@ -168,7 +166,8 @@ impl Codec {
                     .map_err(|e| format!("msgpack depth check: {e}"))?;
                 let rmpv_val: rmpv::Value = rmpv::decode::read_value(&mut &bytes[..])
                     .map_err(|e| format!("msgpack decode (rmpv): {e}"))?;
-                let json_val = rmpv_to_json(rmpv_val);
+                let json_val = rmpv_to_json(rmpv_val)
+                    .map_err(|e| format!("msgpack decode (invalid UTF-8): {e}"))?;
                 // Fast path: consume `json_val` directly on success so
                 // the happy path pays no clone cost. Only materialise
                 // the debug dump (and the clone needed to do so) when
@@ -272,238 +271,10 @@ impl Codec {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Msgpack nesting depth pre-check
-// ---------------------------------------------------------------------------
-
-/// Iteratively scan raw msgpack bytes and reject payloads that would cause
-/// problems for `rmpv::read_value`:
-///
-/// - **Nesting depth** exceeding `max_depth` (prevents stack overflow from
-///   rmpv's recursive parser).
-/// - **Declared element counts** exceeding the remaining bytes (prevents
-///   rmpv from pre-allocating `Vec::with_capacity(billions)` when the
-///   declared count is larger than the payload can possibly contain).
-///
-/// The scan walks format bytes iteratively on purpose. `rmpv::read_value` is
-/// itself recursive, so a depth-bomb payload would blow rmpv's stack before
-/// any user-space depth check could observe it. This pre-scan uses an
-/// explicit `Vec` stack to track nesting, keeping scan depth bounded by heap
-/// rather than call stack. Every msgpack format marker is enumerated here so
-/// that any new marker rmpv starts decoding stays matched by an equivalent
-/// pre-scan case; a missing marker would mean the scan walks into an
-/// unexpected region and either under-counts children or mis-reports size.
-fn check_msgpack_depth(bytes: &[u8], max_depth: usize) -> Result<(), String> {
-    let len = bytes.len();
-    let mut pos: usize = 0;
-    let mut depth: usize = 0;
-    // Stack tracks how many child elements remain at each nesting level.
-    let mut remaining: Vec<usize> = Vec::new();
-
-    while pos < len {
-        let b = bytes[pos];
-        pos += 1;
-
-        // Classify the format marker: (data_bytes_to_skip, child_element_count).
-        // For containers (array/map), child_count > 0 and we push a new depth level.
-        // For scalars, child_count == 0 and we consume one element from the parent.
-        let (skip, children) = match b {
-            // positive fixint
-            0x00..=0x7f => (0, 0),
-            // fixmap: N key-value pairs = 2N child elements
-            0x80..=0x8f => (0, ((b & 0x0f) as usize) * 2),
-            // fixarray
-            0x90..=0x9f => (0, (b & 0x0f) as usize),
-            // fixstr
-            0xa0..=0xbf => ((b & 0x1f) as usize, 0),
-            // nil, (unused), false, true
-            0xc0..=0xc3 => (0, 0),
-            // bin8
-            0xc4 => {
-                if pos >= len {
-                    break;
-                }
-                (1 + bytes[pos] as usize, 0)
-            }
-            // bin16
-            0xc5 => {
-                if pos + 1 >= len {
-                    break;
-                }
-                let n = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]) as usize;
-                (2 + n, 0)
-            }
-            // bin32
-            0xc6 => {
-                if pos + 3 >= len {
-                    break;
-                }
-                let n = u32::from_be_bytes([
-                    bytes[pos],
-                    bytes[pos + 1],
-                    bytes[pos + 2],
-                    bytes[pos + 3],
-                ]) as usize;
-                (4 + n, 0)
-            }
-            // ext8
-            0xc7 => {
-                if pos >= len {
-                    break;
-                }
-                (2 + bytes[pos] as usize, 0)
-            }
-            // ext16
-            0xc8 => {
-                if pos + 1 >= len {
-                    break;
-                }
-                let n = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]) as usize;
-                (3 + n, 0)
-            }
-            // ext32
-            0xc9 => {
-                if pos + 3 >= len {
-                    break;
-                }
-                let n = u32::from_be_bytes([
-                    bytes[pos],
-                    bytes[pos + 1],
-                    bytes[pos + 2],
-                    bytes[pos + 3],
-                ]) as usize;
-                (5 + n, 0)
-            }
-            // float32
-            0xca => (4, 0),
-            // float64
-            0xcb => (8, 0),
-            // uint8, int8
-            0xcc | 0xd0 => (1, 0),
-            // uint16, int16
-            0xcd | 0xd1 => (2, 0),
-            // uint32, int32
-            0xce | 0xd2 => (4, 0),
-            // uint64, int64
-            0xcf | 0xd3 => (8, 0),
-            // fixext 1, 2, 4, 8, 16 (type byte + data)
-            0xd4 => (2, 0),
-            0xd5 => (3, 0),
-            0xd6 => (5, 0),
-            0xd7 => (9, 0),
-            0xd8 => (17, 0),
-            // str8
-            0xd9 => {
-                if pos >= len {
-                    break;
-                }
-                (1 + bytes[pos] as usize, 0)
-            }
-            // str16
-            0xda => {
-                if pos + 1 >= len {
-                    break;
-                }
-                let n = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]) as usize;
-                (2 + n, 0)
-            }
-            // str32
-            0xdb => {
-                if pos + 3 >= len {
-                    break;
-                }
-                let n = u32::from_be_bytes([
-                    bytes[pos],
-                    bytes[pos + 1],
-                    bytes[pos + 2],
-                    bytes[pos + 3],
-                ]) as usize;
-                (4 + n, 0)
-            }
-            // array16
-            0xdc => {
-                if pos + 1 >= len {
-                    break;
-                }
-                let n = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]) as usize;
-                pos += 2;
-                (0, n)
-            }
-            // array32
-            0xdd => {
-                if pos + 3 >= len {
-                    break;
-                }
-                let n = u32::from_be_bytes([
-                    bytes[pos],
-                    bytes[pos + 1],
-                    bytes[pos + 2],
-                    bytes[pos + 3],
-                ]) as usize;
-                pos += 4;
-                (0, n)
-            }
-            // map16
-            0xde => {
-                if pos + 1 >= len {
-                    break;
-                }
-                let n = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]) as usize;
-                pos += 2;
-                (0, n * 2)
-            }
-            // map32
-            0xdf => {
-                if pos + 3 >= len {
-                    break;
-                }
-                let n = u32::from_be_bytes([
-                    bytes[pos],
-                    bytes[pos + 1],
-                    bytes[pos + 2],
-                    bytes[pos + 3],
-                ]) as usize;
-                pos += 4;
-                (0, n * 2)
-            }
-            // negative fixint
-            0xe0..=0xff => (0, 0),
-        };
-
-        pos += skip;
-
-        if children > 0 {
-            // Each child element needs at least 1 byte. Reject declared
-            // counts that exceed the remaining data to prevent rmpv from
-            // pre-allocating huge Vecs based on a forged count field.
-            let remaining_bytes = len.saturating_sub(pos);
-            if children > remaining_bytes {
-                return Err(format!(
-                    "msgpack container declares {children} elements but only {remaining_bytes} bytes remain"
-                ));
-            }
-
-            depth += 1;
-            if depth > max_depth {
-                return Err(format!("msgpack nesting depth exceeds limit ({max_depth})"));
-            }
-            remaining.push(children);
-        } else {
-            // Leaf value consumed: pop completed containers.
-            while let Some(count) = remaining.last_mut() {
-                *count -= 1;
-                if *count == 0 {
-                    remaining.pop();
-                    depth -= 1;
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
+// The msgpack nesting depth pre-check lives in
+// `plushie_core::codec_safety::check_msgpack_depth` so the widget-sdk codec
+// and the Rust SDK's wire bridge share one implementation. The module-level
+// `use` above pulls it in.
 
 // ---------------------------------------------------------------------------
 // rmpv::Value -> serde_json::Value conversion
@@ -517,19 +288,25 @@ fn check_msgpack_depth(bytes: &[u8], max_depth: usize) -> Result<(), String> {
 /// The `deserialize_binary_field` custom deserializer in protocol.rs knows
 /// how to reconstruct `Vec<u8>` from these byte arrays.
 ///
+/// Returns an error on invalid UTF-8 in msgpack strings: silently falling
+/// back (either to U+FFFD or an empty string) would corrupt the `type`
+/// field that tag dispatch keys off, producing a confusing downstream
+/// "unknown tag" error. Surfacing the UTF-8 failure at the codec boundary
+/// tells the host exactly where the wire payload went wrong.
+///
 /// Recursion depth is capped at `MAX_RMPV_DEPTH` to prevent stack overflow
 /// from deeply nested or malicious payloads.
-fn rmpv_to_json(val: rmpv::Value) -> serde_json::Value {
+fn rmpv_to_json(val: rmpv::Value) -> Result<serde_json::Value, String> {
     rmpv_to_json_inner(val, 0)
 }
 
-fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> serde_json::Value {
+fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> Result<serde_json::Value, String> {
     if depth > MAX_RMPV_DEPTH {
         log::error!("rmpv_to_json: recursion depth exceeded {MAX_RMPV_DEPTH}, replaced with null");
-        return serde_json::Value::Null;
+        return Ok(serde_json::Value::Null);
     }
 
-    match val {
+    Ok(match val {
         rmpv::Value::Nil => serde_json::Value::Null,
         rmpv::Value::Boolean(b) => serde_json::Value::Bool(b),
         rmpv::Value::Integer(n) => {
@@ -555,10 +332,20 @@ fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> serde_json::Value {
                 serde_json::Value::Number(serde_json::Number::from_f64(0.0).unwrap())
             }),
         rmpv::Value::String(s) => {
-            // rmpv::Utf8String: may or may not be valid UTF-8.
-            // Use lossy conversion so invalid bytes become U+FFFD instead of
-            // silently mapping to null (which breaks tag dispatch on "type").
-            serde_json::Value::String(String::from_utf8_lossy(s.as_bytes()).into_owned())
+            // rmpv::Utf8String may hold invalid UTF-8. Surface the failure
+            // so tag dispatch on the `type` field does not get handed a
+            // string of replacement characters.
+            let bytes = s.as_bytes();
+            match std::str::from_utf8(bytes) {
+                Ok(valid) => serde_json::Value::String(valid.to_owned()),
+                Err(e) => {
+                    return Err(format!(
+                        "invalid UTF-8 in msgpack string at byte offset {}: {}",
+                        e.valid_up_to(),
+                        e
+                    ));
+                }
+            }
         }
         rmpv::Value::Binary(bytes) => {
             // Preserve raw bytes as a JSON array of u8 values.
@@ -586,21 +373,32 @@ fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> serde_json::Value {
                     .collect(),
             )
         }
-        rmpv::Value::Array(arr) => serde_json::Value::Array(
-            arr.into_iter()
-                .map(|v| rmpv_to_json_inner(v, depth + 1))
-                .collect(),
-        ),
+        rmpv::Value::Array(arr) => {
+            let mut out = Vec::with_capacity(arr.len());
+            for v in arr {
+                out.push(rmpv_to_json_inner(v, depth + 1)?);
+            }
+            serde_json::Value::Array(out)
+        }
         rmpv::Value::Map(entries) => {
             let mut map = serde_json::Map::new();
             for (k, v) in entries {
-                // Map keys: try to use string representation
+                // Map keys: try to use string representation. Non-UTF-8
+                // string keys surface the same error as non-UTF-8 values;
+                // the key is as load-bearing as the value, and silently
+                // dropping it (into_str().unwrap_or_default()) would
+                // merge entries under the empty key.
                 let key = match k {
-                    rmpv::Value::String(s) => s.into_str().unwrap_or_default().to_string(),
+                    rmpv::Value::String(s) => match s.into_str() {
+                        Some(valid) => valid,
+                        None => {
+                            return Err("invalid UTF-8 in msgpack map key".to_string());
+                        }
+                    },
                     rmpv::Value::Integer(n) => n.to_string(),
                     other => format!("{other}"),
                 };
-                map.insert(key, rmpv_to_json_inner(v, depth + 1));
+                map.insert(key, rmpv_to_json_inner(v, depth + 1)?);
             }
             serde_json::Value::Object(map)
         }
@@ -610,7 +408,7 @@ fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> serde_json::Value {
             );
             serde_json::Value::Null
         }
-    }
+    })
 }
 
 /// Convert a serde_json::Value to rmpv::Value for msgpack encoding.
@@ -1007,7 +805,7 @@ mod tests {
     #[test]
     fn rmpv_to_json_preserves_binary_as_array() {
         let binary = rmpv::Value::Binary(vec![1, 2, 3]);
-        let result = rmpv_to_json(binary);
+        let result = rmpv_to_json(binary).unwrap();
         assert_eq!(result, json!([1, 2, 3]));
     }
 
@@ -1023,7 +821,7 @@ mod tests {
                 rmpv::Value::Integer(42.into()),
             ),
         ]);
-        let result = rmpv_to_json(val);
+        let result = rmpv_to_json(val).unwrap();
         assert_eq!(result, json!({"key": "val", "num": 42}));
     }
 
@@ -1065,7 +863,7 @@ mod tests {
                 )]),
             )]),
         )]);
-        let result = rmpv_to_json(val);
+        let result = rmpv_to_json(val).unwrap();
         assert_eq!(result, json!({"outer": {"inner": {"deep": 42}}}));
     }
 
@@ -1082,7 +880,7 @@ mod tests {
                 rmpv::Value::Binary(vec![255, 128, 0, 255]),
             ),
         ]);
-        let result = rmpv_to_json(val);
+        let result = rmpv_to_json(val).unwrap();
         assert_eq!(result["name"], json!("img"));
         assert_eq!(result["pixels"], json!([255, 128, 0, 255]));
     }
@@ -1115,7 +913,7 @@ mod tests {
 
         // The rmpv_to_json path preserves binary as an array of u8.
         let rmpv_val: rmpv::Value = rmpv::decode::read_value(&mut &buf[..]).unwrap();
-        let json_val = rmpv_to_json(rmpv_val);
+        let json_val = rmpv_to_json(rmpv_val).unwrap();
 
         // The tagged enum fields decode fine.
         assert_eq!(json_val["type"], "alpha");
@@ -1129,9 +927,52 @@ mod tests {
 
     #[test]
     fn rmpv_to_json_handles_nil_and_bool() {
-        assert_eq!(rmpv_to_json(rmpv::Value::Nil), json!(null));
-        assert_eq!(rmpv_to_json(rmpv::Value::Boolean(true)), json!(true));
-        assert_eq!(rmpv_to_json(rmpv::Value::Boolean(false)), json!(false));
+        assert_eq!(rmpv_to_json(rmpv::Value::Nil).unwrap(), json!(null));
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::Boolean(true)).unwrap(),
+            json!(true)
+        );
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::Boolean(false)).unwrap(),
+            json!(false)
+        );
+    }
+
+    // -- Invalid UTF-8 handling --
+
+    #[test]
+    fn rmpv_to_json_rejects_invalid_utf8_string() {
+        // Build a msgpack payload with a str8 string holding invalid
+        // UTF-8 bytes. Decoding through rmpv then conversion must
+        // surface the failure, not fall back to replacement
+        // characters.
+        let bytes = [0xd9, 0x03, 0xFF, 0xFE, 0xFD];
+        let rmpv_val: rmpv::Value = rmpv::decode::read_value(&mut &bytes[..]).unwrap();
+        let err = rmpv_to_json(rmpv_val).unwrap_err();
+        assert!(err.contains("invalid UTF-8"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn msgpack_decode_rejects_invalid_utf8_in_type_field() {
+        // Build a map with "type" key mapped to an invalid-UTF-8 value.
+        // Decoding through Codec::decode must report the UTF-8 failure
+        // rather than bubbling up a confusing "unknown tag" error.
+        let mut bytes = vec![0x81]; // fixmap(1): type = <invalid>
+        // key: fixstr(4) "type"
+        bytes.extend_from_slice(&[0xa4, b't', b'y', b'p', b'e']);
+        // value: str8 with len 3, bytes 0xFF 0xFE 0xFD
+        bytes.extend_from_slice(&[0xd9, 0x03, 0xFF, 0xFE, 0xFD]);
+
+        let result: Result<serde_json::Value, _> = Codec::MsgPack.decode(&bytes);
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("invalid UTF-8"),
+            "expected UTF-8 diagnostic, got {err}"
+        );
+        assert!(
+            !err.contains("unknown tag") && !err.contains("tag dispatch"),
+            "expected error to surface at codec boundary, got {err}"
+        );
     }
 
     // -- check_msgpack_depth --

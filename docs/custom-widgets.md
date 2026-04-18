@@ -259,8 +259,9 @@ Optional lifecycle hooks (see the trait docs for full signatures):
   loop).
 - `handle_widget_op(&mut self, op)`: handle wire-protocol widget
   ops (`focus`, `scroll_to`, etc.).
-- `cleanup(&mut self, id)`: teardown when a widget node leaves the
-  tree.
+- `cleanup_stale(&mut self, live_ids)`: prune per-instance state
+  after each tree walk. Receives the set of live
+  `(window_id, node_id)` keys; drop anything not in the set.
 - `infer_a11y(&self, node)`: auto-infer accessibility properties
   from the node's props.
 - `event_specs(&self) -> &[EventSpec]`: declare the event families

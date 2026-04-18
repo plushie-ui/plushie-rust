@@ -14,6 +14,10 @@
 //!
 //! - [`PlushieWidget`]: Generate `type_names` and `fresh_for_session`
 //!   for simple stateless widgets.
+//!
+//! - [`widget!`]: Function-like macro for declaring a custom widget in a
+//!   single invocation. Generates the struct, builder, [`View`]
+//!   conversion, and a build-time metadata const.
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
@@ -1082,6 +1086,383 @@ fn extract_widget_name(input: &DeriveInput) -> syn::Result<String> {
 }
 
 // ---------------------------------------------------------------------------
+// widget! function-like macro
+// ---------------------------------------------------------------------------
+
+/// Declare a custom Plushie widget in one shot.
+///
+/// Generates the widget struct, builder methods for each field, a
+/// [`From<Widget> for TreeNode`] conversion, and a build-time
+/// `PLUSHIE_WIDGET_METADATA` constant that `cargo plushie build`
+/// reads during native-widget discovery.
+///
+/// # Cargo.toml metadata
+///
+/// Widget crates declare themselves via their own `Cargo.toml`:
+///
+/// ```toml
+/// [package.metadata.plushie.widget]
+/// type_name = "my_gauge"
+/// constructor = "my_gauge::Gauge::new()"
+/// ```
+///
+/// The build tool discovers native widgets by scanning the full
+/// `cargo metadata` graph for this table. App crates may also carry a
+/// complementary table:
+///
+/// ```toml
+/// [package.metadata.plushie]
+/// binary_name = "my-app-renderer"        # optional override
+/// source_path = "../plushie-rust"        # optional, honored from env too
+/// native_widgets = ["my-gauge"]          # optional explicit list
+/// ```
+///
+/// # Example
+///
+/// ```ignore
+/// use plushie_core::widget;
+///
+/// widget! {
+///     /// Circular gauge widget.
+///     #[widget(type_name = "my_gauge", crate = "my-gauge",
+///              constructor = "my_gauge::Gauge::new()")]
+///     pub struct Gauge {
+///         pub value: f32,
+///         pub max: f32,
+///         pub color: plushie_core::types::Color,
+///     }
+///
+///     events {
+///         ValueChanged(f32),
+///     }
+/// }
+/// ```
+///
+/// The macro emits:
+///
+/// - `pub struct Gauge { value: Option<f32>, ... }` with `new(id)` and
+///   fluent builder methods (`.value(v)`, `.max(v)`, `.color(c)`).
+/// - `impl From<Gauge> for plushie_core::protocol::TreeNode`.
+/// - `pub const PLUSHIE_WIDGET_METADATA: &str = "...";` with a JSON
+///   snippet describing the widget for the build tool.
+/// - An `events { ... }` section expands to a sibling enum with the
+///   `WidgetEvent` derive applied.
+#[proc_macro]
+pub fn widget(input: TokenStream) -> TokenStream {
+    let input2: proc_macro2::TokenStream = input.into();
+    match widget_impl(input2) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Parsed form of `widget! { ... }` input.
+struct WidgetInput {
+    attrs: Vec<syn::Attribute>,
+    meta: WidgetMeta,
+    vis: syn::Visibility,
+    ident: syn::Ident,
+    fields: syn::FieldsNamed,
+    events: Option<WidgetEventsBlock>,
+}
+
+/// Fields parsed out of the `#[widget(...)]` attribute.
+struct WidgetMeta {
+    type_name: String,
+    crate_name: Option<String>,
+    constructor: Option<String>,
+}
+
+/// Parsed `events { ... }` block.
+struct WidgetEventsBlock {
+    ident: syn::Ident,
+    variants: syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+}
+
+impl syn::parse::Parse for WidgetInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        // Parse any outer #[doc = "..."] / #[widget(...)] attributes that
+        // precede the struct declaration.
+        let attrs = input.call(syn::Attribute::parse_outer)?;
+        let vis: syn::Visibility = input.parse()?;
+        let _struct_token: syn::Token![struct] = input.parse()?;
+        let ident: syn::Ident = input.parse()?;
+        let fields: syn::FieldsNamed = input.parse()?;
+
+        // Optional trailing `events { ... }` block.
+        let events = if input.peek(syn::Ident) {
+            let lookahead: syn::Ident = input.fork().parse()?;
+            if lookahead == "events" {
+                let _events_kw: syn::Ident = input.parse()?;
+                let content;
+                syn::braced!(content in input);
+                let variants = content.parse_terminated(syn::Variant::parse, syn::Token![,])?;
+                Some(WidgetEventsBlock {
+                    ident: format_ident!("{}Event", ident),
+                    variants,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let meta = parse_widget_meta(&attrs, &ident)?;
+
+        Ok(WidgetInput {
+            attrs,
+            meta,
+            vis,
+            ident,
+            fields,
+            events,
+        })
+    }
+}
+
+fn parse_widget_meta(attrs: &[syn::Attribute], ident: &syn::Ident) -> syn::Result<WidgetMeta> {
+    let mut type_name: Option<String> = None;
+    let mut crate_name: Option<String> = None;
+    let mut constructor: Option<String> = None;
+
+    for attr in attrs {
+        if !attr.path().is_ident("widget") {
+            continue;
+        }
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("type_name") {
+                let value = meta.value()?;
+                let lit: Lit = value.parse()?;
+                if let Lit::Str(s) = lit {
+                    type_name = Some(s.value());
+                    Ok(())
+                } else {
+                    Err(meta.error("type_name must be a string literal"))
+                }
+            } else if meta.path.is_ident("crate") {
+                let value = meta.value()?;
+                let lit: Lit = value.parse()?;
+                if let Lit::Str(s) = lit {
+                    crate_name = Some(s.value());
+                    Ok(())
+                } else {
+                    Err(meta.error("crate must be a string literal"))
+                }
+            } else if meta.path.is_ident("constructor") {
+                let value = meta.value()?;
+                let lit: Lit = value.parse()?;
+                if let Lit::Str(s) = lit {
+                    constructor = Some(s.value());
+                    Ok(())
+                } else {
+                    Err(meta.error("constructor must be a string literal"))
+                }
+            } else {
+                Err(meta.error(
+                    "unknown widget attribute (expected `type_name`, `crate`, or `constructor`)",
+                ))
+            }
+        })?;
+    }
+
+    let type_name = type_name.ok_or_else(|| {
+        syn::Error::new_spanned(
+            ident,
+            "widget! requires #[widget(type_name = \"...\")] above the struct",
+        )
+    })?;
+
+    Ok(WidgetMeta {
+        type_name,
+        crate_name,
+        constructor,
+    })
+}
+
+fn widget_impl(input: proc_macro2::TokenStream) -> syn::Result<proc_macro2::TokenStream> {
+    let parsed: WidgetInput = syn::parse2(input)?;
+
+    let WidgetInput {
+        attrs,
+        meta,
+        vis,
+        ident,
+        fields,
+        events,
+    } = parsed;
+
+    // Drop `#[widget(...)]` attrs from the forwarded attribute list;
+    // pass through everything else (doc comments, user attributes).
+    let pass_attrs: Vec<&syn::Attribute> = attrs
+        .iter()
+        .filter(|a| !a.path().is_ident("widget"))
+        .collect();
+
+    let type_name = &meta.type_name;
+    let struct_fields: Vec<(&syn::Ident, &syn::Type, Vec<&syn::Attribute>)> = fields
+        .named
+        .iter()
+        .map(|f| {
+            let fname = f.ident.as_ref().expect("named field");
+            let ty = &f.ty;
+            let docs: Vec<&syn::Attribute> = f
+                .attrs
+                .iter()
+                .filter(|a| a.path().is_ident("doc"))
+                .collect();
+            (fname, ty, docs)
+        })
+        .collect();
+
+    // Struct declaration: each declared field becomes Option<T> so
+    // builder methods set them one at a time.
+    let decl_fields = struct_fields.iter().map(|(fname, ty, docs)| {
+        quote! {
+            #(#docs)*
+            pub #fname: ::core::option::Option<#ty>
+        }
+    });
+
+    // Default::default() for zero-arg construction (used by `new`).
+    let default_inits = struct_fields.iter().map(|(fname, _, _)| {
+        quote! { #fname: ::core::option::Option::None }
+    });
+
+    // Builder methods. Each typed setter uses `PlushieType::wire_encode`
+    // under the hood for `From<Widget> for TreeNode`; here we just store
+    // the typed value.
+    let builder_methods = struct_fields.iter().map(|(fname, ty, docs)| {
+        quote! {
+            #(#docs)*
+            pub fn #fname(mut self, value: #ty) -> Self {
+                self.#fname = ::core::option::Option::Some(value);
+                self
+            }
+        }
+    });
+
+    // From<Widget> for TreeNode: encode each Some() field via PlushieType.
+    let to_props_inserts = struct_fields.iter().map(|(fname, _, _)| {
+        let key = fname.to_string();
+        quote! {
+            if let ::core::option::Option::Some(v) = widget.#fname {
+                props.insert(
+                    #key,
+                    ::plushie_core::types::PlushieType::wire_encode(&v),
+                );
+            }
+        }
+    });
+
+    // JSON metadata for the build tool. Kept plain so the build tool
+    // can parse it as a serde_json::Value without extra deps.
+    let crate_name_json = match &meta.crate_name {
+        Some(c) => format!("\"crate\":\"{}\",", escape_json(c)),
+        None => String::new(),
+    };
+    let constructor_json = match &meta.constructor {
+        Some(c) => format!(",\"constructor\":\"{}\"", escape_json(c)),
+        None => String::new(),
+    };
+    let metadata_str = format!(
+        "{{\"type_name\":\"{}\",{}\"struct\":\"{}\"{}}}",
+        escape_json(type_name),
+        crate_name_json,
+        ident,
+        constructor_json,
+    );
+
+    // Events block: feed variants through the existing WidgetEvent
+    // derive by emitting an enum with the derive attached.
+    let events_decl = events.as_ref().map(|e| {
+        let ename = &e.ident;
+        let variants = e.variants.iter();
+        quote! {
+            #[derive(::core::fmt::Debug, ::core::clone::Clone, ::plushie_core::WidgetEvent)]
+            pub enum #ename {
+                #(#variants),*
+            }
+        }
+    });
+
+    // `new(id)` constructor: struct { id, ..defaults }.
+    let new_doc = format!("Create a new `{}` widget builder with the given ID.", ident);
+    let struct_doc = format!(
+        "`{}` widget. Type name: `\"{}\"`. Built by the `widget!` macro.",
+        ident, type_name
+    );
+    let metadata_doc = format!(
+        "Build-time metadata for the `{}` widget (consumed by `cargo plushie build`).",
+        ident
+    );
+
+    Ok(quote! {
+        #(#pass_attrs)*
+        #[doc = #struct_doc]
+        #vis struct #ident {
+            /// Widget instance ID (unique within the view tree).
+            pub id: ::std::string::String,
+            #(#decl_fields,)*
+        }
+
+        impl #ident {
+            #[doc = #new_doc]
+            pub fn new(id: impl ::core::convert::Into<::std::string::String>) -> Self {
+                Self {
+                    id: id.into(),
+                    #(#default_inits,)*
+                }
+            }
+
+            /// The wire protocol type name this widget maps to.
+            pub const fn type_name() -> &'static str {
+                #type_name
+            }
+
+            #(#builder_methods)*
+        }
+
+        impl ::core::convert::From<#ident> for ::plushie_core::protocol::TreeNode {
+            fn from(widget: #ident) -> Self {
+                let mut props = ::plushie_core::protocol::PropMap::new();
+                #(#to_props_inserts)*
+                ::plushie_core::protocol::TreeNode {
+                    id: widget.id,
+                    type_name: #type_name.to_string(),
+                    props: ::plushie_core::protocol::Props::from(props),
+                    children: ::std::vec::Vec::new(),
+                }
+            }
+        }
+
+        #[doc = #metadata_doc]
+        pub const PLUSHIE_WIDGET_METADATA: &::core::primitive::str = #metadata_str;
+
+        #events_decl
+    })
+}
+
+/// Minimal JSON string escaper: quotes, backslashes, and control chars.
+fn escape_json(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1426,5 +1807,122 @@ mod tests {
             struct TupleStruct(String, f32);
         };
         assert!(derive_widget_impl(&input).is_err());
+    }
+
+    // -- widget! macro tests --
+
+    #[test]
+    fn widget_macro_expands() {
+        let input: proc_macro2::TokenStream = quote! {
+            #[widget(type_name = "my_gauge", crate = "my-gauge",
+                     constructor = "my_gauge::Gauge::new()")]
+            pub struct Gauge {
+                pub value: f32,
+                pub max: f32,
+            }
+        };
+        let output = widget_impl(input).expect("widget! should expand");
+        let s = output.to_string();
+
+        // Struct + ID field.
+        assert!(s.contains("pub struct Gauge"));
+        assert!(s.contains("pub id :"));
+        // Builder methods for declared fields.
+        assert!(s.contains("fn value"));
+        assert!(s.contains("fn max"));
+        // From<Widget> for TreeNode.
+        assert!(s.contains("TreeNode"));
+        assert!(s.contains("\"my_gauge\""));
+        // Metadata const.
+        assert!(s.contains("PLUSHIE_WIDGET_METADATA"));
+        assert!(s.contains("\\\"type_name\\\""));
+        assert!(s.contains("\\\"my_gauge\\\""));
+        assert!(s.contains("\\\"crate\\\""));
+        assert!(s.contains("\\\"constructor\\\""));
+    }
+
+    #[test]
+    fn widget_macro_metadata_is_valid_json() {
+        // Drive the JSON assembly directly so the test doesn't have to
+        // disentangle escaped string literals from the emitted token
+        // stream.
+        let type_name = "my_gauge";
+        let crate_name_json = format!("\"crate\":\"{}\",", escape_json("my-gauge"));
+        let constructor_json = format!(
+            ",\"constructor\":\"{}\"",
+            escape_json("my_gauge::Gauge::new()")
+        );
+        let metadata_str = format!(
+            "{{\"type_name\":\"{}\",{}\"struct\":\"{}\"{}}}",
+            escape_json(type_name),
+            crate_name_json,
+            "Gauge",
+            constructor_json,
+        );
+
+        let value: serde_json::Value =
+            serde_json::from_str(&metadata_str).expect("metadata parses as JSON");
+        assert_eq!(value["type_name"], "my_gauge");
+        assert_eq!(value["crate"], "my-gauge");
+        assert_eq!(value["struct"], "Gauge");
+        assert_eq!(value["constructor"], "my_gauge::Gauge::new()");
+    }
+
+    #[test]
+    fn widget_macro_metadata_without_optional_fields() {
+        // Minimal invocation (type_name only) still produces valid JSON.
+        let type_name = "bare_widget";
+        let metadata_str = format!(
+            "{{\"type_name\":\"{}\",{}\"struct\":\"{}\"{}}}",
+            escape_json(type_name),
+            String::new(),
+            "Bare",
+            String::new(),
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&metadata_str).expect("minimal metadata parses as JSON");
+        assert_eq!(value["type_name"], "bare_widget");
+        assert_eq!(value["struct"], "Bare");
+        assert!(value.get("crate").is_none());
+        assert!(value.get("constructor").is_none());
+    }
+
+    #[test]
+    fn escape_json_handles_specials() {
+        assert_eq!(escape_json("a\"b"), "a\\\"b");
+        assert_eq!(escape_json("a\\b"), "a\\\\b");
+        assert_eq!(escape_json("a\nb"), "a\\nb");
+        assert_eq!(escape_json("a\tb"), "a\\tb");
+        assert_eq!(escape_json("normal_text"), "normal_text");
+    }
+
+    #[test]
+    fn widget_macro_requires_type_name() {
+        let input: proc_macro2::TokenStream = quote! {
+            pub struct NoAttr {
+                pub value: f32,
+            }
+        };
+        assert!(widget_impl(input).is_err());
+    }
+
+    #[test]
+    fn widget_macro_with_events_block() {
+        let input: proc_macro2::TokenStream = quote! {
+            #[widget(type_name = "my_gauge")]
+            pub struct Gauge {
+                pub value: f32,
+            }
+
+            events {
+                ValueChanged(f32),
+                Cleared,
+            }
+        };
+        let output = widget_impl(input).unwrap().to_string();
+        assert!(output.contains("GaugeEvent"));
+        assert!(output.contains("WidgetEvent"));
+        assert!(output.contains("ValueChanged"));
+        assert!(output.contains("Cleared"));
     }
 }

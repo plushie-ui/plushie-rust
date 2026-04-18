@@ -104,6 +104,55 @@ pub mod widget;
 // the trait and then use `#[derive(PlushieWidget)]`.
 pub use plushie_core_macros::{PlushieWidget, WidgetCommand, WidgetEvent, WidgetProps};
 
+/// Sorted list of every built-in widget type name registered by the
+/// stock renderer's iced widget set.
+///
+/// The build tool reads this list to detect native widgets that would
+/// shadow a built-in name. It is the single source of truth for the
+/// reserved-name list alongside [`widget::widget_set::IcedWidgetSet`];
+/// a drift-detection test asserts the two stay in sync.
+pub const BUILTIN_TYPE_NAMES: &[&str] = &[
+    "button",
+    "canvas",
+    "checkbox",
+    "column",
+    "combo_box",
+    "container",
+    "float",
+    "grid",
+    "image",
+    "keyed_column",
+    "markdown",
+    "overlay",
+    "pane_grid",
+    "pick_list",
+    "pin",
+    "pointer_area",
+    "progress_bar",
+    "qr_code",
+    "radio",
+    "responsive",
+    "rich",
+    "rich_text",
+    "row",
+    "rule",
+    "scrollable",
+    "sensor",
+    "slider",
+    "space",
+    "stack",
+    "svg",
+    "table",
+    "text",
+    "text_editor",
+    "text_input",
+    "themer",
+    "toggler",
+    "tooltip",
+    "vertical_slider",
+    "window",
+];
+
 // Re-export iced so widget crates can use `plushie_widget_sdk::iced::*` without
 // adding a direct iced dependency. This avoids version conflicts when
 // plushie-core bumps its iced version. Widgets that use only

@@ -50,6 +50,9 @@ pub use crate::WidgetProps;
 // but Rust keeps macros and traits in separate namespaces so
 // `#[derive(PlushieWidget)]` and `impl PlushieWidget<R>` both work
 // from a single glob import.
+/// Function-like macro that declares a custom widget (struct + builder
+/// + [`TreeNode`] conversion + build-time metadata).
+pub use plushie_core::widget;
 /// Derive macro for the [`PlushieWidget`] trait on widget factories.
 pub use plushie_core_macros::PlushieWidget;
 

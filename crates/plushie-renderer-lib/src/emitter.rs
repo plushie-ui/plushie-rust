@@ -420,13 +420,11 @@ impl EventEmitter {
             self.flush_key(key);
         }
         if self.pending.len() >= PENDING_CAP {
-            // TODO(M-6): emit a structured diagnostic event with
-            // code=emitter_coalesce_cap_exceeded once the M-6
-            // stream is wired. Until then, a tagged log line plus
-            // a forced flush keeps the memory bounded.
-            log::warn!(
-                "[code=emitter_coalesce_cap_exceeded] pending coalesce map hit cap ({PENDING_CAP}); flushing all"
-            );
+            // Typed diagnostic so hosts can detect coalesce pressure
+            // programmatically via the renderer's structured diagnostic
+            // channel; Display still produces the legacy tagged log line.
+            let diag = plushie_core::Diagnostic::EmitterCoalesceCapExceeded { cap: PENDING_CAP };
+            log::warn!("{diag}");
             self.flush_all();
         }
         self.pending

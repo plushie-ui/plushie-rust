@@ -180,11 +180,13 @@ pub fn parse_inline_fonts(settings: &Value) -> Vec<Vec<u8>> {
     };
     if granted < requested {
         let dropped = requested - granted;
-        log::warn!(
-            "[code=font_cap_exceeded] inline fonts exceed the \
-             {max} font cap; dropping {dropped} entries \
-             (granted {granted} of {requested})"
-        );
+        let diag = plushie_core::Diagnostic::FontCapExceeded {
+            max,
+            requested,
+            granted,
+            dropped,
+        };
+        log::warn!("{diag}");
         decoded.truncate(granted as usize);
     }
     decoded

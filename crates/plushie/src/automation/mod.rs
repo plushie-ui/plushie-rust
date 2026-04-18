@@ -27,6 +27,7 @@
 //! let all = Selector::text("Save").find_all(&tree);
 //! ```
 
+pub mod cli;
 mod element;
 pub mod file;
 pub mod runner;

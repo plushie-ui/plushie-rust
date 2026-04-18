@@ -2,7 +2,7 @@
 //!
 //! Spawns `plushie-renderer --listen <socket> --mock --json` in a
 //! child process, parses the socket path + token from the renderer's
-//! stdout, then drives a minimal Counter app through
+//! stderr banner, then drives a minimal Counter app through
 //! `plushie::run_connect` against the listening socket. Confirms the
 //! SDK's socket transport negotiates the handshake, exchanges the
 //! token, sends the initial snapshot, and exits cleanly when the
@@ -124,7 +124,7 @@ struct ListeningRenderer {
     child: Child,
     socket: String,
     token: String,
-    _stdout_thread: Option<std::thread::JoinHandle<()>>,
+    _stderr_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Drop for ListeningRenderer {
@@ -156,17 +156,17 @@ fn start_listening_renderer(binary: &str) -> ListeningRenderer {
         .spawn()
         .expect("spawn renderer --listen");
 
-    // Parse the connection-info banner printed on stdout: we need
-    // the token, and waiting for it also tells us the listener is
+    // Parse the connection-info banner printed on stderr: we need the
+    // token, and waiting for it also tells us the listener is
     // accepting connections.
-    let stdout = child.stdout.take().expect("child stdout piped");
+    let stderr = child.stderr.take().expect("child stderr piped");
     let (token_tx, token_rx) = mpsc::channel::<String>();
 
-    let stdout_thread = std::thread::spawn(move || {
-        let reader = BufReader::new(stdout);
+    let stderr_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
         let mut sent = false;
         for line in reader.lines().map_while(Result::ok) {
-            eprintln!("[renderer stdout] {line}");
+            eprintln!("[renderer stderr] {line}");
             if !sent && let Some(rest) = line.trim().strip_prefix("Token:") {
                 let token = rest.trim().to_string();
                 let _ = token_tx.send(token);
@@ -183,7 +183,7 @@ fn start_listening_renderer(binary: &str) -> ListeningRenderer {
         child,
         socket,
         token,
-        _stdout_thread: Some(stdout_thread),
+        _stderr_thread: Some(stderr_thread),
     }
 }
 

@@ -10,8 +10,7 @@ use plushie_core::widget;
 
 widget! {
     /// A gauge widget used only in tests.
-    #[widget(type_name = "test_gauge", crate = "test-gauge",
-             constructor = "test_gauge::Gauge::new()")]
+    #[widget(type_name = "test_gauge", crate = "test-gauge")]
     pub struct Gauge {
         /// Current value.
         pub value: f32,
@@ -63,7 +62,9 @@ fn metadata_const_is_valid_json() {
     assert_eq!(parsed["type_name"], "test_gauge");
     assert_eq!(parsed["crate"], "test-gauge");
     assert_eq!(parsed["struct"], "Gauge");
-    assert_eq!(parsed["constructor"], "test_gauge::Gauge::new()");
+    // The constructor now lives only in Cargo.toml, not in the macro
+    // output, so the emitted metadata does not carry it.
+    assert!(parsed.get("constructor").is_none());
 }
 
 #[test]

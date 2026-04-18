@@ -1098,12 +1098,15 @@ fn extract_widget_name(input: &DeriveInput) -> syn::Result<String> {
 ///
 /// # Cargo.toml metadata
 ///
-/// Widget crates declare themselves via their own `Cargo.toml`:
+/// Widget crates declare themselves via their own `Cargo.toml`. The
+/// factory constructor the custom renderer calls at startup lives
+/// there, making `Cargo.toml` the single source of truth; the
+/// `widget!` attribute carries only the wire-protocol type name.
 ///
 /// ```toml
 /// [package.metadata.plushie.widget]
 /// type_name = "my_gauge"
-/// constructor = "my_gauge::Gauge::new()"
+/// constructor = "my_gauge::factory::MyGaugeFactory::new()"
 /// ```
 ///
 /// The build tool discovers native widgets by scanning the full
@@ -1124,8 +1127,7 @@ fn extract_widget_name(input: &DeriveInput) -> syn::Result<String> {
 ///
 /// widget! {
 ///     /// Circular gauge widget.
-///     #[widget(type_name = "my_gauge", crate = "my-gauge",
-///              constructor = "my_gauge::Gauge::new()")]
+///     #[widget(type_name = "my_gauge", crate = "my-gauge")]
 ///     pub struct Gauge {
 ///         pub value: f32,
 ///         pub max: f32,
@@ -1170,7 +1172,6 @@ struct WidgetInput {
 struct WidgetMeta {
     type_name: String,
     crate_name: Option<String>,
-    constructor: Option<String>,
 }
 
 /// Parsed `events { ... }` block.
@@ -1224,7 +1225,6 @@ impl syn::parse::Parse for WidgetInput {
 fn parse_widget_meta(attrs: &[syn::Attribute], ident: &syn::Ident) -> syn::Result<WidgetMeta> {
     let mut type_name: Option<String> = None;
     let mut crate_name: Option<String> = None;
-    let mut constructor: Option<String> = None;
 
     for attr in attrs {
         if !attr.path().is_ident("widget") {
@@ -1250,18 +1250,17 @@ fn parse_widget_meta(attrs: &[syn::Attribute], ident: &syn::Ident) -> syn::Resul
                     Err(meta.error("crate must be a string literal"))
                 }
             } else if meta.path.is_ident("constructor") {
-                let value = meta.value()?;
-                let lit: Lit = value.parse()?;
-                if let Lit::Str(s) = lit {
-                    constructor = Some(s.value());
-                    Ok(())
-                } else {
-                    Err(meta.error("constructor must be a string literal"))
-                }
-            } else {
+                // Cargo.toml's `[package.metadata.plushie.widget].constructor`
+                // is the single source of truth. Keeping a second copy in
+                // the macro attribute invited drift, so the attribute is
+                // rejected rather than silently accepted.
                 Err(meta.error(
-                    "unknown widget attribute (expected `type_name`, `crate`, or `constructor`)",
+                    "`constructor` is no longer accepted in `#[widget(...)]`; \
+                     declare it once in `[package.metadata.plushie.widget]` in \
+                     the crate's Cargo.toml",
                 ))
+            } else {
+                Err(meta.error("unknown widget attribute (expected `type_name` or `crate`)"))
             }
         })?;
     }
@@ -1276,7 +1275,6 @@ fn parse_widget_meta(attrs: &[syn::Attribute], ident: &syn::Ident) -> syn::Resul
     Ok(WidgetMeta {
         type_name,
         crate_name,
-        constructor,
     })
 }
 
@@ -1356,21 +1354,19 @@ fn widget_impl(input: proc_macro2::TokenStream) -> syn::Result<proc_macro2::Toke
     });
 
     // JSON metadata for the build tool. Kept plain so the build tool
-    // can parse it as a serde_json::Value without extra deps.
+    // can parse it as a serde_json::Value without extra deps. The
+    // `constructor` field is not emitted here: it lives in the crate's
+    // Cargo.toml `[package.metadata.plushie.widget]` table, which the
+    // build tool reads directly.
     let crate_name_json = match &meta.crate_name {
-        Some(c) => format!("\"crate\":\"{}\",", escape_json(c)),
-        None => String::new(),
-    };
-    let constructor_json = match &meta.constructor {
-        Some(c) => format!(",\"constructor\":\"{}\"", escape_json(c)),
+        Some(c) => format!(",\"crate\":\"{}\"", escape_json(c)),
         None => String::new(),
     };
     let metadata_str = format!(
-        "{{\"type_name\":\"{}\",{}\"struct\":\"{}\"{}}}",
+        "{{\"type_name\":\"{}\",\"struct\":\"{}\"{}}}",
         escape_json(type_name),
-        crate_name_json,
         ident,
-        constructor_json,
+        crate_name_json,
     );
 
     // Events block: feed variants through the existing WidgetEvent
@@ -1814,8 +1810,7 @@ mod tests {
     #[test]
     fn widget_macro_expands() {
         let input: proc_macro2::TokenStream = quote! {
-            #[widget(type_name = "my_gauge", crate = "my-gauge",
-                     constructor = "my_gauge::Gauge::new()")]
+            #[widget(type_name = "my_gauge", crate = "my-gauge")]
             pub struct Gauge {
                 pub value: f32,
                 pub max: f32,
@@ -1838,7 +1833,9 @@ mod tests {
         assert!(s.contains("\\\"type_name\\\""));
         assert!(s.contains("\\\"my_gauge\\\""));
         assert!(s.contains("\\\"crate\\\""));
-        assert!(s.contains("\\\"constructor\\\""));
+        // `constructor` lives only in Cargo.toml; never in the macro
+        // output.
+        assert!(!s.contains("\\\"constructor\\\""));
     }
 
     #[test]
@@ -1847,17 +1844,12 @@ mod tests {
         // disentangle escaped string literals from the emitted token
         // stream.
         let type_name = "my_gauge";
-        let crate_name_json = format!("\"crate\":\"{}\",", escape_json("my-gauge"));
-        let constructor_json = format!(
-            ",\"constructor\":\"{}\"",
-            escape_json("my_gauge::Gauge::new()")
-        );
+        let crate_name_json = format!(",\"crate\":\"{}\"", escape_json("my-gauge"));
         let metadata_str = format!(
-            "{{\"type_name\":\"{}\",{}\"struct\":\"{}\"{}}}",
+            "{{\"type_name\":\"{}\",\"struct\":\"{}\"{}}}",
             escape_json(type_name),
-            crate_name_json,
             "Gauge",
-            constructor_json,
+            crate_name_json,
         );
 
         let value: serde_json::Value =
@@ -1865,7 +1857,7 @@ mod tests {
         assert_eq!(value["type_name"], "my_gauge");
         assert_eq!(value["crate"], "my-gauge");
         assert_eq!(value["struct"], "Gauge");
-        assert_eq!(value["constructor"], "my_gauge::Gauge::new()");
+        assert!(value.get("constructor").is_none());
     }
 
     #[test]
@@ -1873,9 +1865,8 @@ mod tests {
         // Minimal invocation (type_name only) still produces valid JSON.
         let type_name = "bare_widget";
         let metadata_str = format!(
-            "{{\"type_name\":\"{}\",{}\"struct\":\"{}\"{}}}",
+            "{{\"type_name\":\"{}\",\"struct\":\"{}\"{}}}",
             escape_json(type_name),
-            String::new(),
             "Bare",
             String::new(),
         );
@@ -1885,6 +1876,21 @@ mod tests {
         assert_eq!(value["struct"], "Bare");
         assert!(value.get("crate").is_none());
         assert!(value.get("constructor").is_none());
+    }
+
+    #[test]
+    fn widget_macro_rejects_constructor_attribute() {
+        let input: proc_macro2::TokenStream = quote! {
+            #[widget(type_name = "my_gauge", constructor = "x::y::new()")]
+            pub struct Gauge {
+                pub value: f32,
+            }
+        };
+        let err = widget_impl(input).expect_err("constructor attribute should be rejected");
+        assert!(
+            err.to_string().contains("Cargo.toml"),
+            "error should point at Cargo.toml: {err}",
+        );
     }
 
     #[test]

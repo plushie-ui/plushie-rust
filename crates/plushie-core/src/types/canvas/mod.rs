@@ -3,6 +3,7 @@
 mod clip;
 mod drag;
 mod fill;
+mod hash_impls;
 mod hit;
 mod path;
 mod shape;

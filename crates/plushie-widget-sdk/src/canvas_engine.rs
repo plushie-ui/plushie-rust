@@ -120,13 +120,13 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         self.interactions.insert(key.clone(), interactive_elements);
 
         // Update or create per-layer tessellation caches.
-        // Hash via Debug representation for cache invalidation.
+        // Direct Hash impl on CanvasShape (f32 fields via to_bits) avoids
+        // materialising a Debug string per layer per prepare.
         let node_caches = self.layer_caches.entry(key).or_default();
         for (layer_name, shapes) in &layer_map {
             let hash = {
                 let mut hasher = DefaultHasher::new();
-                let debug_repr = format!("{:?}", shapes);
-                debug_repr.hash(&mut hasher);
+                shapes.hash(&mut hasher);
                 hasher.finish()
             };
             match node_caches.get_mut(layer_name) {

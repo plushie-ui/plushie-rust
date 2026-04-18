@@ -91,7 +91,7 @@ pub enum Role {
 /// AccessKit node simply does not carry a live-region attribute.
 /// There is no `Off` variant; demoting a region back to non-live is
 /// done by clearing the field, not by setting a third value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
 #[plushie_type(name = "live")]
 pub enum Live {
     Polite,
@@ -103,7 +103,7 @@ pub enum Live {
 // ---------------------------------------------------------------------------
 
 /// Widget orientation (horizontal or vertical).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
 #[plushie_type(name = "orientation")]
 pub enum Orientation {
     Horizontal,
@@ -115,7 +115,7 @@ pub enum Orientation {
 // ---------------------------------------------------------------------------
 
 /// Type of popup a widget triggers when activated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
 #[plushie_type(name = "has_popup")]
 pub enum HasPopup {
     Listbox,

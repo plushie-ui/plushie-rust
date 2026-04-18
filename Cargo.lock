@@ -244,7 +244,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -255,7 +255,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1216,7 +1216,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1679,7 +1679,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.18",
- "windows 0.62.2",
+ "windows 0.57.0",
 ]
 
 [[package]]
@@ -3015,7 +3015,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -3347,16 +3347,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "plushie-iced-program"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "669ca104cd1f94929c07777bb931a7b37a49d5f35868b890f5e1136a3bf07909"
-dependencies = [
- "plushie-iced-graphics",
- "plushie-iced-runtime",
-]
-
-[[package]]
 name = "plushie-iced-renderer"
 version = "0.8.3"
 dependencies = [
@@ -3380,22 +3370,18 @@ dependencies = [
 
 [[package]]
 name = "plushie-iced-selector"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e36b6395f96075d5ac86ecb261f48939b88b3ba8d3ea132e3727ce91fc3aad0"
+version = "0.8.3"
 dependencies = [
  "plushie-iced-core",
 ]
 
 [[package]]
 name = "plushie-iced-test"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "668bde63d4ac382c32d8aea2580707bec2ad5037ec28bcdeadd281200d403110"
+version = "0.8.3"
 dependencies = [
  "nom",
  "plushie-iced-futures",
- "plushie-iced-program 0.8.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "plushie-iced-program",
  "plushie-iced-renderer",
  "plushie-iced-runtime",
  "plushie-iced-selector",
@@ -3465,7 +3451,7 @@ dependencies = [
  "mundy",
  "objc2 0.5.2",
  "plushie-iced-debug",
- "plushie-iced-program 0.8.3",
+ "plushie-iced-program",
  "plushie-iced-runtime",
  "rustc-hash 2.1.1",
  "sysinfo",
@@ -4141,7 +4127,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4604,7 +4590,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4885,7 +4871,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5509,7 +5495,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6567,7 +6553,3 @@ dependencies = [
  "syn",
  "winnow 0.7.15",
 ]
-
-[[patch.unused]]
-name = "plushie-iced-test"
-version = "0.8.3"

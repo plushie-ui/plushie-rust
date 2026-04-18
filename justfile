@@ -43,6 +43,7 @@ test-examples:
 
 test-wire:
     cargo test -p plushie --features wire --test wire_mode
+    cargo test -p plushie --features wire --test wire_connect
 
 test-cargo:
     cargo test --workspace

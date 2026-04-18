@@ -90,6 +90,208 @@ pub fn run_wire_with_runtime<A: App>(
     run_wire_inner::<A>(binary_path, Some(runtime))
 }
 
+/// Run the app over an already-connected renderer socket.
+///
+/// Resolves the socket via `opts`, opens a [`SocketAdapter`], hands
+/// it to [`Bridge::connect`], and drives a single session (no
+/// restart loop; socket mode can't respawn a remote renderer).
+///
+/// Merges `opts.token` into the Settings message so the renderer's
+/// listen-mode token check accepts the connection.
+///
+/// # Errors
+///
+/// Same error surface as [`run_wire`] plus:
+///
+/// - [`crate::Error::InvalidSettings`] when no socket is supplied
+///   (neither `opts.socket` nor `PLUSHIE_SOCKET`).
+/// - [`crate::Error::Io`] when the connect fails.
+#[cfg(feature = "wire")]
+pub fn run_connect<A: App>(opts: crate::ConnectOpts) -> crate::Result {
+    run_connect_inner::<A>(opts, None)
+}
+
+/// [`run_connect`] on a caller-provided tokio runtime.
+///
+/// # Errors
+///
+/// Same as [`run_connect`].
+#[cfg(feature = "wire")]
+pub fn run_connect_with_runtime<A: App>(
+    opts: crate::ConnectOpts,
+    runtime: tokio::runtime::Handle,
+) -> crate::Result {
+    run_connect_inner::<A>(opts, Some(runtime))
+}
+
+#[cfg(feature = "wire")]
+fn run_connect_inner<A: App>(
+    opts: crate::ConnectOpts,
+    runtime: Option<tokio::runtime::Handle>,
+) -> crate::Result {
+    let socket_str = opts
+        .socket
+        .clone()
+        .or_else(|| std::env::var("PLUSHIE_SOCKET").ok())
+        .ok_or_else(|| {
+            crate::Error::InvalidSettings(
+                "no socket address supplied: pass `ConnectOpts.socket`, set \
+                 PLUSHIE_SOCKET, or use `--plushie-socket <path>`"
+                    .to_string(),
+            )
+        })?;
+
+    let adapter = super::socket::SocketAdapter::connect(&socket_str)?;
+    log::info!(
+        "plushie::run_connect: connected to renderer at {:?} (token: {})",
+        adapter.addr,
+        if opts.token.is_some() {
+            "present"
+        } else {
+            "none"
+        }
+    );
+    let bridge = Bridge::connect(adapter.stream)?;
+
+    let mut settings = build_settings::<A>();
+    if let Some(tok) = opts.token.as_deref() {
+        settings["token"] = Value::String(tok.to_string());
+    }
+
+    run_session_single::<A>(bridge, settings, runtime)
+}
+
+/// Run one full session against a pre-built bridge.
+///
+/// Shared by `run_connect_inner`: handshake, snapshot send,
+/// subscription sync, main loop. No restart logic; on exit, the
+/// normal shutdown / effect-flush / error-propagation path runs and
+/// the function returns.
+#[cfg(feature = "wire")]
+fn run_session_single<A: App>(
+    mut bridge: Bridge,
+    settings: Value,
+    runtime: Option<tokio::runtime::Handle>,
+) -> crate::Result {
+    let (mut model, init_cmd) = A::init();
+
+    let mut sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
+    let mut effect_tracker = EffectTracker::new();
+    let mut async_mgr = AsyncTaskManager::new(runtime);
+    let mut view_errors = crate::runtime::view_errors::ViewErrors::default();
+    let mut window_sync = crate::runtime::windows::WindowSync::new();
+
+    let seed = plushie_core::protocol::TreeNode {
+        id: String::new(),
+        type_name: "container".to_string(),
+        props: plushie_core::protocol::Props::from(plushie_core::protocol::PropMap::new()),
+        children: vec![],
+    };
+    let mut current_tree = match crate::runtime::view_errors::run_guarded_view_wire::<A>(
+        &mut view_errors,
+        &model,
+        &seed,
+    ) {
+        crate::runtime::view_errors::ViewOutcome::Ok(tree, _) => tree,
+        crate::runtime::view_errors::ViewOutcome::Panicked { last_good, .. } => last_good,
+    };
+
+    bridge.send_settings(&settings)?;
+
+    let hello = bridge.receive()?;
+    log::info!(
+        "renderer hello: {}",
+        hello
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+    );
+
+    let expected = plushie_core::protocol::PROTOCOL_VERSION;
+    let remote_protocol = hello
+        .get("protocol")
+        .or_else(|| hello.get("protocol_version"))
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
+    if remote_protocol != Some(expected) {
+        log::error!(
+            "protocol version mismatch: SDK expects {expected}, renderer advertised {remote_protocol:?}"
+        );
+        drop(bridge);
+        return Err(crate::Error::ProtocolVersionMismatch {
+            expected,
+            got: remote_protocol,
+        });
+    }
+
+    if let Some(remote) = hello.get("version").and_then(|v| v.as_str())
+        && remote != crate::RENDERER_VERSION
+    {
+        log::warn!(
+            "renderer version skew: SDK built against {expected}, \
+             renderer reports {got}",
+            expected = crate::RENDERER_VERSION,
+            got = remote,
+        );
+    }
+
+    if let Some(codec_str) = hello.get("codec").and_then(|v| v.as_str()) {
+        let codec = match codec_str {
+            "msgpack" => super::bridge::Codec::MsgPack,
+            "json" => super::bridge::Codec::Json,
+            other => {
+                log::warn!("renderer advertised unknown codec `{other}`; keeping JSON");
+                super::bridge::Codec::Json
+            }
+        };
+        bridge.set_codec(codec);
+    }
+
+    bridge.start_reader()?;
+
+    let snapshot_value = serde_json::to_value(&current_tree)
+        .map_err(|e| crate::Error::WireEncode(format!("snapshot: {e}")))?;
+    bridge.send_snapshot(&snapshot_value)?;
+
+    for op in window_sync.sync(&current_tree, &settings) {
+        dispatch_window_sync_op(&mut bridge, &op)?;
+    }
+
+    if let Err(e) = execute_wire_command(&mut bridge, init_cmd, &mut effect_tracker, &mut async_mgr)
+    {
+        log::error!("initial command execution failed: {e}");
+    }
+
+    let new_subs = A::subscribe(&model);
+    validate_subscription_windows(&new_subs, &current_tree);
+    apply_wire_sub_ops(&mut bridge, &mut async_mgr, sub_manager.sync(new_subs))?;
+
+    let policy = A::restart_policy();
+    let reason = run_session::<A>(
+        &mut bridge,
+        &mut model,
+        &mut current_tree,
+        &mut effect_tracker,
+        &mut async_mgr,
+        &mut sub_manager,
+        &mut view_errors,
+        &mut window_sync,
+        &settings,
+        policy.heartbeat_interval,
+    );
+
+    log::warn!("plushie wire: renderer exited ({})", reason.label());
+    A::handle_renderer_exit(&mut model, reason.clone());
+
+    if matches!(reason, ExitReason::Shutdown) {
+        flush_effects_on_shutdown::<A>(&mut model, &mut effect_tracker);
+        return Ok(());
+    }
+
+    flush_effects_on_shutdown::<A>(&mut model, &mut effect_tracker);
+    Err(crate::Error::RendererExit(reason))
+}
+
 #[cfg(feature = "wire")]
 fn run_wire_inner<A: App>(
     binary_path: &str,

@@ -503,59 +503,36 @@ pub fn run_spawn<A: App>() -> Result {
 ///
 /// Resolves the socket from `opts.socket` then `PLUSHIE_SOCKET`, and
 /// the token from `opts.token` then `PLUSHIE_TOKEN` then a JSON
-/// negotiation line read from stdin with a one-second timeout.
+/// negotiation line read from stdin with a one-second timeout. The
+/// resolved token is merged into the Settings message so the
+/// renderer's listen-mode verification accepts the connection.
+///
+/// This is the curated wrapper that adds the stdin-negotiation
+/// token fallback on top of the runner-layer
+/// [`runner::wire::run_connect`] and builds the final [`ConnectOpts`]
+/// for it.
 ///
 /// # Errors
 ///
 /// Returns [`Error::InvalidSettings`] when no socket can be resolved,
-/// [`Error::Io`] on connect failures, and [`Error::Startup`] for the
-/// follow-on integration work that wires the connected socket into
-/// the normal wire event loop (the Bridge transport refactor is a
-/// follow-on commit; the scaffolding here validates the resolution
-/// chain and opens the connection so the subsequent commit has a
-/// place to plug in).
+/// [`Error::Io`] on connect failures, and any of the normal wire
+/// mode failure modes (protocol mismatch, encode / decode errors,
+/// renderer disconnect).
 #[cfg(feature = "wire")]
 pub fn run_connect<A: App>(opts: ConnectOpts) -> Result {
-    let _ = std::marker::PhantomData::<A>;
-    let socket_str = opts
-        .socket
-        .clone()
-        .or_else(|| std::env::var("PLUSHIE_SOCKET").ok())
-        .ok_or_else(|| {
-            Error::InvalidSettings(
-                "no socket address supplied: pass `ConnectOpts.socket`, set \
-                 PLUSHIE_SOCKET, or use `--plushie-socket <path>`"
-                    .to_string(),
-            )
-        })?;
-
-    // Resolve the token via the same precedence Elixir uses. The
-    // stdin-negotiation step is advisory for now; callers that need
-    // the bidirectional handshake should pass `opts.token` explicitly
-    // or export `PLUSHIE_TOKEN`.
+    // Fill in the token from env + stdin if the caller didn't supply
+    // one; keep the runner layer deterministic (it only looks at
+    // opts.token + PLUSHIE_SOCKET) by resolving everything here.
     let token = opts
         .token
         .clone()
         .or_else(|| std::env::var("PLUSHIE_TOKEN").ok())
         .or_else(read_token_from_stdin);
-
-    let adapter = runner::socket::SocketAdapter::connect(&socket_str)?;
-    log::info!(
-        "plushie::run_connect: connected to renderer at {:?} (token: {})",
-        adapter.addr,
-        if token.is_some() { "present" } else { "none" }
-    );
-    // Bridge transport abstraction that wires the connected socket
-    // into the normal wire event loop lands in a follow-on commit.
-    // This scaffold validates the resolution + connect path end-to-end
-    // without silently swallowing the request.
-    Err(Error::Startup(
-        "run_connect transport integration is not yet implemented (hat 16 \
-         foundation pass scaffolding); the socket resolution + connect \
-         succeeded but driving the event loop over it requires a Bridge \
-         transport refactor scheduled for a follow-on commit"
-            .to_string(),
-    ))
+    let resolved = ConnectOpts {
+        socket: opts.socket,
+        token,
+    };
+    runner::wire::run_connect::<A>(resolved)
 }
 
 /// Best-effort read of a newline-terminated JSON token line from stdin.

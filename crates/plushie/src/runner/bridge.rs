@@ -454,10 +454,9 @@ impl Bridge {
     /// in the main loop so heartbeat silence can be detected.
     pub fn receive(&mut self) -> io::Result<Value> {
         let codec = self.codec;
-        let reader = self
-            .sync_reader
-            .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "reader already handed off"))?;
+        let reader = self.sync_reader.as_mut().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::BrokenPipe, "reader already handed off")
+        })?;
 
         read_one(reader, codec)
     }

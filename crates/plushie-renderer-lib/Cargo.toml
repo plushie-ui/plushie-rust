@@ -19,20 +19,20 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
-plushie-core = { version = "0.6.1", path = "../plushie-core" }
-plushie-widget-sdk = { version = "0.6.1", path = "../plushie-widget-sdk" }
+plushie-core = { workspace = true }
+plushie-widget-sdk = { workspace = true }
 iced = { version = "0.8", package = "plushie-iced", features = ["advanced", "canvas", "a11y"] }
-serde = "1"
-serde_json = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 smol_str = "0.2"
-log = "0.4"
-sha2 = "0.10"
-base64 = "0.22"
+log = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }
 parking_lot = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 iced = { version = "0.8", package = "plushie-iced", features = ["sysinfo"] }
-tokio = { version = "1", features = ["time"] }
+tokio = { workspace = true, features = ["time"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasmtimer = "0.4"

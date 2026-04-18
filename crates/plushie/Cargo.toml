@@ -16,20 +16,20 @@ direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust
 wire = ["dep:tokio", "dep:rmp-serde", "dep:base64"]
 
 [dependencies]
-plushie-core = { version = "0.6.1", path = "../plushie-core" }
-plushie-core-macros = { version = "0.6.1", path = "../plushie-core-macros" }
-plushie-widget-sdk = { version = "0.6.1", path = "../plushie-widget-sdk" }
-plushie-renderer-lib = { version = "0.6.1", path = "../plushie-renderer-lib", optional = true }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+plushie-core = { workspace = true }
+plushie-core-macros = { workspace = true }
+plushie-widget-sdk = { workspace = true }
+plushie-renderer-lib = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
-tokio = { version = "1", features = ["rt", "process", "io-util", "time"], optional = true }
-rmp-serde = { version = "1", optional = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "process", "io-util", "time"], optional = true }
+rmp-serde = { workspace = true, optional = true }
 rfd = { version = "0.15", optional = true }
 arboard = { version = "3", optional = true }
 notify-rust = { version = "4", optional = true }
-log = "0.4"
-base64 = { version = "0.22.1", optional = true }
+log = { workspace = true }
+base64 = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 thiserror = { workspace = true }
 

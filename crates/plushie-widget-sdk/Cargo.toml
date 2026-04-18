@@ -22,17 +22,17 @@ tokio = ["iced/tokio"]
 workspace = true
 
 [dependencies]
-plushie-core = { version = "0.6.1", path = "../plushie-core" }
-plushie-core-macros = { version = "0.6.1", path = "../plushie-core-macros" }
+plushie-core = { workspace = true }
+plushie-core-macros = { workspace = true }
 iced = { version = "0.8", package = "plushie-iced", features = ["advanced", "image", "svg", "canvas", "markdown", "highlighter", "a11y"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-rmp-serde = "1"
-rmpv = { version = "1", features = ["with-serde"] }
-log = "0.4"
-base64 = "0.22"
+serde = { workspace = true }
+serde_json = { workspace = true }
+rmp-serde = { workspace = true }
+rmpv = { workspace = true }
+log = { workspace = true }
+base64 = { workspace = true }
 qrcode = { version = "0.14", default-features = false }
-sha2 = "0.10"
+sha2 = { workspace = true }
 # Keep a direct dep on usvg so the workspace-level pin actually
 # participates in version resolution. iced pulls usvg transitively;
 # this declaration pins the exact version locally and surfaces

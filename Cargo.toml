@@ -21,6 +21,29 @@ keywords = ["gui", "desktop", "framework", "native", "iced"]
 categories = ["gui", "rendering"]
 
 [workspace.dependencies]
+# Internal crates. Path + version so `.workspace = true` on a path dep
+# resolves the local source at build time and the crates.io version at
+# publish time. Bumping the workspace version only requires editing
+# `[workspace.package].version` and these entries.
+plushie-core = { version = "0.6.1", path = "crates/plushie-core" }
+plushie-core-macros = { version = "0.6.1", path = "crates/plushie-core-macros" }
+plushie-widget-sdk = { version = "0.6.1", path = "crates/plushie-widget-sdk" }
+plushie-renderer-lib = { version = "0.6.1", path = "crates/plushie-renderer-lib" }
+plushie-renderer = { version = "0.6.1", path = "crates/plushie-renderer" }
+plushie-renderer-wasm = { version = "0.6.1", path = "crates/plushie-renderer-wasm" }
+
+# Shared external deps. Per-crate manifests opt in with `.workspace = true`.
+# Entries that need different feature sets per consumer (tokio, iced)
+# declare a bare version here and let each crate specify features.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+base64 = "0.22"
+sha2 = "0.10"
+tokio = "1"
+rmp-serde = "1"
+rmpv = { version = "1", features = ["with-serde"] }
+
 thiserror = "2"
 parking_lot = "0.12"
 # Pin usvg explicitly so RustSec advisories against the SVG parser

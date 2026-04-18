@@ -18,11 +18,11 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
-plushie-core-macros = { version = "0.6.1", path = "../plushie-core-macros" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-log = "0.4"
-base64 = "0.22"
+plushie-core-macros = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+base64 = { workspace = true }
 
 [dev-dependencies]
 proptest = "1"

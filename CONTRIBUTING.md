@@ -73,3 +73,27 @@ additional steps for adding a widget to the iced set.
 1. Create a branch from `main`
 2. Make changes, ensure `just preflight` passes
 3. Submit PR with a clear description
+
+## Release Process
+
+1. Update `CHANGELOG.md`: rename `[Unreleased]` to `[x.y.z] - YYYY-MM-DD`.
+   List breaking changes first if it's a minor/major bump.
+2. Bump `[workspace.package].version` in the root `Cargo.toml`.
+3. Bump the internal path-dep versions in `[workspace.dependencies]`
+   (the `plushie-core`, `plushie-core-macros`, `plushie-widget-sdk`,
+   `plushie-renderer-lib`, `plushie-renderer`, `plushie-renderer-wasm`
+   entries).
+4. Run `just preflight` to verify.
+5. Commit as `release: prepare x.y.z`.
+6. Tag `vx.y.z` and push (handled manually).
+
+### Windows / gpu-allocator pin
+
+`Cargo.lock` pins `gpu-allocator` against `windows` 0.62 so `wgpu-hal`
+resolves cleanly on Windows builds. `cargo update` can silently drop
+this pin if the transitive graph permits a newer `windows` version.
+Before releasing, confirm the lockfile still resolves `windows 0.62`
+for `gpu-allocator` and that the Windows cross-compile check in CI
+passes. If the pin is lost, re-apply via
+`cargo update -p windows --precise 0.62.x` and commit the lockfile
+change.

@@ -187,6 +187,68 @@ scoped to any session).
 
 ---
 
+## Subprocess environment whitelist
+
+Every host SDK that spawns `plushie-renderer` as a child process must
+isolate the child from the host application's environment. The host's
+environment typically contains application secrets (API keys, database
+URLs, auth tokens) that the renderer has no business seeing; an
+undiscovered CVE in an image or font parser should not become a
+secret-exfiltration vector.
+
+The canonical whitelist below is enforced by every host SDK (Elixir,
+Gleam, Python, Ruby, TypeScript, Rust). Non-matching parent variables
+are actively unset in the child process.
+
+### Exact entries
+
+Display, rendering, library-loading, locale, accessibility, font, and
+renderer-diagnostic variables:
+
+```
+DISPLAY                      NO_AT_BRIDGE
+WAYLAND_DISPLAY              WGPU_BACKEND
+WAYLAND_SOCKET               RUST_LOG
+WINIT_UNIX_BACKEND           RUST_BACKTRACE
+XDG_RUNTIME_DIR              HOME
+XDG_DATA_DIRS                USER
+XDG_DATA_HOME                PATH
+LD_LIBRARY_PATH              LANG
+DYLD_LIBRARY_PATH            LANGUAGE
+DYLD_FALLBACK_LIBRARY_PATH   DBUS_SESSION_BUS_ADDRESS
+GTK_MODULES
+```
+
+### Prefix entries
+
+Any variable whose name starts with one of these prefixes is
+forwarded:
+
+```
+LC_           GALLIUM_
+MESA_         AT_SPI_
+LIBGL_        FONTCONFIG_
+__GLX_        PLUSHIE_
+VK_
+```
+
+`PLUSHIE_` is a plushie-reserved catch-all for renderer-side debug and
+diagnostic toggles (for example `PLUSHIE_NO_CATCH_UNWIND`). Adding a
+new plushie toggle with the `PLUSHIE_` prefix propagates automatically
+without updating per-SDK whitelists. No legitimate secret should use
+this prefix.
+
+### Rationale
+
+The whitelist is a belt-and-braces mitigation: host applications
+routinely hold secrets in their environment, the renderer doesn't need
+them, and the OS-level parent-env inheritance model defaults to leak.
+Explicitly unsetting non-whitelisted variables (rather than merely not
+forwarding them) keeps behaviour deterministic across spawn APIs that
+differ in whether `env` is additive or replacing.
+
+---
+
 ## Common value types
 
 **Colors** are canonical hex strings: `"#rrggbb"` (6-char) or

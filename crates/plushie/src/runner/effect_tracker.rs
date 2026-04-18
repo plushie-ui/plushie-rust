@@ -59,11 +59,43 @@ impl EffectTracker {
 
     /// Track a new effect. Returns the generated wire ID.
     ///
-    /// If an effect with the same tag already exists, it is
-    /// silently replaced (one-per-tag enforcement).
+    /// If an effect with the same tag already exists, it is replaced.
+    /// Prefer [`track_with_replacement`](Self::track_with_replacement)
+    /// when the caller wants to deliver a synthetic `Cancelled` event
+    /// for the displaced effect.
     pub fn track(&mut self, tag: &str, kind: &str, timeout: Duration) -> String {
+        let (wire_id, _replaced) = self.track_with_replacement(tag, kind, timeout);
+        wire_id
+    }
+
+    /// Track a new effect and report what (if anything) it displaced.
+    ///
+    /// Returns the generated wire ID and, when a prior effect with
+    /// the same tag was in flight, its `(tag, kind)`. The caller is
+    /// expected to deliver a synthetic `EffectResult::Cancelled`
+    /// event for the replaced effect so the app observes the
+    /// transition instead of silently losing a response.
+    pub fn track_with_replacement(
+        &mut self,
+        tag: &str,
+        kind: &str,
+        timeout: Duration,
+    ) -> (String, Option<(String, String)>) {
         // One-per-tag: cancel any existing effect with this tag.
-        self.pending.retain(|_, e| e.tag != tag);
+        let mut replaced = None;
+        let replaced_ids: Vec<String> = self
+            .pending
+            .iter()
+            .filter(|(_, e)| e.tag == tag)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in replaced_ids {
+            if let Some(prior) = self.pending.remove(&id) {
+                // At most one pending entry per tag, but stay defensive:
+                // keep the most recent replacement to report.
+                replaced = Some((prior.tag, prior.kind));
+            }
+        }
 
         let wire_id = format!("ef_{}", self.next_id);
         // wrapping_add for explicit defensive clarity: 2^64 increments
@@ -80,7 +112,7 @@ impl EffectTracker {
             },
         );
 
-        wire_id
+        (wire_id, replaced)
     }
 
     /// Resolve a response by wire ID. Returns (tag, kind) if found.

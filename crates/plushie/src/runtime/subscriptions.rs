@@ -77,11 +77,19 @@ impl SubscriptionManager {
     /// - Added: key present in new but not active -> Subscribe/StartTimer
     /// - Removed: key present in active but not new -> Unsubscribe/StopTimer
     /// - Changed: same key but different max_rate or window_id ->
-    ///   Unsubscribe + Subscribe (re-register with new parameters)
+    ///   `UpdateSubscribe` (re-register with new parameters, matches
+    ///   Elixir's in-place behaviour; no gap event window)
     ///
     /// Renderer-side subscriptions produce `Subscribe`/`Unsubscribe`
     /// ops. Timer subscriptions (`SubscriptionKind::Every`) produce
     /// `StartTimer`/`StopTimer` ops since they're handled SDK-side.
+    ///
+    /// `self.active` is updated to reflect the new set. The wire and
+    /// direct runners today consume every op this function returns
+    /// synchronously and cannot fail mid-batch, so the active snapshot
+    /// cannot drift from the renderer's view. If that ever changes
+    /// (e.g. a runner that defers ops while the renderer is paused),
+    /// the active-set update here should move to per-op success.
     pub fn sync(&mut self, new: Vec<Subscription>) -> Vec<SubOp> {
         let mut ops = Vec::new();
 
@@ -132,10 +140,12 @@ impl SubscriptionManager {
                         }
                     } else if params_changed && !matches!(sub.kind, SubscriptionKind::Every(_)) {
                         // Renderer subscription parameters changed.
-                        ops.push(SubOp::Unsubscribe {
-                            kind: sub.wire_kind().to_string(),
-                            tag: sub.tag.clone(),
-                        });
+                        // Matching Elixir's send_subscribe(...) pattern,
+                        // re-send Subscribe with the same (kind, tag)
+                        // key so the renderer updates in place. Halves
+                        // wire traffic vs. Unsubscribe+Subscribe and
+                        // removes the event-delivery gap during the
+                        // transition.
                         ops.push(SubOp::Subscribe {
                             kind: new_sub.wire_kind().to_string(),
                             tag: new_sub.tag.clone(),

@@ -464,7 +464,21 @@ impl<A: App> DirectApp<A> {
                 let kind = request.kind();
                 let effective_timeout =
                     timeout.unwrap_or_else(|| effect_tracker::default_timeout(kind));
-                let wire_id = self.effect_tracker.track(&tag, kind, effective_timeout);
+                let (wire_id, replaced) =
+                    self.effect_tracker
+                        .track_with_replacement(&tag, kind, effective_timeout);
+                // One-per-tag replacement: surface a synthetic
+                // Cancelled event for the displaced effect so the app
+                // can observe the transition instead of silently
+                // losing a response.
+                if let Some((prior_tag, _prior_kind)) = replaced {
+                    self.event_queue
+                        .lock()
+                        .push(SinkEvent::DelayedEvent(Event::Effect(EffectEvent {
+                            tag: prior_tag,
+                            result: EffectResult::Cancelled,
+                        })));
+                }
                 // Pass the wire_id as the tag to the renderer. The
                 // renderer echoes it back in the EffectResponse.id
                 // field, which we resolve via the tracker.

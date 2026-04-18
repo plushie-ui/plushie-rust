@@ -57,6 +57,21 @@ pub(crate) enum SubscriptionKind {
 
 impl Subscription {
     /// Fire every `interval`. Delivers [`TimerEvent`](crate::event::TimerEvent).
+    ///
+    /// # Coalescing policy
+    ///
+    /// Ticks that would fire while a prior tick is already queued
+    /// are coalesced: the runtime drops the extra tick rather than
+    /// delivering a burst after slow `update()` cycles. That matches
+    /// iced's `time::every` behaviour in direct mode and the
+    /// tokio-interval spawn in wire mode. In practice: a 16 ms
+    /// subscription does not deliver 100 `TimerEvent`s back-to-back
+    /// when the app spends 1.6 s in a single `update`. It delivers
+    /// at most one (the next scheduled tick).
+    ///
+    /// Apps that need catch-up or accurate per-tick timestamps
+    /// should drive off the event's `timestamp` field rather than
+    /// counting ticks.
     pub fn every(interval: Duration, tag: &str) -> Self {
         Self {
             kind: SubscriptionKind::Every(interval),

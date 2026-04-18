@@ -23,6 +23,24 @@ use plushie_core::protocol::TreeNode;
 use serde_json::Value;
 
 /// A single patch operation produced by diffing two trees.
+///
+/// # Application order invariant
+///
+/// The sequence returned by [`diff_tree`] is ordered so that a naive
+/// in-order apply converges to the target tree:
+///
+/// 1. `RemoveChild` ops within the same parent come in **descending**
+///    `index` order, so earlier removes don't shift the indices of
+///    later ones.
+/// 2. `UpdateProps` ops fire next. Their `path` is relative to the
+///    tree shape *after* the removes have been applied.
+/// 3. `InsertChild` ops come last, in **ascending** `index` order so
+///    each insert's index is the final position in the new tree.
+///
+/// A consumer that applies ops out of this order (e.g. reorders by
+/// depth or batches inserts before removes) will produce a different
+/// tree. Cross-SDK renderers implement this contract; the `apply_patch`
+/// helper in this module is the canonical reference.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "op")]
 pub enum PatchOp {
@@ -67,6 +85,14 @@ fn node_to_value(node: &TreeNode) -> Value {
 }
 
 /// Diff two TreeNode trees and return a list of patch operations.
+///
+/// Both trees must be fully normalized (same scope rules, same a11y
+/// rewrites). Feeding one normalized and one un-normalized tree will
+/// land the whole structure in the `ReplaceNode` slow path even when
+/// the underlying authored shape was unchanged, because IDs won't
+/// line up. Callers that keep a long-lived `current_tree` should
+/// rerun [`crate::runtime::normalize::normalize`] whenever a
+/// normalization rule changes.
 pub fn diff_tree(old: &TreeNode, new: &TreeNode) -> Vec<PatchOp> {
     if old.id != new.id {
         return vec![PatchOp::ReplaceNode {
@@ -704,6 +730,41 @@ mod tests {
                 index: 1,
             }
         );
+    }
+
+    #[test]
+    fn swap_two_children_among_unchanged_siblings_round_trips() {
+        // The LIS reorder path is the riskiest algorithm in this
+        // module; the simplest adversarial case is swapping two
+        // siblings in place while everything else stays put. This
+        // asserts the diff + apply_patch pair still converges.
+        let old = simple_node(
+            "root",
+            "column",
+            vec![
+                simple_node("a", "text", vec![]),
+                simple_node("b", "text", vec![]),
+                simple_node("c", "text", vec![]),
+                simple_node("d", "text", vec![]),
+                simple_node("e", "text", vec![]),
+            ],
+        );
+        // Swap b and d.
+        let new = simple_node(
+            "root",
+            "column",
+            vec![
+                simple_node("a", "text", vec![]),
+                simple_node("d", "text", vec![]),
+                simple_node("c", "text", vec![]),
+                simple_node("b", "text", vec![]),
+                simple_node("e", "text", vec![]),
+            ],
+        );
+        let ops = diff_tree(&old, &new);
+        let mut copy = old.clone();
+        apply_patch(&mut copy, &ops);
+        assert_eq!(copy, new, "diff+apply must converge on a swap");
     }
 
     #[test]

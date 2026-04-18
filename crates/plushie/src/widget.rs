@@ -493,14 +493,51 @@ impl WidgetStateStore {
     /// Replace `node` in place with the expansion of its `__widget__`
     /// placeholder. Iterates so widgets that return widgets keep
     /// unwinding until we hit a concrete widget type.
+    ///
+    /// An unrecognized placeholder (no expander registered for the
+    /// node's ID) falls through to the fallback rewrite in
+    /// [`Self::rewrite_unrecognized_placeholder`]. Rendering a stray
+    /// `__widget__` node through iced produces a blank region; the
+    /// fallback turns it into a visible "missing widget" container
+    /// and emits a diagnostic so the app-level bug surfaces.
     pub(crate) fn expand_in_place(&self, node: &mut View) {
-        while node.type_name == "__widget__"
-            && let Some(expander) = self.expanders.get(&node.id)
-        {
-            let (_type_id, state) = self.states.get(&node.id).expect("widget state missing");
-            let expanded = expander.expand(&node.id, node, state.as_ref());
-            *node = expanded;
+        while node.type_name == "__widget__" {
+            if let Some(expander) = self.expanders.get(&node.id) {
+                let (_type_id, state) = self.states.get(&node.id).expect("widget state missing");
+                let expanded = expander.expand(&node.id, node, state.as_ref());
+                *node = expanded;
+            } else {
+                Self::rewrite_unrecognized_placeholder(node);
+                break;
+            }
         }
+    }
+
+    /// Replace a stray `__widget__` placeholder with a visible
+    /// container carrying a diagnostic breadcrumb.
+    ///
+    /// The breadcrumb lives in the `a11y.label` prop so screen readers
+    /// surface the bug too. Renderer sinks that scrape warnings see
+    /// a matching [`plushie_core::Diagnostic::UnrecognizedWidgetPlaceholder`]
+    /// in the normalization output through the legacy string channel.
+    fn rewrite_unrecognized_placeholder(node: &mut View) {
+        let id = std::mem::take(&mut node.id);
+        let diag = plushie_core::Diagnostic::UnrecognizedWidgetPlaceholder { id: id.clone() };
+        log::warn!("{diag}");
+        let mut props = plushie_core::protocol::PropMap::new();
+        props.insert(
+            "a11y",
+            plushie_core::protocol::PropValue::from(serde_json::json!({
+                "label": format!("unregistered widget: {id}"),
+                "role": "alert",
+            })),
+        );
+        *node = View {
+            id,
+            type_name: "container".to_string(),
+            props: plushie_core::protocol::Props::from(props),
+            children: Vec::new(),
+        };
     }
 
     /// Handle an event through widget interception.

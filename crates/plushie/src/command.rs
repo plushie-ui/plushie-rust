@@ -324,6 +324,20 @@ impl Command {
     /// `Command::cancel` rendezvous. Reusing a tag while an earlier
     /// task is still in flight replaces the earlier task (the
     /// runner cancels it on the author's behalf).
+    ///
+    /// # Mode-specific notes
+    ///
+    /// - **Direct mode** calls `iced::task::Handle::abort`. iced
+    ///   *detaches* the future from the executor rather than
+    ///   force-dropping it; a future awaiting a non-cancelable
+    ///   inner future may continue to run to completion with its
+    ///   result discarded. No `AsyncEvent` is delivered regardless.
+    /// - **Wire mode** calls `tokio::task::JoinHandle::abort`,
+    ///   which schedules a cancellation at the next await point;
+    ///   the result is discarded when the task eventually yields.
+    /// - **TestSession** runs async tasks inline on a fresh
+    ///   current-thread runtime, so cancellation during dispatch is
+    ///   a no-op unless the task has yielded back to the scheduler.
     pub fn cancel(tag: &str) -> Self {
         Self::Cancel {
             tag: tag.to_string(),
@@ -1195,5 +1209,30 @@ impl Command {
     /// ```
     pub fn widget_batch(cmds: impl IntoIterator<Item = plushie_core::ops::WidgetCommand>) -> Self {
         Self::Renderer(RendererOp::Commands(cmds.into_iter().collect()))
+    }
+
+    /// Apply a batch of typed commands to a single target widget.
+    ///
+    /// Convenience for the common case of pushing several commands of
+    /// the same family to the same target; every command is routed
+    /// through the same `WidgetCommand::new(id, cmd)` path as
+    /// [`Command::widget`] and the batch is delivered atomically.
+    /// Mirrors Elixir's `Plushie.Command.widget_commands/2`.
+    ///
+    /// ```ignore
+    /// Command::widget_commands("pane", vec![
+    ///     PaneCommand::SelectPane(1),
+    ///     PaneCommand::Focus,
+    /// ])
+    /// ```
+    pub fn widget_commands<C: plushie_core::WidgetCommandEncode>(
+        id: &str,
+        cmds: impl IntoIterator<Item = C>,
+    ) -> Self {
+        let wcs: Vec<plushie_core::ops::WidgetCommand> = cmds
+            .into_iter()
+            .map(|c| plushie_core::ops::WidgetCommand::new(id, c))
+            .collect();
+        Self::Renderer(RendererOp::Commands(wcs))
     }
 }

@@ -433,16 +433,47 @@ impl Drop for Bridge {
         // Order matters. Signalling stop without killing first can
         // deadlock: the reader thread is blocked inside `read_one`,
         // which only returns after the child closes its stdout. The
-        // child doesn't close it until we kill or it exits on its own.
-        // Kill first, then stop_reader (which joins after read_one
-        // returns on the pipe-closed error).
+        // child doesn't close it until we get EOF on stdin, kill it,
+        // or it exits on its own.
+        //
+        // Sequence:
+        // 1. Close stdin so the child observes EOF and can drain any
+        //    outstanding work in its own graceful-shutdown path.
+        // 2. Give it a short grace period (`GRACE`) to exit cleanly.
+        //    On a well-behaved renderer this closes stdout quickly
+        //    and the reader thread's `read_one` returns with
+        //    UnexpectedEof, which lets `stop_reader` join cleanly.
+        // 3. If the child is still alive after the grace window,
+        //    fall back to SIGKILL + reap. This guarantees we don't
+        //    block forever on a wedged renderer.
         if let Some(reader) = self.reader.as_ref() {
             reader.stop.store(true, Ordering::SeqCst);
         }
-        let _ = self.kill();
+
+        // Step 1: close stdin.
+        drop(self.child.stdin.take());
+
+        // Step 2: wait up to GRACE for the child to exit on its own.
+        const GRACE: Duration = Duration::from_millis(500);
+        let deadline = std::time::Instant::now() + GRACE;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => break, // child exited cleanly
+                Ok(None) if std::time::Instant::now() >= deadline => break,
+                Ok(None) => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(_) => break,
+            }
+        }
+
+        // Step 3: force-kill if the child is still around.
+        if matches!(self.child.try_wait(), Ok(None)) {
+            let _ = self.kill();
+        }
         self.stop_reader();
-        // Reap the child to capture the exit code and avoid zombies
-        // on platforms where kill() returns before the process is
+        // Reap to capture the exit code and avoid zombies on
+        // platforms where kill() returns before the process is
         // actually reaped.
         let _ = self.child.wait();
     }

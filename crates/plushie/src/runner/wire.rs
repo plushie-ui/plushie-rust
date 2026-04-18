@@ -240,6 +240,7 @@ fn run_wire_inner<A: App>(
         if restart_count > 0 {
             sub_manager = crate::runtime::subscriptions::SubscriptionManager::new();
         }
+        validate_subscription_windows(&new_subs, &current_tree);
         apply_wire_sub_ops(&mut bridge, &mut async_mgr, sub_manager.sync(new_subs))?;
 
         // After a restart, flush all in-flight effects with
@@ -492,9 +493,35 @@ fn process_event<A: App>(
 
     // Sync subscriptions.
     let new_subs = A::subscribe(model);
+    validate_subscription_windows(&new_subs, current_tree);
     apply_wire_sub_ops(bridge, async_mgr, sub_manager.sync(new_subs))?;
 
     Ok(())
+}
+
+/// Emit an `unknown_window` diagnostic for any subscription whose
+/// `window_id` does not appear in the current tree.
+///
+/// The renderer accepts the subscription either way and just never
+/// delivers events for a dangling window, which is a silent failure
+/// mode. This diagnostic surfaces the typo / stale wiring loudly.
+#[cfg(feature = "wire")]
+fn validate_subscription_windows(
+    subs: &[crate::subscription::Subscription],
+    tree: &plushie_core::protocol::TreeNode,
+) {
+    let windows = crate::runtime::windows::detect_windows(tree);
+    for sub in subs {
+        if let Some(wid) = sub.window_id()
+            && !windows.contains(wid)
+        {
+            let diag = plushie_core::Diagnostic::UnknownWindow {
+                window_id: wid.to_string(),
+                subscription_tag: sub.kind().to_string(),
+            };
+            log::warn!("{diag}");
+        }
+    }
 }
 
 /// Translate a [`WindowSyncOp`] into the bridge's window-op wire
@@ -960,6 +987,16 @@ impl AsyncTaskManager {
         }
     }
 
+    /// Synchronously push a SinkEvent onto the delivery channel. Used
+    /// for synthetic events (e.g. one-per-tag cancellation) that need
+    /// to interleave with async results drained by the main loop.
+    ///
+    /// A full channel drops the event silently: the runtime is
+    /// already wedged, there is no recovery path worth taking.
+    fn deliver_sink_event(&self, event: SinkEvent) {
+        let _ = self.tx.send(event);
+    }
+
     fn send_after(&self, delay: std::time::Duration, event: crate::event::Event) {
         let tx = self.tx.clone();
         self.runtime.handle().spawn(async move {
@@ -1011,6 +1048,14 @@ fn execute_wire_command(
     match cmd {
         Command::None => {}
         Command::Exit => {
+            // Best-effort: tell the renderer we're shutting down so
+            // it can close cleanly instead of seeing stdin drop as
+            // the bridge is torn down. The main loop observes the
+            // subsequent pipe closure and classifies it as
+            // `ExitReason::Shutdown` via the shutdown flag below,
+            // which flushes pending effects and delivers an exit
+            // hook before the runner returns. See `run_wire_inner`
+            // and `classify_exit` for the full lifecycle.
             bridge.send_widget_op("exit", &Value::Null)?;
         }
         Command::Batch(cmds) => {
@@ -1109,7 +1154,18 @@ fn execute_wire_renderer_op(
             let kind = request.kind();
             let effective_timeout =
                 timeout.unwrap_or_else(|| effect_tracker::default_timeout(kind));
-            let wire_id = effect_tracker.track(tag, kind, effective_timeout);
+            let (wire_id, replaced) =
+                effect_tracker.track_with_replacement(tag, kind, effective_timeout);
+            if let Some((prior_tag, _prior_kind)) = replaced {
+                // Surface the one-per-tag replacement as a synthetic
+                // Cancelled event, routed through the same channel the
+                // async manager drains so it interleaves correctly
+                // with other delayed events.
+                async_mgr.deliver_sink_event(SinkEvent::DelayedEvent(Event::Effect(EffectEvent {
+                    tag: prior_tag,
+                    result: EffectResult::Cancelled,
+                })));
+            }
             // Schedule a tokio-driven timeout so the deadline fires
             // even when the bridge reader is blocked waiting for
             // renderer input. Cancelled in the resolve path when a

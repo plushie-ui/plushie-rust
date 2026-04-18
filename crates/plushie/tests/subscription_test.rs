@@ -173,7 +173,7 @@ fn renaming_kind_unsubscribes_old_and_subscribes_new() {
 }
 
 #[test]
-fn max_rate_change_produces_unsubscribe_then_subscribe() {
+fn max_rate_change_produces_inplace_resubscribe() {
     let mut session = TestSession::<SubscribeApp>::start();
     session.model_mut().pointer_max_rate = Some(30);
     session.advance_subscriptions();
@@ -186,15 +186,17 @@ fn max_rate_change_produces_unsubscribe_then_subscribe() {
     session.model_mut().pointer_max_rate = Some(60);
     session.advance_subscriptions();
 
+    // Matches Elixir's in-place send_subscribe: a single Subscribe op
+    // with the new parameters, keyed by the same (kind, tag) pair so
+    // the renderer updates in place without a gap in event delivery.
     let ops = session.last_subscription_ops();
     assert_eq!(
         ops.len(),
-        2,
-        "max_rate change should emit Unsubscribe + Subscribe, got: {ops:?}"
+        1,
+        "max_rate change should re-send Subscribe in place, got: {ops:?}"
     );
-    assert!(matches!(&ops[0], SubOp::Unsubscribe { .. }));
     assert!(matches!(
-        &ops[1],
+        &ops[0],
         SubOp::Subscribe {
             max_rate: Some(60),
             ..
@@ -203,7 +205,7 @@ fn max_rate_change_produces_unsubscribe_then_subscribe() {
 }
 
 #[test]
-fn window_id_change_produces_unsubscribe_then_subscribe() {
+fn window_id_change_produces_inplace_resubscribe() {
     let mut session = TestSession::<SubscribeApp>::start();
     session.model_mut().listen_keys = true;
     session.model_mut().key_window = Some("main".into());
@@ -220,14 +222,10 @@ fn window_id_change_produces_unsubscribe_then_subscribe() {
     let ops = session.last_subscription_ops();
     assert_eq!(
         ops.len(),
-        2,
-        "window_id change should emit Unsubscribe + Subscribe, got: {ops:?}"
+        1,
+        "window_id change should re-send Subscribe in place, got: {ops:?}"
     );
-    assert!(ops.iter().any(|op| matches!(op, SubOp::Unsubscribe { .. })));
-    assert!(
-        ops.iter()
-            .any(|op| matches!(op, SubOp::Subscribe { window_id: Some(w), .. } if w == "popup"))
-    );
+    assert!(matches!(&ops[0], SubOp::Subscribe { window_id: Some(w), .. } if w == "popup"));
 }
 
 #[test]

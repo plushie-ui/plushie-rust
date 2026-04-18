@@ -23,6 +23,11 @@ categories = ["gui", "rendering"]
 [workspace.dependencies]
 thiserror = "2"
 parking_lot = "0.12"
+# Pin usvg explicitly so RustSec advisories against the SVG parser
+# surface at the workspace dep resolution layer. iced's svg pipeline
+# pulls usvg in transitively; this pin keeps the version stable across
+# routine dep updates.
+usvg = "=0.45.1"
 
 # Lint configuration. CI also passes RUSTFLAGS="-D warnings" (via justfile)
 # which promotes ALL warnings to errors. The lints below catch things that

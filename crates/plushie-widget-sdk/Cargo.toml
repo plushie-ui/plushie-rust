@@ -33,6 +33,13 @@ log = "0.4"
 base64 = "0.22"
 qrcode = { version = "0.14", default-features = false }
 sha2 = "0.10"
+# Keep a direct dep on usvg so the workspace-level pin actually
+# participates in version resolution. iced pulls usvg transitively;
+# this declaration pins the exact version locally and surfaces
+# RustSec advisories against the parser at this obvious anchor point.
+# Used by the SVG pre-parse guard in widget/svg_widget.rs to bound
+# decode work before iced rasterises.
+usvg = { workspace = true }
 
 [dev-dependencies]
 proptest = "1"

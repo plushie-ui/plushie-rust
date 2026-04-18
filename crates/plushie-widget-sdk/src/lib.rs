@@ -48,6 +48,7 @@ pub mod iced_convert;
 
 pub(crate) mod a11y;
 pub mod shared_state;
+pub mod svg_guard;
 pub(crate) mod validate;
 
 // -- Internal modules used by the plushie binary --

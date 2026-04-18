@@ -7,9 +7,23 @@ use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
+use crate::svg_guard::{self, DecodeOutcome};
 use crate::widget::helpers::*;
 
 use plushie_core::types::{Color, ContentFit, Length, PlushieType};
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+/// Paths that failed the SVG guard. Re-validation is skipped for
+/// known-bad paths so the guard doesn't burn CPU every frame on a
+/// stuck or malicious source.
+static FAILED_PATHS: Mutex<Option<HashMap<String, DecodeFailure>>> = Mutex::new(None);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DecodeFailure {
+    ParseError,
+    Timeout,
+}
 
 struct SvgProps {
     width: Option<Length>,
@@ -36,9 +50,75 @@ impl SvgProps {
 
 pub(crate) struct SvgWidget;
 
+impl SvgWidget {
+    /// Pre-validate the SVG source under the decode guard. Caches
+    /// known-bad paths so subsequent frames skip the work.
+    fn guard_source(node_id: &str, source: &str) {
+        if source.is_empty() {
+            return;
+        }
+        // Fast path: already known-bad; skip re-parse.
+        {
+            let guard = FAILED_PATHS.lock().expect("FAILED_PATHS lock");
+            if let Some(map) = guard.as_ref()
+                && map.contains_key(source)
+            {
+                return;
+            }
+        }
+        let bytes = match std::fs::read_to_string(source) {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("[id={node_id}] svg: failed to read '{source}': {e}");
+                return;
+            }
+        };
+        // Interactive deadline: the rendering loop wants to tick
+        // well within a frame budget. Headless callers bypass this
+        // guard today because iced's headless path doesn't go
+        // through SvgWidget::render; when it does, pick the longer
+        // budget via a ctx flag.
+        let deadline = svg_guard::INTERACTIVE_TIMEOUT;
+        match svg_guard::parse_with_timeout(bytes, deadline) {
+            DecodeOutcome::Ok => {}
+            DecodeOutcome::ParseError(msg) => {
+                log::warn!(
+                    "[code=svg_parse_error][id={node_id}] svg '{source}' failed to parse: {msg}"
+                );
+                Self::record_failure(source, DecodeFailure::ParseError);
+            }
+            DecodeOutcome::Timeout => {
+                log::warn!(
+                    "[code=svg_decode_timeout][id={node_id}] svg '{source}' \
+                     exceeded {:?} decode budget; rendering skipped",
+                    deadline
+                );
+                Self::record_failure(source, DecodeFailure::Timeout);
+            }
+        }
+    }
+
+    fn record_failure(source: &str, kind: DecodeFailure) {
+        let mut guard = FAILED_PATHS.lock().expect("FAILED_PATHS lock");
+        guard
+            .get_or_insert_with(HashMap::new)
+            .insert(source.to_string(), kind);
+    }
+
+    fn is_failed(source: &str) -> bool {
+        let guard = FAILED_PATHS.lock().expect("FAILED_PATHS lock");
+        guard.as_ref().is_some_and(|m| m.contains_key(source))
+    }
+}
+
 impl<R: PlushieRenderer> PlushieWidget<R> for SvgWidget {
     fn type_names(&self) -> &[&str] {
         &["svg"]
+    }
+
+    fn prepare(&mut self, node: &TreeNode, _window_id: &str, _theme: &Theme) {
+        let source = prop_str(&node.props, "source").unwrap_or_default();
+        Self::guard_source(&node.id, &source);
     }
 
     fn render<'a>(
@@ -53,6 +133,13 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SvgWidget {
         let source = prop_str(props, "source").unwrap_or_default();
         if source.is_empty() {
             log::warn!("[id={}] svg: no 'source' prop specified", node.id);
+        }
+
+        // If the guard marked this source as bad on a previous
+        // frame, render an empty placeholder instead of asking
+        // iced to re-attempt the decode.
+        if !source.is_empty() && Self::is_failed(&source) {
+            return iced::widget::Space::new().into();
         }
 
         let width = sp

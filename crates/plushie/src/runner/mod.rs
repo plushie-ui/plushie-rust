@@ -31,12 +31,16 @@ pub mod bridge;
 pub(crate) mod env;
 
 #[cfg(feature = "wire")]
+pub mod socket;
+
+#[cfg(feature = "wire")]
 pub mod wire;
 
-// Wire-binary discovery is only used when wire is the sole runner
-// feature (direct wins otherwise). Gate tightly so we don't carry
-// dead code under the default feature set.
-#[cfg(all(feature = "wire", not(feature = "direct")))]
+// Wire-binary discovery is used by `plushie::run` mode detection
+// (socket / binary-path / mode-flag / feature default) and by the
+// curated `run_spawn` entry point. Available whenever the `wire`
+// feature is compiled in.
+#[cfg(feature = "wire")]
 pub(crate) mod wire_discovery;
 
 // ---------------------------------------------------------------------------

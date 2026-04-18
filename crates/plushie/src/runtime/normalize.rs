@@ -84,6 +84,68 @@ pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
     (result, warnings)
 }
 
+/// Maximum length (in bytes) for a widget ID. Matches the canonical
+/// rule the Elixir / Python / Ruby / TypeScript SDKs already enforce.
+/// 1024 bytes leaves plenty of room for scope prefixes while keeping
+/// diagnostic text manageable.
+const MAX_WIDGET_ID_LEN: usize = 1024;
+
+/// Check a user-authored widget ID against the canonical ruleset and
+/// push a `widget_id_invalid` diagnostic for each violation.
+///
+/// Reasons surfaced (each a separate diagnostic so callers can match
+/// on the specific failure):
+/// - `empty`: zero-length ID
+/// - `too_long`: > 1024 bytes
+/// - `non_ascii`: contains bytes outside 0x21..=0x7E printable ASCII
+/// - `reserved_char`: contains `/` or `#`
+fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
+    // Empty IDs are treated the same as auto-generated ones: they
+    // represent "not authored" state and skip the full ruleset. The
+    // duplicate-detection and reference-resolution passes downstream
+    // treat them as unrecognised anyway.
+    if id.is_empty() {
+        return;
+    }
+    if id.len() > MAX_WIDGET_ID_LEN {
+        warnings.push(format!(
+            "widget_id_invalid: {type_name} ID is {} bytes, exceeds \
+             {} (reason=too_long)",
+            id.len(),
+            MAX_WIDGET_ID_LEN,
+        ));
+        return;
+    }
+    // ASCII printable range 0x21..=0x7E excludes space and control
+    // characters. Anything outside this range is rejected uniformly;
+    // scope rewriting can't rely on strings that might contain
+    // embedded newlines or unicode punctuation.
+    let first_non_ascii = id
+        .bytes()
+        .enumerate()
+        .find(|(_, b)| !matches!(*b, 0x21..=0x7E));
+    if let Some((offset, byte)) = first_non_ascii {
+        warnings.push(format!(
+            "widget_id_invalid: ID \"{id}\" contains non-printable or \
+             non-ASCII byte 0x{byte:02X} at offset {offset} (reason=non_ascii)"
+        ));
+        return;
+    }
+    if id.contains('/') {
+        warnings.push(format!(
+            "widget_id_invalid: ID \"{id}\" contains reserved character \
+             '/'. Use container scoping instead. (reason=reserved_char)"
+        ));
+    }
+    if id.contains('#') {
+        warnings.push(format!(
+            "widget_id_invalid: ID \"{id}\" contains reserved character \
+             '#'. '#' is reserved for window-qualified paths. \
+             (reason=reserved_char)"
+        ));
+    }
+}
+
 /// Run the a11y-ref rewrite and missing-accessible-name passes over a
 /// tree whose IDs are already scope-normalized. Continues accumulating
 /// warnings into the supplied [`WalkCtx`].
@@ -170,24 +232,17 @@ impl TreeTransform for NormalizeTransform<'_> {
         let is_auto = node.id.starts_with("auto:");
         let is_window = type_name == "window";
 
-        // Reserved-character validation (user IDs only). Run before
-        // touching `ctx.scope` so diagnostic text references the
-        // original ID.
+        // ID validation (user IDs only). Auto-generated IDs bypass
+        // every check here. Canonical rules (match Elixir / Python /
+        // Ruby / TypeScript):
+        //
+        // - non-empty
+        // - ASCII 0x21..=0x7E printable range
+        // - no `/` (reserved as scope separator)
+        // - no `#` (reserved for window-qualified paths)
+        // - length <= 1024 bytes
         if !is_auto {
-            if node.id.contains('/') {
-                ctx.warnings.push(format!(
-                    "ID \"{id}\" contains reserved character '/'. \
-                     Use container scoping instead.",
-                    id = node.id,
-                ));
-            }
-            if node.id.contains('#') {
-                ctx.warnings.push(format!(
-                    "ID \"{id}\" contains reserved character '#'. \
-                     '#' is reserved for window-qualified paths.",
-                    id = node.id,
-                ));
-            }
+            validate_widget_id(&node.id, &node.type_name, &mut ctx.warnings);
         }
 
         // Build the scoped ID directly into `ctx.scope`. The shared
@@ -979,6 +1034,57 @@ mod tests {
         let (_, warnings) = normalize(&tree);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("reserved character '#'"));
+        assert!(warnings[0].contains("widget_id_invalid"));
+    }
+
+    #[test]
+    fn non_ascii_id_produces_warning() {
+        let tree = node("caf\u{00e9}", "text", vec![]);
+        let (_, warnings) = normalize(&tree);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("widget_id_invalid") && w.contains("non_ascii")),
+            "expected non_ascii diagnostic, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn control_character_id_produces_warning() {
+        let tree = node("has\tctrl", "text", vec![]);
+        let (_, warnings) = normalize(&tree);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("widget_id_invalid") && w.contains("non_ascii")),
+            "expected non_ascii diagnostic for control char, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn oversize_id_produces_warning() {
+        let huge = "a".repeat(2000);
+        let tree = node(&huge, "text", vec![]);
+        let (_, warnings) = normalize(&tree);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("widget_id_invalid") && w.contains("too_long")),
+            "expected too_long diagnostic, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn auto_ids_bypass_all_id_validation() {
+        // Non-ASCII auto-generated ID (shouldn't happen in practice but
+        // the exemption should hold regardless). Auto IDs start with
+        // "auto:" so they skip the canonical rules.
+        let tree = node("auto:col:\u{00e9}", "column", vec![]);
+        let (_, warnings) = normalize(&tree);
+        assert!(
+            !warnings.iter().any(|w| w.contains("widget_id_invalid")),
+            "auto IDs must not raise widget_id_invalid, got {warnings:?}"
+        );
     }
 
     #[test]
@@ -999,6 +1105,7 @@ mod tests {
         let (_, warnings) = normalize(&tree);
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("reserved character"));
+        assert!(warnings[0].contains("widget_id_invalid"));
     }
 
     #[test]

@@ -64,6 +64,7 @@
 
 pub mod animation;
 pub mod automation;
+pub mod cli;
 pub mod command;
 pub mod derive_support;
 mod error;

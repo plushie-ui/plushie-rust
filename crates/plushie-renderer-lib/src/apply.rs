@@ -126,20 +126,20 @@ impl App {
                     let task = self.handle_widget_op(&op, &payload);
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::WindowOp {
-                    op,
-                    window_id,
-                    settings,
-                } => {
-                    let task = self.handle_window_op(&op, &window_id, &settings);
+                CoreEffect::WindowOp(op) => {
+                    let task = self.dispatch_window_op(op);
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::SystemOp { op, settings } => {
-                    let task = self.handle_system_op(&op, &settings);
+                CoreEffect::WindowQuery(q) => {
+                    let task = self.dispatch_window_query(q);
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::SystemQuery { op, settings } => {
-                    let task = self.handle_system_query(&op, &settings);
+                CoreEffect::SystemOp(op) => {
+                    let task = self.dispatch_system_op(op);
+                    self.pending_tasks.push(task);
+                }
+                CoreEffect::SystemQuery(q) => {
+                    let task = self.dispatch_system_query(q);
                     self.pending_tasks.push(task);
                 }
                 CoreEffect::ThemeChanged(theme) => {

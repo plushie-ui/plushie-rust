@@ -389,7 +389,7 @@ impl<A: App> DirectApp<A> {
     }
 
     /// Diff the current tree against the last-known set of windows
-    /// and dispatch any open / close / update ops through the
+    /// and dispatch typed `WindowOp` lifecycle events through the
     /// renderer-lib. Returns a batched iced Task carrying whatever
     /// the renderer handlers produced (open creates a task that
     /// transitions to Message::WindowOpened on completion).
@@ -401,25 +401,24 @@ impl<A: App> DirectApp<A> {
         let mut tasks = Vec::new();
         for op in ops {
             use crate::runtime::windows::WindowSyncOp;
-            let task = match op {
+            let typed = match op {
                 WindowSyncOp::Open {
                     window_id,
                     settings,
-                } => self
-                    .renderer
-                    .handle_window_op("open", &window_id, &settings),
-                WindowSyncOp::Close { window_id } => {
-                    self.renderer
-                        .handle_window_op("close", &window_id, &serde_json::Value::Null)
-                }
+                } => plushie_core::ops::WindowOp::Open {
+                    window_id,
+                    settings,
+                },
+                WindowSyncOp::Close { window_id } => plushie_core::ops::WindowOp::Close(window_id),
                 WindowSyncOp::Update {
                     window_id,
                     settings,
-                } => self
-                    .renderer
-                    .handle_window_op("update", &window_id, &settings),
+                } => plushie_core::ops::WindowOp::Update {
+                    window_id,
+                    settings,
+                },
             };
-            tasks.push(task);
+            tasks.push(self.renderer.dispatch_window_op(typed));
         }
         if tasks.is_empty() {
             Task::none()

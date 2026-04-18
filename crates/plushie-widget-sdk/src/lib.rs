@@ -62,6 +62,8 @@ pub mod testing;
 
 pub mod animation;
 
+pub mod fonts;
+
 pub mod iced_convert;
 
 pub(crate) mod a11y;

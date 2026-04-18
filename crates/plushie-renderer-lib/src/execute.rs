@@ -61,12 +61,12 @@ impl App {
             RendererOp::Announce { text, .. } => iced::announce(text),
 
             // -- Window operations --
-            RendererOp::Window(op) => self.execute_window_op(op),
-            RendererOp::WindowQuery(query) => self.execute_window_query(query),
+            RendererOp::Window(op) => self.dispatch_window_op(op),
+            RendererOp::WindowQuery(query) => self.dispatch_window_query(query),
 
             // -- System --
-            RendererOp::SystemOp(op) => self.execute_system_op(op),
-            RendererOp::SystemQuery(query) => self.execute_system_query(query),
+            RendererOp::SystemOp(op) => self.dispatch_system_op(op),
+            RendererOp::SystemQuery(query) => self.dispatch_system_query(query),
 
             // -- Effects --
             RendererOp::Effect { tag, request, .. } => {
@@ -98,7 +98,10 @@ impl App {
             RendererOp::Image(op) => self.execute_image_op(op),
 
             // -- Font loading --
-            RendererOp::LoadFont(data) => iced::font::load(data).map(|_| Message::NoOp),
+            RendererOp::LoadFont { family, bytes } => {
+                plushie_widget_sdk::fonts::register_loaded_family(&family);
+                iced::font::load(bytes).map(|_| Message::NoOp)
+            }
 
             // -- Subscriptions --
             RendererOp::Subscribe {
@@ -136,172 +139,6 @@ impl App {
                 "advance_frame",
                 &serde_json::json!({"timestamp": timestamp}),
             ),
-            _ => Task::none(),
-        }
-    }
-
-    fn execute_window_op(&mut self, op: WindowOp) -> Task<Message> {
-        use serde_json::json;
-        // Delegate to the existing string-based handler for now.
-        // This will be refactored to use typed dispatch in a future phase.
-        match op {
-            WindowOp::Close(id) => self.handle_widget_op("close_window", &json!({"window_id": id})),
-            WindowOp::Resize {
-                window_id,
-                width,
-                height,
-            } => self.handle_window_op(
-                "resize",
-                &window_id,
-                &json!({"width": width, "height": height}),
-            ),
-            WindowOp::Move { window_id, x, y } => {
-                self.handle_window_op("move", &window_id, &json!({"x": x, "y": y}))
-            }
-            WindowOp::Maximize {
-                window_id,
-                maximized,
-            } => self.handle_window_op("maximize", &window_id, &json!({"maximized": maximized})),
-            WindowOp::Minimize {
-                window_id,
-                minimized,
-            } => self.handle_window_op("minimize", &window_id, &json!({"minimized": minimized})),
-            WindowOp::SetMode { window_id, mode } => {
-                self.handle_window_op("set_mode", &window_id, &json!({"mode": mode}))
-            }
-            WindowOp::ToggleMaximize(id) => {
-                self.handle_window_op("toggle_maximize", &id, &json!({}))
-            }
-            WindowOp::ToggleDecorations(id) => {
-                self.handle_window_op("toggle_decorations", &id, &json!({}))
-            }
-            WindowOp::FocusWindow(id) => self.handle_window_op("gain_focus", &id, &json!({})),
-            WindowOp::SetLevel { window_id, level } => {
-                self.handle_window_op("set_level", &window_id, &json!({"level": level}))
-            }
-            WindowOp::DragWindow(id) => self.handle_window_op("drag", &id, &json!({})),
-            WindowOp::DragResize {
-                window_id,
-                direction,
-            } => self.handle_window_op("drag_resize", &window_id, &json!({"direction": direction})),
-            WindowOp::RequestAttention { window_id, urgency } => self.handle_window_op(
-                "request_attention",
-                &window_id,
-                &json!({"urgency": urgency}),
-            ),
-            WindowOp::Screenshot { window_id, tag } => {
-                self.handle_window_op("screenshot", &window_id, &json!({"tag": tag}))
-            }
-            WindowOp::SetResizable {
-                window_id,
-                resizable,
-            } => self.handle_window_op(
-                "set_resizable",
-                &window_id,
-                &json!({"resizable": resizable}),
-            ),
-            WindowOp::SetMinSize {
-                window_id,
-                width,
-                height,
-            } => self.handle_window_op(
-                "set_min_size",
-                &window_id,
-                &json!({"width": width, "height": height}),
-            ),
-            WindowOp::SetMaxSize {
-                window_id,
-                width,
-                height,
-            } => self.handle_window_op(
-                "set_max_size",
-                &window_id,
-                &json!({"width": width, "height": height}),
-            ),
-            WindowOp::EnableMousePassthrough(id) => {
-                self.handle_window_op("mouse_passthrough", &id, &json!({"enabled": true}))
-            }
-            WindowOp::DisableMousePassthrough(id) => {
-                self.handle_window_op("mouse_passthrough", &id, &json!({"enabled": false}))
-            }
-            WindowOp::ShowSystemMenu(id) => {
-                self.handle_window_op("show_system_menu", &id, &json!({}))
-            }
-            WindowOp::SetIcon {
-                window_id,
-                data,
-                width,
-                height,
-            } => self.handle_window_op(
-                "set_icon",
-                &window_id,
-                &json!({
-                    "data": data, "width": width, "height": height
-                }),
-            ),
-            WindowOp::SetResizeIncrements {
-                window_id,
-                width,
-                height,
-            } => self.handle_window_op(
-                "set_resize_increments",
-                &window_id,
-                &json!({
-                    "width": width, "height": height
-                }),
-            ),
-            _ => Task::none(),
-        }
-    }
-
-    fn execute_window_query(&mut self, query: WindowQuery) -> Task<Message> {
-        use serde_json::json;
-        match query {
-            WindowQuery::GetSize { window_id, tag } => {
-                self.handle_window_op("get_size", &window_id, &json!({"tag": tag}))
-            }
-            WindowQuery::GetPosition { window_id, tag } => {
-                self.handle_window_op("get_position", &window_id, &json!({"tag": tag}))
-            }
-            WindowQuery::IsMaximized { window_id, tag } => {
-                self.handle_window_op("is_maximized", &window_id, &json!({"tag": tag}))
-            }
-            WindowQuery::IsMinimized { window_id, tag } => {
-                self.handle_window_op("is_minimized", &window_id, &json!({"tag": tag}))
-            }
-            WindowQuery::GetMode { window_id, tag } => {
-                self.handle_window_op("get_mode", &window_id, &json!({"tag": tag}))
-            }
-            WindowQuery::GetScaleFactor { window_id, tag } => {
-                self.handle_window_op("get_scale_factor", &window_id, &json!({"tag": tag}))
-            }
-            WindowQuery::MonitorSize { window_id, tag } => {
-                self.handle_window_op("monitor_size", &window_id, &json!({"tag": tag}))
-            }
-            WindowQuery::RawId { window_id, tag } => {
-                self.handle_window_op("raw_id", &window_id, &json!({"tag": tag}))
-            }
-            _ => Task::none(),
-        }
-    }
-
-    fn execute_system_op(&mut self, op: SystemOp) -> Task<Message> {
-        match op {
-            SystemOp::AllowAutomaticTabbing(enabled) => self.handle_system_op(
-                "allow_automatic_tabbing",
-                &serde_json::json!({"enabled": enabled}),
-            ),
-        }
-    }
-
-    fn execute_system_query(&mut self, query: SystemQuery) -> Task<Message> {
-        match query {
-            SystemQuery::GetTheme { tag } => {
-                self.handle_system_query("get_system_theme", &serde_json::json!({"tag": tag}))
-            }
-            SystemQuery::GetInfo { tag } => {
-                self.handle_system_query("get_system_info", &serde_json::json!({"tag": tag}))
-            }
             _ => Task::none(),
         }
     }

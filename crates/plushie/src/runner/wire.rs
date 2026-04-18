@@ -1427,7 +1427,7 @@ fn execute_wire_renderer_op(
     effect_tracker: &mut EffectTracker,
     async_mgr: &mut AsyncTaskManager,
 ) -> crate::Result {
-    use plushie_core::ops::{ImageOp, RendererOp, SystemOp, SystemQuery, WindowQuery};
+    use plushie_core::ops::{ImageOp, RendererOp};
     use serde_json::json;
 
     match op {
@@ -1443,44 +1443,23 @@ fn execute_wire_renderer_op(
         }
         RendererOp::Window(op) => execute_wire_window_op(bridge, op),
         RendererOp::WindowQuery(query) => {
-            let (op_name, window_id, tag) = match query {
-                WindowQuery::GetSize { window_id, tag } => ("get_size", window_id, tag),
-                WindowQuery::GetPosition { window_id, tag } => ("get_position", window_id, tag),
-                WindowQuery::IsMaximized { window_id, tag } => ("is_maximized", window_id, tag),
-                WindowQuery::IsMinimized { window_id, tag } => ("is_minimized", window_id, tag),
-                WindowQuery::GetMode { window_id, tag } => ("get_mode", window_id, tag),
-                WindowQuery::GetScaleFactor { window_id, tag } => {
-                    ("get_scale_factor", window_id, tag)
-                }
-                WindowQuery::MonitorSize { window_id, tag } => ("monitor_size", window_id, tag),
-                WindowQuery::RawId { window_id, tag } => ("raw_id", window_id, tag),
-                _ => {
-                    log::warn!("wire mode: unhandled WindowQuery variant; query skipped");
-                    return Ok(());
-                }
-            };
-            bridge.send_window_op(op_name, window_id, &json!({"tag": tag}))
+            let (op_name, window_id, payload) = query.to_wire();
+            bridge.send_window_op(op_name, &window_id, &payload)
         }
-        RendererOp::SystemOp(SystemOp::AllowAutomaticTabbing(enabled)) => {
+        RendererOp::SystemOp(op) => {
+            let (op_name, payload) = op.to_wire();
             bridge.send(&OutgoingMessage::SystemOp {
                 session: String::new(),
-                op: "allow_automatic_tabbing".to_string(),
-                payload: json!({"enabled": enabled}),
+                op: op_name.to_string(),
+                payload,
             })
         }
         RendererOp::SystemQuery(query) => {
-            let (op_name, tag) = match query {
-                SystemQuery::GetTheme { tag } => ("get_system_theme", tag),
-                SystemQuery::GetInfo { tag } => ("get_system_info", tag),
-                _ => {
-                    log::warn!("wire mode: unhandled SystemQuery variant; query skipped");
-                    return Ok(());
-                }
-            };
+            let (op_name, payload) = query.to_wire();
             bridge.send(&OutgoingMessage::SystemQuery {
                 session: String::new(),
                 op: op_name.to_string(),
-                payload: json!({"tag": tag}),
+                payload,
             })
         }
         RendererOp::Effect {
@@ -1565,9 +1544,10 @@ fn execute_wire_renderer_op(
                 },
             }),
         ),
-        RendererOp::LoadFont(data) => {
-            bridge.send_widget_op("load_font", &json!({"data": base64_encode(data)}))
-        }
+        RendererOp::LoadFont { family, bytes } => bridge.send_widget_op(
+            "load_font",
+            &json!({"family": family, "data": base64_encode(bytes)}),
+        ),
         RendererOp::Subscribe {
             kind,
             tag,
@@ -1593,118 +1573,13 @@ fn execute_wire_renderer_op(
 }
 
 /// Execute a window operation via the bridge.
+///
+/// Uses [`plushie_core::ops::WindowOp::to_wire`] so the enum itself owns
+/// the wire serialisation; wire mode just forwards the string triple.
 #[cfg(feature = "wire")]
 fn execute_wire_window_op(bridge: &mut Bridge, op: &plushie_core::ops::WindowOp) -> crate::Result {
-    use plushie_core::ops::WindowOp;
-    use serde_json::json;
-
-    match op {
-        WindowOp::Close(id) => bridge.send_widget_op("close_window", &json!({"window_id": id})),
-        WindowOp::Resize {
-            window_id,
-            width,
-            height,
-        } => bridge.send_window_op(
-            "resize",
-            window_id,
-            &json!({"width": width, "height": height}),
-        ),
-        WindowOp::Move { window_id, x, y } => {
-            bridge.send_window_op("move", window_id, &json!({"x": x, "y": y}))
-        }
-        WindowOp::Maximize {
-            window_id,
-            maximized,
-        } => bridge.send_window_op("maximize", window_id, &json!({"maximized": maximized})),
-        WindowOp::Minimize {
-            window_id,
-            minimized,
-        } => bridge.send_window_op("minimize", window_id, &json!({"minimized": minimized})),
-        WindowOp::SetMode { window_id, mode } => {
-            bridge.send_window_op("set_mode", window_id, &json!({"mode": mode.to_string()}))
-        }
-        WindowOp::ToggleMaximize(id) => bridge.send_window_op("toggle_maximize", id, &json!({})),
-        WindowOp::ToggleDecorations(id) => {
-            bridge.send_window_op("toggle_decorations", id, &json!({}))
-        }
-        WindowOp::FocusWindow(id) => bridge.send_window_op("gain_focus", id, &json!({})),
-        WindowOp::SetLevel { window_id, level } => {
-            bridge.send_window_op("set_level", window_id, &json!({"level": level.to_string()}))
-        }
-        WindowOp::DragWindow(id) => bridge.send_window_op("drag", id, &json!({})),
-        WindowOp::DragResize {
-            window_id,
-            direction,
-        } => bridge.send_window_op("drag_resize", window_id, &json!({"direction": direction})),
-        WindowOp::RequestAttention { window_id, urgency } => {
-            let mut settings = json!({});
-            if let Some(u) = urgency {
-                settings["urgency"] = json!(u);
-            }
-            bridge.send_window_op("request_attention", window_id, &settings)
-        }
-        WindowOp::Screenshot { window_id, tag } => {
-            bridge.send_window_op("screenshot", window_id, &json!({"tag": tag}))
-        }
-        WindowOp::SetResizable {
-            window_id,
-            resizable,
-        } => bridge.send_window_op("set_resizable", window_id, &json!({"resizable": resizable})),
-        WindowOp::SetMinSize {
-            window_id,
-            width,
-            height,
-        } => bridge.send_window_op(
-            "set_min_size",
-            window_id,
-            &json!({"width": width, "height": height}),
-        ),
-        WindowOp::SetMaxSize {
-            window_id,
-            width,
-            height,
-        } => bridge.send_window_op(
-            "set_max_size",
-            window_id,
-            &json!({"width": width, "height": height}),
-        ),
-        WindowOp::EnableMousePassthrough(id) => {
-            bridge.send_window_op("mouse_passthrough", id, &json!({"enabled": true}))
-        }
-        WindowOp::DisableMousePassthrough(id) => {
-            bridge.send_window_op("mouse_passthrough", id, &json!({"enabled": false}))
-        }
-        WindowOp::ShowSystemMenu(id) => bridge.send_window_op("show_system_menu", id, &json!({})),
-        WindowOp::SetIcon {
-            window_id,
-            data,
-            width,
-            height,
-        } => bridge.send_window_op(
-            "set_icon",
-            window_id,
-            &json!({
-                "data": base64_encode(data), "width": width, "height": height,
-            }),
-        ),
-        WindowOp::SetResizeIncrements {
-            window_id,
-            width,
-            height,
-        } => bridge.send_window_op(
-            "set_resize_increments",
-            window_id,
-            &json!({
-                "width": width, "height": height,
-            }),
-        ),
-        // WindowOp is #[non_exhaustive]; skip unknown variants with a
-        // warning so a newly added op doesn't break wire compilation.
-        _ => {
-            log::warn!("wire mode: unhandled WindowOp variant; op skipped");
-            Ok(())
-        }
-    }
+    let (op_str, window_id, payload) = op.to_wire();
+    bridge.send_window_op(op_str, &window_id, &payload)
 }
 
 /// Base64-encode binary data for JSON wire transport.

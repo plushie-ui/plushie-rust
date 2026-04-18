@@ -2,7 +2,7 @@
 //! tree hash queries, image management. Dispatched from [`CoreEffect::WidgetOp`]
 //! via the `op` string and JSON `payload`.
 
-use iced::{Task, window};
+use iced::Task;
 
 use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::OutgoingEvent;
@@ -138,25 +138,6 @@ impl App {
                     .unwrap_or(0) as usize;
                 iced::widget::operation::move_cursor_to(iced::widget::Id::from(target), position)
             }
-            "close_window" => {
-                // Look up the plushie window_id from the payload and close the
-                // correct iced window. Falls back to oldest window only if no
-                // window_id is provided (backwards compat).
-                let win_id = payload
-                    .get("window_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                if !win_id.is_empty() {
-                    if let Some(iced_id) = self.windows.remove_by_window(win_id) {
-                        window::close(iced_id)
-                    } else {
-                        log::warn!("close_window: unknown window_id: {win_id}");
-                        Task::none()
-                    }
-                } else {
-                    window::oldest().and_then(window::close)
-                }
-            }
             "announce" => {
                 // `politeness` is read off the wire for forward-compat
                 // (the SDK always sends it) but the fork currently
@@ -209,16 +190,23 @@ impl App {
             // handled by fontdb (via cosmic-text), so no explicit format
             // field is needed.
             "load_font" => {
+                let family = payload
+                    .get("family")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
                 let data = payload
                     .get("data")
                     .and_then(crate::settings::decode_font_data)
                     .unwrap_or_default();
-                if data.is_empty() {
-                    log::warn!("load_font: no font data provided");
+                if family.is_empty() {
+                    log::warn!("load_font: missing family name");
+                    Task::none()
+                } else if data.is_empty() {
+                    log::warn!("load_font: no font data provided for family {family}");
                     Task::none()
                 } else if data.len() > MAX_FONT_BYTES {
                     log::warn!(
-                        "load_font: font data ({} bytes) exceeds {} byte limit, rejecting",
+                        "load_font: font data for {family} ({} bytes) exceeds {} byte limit, rejecting",
                         data.len(),
                         MAX_FONT_BYTES
                     );
@@ -231,10 +219,14 @@ impl App {
                     Task::none()
                 } else {
                     LOADED_FONT_COUNT.fetch_add(1, Ordering::Relaxed);
-                    iced::font::load(data).map(|result| {
+                    plushie_widget_sdk::fonts::register_loaded_family(family);
+                    let family_for_log = family.to_string();
+                    iced::font::load(data).map(move |result| {
                         match result {
-                            Ok(()) => log::info!("font loaded successfully"),
-                            Err(e) => log::error!("font load failed: {e:?}"),
+                            Ok(()) => log::info!("font {family_for_log} loaded successfully"),
+                            Err(e) => {
+                                log::error!("font {family_for_log} load failed: {e:?}")
+                            }
                         }
                         Message::NoOp
                     })

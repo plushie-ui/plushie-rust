@@ -45,6 +45,10 @@ const MAX_FONT_FAMILY_CACHE: usize = 1024;
 /// Intern a custom font family name so identical strings share one leaked
 /// allocation. Names exceeding [`MAX_FONT_FAMILY_LEN`] are truncated.
 /// The cache is bounded to [`MAX_FONT_FAMILY_CACHE`] entries.
+///
+/// Exposed through [`intern_font_family_public`] so the fonts module can
+/// reach it; widget-sdk internals continue to call this via the
+/// `pub(crate)` path.
 pub(crate) fn intern_font_family(name: &str) -> &'static str {
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -94,6 +98,13 @@ pub(crate) fn intern_font_family(name: &str) -> &'static str {
 
     cache.insert(name.to_owned(), leaked);
     leaked
+}
+
+/// Public wrapper around [`intern_font_family`] for sibling modules
+/// (e.g. [`crate::fonts`]) that need the interner without exposing the
+/// rest of `widget::helpers`.
+pub fn intern_font_family_public(name: &str) -> &'static str {
+    intern_font_family(name)
 }
 
 // ---------------------------------------------------------------------------

@@ -672,9 +672,10 @@ fn handle_message<R: PlushieRenderer>(
                         let _ = s.writer.emit(&resp);
                     }
                     CoreEffect::WidgetOp { .. } => {}
-                    CoreEffect::WindowOp { .. }
-                    | CoreEffect::SystemOp { .. }
-                    | CoreEffect::SystemQuery { .. } => {}
+                    CoreEffect::WindowOp(_)
+                    | CoreEffect::WindowQuery(_)
+                    | CoreEffect::SystemOp(_)
+                    | CoreEffect::SystemQuery(_) => {}
                     CoreEffect::ThemeFollowsSystem => {}
                     CoreEffect::ExitNodes(nodes) => {
                         for (parent_id, index, node) in nodes {

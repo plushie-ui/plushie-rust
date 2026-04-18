@@ -1,7 +1,11 @@
-//! Window operations: open, close, resize, move, maximize, fullscreen,
-//! decorations, icon, queries (size, position, mode, scale factor), and
-//! window sync. Dispatched from [`CoreEffect::WindowOp`] via the `op`
-//! string, `window_id`, and JSON `settings`.
+//! Window + system operations: typed dispatch for lifecycle (open,
+//! close, update), state changes (resize, move, maximize, mode,
+//! level, decorations, focus), queries (size, position, mode, scale
+//! factor, monitor, raw_id), and window sync.
+//!
+//! Dispatched from `CoreEffect::WindowOp(WindowOp)` and siblings via
+//! typed `match`. The renderer owns the `window_id -> iced::window::Id`
+//! map in `self.windows`; handlers look up the iced id per op.
 //!
 //! ## Platform notes
 //!
@@ -13,9 +17,11 @@
 
 use std::collections::HashSet;
 
-use base64::Engine as _;
 use iced::{Point, Size, Task, window};
 
+use plushie_core::ops::{
+    NotificationUrgency, SystemOp, SystemQuery, WindowLevel, WindowMode, WindowOp, WindowQuery,
+};
 use plushie_widget_sdk::message::Message;
 
 use crate::App;
@@ -50,722 +56,559 @@ fn warn_wayland_noop(op: &str) {
 // ---------------------------------------------------------------------------
 
 impl App {
-    pub fn handle_window_op(
-        &mut self,
-        op: &str,
-        window_id: &str,
-        settings: &serde_json::Value,
-    ) -> Task<Message> {
-        // Clone the sink Arc for async closures that need to emit
-        // responses from Task callbacks (outside self's lifetime).
-        let sink = self.emitter.sink();
+    /// Dispatch a typed [`WindowOp`].
+    ///
+    /// Each variant maps to the appropriate iced window operation. The
+    /// window id is looked up in `self.windows`; unknown ids are logged
+    /// and produce `Task::none()`.
+    pub fn dispatch_window_op(&mut self, op: WindowOp) -> Task<Message> {
         match op {
-            "open" => {
-                if self.windows.contains_window(window_id) {
+            WindowOp::Open {
+                window_id,
+                settings,
+            } => {
+                if self.windows.contains_window(&window_id) {
                     log::warn!("window_op open: {window_id} already open, skipping");
                     return Task::none();
                 }
-
-                let win_settings = parse_window_settings(settings);
+                let win_settings = parse_window_settings(&settings);
                 let initial_decorations = win_settings.decorations;
-                let scale_factor = parse_scale_factor(settings);
+                let scale_factor = parse_scale_factor(&settings);
                 let (iced_id, open_task) = window::open(win_settings);
 
-                self.windows.insert(window_id.to_string(), iced_id);
-                self.windows.set_decorated(window_id, initial_decorations);
-                self.windows.set_scale_factor(window_id, scale_factor);
+                self.windows.insert(window_id.clone(), iced_id);
+                self.windows.set_decorated(&window_id, initial_decorations);
+                self.windows.set_scale_factor(&window_id, scale_factor);
 
-                let wid = window_id.to_string();
-                open_task.map(move |id| Message::WindowOpened(id, wid.clone()))
+                open_task.map(move |id| Message::WindowOpened(id, window_id.clone()))
             }
-            "close" => {
-                if let Some(iced_id) = self.windows.remove_by_window(window_id) {
+            WindowOp::Update {
+                window_id,
+                settings,
+            } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    log::warn!("window_op update: unknown window_id: {window_id}");
+                    return Task::none();
+                };
+                let mut tasks: Vec<Task<Message>> = Vec::new();
+                let Some(obj) = settings.as_object() else {
+                    return Task::none();
+                };
+
+                // Title is read from the tree in title(), no task needed.
+                let _ = obj.get("title").and_then(|v| v.as_str());
+
+                if obj.contains_key("width") || obj.contains_key("height") {
+                    let w = obj.get("width").and_then(|v| v.as_f64()).unwrap_or(800.0) as f32;
+                    let h = obj.get("height").and_then(|v| v.as_f64()).unwrap_or(600.0) as f32;
+                    tasks.push(window::resize(iced_id, Size::new(w, h)));
+                }
+                if let Some(maximized) = obj.get("maximized").and_then(|v| v.as_bool()) {
+                    tasks.push(window::maximize(iced_id, maximized));
+                }
+                if let Some(resizable) = obj.get("resizable").and_then(|v| v.as_bool()) {
+                    tasks.push(window::set_resizable(iced_id, resizable));
+                }
+                // Note: visible and fullscreen both call set_mode. If both are
+                // present, the last one wins. Hosts should not set both.
+                if let Some(visible) = obj.get("visible").and_then(|v| v.as_bool()) {
+                    let mode = if visible {
+                        window::Mode::Windowed
+                    } else {
+                        window::Mode::Hidden
+                    };
+                    tasks.push(window::set_mode(iced_id, mode));
+                }
+                if let Some(fullscreen) = obj.get("fullscreen").and_then(|v| v.as_bool()) {
+                    let mode = if fullscreen {
+                        window::Mode::Fullscreen
+                    } else {
+                        window::Mode::Windowed
+                    };
+                    tasks.push(window::set_mode(iced_id, mode));
+                }
+                if obj.contains_key("min_size") {
+                    let sz = parse_optional_size(
+                        obj.get("min_size").unwrap_or(&serde_json::Value::Null),
+                    );
+                    tasks.push(window::set_min_size(iced_id, sz));
+                }
+                if obj.contains_key("max_size") {
+                    let sz = parse_optional_size(
+                        obj.get("max_size").unwrap_or(&serde_json::Value::Null),
+                    );
+                    tasks.push(window::set_max_size(iced_id, sz));
+                }
+                if obj.contains_key("level") {
+                    let level = parse_window_level_str(
+                        obj.get("level")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("normal"),
+                    );
+                    tasks.push(window::set_level(iced_id, level));
+                }
+                if let Some(desired) = obj.get("decorations").and_then(|v| v.as_bool()) {
+                    let current = self.windows.is_decorated(&window_id);
+                    if desired != current {
+                        self.windows.set_decorated(&window_id, desired);
+                        tasks.push(window::toggle_decorations(iced_id));
+                    }
+                }
+                if obj.contains_key("scale_factor") {
+                    let sf = parse_scale_factor(&serde_json::Value::Object(obj.clone()));
+                    self.windows.set_scale_factor(&window_id, sf);
+                }
+
+                Task::batch(tasks)
+            }
+            WindowOp::Close(window_id) => {
+                if let Some(iced_id) = self.windows.remove_by_window(&window_id) {
                     window::close(iced_id)
                 } else {
                     log::warn!("window_op close: unknown window_id: {window_id}");
                     Task::none()
                 }
             }
-            "update" => {
-                // Apply changed window props to an already-open window.
-                // The host sends this when a surviving window's props change
-                // between renders.
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let mut tasks: Vec<Task<Message>> = Vec::new();
-
-                    if let Some(obj) = settings.as_object() {
-                        if let Some(title) = obj.get("title").and_then(|v| v.as_str()) {
-                            log::debug!("update window {window_id}: title={title}");
-                            // Title is read from the tree in title(), no task needed.
-                            let _ = title;
-                        }
-                        if obj.contains_key("width") || obj.contains_key("height") {
-                            let w =
-                                obj.get("width").and_then(|v| v.as_f64()).unwrap_or(800.0) as f32;
-                            let h =
-                                obj.get("height").and_then(|v| v.as_f64()).unwrap_or(600.0) as f32;
-                            tasks.push(window::resize(iced_id, Size::new(w, h)));
-                        }
-                        if let Some(maximized) = obj.get("maximized").and_then(|v| v.as_bool()) {
-                            tasks.push(window::maximize(iced_id, maximized));
-                        }
-                        if let Some(resizable) = obj.get("resizable").and_then(|v| v.as_bool()) {
-                            tasks.push(window::set_resizable(iced_id, resizable));
-                        }
-                        // Note: visible and fullscreen both call set_mode. If both are
-                        // present, the last one wins. Hosts should not set both.
-                        if let Some(visible) = obj.get("visible").and_then(|v| v.as_bool()) {
-                            let mode = if visible {
-                                window::Mode::Windowed
-                            } else {
-                                window::Mode::Hidden
-                            };
-                            tasks.push(window::set_mode(iced_id, mode));
-                        }
-                        if let Some(fullscreen) = obj.get("fullscreen").and_then(|v| v.as_bool()) {
-                            let mode = if fullscreen {
-                                window::Mode::Fullscreen
-                            } else {
-                                window::Mode::Windowed
-                            };
-                            tasks.push(window::set_mode(iced_id, mode));
-                        }
-                        if obj.contains_key("min_size") {
-                            let sz = parse_optional_size(
-                                obj.get("min_size").unwrap_or(&serde_json::Value::Null),
-                            );
-                            tasks.push(window::set_min_size(iced_id, sz));
-                        }
-                        if obj.contains_key("max_size") {
-                            let sz = parse_optional_size(
-                                obj.get("max_size").unwrap_or(&serde_json::Value::Null),
-                            );
-                            tasks.push(window::set_max_size(iced_id, sz));
-                        }
-                        if obj.contains_key("level") {
-                            let level = parse_window_level(
-                                obj.get("level")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("normal"),
-                            );
-                            tasks.push(window::set_level(iced_id, level));
-                        }
-                        if let Some(desired) = obj.get("decorations").and_then(|v| v.as_bool()) {
-                            let current = self.windows.is_decorated(window_id);
-                            if desired != current {
-                                self.windows.set_decorated(window_id, desired);
-                                tasks.push(window::toggle_decorations(iced_id));
-                            }
-                        }
-                        if obj.contains_key("scale_factor") {
-                            let sf = parse_scale_factor(&serde_json::Value::Object(obj.clone()));
-                            self.windows.set_scale_factor(window_id, sf);
-                        }
-                    }
-
-                    Task::batch(tasks)
-                } else {
-                    log::warn!("window_op update: unknown window_id: {window_id}");
-                    Task::none()
-                }
-            }
-            "resize" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let w = settings
-                        .get("width")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(800.0) as f32;
-                    let h = settings
-                        .get("height")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(600.0) as f32;
-                    window::resize(iced_id, Size::new(w, h))
-                } else {
-                    Task::none()
-                }
-            }
-            "move" => {
+            WindowOp::Resize {
+                window_id,
+                width,
+                height,
+            } => self.with_iced(&window_id, |id| {
+                window::resize(id, Size::new(width, height))
+            }),
+            WindowOp::Move { window_id, x, y } => {
                 warn_wayland_noop("move");
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let x = settings.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                    let y = settings.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                    window::move_to(iced_id, Point::new(x, y))
-                } else {
-                    Task::none()
-                }
+                self.with_iced(&window_id, |id| window::move_to(id, Point::new(x, y)))
             }
-            "maximize" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let maximized = settings
-                        .get("maximized")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
-                    window::maximize(iced_id, maximized)
-                } else {
-                    Task::none()
-                }
+            WindowOp::Maximize {
+                window_id,
+                maximized,
+            } => self.with_iced(&window_id, |id| window::maximize(id, maximized)),
+            WindowOp::Minimize {
+                window_id,
+                minimized,
+            } => self.with_iced(&window_id, |id| window::minimize(id, minimized)),
+            WindowOp::SetMode { window_id, mode } => {
+                let iced_mode = match mode {
+                    WindowMode::Fullscreen => window::Mode::Fullscreen,
+                    WindowMode::Windowed => window::Mode::Windowed,
+                };
+                self.with_iced(&window_id, |id| window::set_mode(id, iced_mode))
             }
-            "minimize" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let minimized = settings
-                        .get("minimized")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
-                    window::minimize(iced_id, minimized)
-                } else {
-                    Task::none()
-                }
+            WindowOp::ToggleMaximize(window_id) => {
+                self.with_iced(&window_id, window::toggle_maximize)
             }
-            "set_mode" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let mode = parse_window_mode(settings);
-                    window::set_mode(iced_id, mode)
-                } else {
-                    Task::none()
-                }
+            WindowOp::ToggleDecorations(window_id) => {
+                let current = self.windows.is_decorated(&window_id);
+                self.windows.set_decorated(&window_id, !current);
+                self.with_iced(&window_id, window::toggle_decorations)
             }
-            "toggle_maximize" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    window::toggle_maximize(iced_id)
-                } else {
-                    Task::none()
-                }
-            }
-            "toggle_decorations" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let current = self.windows.is_decorated(window_id);
-                    self.windows.set_decorated(window_id, !current);
-                    window::toggle_decorations(iced_id)
-                } else {
-                    Task::none()
-                }
-            }
-            "gain_focus" => {
+            WindowOp::FocusWindow(window_id) => {
                 warn_wayland_noop("gain_focus");
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    window::gain_focus(iced_id)
-                } else {
-                    Task::none()
-                }
+                self.with_iced(&window_id, window::gain_focus)
             }
-            "set_level" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let level = parse_window_level(
-                        settings
-                            .get("level")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("normal"),
-                    );
-                    window::set_level(iced_id, level)
-                } else {
-                    Task::none()
-                }
+            WindowOp::SetLevel { window_id, level } => {
+                let iced_level = match level {
+                    WindowLevel::Normal => window::Level::Normal,
+                    WindowLevel::AlwaysOnTop => window::Level::AlwaysOnTop,
+                    WindowLevel::AlwaysOnBottom => window::Level::AlwaysOnBottom,
+                };
+                self.with_iced(&window_id, |id| window::set_level(id, iced_level))
             }
-            "drag" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    window::drag(iced_id)
-                } else {
-                    Task::none()
-                }
-            }
-            "drag_resize" => {
+            WindowOp::DragWindow(window_id) => self.with_iced(&window_id, window::drag),
+            WindowOp::DragResize {
+                window_id,
+                direction,
+            } => {
                 #[cfg(target_os = "macos")]
                 log::warn!("drag_resize is not supported on macOS");
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let direction = parse_direction(
-                        settings
-                            .get("direction")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("south_east"),
-                    );
-                    window::drag_resize(iced_id, direction)
-                } else {
-                    Task::none()
-                }
+                let dir = parse_direction(&direction);
+                self.with_iced(&window_id, |id| window::drag_resize(id, dir))
             }
-            "request_attention" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let urgency =
-                        settings
-                            .get("urgency")
-                            .and_then(|v| v.as_str())
-                            .map(|s| match s {
-                                "critical" => window::UserAttention::Critical,
-                                _ => window::UserAttention::Informational,
-                            });
-                    window::request_user_attention(iced_id, urgency)
-                } else {
-                    Task::none()
-                }
+            WindowOp::RequestAttention { window_id, urgency } => {
+                let attention = urgency.map(|u| match u {
+                    NotificationUrgency::Critical => window::UserAttention::Critical,
+                    NotificationUrgency::Normal | NotificationUrgency::Low => {
+                        window::UserAttention::Informational
+                    }
+                });
+                self.with_iced(&window_id, |id| {
+                    window::request_user_attention(id, attention)
+                })
             }
-            "show_system_menu" => {
+            WindowOp::Screenshot { window_id, tag } => self.screenshot_task(&window_id, &tag),
+            WindowOp::SetResizable {
+                window_id,
+                resizable,
+            } => self.with_iced(&window_id, |id| window::set_resizable(id, resizable)),
+            WindowOp::SetMinSize {
+                window_id,
+                width,
+                height,
+            } => self.with_iced(&window_id, |id| {
+                window::set_min_size(id, Some(Size::new(width, height)))
+            }),
+            WindowOp::SetMaxSize {
+                window_id,
+                width,
+                height,
+            } => self.with_iced(&window_id, |id| {
+                window::set_max_size(id, Some(Size::new(width, height)))
+            }),
+            WindowOp::EnableMousePassthrough(window_id) => {
+                self.with_iced(&window_id, window::enable_mouse_passthrough)
+            }
+            WindowOp::DisableMousePassthrough(window_id) => {
+                self.with_iced(&window_id, window::disable_mouse_passthrough)
+            }
+            WindowOp::ShowSystemMenu(window_id) => {
                 #[cfg(not(target_os = "windows"))]
                 log::warn!("show_system_menu is only supported on Windows");
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    window::show_system_menu(iced_id)
-                } else {
-                    Task::none()
-                }
+                self.with_iced(&window_id, window::show_system_menu)
             }
-            "set_resizable" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let resizable = settings
-                        .get("resizable")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
-                    window::set_resizable(iced_id, resizable)
-                } else {
-                    Task::none()
-                }
+            WindowOp::SetIcon {
+                window_id,
+                data,
+                width,
+                height,
+            } => {
+                warn_wayland_noop("set_icon");
+                self.dispatch_set_icon(&window_id, data, width, height)
             }
-            "set_min_size" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let size = parse_optional_size(settings);
-                    window::set_min_size(iced_id, size)
-                } else {
-                    Task::none()
-                }
+            WindowOp::SetResizeIncrements {
+                window_id,
+                width,
+                height,
+            } => self.with_iced(&window_id, |id| {
+                window::set_resize_increments(id, Some(Size::new(width, height)))
+            }),
+            _ => {
+                log::warn!("unhandled WindowOp variant");
+                Task::none()
             }
-            "set_max_size" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let size = parse_optional_size(settings);
-                    window::set_max_size(iced_id, size)
-                } else {
-                    Task::none()
-                }
-            }
-            // Platform: X11 uses SHAPE extension, Windows uses
-            // WS_EX_TRANSPARENT, macOS uses ignoresMouseEvents. On Wayland,
-            // support depends on the compositor and may silently no-op.
-            "mouse_passthrough" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let enabled = settings
-                        .get("enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
-                    if enabled {
-                        window::enable_mouse_passthrough(iced_id)
-                    } else {
-                        window::disable_mouse_passthrough(iced_id)
+        }
+    }
+
+    /// Dispatch a typed [`WindowQuery`]. Each variant produces a
+    /// response event via the emitter sink when the underlying iced
+    /// task resolves.
+    pub fn dispatch_window_query(&mut self, q: WindowQuery) -> Task<Message> {
+        let sink = self.emitter.sink();
+        match q {
+            WindowQuery::GetSize { window_id, tag } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    return Task::none();
+                };
+                let wid = window_id.clone();
+                window::size(iced_id).map(move |size| {
+                    let data = serde_json::json!({
+                        "width": size.width,
+                        "height": size.height,
+                        "op": "get_size",
+                        "request_id": tag,
+                    });
+                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+                    if let Err(e) = sink.lock().emit_effect_response(resp) {
+                        log::error!("write error: {e}");
                     }
-                } else {
-                    Task::none()
-                }
+                    Message::NoOp
+                })
             }
-            // -- Query operations: return results as effect_response --
-            "get_size" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::size(iced_id).map(move |size| {
-                        let mut data = serde_json::json!({
+            WindowQuery::GetPosition { window_id, tag } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    return Task::none();
+                };
+                let wid = window_id.clone();
+                window::position(iced_id).map(move |pos| {
+                    let data = match pos {
+                        Some(p) => serde_json::json!({
+                            "x": p.x,
+                            "y": p.y,
+                            "op": "get_position",
+                            "request_id": tag,
+                        }),
+                        None => serde_json::json!({
+                            "op": "get_position",
+                            "request_id": tag,
+                        }),
+                    };
+                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+                    if let Err(e) = sink.lock().emit_effect_response(resp) {
+                        log::error!("write error: {e}");
+                    }
+                    Message::NoOp
+                })
+            }
+            WindowQuery::GetMode { window_id, tag } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    return Task::none();
+                };
+                let wid = window_id.clone();
+                window::mode(iced_id).map(move |mode| {
+                    let mode_str = match mode {
+                        window::Mode::Windowed => "windowed",
+                        window::Mode::Fullscreen => "fullscreen",
+                        window::Mode::Hidden => "hidden",
+                    };
+                    let data = serde_json::json!({
+                        "mode": mode_str,
+                        "op": "get_mode",
+                        "request_id": tag,
+                    });
+                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+                    if let Err(e) = sink.lock().emit_effect_response(resp) {
+                        log::error!("write error: {e}");
+                    }
+                    Message::NoOp
+                })
+            }
+            WindowQuery::GetScaleFactor { window_id, tag } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    return Task::none();
+                };
+                let wid = window_id.clone();
+                window::scale_factor(iced_id).map(move |factor| {
+                    let data = serde_json::json!({
+                        "scale_factor": factor,
+                        "op": "get_scale_factor",
+                        "request_id": tag,
+                    });
+                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+                    if let Err(e) = sink.lock().emit_effect_response(resp) {
+                        log::error!("write error: {e}");
+                    }
+                    Message::NoOp
+                })
+            }
+            WindowQuery::IsMaximized { window_id, tag } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    return Task::none();
+                };
+                let wid = window_id.clone();
+                window::is_maximized(iced_id).map(move |val| {
+                    let data = serde_json::json!({
+                        "maximized": val,
+                        "op": "is_maximized",
+                        "request_id": tag,
+                    });
+                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+                    if let Err(e) = sink.lock().emit_effect_response(resp) {
+                        log::error!("write error: {e}");
+                    }
+                    Message::NoOp
+                })
+            }
+            WindowQuery::IsMinimized { window_id, tag } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    return Task::none();
+                };
+                let wid = window_id.clone();
+                window::is_minimized(iced_id).map(move |val| {
+                    let data = serde_json::json!({
+                        "minimized": val,
+                        "op": "is_minimized",
+                        "request_id": tag,
+                    });
+                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+                    if let Err(e) = sink.lock().emit_effect_response(resp) {
+                        log::error!("write error: {e}");
+                    }
+                    Message::NoOp
+                })
+            }
+            WindowQuery::MonitorSize { window_id, tag } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    return Task::none();
+                };
+                let wid = window_id.clone();
+                window::monitor_size(iced_id).map(move |size_opt| {
+                    let data = match size_opt {
+                        Some(size) => serde_json::json!({
                             "width": size.width,
                             "height": size.height,
-                            "op": "get_size",
-                        });
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            "get_position" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::position(iced_id).map(move |pos| {
-                        let mut data = match pos {
-                            Some(p) => {
-                                serde_json::json!({"x": p.x, "y": p.y, "op": "get_position"})
-                            }
-                            None => serde_json::json!({"op": "get_position"}),
-                        };
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            "get_mode" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::mode(iced_id).map(move |mode| {
-                        let mode_str = match mode {
-                            window::Mode::Windowed => "windowed",
-                            window::Mode::Fullscreen => "fullscreen",
-                            window::Mode::Hidden => "hidden",
-                        };
-                        let mut data = serde_json::json!({
-                            "mode": mode_str,
-                            "op": "get_mode",
-                        });
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            "get_scale_factor" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::scale_factor(iced_id).map(move |factor| {
-                        let mut data = serde_json::json!({
-                            "scale_factor": factor,
-                            "op": "get_scale_factor",
-                        });
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            "is_maximized" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::is_maximized(iced_id).map(move |val| {
-                        let mut data = serde_json::json!({
-                            "maximized": val,
-                            "op": "is_maximized",
-                        });
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            "is_minimized" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::is_minimized(iced_id).map(move |val| {
-                        let mut data = serde_json::json!({
-                            "minimized": val,
-                            "op": "is_minimized",
-                        });
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            "screenshot" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::screenshot(iced_id).map(move |screenshot| {
-                        let rgba_b64 = {
-                            Some(base64::engine::general_purpose::STANDARD.encode(&screenshot.rgba))
-                        };
-
-                        let mut data = serde_json::json!({
-                            "width": screenshot.size.width,
-                            "height": screenshot.size.height,
-                            "bytes_len": screenshot.rgba.len(),
-                            "op": "screenshot",
-                        });
-                        if let Some(b64) = rgba_b64 {
-                            data["rgba"] = serde_json::json!(b64);
-                        }
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            // Icon size recommendations:
-            // - Windows: 32x32 or 64x64 RGBA (smaller icons are upscaled)
-            // - macOS: 512x512 or 1024x1024 (macOS uses larger icons)
-            // - Linux: 32x32 or 48x48 (depends on WM/DE)
-            // All platforms: square, power-of-two dimensions recommended.
-            "set_icon" => {
-                warn_wayland_noop("set_icon");
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let icon_data_b64 = settings
-                        .get("icon_data")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
-                    let width = settings.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                    let height =
-                        settings.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-
-                    const MAX_ICON_DIMENSION: u32 = 1024;
-
-                    if width == 0 || height == 0 {
-                        log::error!("set_icon: zero dimension ({}x{})", width, height);
-                        return Task::none();
-                    }
-                    if width > MAX_ICON_DIMENSION || height > MAX_ICON_DIMENSION {
-                        log::error!(
-                            "set_icon: dimensions {}x{} exceed maximum {}",
-                            width,
-                            height,
-                            MAX_ICON_DIMENSION
-                        );
-                        return Task::none();
-                    }
-                    if width != height {
-                        log::warn!(
-                            "set_icon: non-square icon ({}x{}); some platforms may render poorly",
-                            width,
-                            height
-                        );
-                    }
-
-                    match base64::engine::general_purpose::STANDARD.decode(icon_data_b64) {
-                        Ok(rgba) => {
-                            let expected_len = match (width as usize)
-                                .checked_mul(height as usize)
-                                .and_then(|v| v.checked_mul(4))
-                            {
-                                Some(len) => len,
-                                None => {
-                                    log::error!(
-                                        "set_icon: dimensions {}x{} would overflow",
-                                        width,
-                                        height
-                                    );
-                                    return Task::none();
-                                }
-                            };
-                            if rgba.len() != expected_len {
-                                log::error!(
-                                    "set_icon: expected {} bytes ({}x{}x4), got {}",
-                                    expected_len,
-                                    width,
-                                    height,
-                                    rgba.len()
-                                );
-                                return Task::none();
-                            }
-                            match window::icon::from_rgba(rgba, width, height) {
-                                Ok(icon) => window::set_icon(iced_id, icon),
-                                Err(e) => {
-                                    log::error!("set_icon: icon creation failed: {e}");
-                                    Task::none()
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("set_icon: base64 decode failed: {e}");
-                            Task::none()
-                        }
-                    }
-                } else {
-                    Task::none()
-                }
-            }
-            "raw_id" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::raw_id::<Message>(iced_id).map(move |raw| {
-                        let mut data = serde_json::json!({
-                            "raw_id": raw,
-                            "op": "raw_id",
-                            "platform": std::env::consts::OS,
-                        });
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            // Returns logical dimensions (physical pixels / scale_factor).
-            // On HiDPI displays, these are smaller than the actual pixel count.
-            "monitor_size" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let wid = window_id.to_string();
-                    let req_id = settings.get("request_id").cloned();
-                    window::monitor_size(iced_id).map(move |size_opt| {
-                        let mut data = match size_opt {
-                            Some(size) => serde_json::json!({
-                                "width": size.width,
-                                "height": size.height,
-                                "op": "monitor_size",
-                            }),
-                            None => serde_json::json!({"op": "monitor_size"}),
-                        };
-                        if let Some(rid) = &req_id {
-                            data["request_id"] = rid.clone();
-                        }
-                        let resp =
-                            plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                        if let Err(e) = sink.lock().emit_effect_response(resp) {
-                            log::error!("write error: {e}");
-                        }
-                        Message::NoOp
-                    })
-                } else {
-                    Task::none()
-                }
-            }
-            "set_resize_increments" => {
-                if let Some(&iced_id) = self.windows.get_iced(window_id) {
-                    let w = settings
-                        .get("width")
-                        .and_then(|v| v.as_f64())
-                        .map(|v| v as f32);
-                    let h = settings
-                        .get("height")
-                        .and_then(|v| v.as_f64())
-                        .map(|v| v as f32);
-                    let increments = match (w, h) {
-                        (Some(w), Some(h)) => Some(Size::new(w, h)),
-                        _ => None,
+                            "op": "monitor_size",
+                            "request_id": tag,
+                        }),
+                        None => serde_json::json!({
+                            "op": "monitor_size",
+                            "request_id": tag,
+                        }),
                     };
-                    window::set_resize_increments(iced_id, increments)
-                } else {
-                    Task::none()
-                }
-            }
-            other => {
-                log::warn!("unknown window_op: {other}");
-                Task::none()
-            }
-        }
-    }
-
-    pub fn handle_system_query(&mut self, op: &str, settings: &serde_json::Value) -> Task<Message> {
-        match op {
-            "get_system_theme" => {
-                let tag = settings
-                    .get("tag")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("system_theme")
-                    .to_string();
-                let sink = self.emitter.sink();
-                iced::system::theme().map(move |mode| {
-                    let mode_str = match mode {
-                        iced::theme::Mode::Light => "light",
-                        iced::theme::Mode::Dark => "dark",
-                        iced::theme::Mode::None => "none",
-                    };
-                    // sink lock is the innermost; no nested locks.
-                    let mut guard = sink.lock();
-                    if let Err(e) = guard.emit_query_response(
-                        "system_theme",
-                        &tag,
-                        &serde_json::json!(mode_str),
-                    ) {
+                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+                    if let Err(e) = sink.lock().emit_effect_response(resp) {
                         log::error!("write error: {e}");
                     }
                     Message::NoOp
                 })
             }
-            #[cfg(not(target_arch = "wasm32"))]
-            "get_system_info" => {
-                let tag = settings
-                    .get("tag")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("system_info")
-                    .to_string();
-                let sink = self.emitter.sink();
-                iced::system::information().map(move |info| {
+            WindowQuery::RawId { window_id, tag } => {
+                let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    return Task::none();
+                };
+                let wid = window_id.clone();
+                window::raw_id::<Message>(iced_id).map(move |raw| {
                     let data = serde_json::json!({
-                        "system_name": info.system_name,
-                        "system_kernel": info.system_kernel,
-                        "system_version": info.system_version,
-                        "system_short_version": info.system_short_version,
-                        "cpu_brand": info.cpu_brand,
-                        "cpu_cores": info.cpu_cores,
-                        "memory_total": info.memory_total,
-                        "memory_used": info.memory_used,
-                        "graphics_backend": info.graphics_backend,
-                        "graphics_adapter": info.graphics_adapter,
+                        "raw_id": raw,
+                        "op": "raw_id",
+                        "platform": std::env::consts::OS,
+                        "request_id": tag,
                     });
-                    // sink lock is the innermost; no nested locks.
-                    let mut guard = sink.lock();
-                    if let Err(e) = guard.emit_query_response("system_info", &tag, &data) {
+                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+                    if let Err(e) = sink.lock().emit_effect_response(resp) {
                         log::error!("write error: {e}");
                     }
                     Message::NoOp
                 })
             }
-            other => {
-                log::warn!("unknown system_query: {other}");
+            _ => {
+                log::warn!("unhandled WindowQuery variant");
                 Task::none()
             }
         }
     }
 
-    pub fn handle_system_op(&mut self, op: &str, settings: &serde_json::Value) -> Task<Message> {
+    /// Dispatch a typed [`SystemOp`].
+    pub fn dispatch_system_op(&mut self, op: SystemOp) -> Task<Message> {
         match op {
-            "allow_automatic_tabbing" => {
-                let enabled = settings
-                    .get("enabled")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
-                window::allow_automatic_tabbing(enabled)
+            SystemOp::AllowAutomaticTabbing(enabled) => window::allow_automatic_tabbing(enabled),
+        }
+    }
+
+    /// Dispatch a typed [`SystemQuery`]. Responses are emitted via the
+    /// sink when the underlying iced task resolves.
+    pub fn dispatch_system_query(&mut self, q: SystemQuery) -> Task<Message> {
+        let sink = self.emitter.sink();
+        match q {
+            SystemQuery::GetTheme { tag } => iced::system::theme().map(move |mode| {
+                let mode_str = match mode {
+                    iced::theme::Mode::Light => "light",
+                    iced::theme::Mode::Dark => "dark",
+                    iced::theme::Mode::None => "none",
+                };
+                let mut guard = sink.lock();
+                if let Err(e) =
+                    guard.emit_query_response("system_theme", &tag, &serde_json::json!(mode_str))
+                {
+                    log::error!("write error: {e}");
+                }
+                Message::NoOp
+            }),
+            #[cfg(not(target_arch = "wasm32"))]
+            SystemQuery::GetInfo { tag } => iced::system::information().map(move |info| {
+                let data = serde_json::json!({
+                    "system_name": info.system_name,
+                    "system_kernel": info.system_kernel,
+                    "system_version": info.system_version,
+                    "system_short_version": info.system_short_version,
+                    "cpu_brand": info.cpu_brand,
+                    "cpu_cores": info.cpu_cores,
+                    "memory_total": info.memory_total,
+                    "memory_used": info.memory_used,
+                    "graphics_backend": info.graphics_backend,
+                    "graphics_adapter": info.graphics_adapter,
+                });
+                let mut guard = sink.lock();
+                if let Err(e) = guard.emit_query_response("system_info", &tag, &data) {
+                    log::error!("write error: {e}");
+                }
+                Message::NoOp
+            }),
+            #[cfg(target_arch = "wasm32")]
+            SystemQuery::GetInfo { .. } => Task::none(),
+            _ => {
+                log::warn!("unhandled SystemQuery variant");
+                Task::none()
             }
-            other => {
-                log::warn!("unknown system_op: {other}");
+        }
+    }
+
+    fn with_iced(
+        &self,
+        window_id: &str,
+        f: impl FnOnce(window::Id) -> Task<Message>,
+    ) -> Task<Message> {
+        match self.windows.get_iced(window_id) {
+            Some(&id) => f(id),
+            None => {
+                log::warn!("window_op: unknown window_id: {window_id}");
+                Task::none()
+            }
+        }
+    }
+
+    fn screenshot_task(&self, window_id: &str, tag: &str) -> Task<Message> {
+        let Some(&iced_id) = self.windows.get_iced(window_id) else {
+            return Task::none();
+        };
+        use base64::Engine as _;
+        let sink = self.emitter.sink();
+        let wid = window_id.to_string();
+        let tag = tag.to_string();
+        window::screenshot(iced_id).map(move |screenshot| {
+            let rgba_b64 = base64::engine::general_purpose::STANDARD.encode(&screenshot.rgba);
+            let data = serde_json::json!({
+                "width": screenshot.size.width,
+                "height": screenshot.size.height,
+                "bytes_len": screenshot.rgba.len(),
+                "rgba": rgba_b64,
+                "op": "screenshot",
+                "request_id": tag,
+            });
+            let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
+            if let Err(e) = sink.lock().emit_effect_response(resp) {
+                log::error!("write error: {e}");
+            }
+            Message::NoOp
+        })
+    }
+
+    fn dispatch_set_icon(
+        &self,
+        window_id: &str,
+        data: Vec<u8>,
+        width: u32,
+        height: u32,
+    ) -> Task<Message> {
+        const MAX_ICON_DIMENSION: u32 = 1024;
+        let Some(&iced_id) = self.windows.get_iced(window_id) else {
+            return Task::none();
+        };
+        if width == 0 || height == 0 {
+            log::error!("set_icon: zero dimension ({width}x{height})");
+            return Task::none();
+        }
+        if width > MAX_ICON_DIMENSION || height > MAX_ICON_DIMENSION {
+            log::error!(
+                "set_icon: dimensions {width}x{height} exceed maximum {MAX_ICON_DIMENSION}"
+            );
+            return Task::none();
+        }
+        if width != height {
+            log::warn!(
+                "set_icon: non-square icon ({width}x{height}); some platforms may render poorly"
+            );
+        }
+        let expected_len = match (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|v| v.checked_mul(4))
+        {
+            Some(len) => len,
+            None => {
+                log::error!("set_icon: dimensions {width}x{height} would overflow");
+                return Task::none();
+            }
+        };
+        if data.len() != expected_len {
+            log::error!(
+                "set_icon: expected {expected_len} bytes ({width}x{height}x4), got {}",
+                data.len()
+            );
+            return Task::none();
+        }
+        match window::icon::from_rgba(data, width, height) {
+            Ok(icon) => window::set_icon(iced_id, icon),
+            Err(e) => {
+                log::error!("set_icon: icon creation failed: {e}");
                 Task::none()
             }
         }
@@ -900,7 +743,7 @@ pub fn parse_window_settings(v: &serde_json::Value) -> window::Settings {
     let min_size = parse_optional_size(v.get("min_size").unwrap_or(&serde_json::Value::Null));
     let max_size = parse_optional_size(v.get("max_size").unwrap_or(&serde_json::Value::Null));
 
-    let level = parse_window_level(v.get("level").and_then(|v| v.as_str()).unwrap_or("normal"));
+    let level = parse_window_level_str(v.get("level").and_then(|v| v.as_str()).unwrap_or("normal"));
 
     window::Settings {
         size: Size::new(width, height),
@@ -937,26 +780,11 @@ fn parse_optional_size(v: &serde_json::Value) -> Option<Size> {
     Some(Size::new(w, h))
 }
 
-fn parse_window_level(s: &str) -> window::Level {
+fn parse_window_level_str(s: &str) -> window::Level {
     match s {
         "always_on_top" => window::Level::AlwaysOnTop,
         "always_on_bottom" => window::Level::AlwaysOnBottom,
         _ => window::Level::Normal,
-    }
-}
-
-/// Parse a window mode from a JSON value.
-///
-/// Supported modes: `"windowed"` (default), `"fullscreen"`, `"hidden"`.
-///
-/// Note: `"fullscreen"` maps to borderless windowed fullscreen (not
-/// exclusive fullscreen). This is the iced default and provides better
-/// multi-monitor behavior and faster alt-tab than exclusive mode.
-fn parse_window_mode(v: &serde_json::Value) -> window::Mode {
-    match v.get("mode").and_then(|v| v.as_str()).unwrap_or("windowed") {
-        "fullscreen" => window::Mode::Fullscreen,
-        "hidden" => window::Mode::Hidden,
-        _ => window::Mode::Windowed,
     }
 }
 
@@ -1045,40 +873,20 @@ mod tests {
     #[test]
     fn parse_window_level_variants() {
         assert!(matches!(
-            parse_window_level("always_on_top"),
+            parse_window_level_str("always_on_top"),
             window::Level::AlwaysOnTop
         ));
         assert!(matches!(
-            parse_window_level("always_on_bottom"),
+            parse_window_level_str("always_on_bottom"),
             window::Level::AlwaysOnBottom
         ));
         assert!(matches!(
-            parse_window_level("normal"),
+            parse_window_level_str("normal"),
             window::Level::Normal
         ));
         assert!(matches!(
-            parse_window_level("unknown"),
+            parse_window_level_str("unknown"),
             window::Level::Normal
-        ));
-    }
-
-    #[test]
-    fn parse_window_mode_variants() {
-        assert!(matches!(
-            parse_window_mode(&json!({"mode": "fullscreen"})),
-            window::Mode::Fullscreen
-        ));
-        assert!(matches!(
-            parse_window_mode(&json!({"mode": "hidden"})),
-            window::Mode::Hidden
-        ));
-        assert!(matches!(
-            parse_window_mode(&json!({"mode": "windowed"})),
-            window::Mode::Windowed
-        ));
-        assert!(matches!(
-            parse_window_mode(&json!({})),
-            window::Mode::Windowed
         ));
     }
 

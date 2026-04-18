@@ -908,8 +908,16 @@ impl Command {
     }
 
     /// Load a font from raw byte data.
-    pub fn load_font(data: Vec<u8>) -> Self {
-        Self::Renderer(RendererOp::LoadFont(data))
+    ///
+    /// `family` is the name the app will reference this font by, e.g.
+    /// `"Inter"`. It flows into the renderer's loaded-font registry so
+    /// subsequent `default_font.family` settings and widget `font.family`
+    /// props can resolve to this font without parsing its metadata.
+    pub fn load_font(family: impl Into<String>, bytes: Vec<u8>) -> Self {
+        Self::Renderer(RendererOp::LoadFont {
+            family: family.into(),
+            bytes,
+        })
     }
 
     /// Request a hash of the current widget tree.

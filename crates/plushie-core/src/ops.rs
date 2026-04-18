@@ -168,7 +168,18 @@ pub enum RendererOp {
         politeness: crate::types::a11y::Live,
     },
     /// Load a font from raw byte data.
-    LoadFont(Vec<u8>),
+    ///
+    /// `family` is the name the app will use when referring to this font
+    /// (via `default_font.family` in Settings or in widget font props).
+    /// The renderer records the family in the loaded-font registry so
+    /// `resolve_font_with_fallback` can match the name without parsing
+    /// font metadata.
+    LoadFont {
+        /// The family name the app will use to reference this font.
+        family: String,
+        /// Font file bytes (TrueType, OpenType, or TrueType Collection).
+        bytes: Vec<u8>,
+    },
 
     // -- Subscriptions --
     /// Subscribe to a renderer event source.
@@ -213,9 +224,37 @@ pub enum RendererOp {
 // ---------------------------------------------------------------------------
 
 /// A window management operation.
+///
+/// Covers the full lifecycle (open, update props, close) plus every
+/// in-flight state change the renderer understands. Variants carry
+/// the typed data they need; the renderer dispatches on this enum
+/// rather than matching on string op names.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum WindowOp {
+    /// Open a new window with the given initial settings.
+    ///
+    /// `settings` is a JSON object with the subset of
+    /// [`WINDOW_PROP_KEYS`] keys the host wants to specify; any
+    /// unspecified field falls back to iced's defaults. Runtime-only
+    /// fields like `icon_data` are nested under their usual keys.
+    Open {
+        /// Target window ID.
+        window_id: String,
+        /// Initial window settings as a JSON object.
+        settings: Value,
+    },
+    /// Apply in-place changes to an already-open window.
+    ///
+    /// Only keys present in `settings` are applied; the renderer
+    /// leaves everything else untouched. Used when a surviving
+    /// window's node props change between renders.
+    Update {
+        /// Target window ID.
+        window_id: String,
+        /// Subset of window settings to apply.
+        settings: Value,
+    },
     /// Close a window.
     Close(String),
     /// Resize a window to the given logical dimensions.
@@ -408,6 +447,422 @@ pub enum WindowQuery {
     },
 }
 
+impl WindowOp {
+    /// Build a typed [`WindowOp`] from the wire-protocol `{op, window_id,
+    /// payload}` triple. Returns `None` for unrecognised op strings so the
+    /// caller can log a diagnostic and continue.
+    pub fn from_wire(op: &str, window_id: &str, payload: &Value) -> Option<Self> {
+        let wid = || window_id.to_string();
+        let f = |key: &str, default: f32| -> f32 {
+            payload
+                .get(key)
+                .and_then(|v| v.as_f64())
+                .map(|v| v as f32)
+                .unwrap_or(default)
+        };
+        let b = |key: &str, default: bool| -> bool {
+            payload
+                .get(key)
+                .and_then(|v| v.as_bool())
+                .unwrap_or(default)
+        };
+        let s = |key: &str| -> String {
+            payload
+                .get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
+        match op {
+            "open" => Some(Self::Open {
+                window_id: wid(),
+                settings: payload.clone(),
+            }),
+            "update" => Some(Self::Update {
+                window_id: wid(),
+                settings: payload.clone(),
+            }),
+            "close" => Some(Self::Close(wid())),
+            "resize" => Some(Self::Resize {
+                window_id: wid(),
+                width: f("width", 800.0),
+                height: f("height", 600.0),
+            }),
+            "move" => Some(Self::Move {
+                window_id: wid(),
+                x: f("x", 0.0),
+                y: f("y", 0.0),
+            }),
+            "maximize" => Some(Self::Maximize {
+                window_id: wid(),
+                maximized: b("maximized", true),
+            }),
+            "minimize" => Some(Self::Minimize {
+                window_id: wid(),
+                minimized: b("minimized", true),
+            }),
+            "set_mode" => {
+                let mode = payload
+                    .get("mode")
+                    .and_then(|v| v.as_str())
+                    .map(|s| match s {
+                        "fullscreen" => WindowMode::Fullscreen,
+                        _ => WindowMode::Windowed,
+                    })
+                    .unwrap_or(WindowMode::Windowed);
+                Some(Self::SetMode {
+                    window_id: wid(),
+                    mode,
+                })
+            }
+            "toggle_maximize" => Some(Self::ToggleMaximize(wid())),
+            "toggle_decorations" => Some(Self::ToggleDecorations(wid())),
+            "gain_focus" => Some(Self::FocusWindow(wid())),
+            "set_level" => {
+                let level = payload
+                    .get("level")
+                    .and_then(|v| v.as_str())
+                    .map(|s| match s {
+                        "always_on_top" => WindowLevel::AlwaysOnTop,
+                        "always_on_bottom" => WindowLevel::AlwaysOnBottom,
+                        _ => WindowLevel::Normal,
+                    })
+                    .unwrap_or(WindowLevel::Normal);
+                Some(Self::SetLevel {
+                    window_id: wid(),
+                    level,
+                })
+            }
+            "drag" => Some(Self::DragWindow(wid())),
+            "drag_resize" => Some(Self::DragResize {
+                window_id: wid(),
+                direction: s("direction"),
+            }),
+            "request_attention" => {
+                let urgency =
+                    payload
+                        .get("urgency")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| match s {
+                            "low" => Some(NotificationUrgency::Low),
+                            "normal" => Some(NotificationUrgency::Normal),
+                            "critical" => Some(NotificationUrgency::Critical),
+                            _ => None,
+                        });
+                Some(Self::RequestAttention {
+                    window_id: wid(),
+                    urgency,
+                })
+            }
+            "screenshot" => Some(Self::Screenshot {
+                window_id: wid(),
+                tag: s("tag"),
+            }),
+            "set_resizable" => Some(Self::SetResizable {
+                window_id: wid(),
+                resizable: b("resizable", true),
+            }),
+            "set_min_size" => Some(Self::SetMinSize {
+                window_id: wid(),
+                width: f("width", 0.0),
+                height: f("height", 0.0),
+            }),
+            "set_max_size" => Some(Self::SetMaxSize {
+                window_id: wid(),
+                width: f("width", 0.0),
+                height: f("height", 0.0),
+            }),
+            "mouse_passthrough" => {
+                let enabled = b("enabled", true);
+                if enabled {
+                    Some(Self::EnableMousePassthrough(wid()))
+                } else {
+                    Some(Self::DisableMousePassthrough(wid()))
+                }
+            }
+            "show_system_menu" => Some(Self::ShowSystemMenu(wid())),
+            "set_icon" => {
+                use base64::Engine as _;
+                let b64 = payload
+                    .get("data")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let data = base64::engine::general_purpose::STANDARD
+                    .decode(b64)
+                    .unwrap_or_default();
+                let width = payload.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let height = payload.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                Some(Self::SetIcon {
+                    window_id: wid(),
+                    data,
+                    width,
+                    height,
+                })
+            }
+            "set_resize_increments" => Some(Self::SetResizeIncrements {
+                window_id: wid(),
+                width: f("width", 0.0),
+                height: f("height", 0.0),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Emit the wire-protocol `(op, window_id, payload)` triple for this
+    /// typed WindowOp. Used by [`crate::ops::WindowOp`] consumers on the
+    /// SDK side that speak the JSON wire format to the renderer.
+    pub fn to_wire(&self) -> (&'static str, String, Value) {
+        use serde_json::json;
+        match self {
+            Self::Open {
+                window_id,
+                settings,
+            } => ("open", window_id.clone(), settings.clone()),
+            Self::Update {
+                window_id,
+                settings,
+            } => ("update", window_id.clone(), settings.clone()),
+            Self::Close(id) => ("close", id.clone(), Value::Null),
+            Self::Resize {
+                window_id,
+                width,
+                height,
+            } => (
+                "resize",
+                window_id.clone(),
+                json!({"width": width, "height": height}),
+            ),
+            Self::Move { window_id, x, y } => ("move", window_id.clone(), json!({"x": x, "y": y})),
+            Self::Maximize {
+                window_id,
+                maximized,
+            } => (
+                "maximize",
+                window_id.clone(),
+                json!({"maximized": maximized}),
+            ),
+            Self::Minimize {
+                window_id,
+                minimized,
+            } => (
+                "minimize",
+                window_id.clone(),
+                json!({"minimized": minimized}),
+            ),
+            Self::SetMode { window_id, mode } => (
+                "set_mode",
+                window_id.clone(),
+                json!({"mode": mode.to_string()}),
+            ),
+            Self::ToggleMaximize(id) => ("toggle_maximize", id.clone(), json!({})),
+            Self::ToggleDecorations(id) => ("toggle_decorations", id.clone(), json!({})),
+            Self::FocusWindow(id) => ("gain_focus", id.clone(), json!({})),
+            Self::SetLevel { window_id, level } => (
+                "set_level",
+                window_id.clone(),
+                json!({"level": level.to_string()}),
+            ),
+            Self::DragWindow(id) => ("drag", id.clone(), json!({})),
+            Self::DragResize {
+                window_id,
+                direction,
+            } => (
+                "drag_resize",
+                window_id.clone(),
+                json!({"direction": direction}),
+            ),
+            Self::RequestAttention { window_id, urgency } => {
+                let mut v = json!({});
+                if let Some(u) = urgency {
+                    v["urgency"] = json!(u);
+                }
+                ("request_attention", window_id.clone(), v)
+            }
+            Self::Screenshot { window_id, tag } => {
+                ("screenshot", window_id.clone(), json!({"tag": tag}))
+            }
+            Self::SetResizable {
+                window_id,
+                resizable,
+            } => (
+                "set_resizable",
+                window_id.clone(),
+                json!({"resizable": resizable}),
+            ),
+            Self::SetMinSize {
+                window_id,
+                width,
+                height,
+            } => (
+                "set_min_size",
+                window_id.clone(),
+                json!({"width": width, "height": height}),
+            ),
+            Self::SetMaxSize {
+                window_id,
+                width,
+                height,
+            } => (
+                "set_max_size",
+                window_id.clone(),
+                json!({"width": width, "height": height}),
+            ),
+            Self::EnableMousePassthrough(id) => {
+                ("mouse_passthrough", id.clone(), json!({"enabled": true}))
+            }
+            Self::DisableMousePassthrough(id) => {
+                ("mouse_passthrough", id.clone(), json!({"enabled": false}))
+            }
+            Self::ShowSystemMenu(id) => ("show_system_menu", id.clone(), json!({})),
+            Self::SetIcon {
+                window_id,
+                data,
+                width,
+                height,
+            } => {
+                use base64::Engine as _;
+                let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+                (
+                    "set_icon",
+                    window_id.clone(),
+                    json!({"data": b64, "width": width, "height": height}),
+                )
+            }
+            Self::SetResizeIncrements {
+                window_id,
+                width,
+                height,
+            } => (
+                "set_resize_increments",
+                window_id.clone(),
+                json!({"width": width, "height": height}),
+            ),
+        }
+    }
+
+    /// Return the window ID this op targets, when one applies.
+    pub fn window_id(&self) -> Option<&str> {
+        match self {
+            Self::Open { window_id, .. }
+            | Self::Update { window_id, .. }
+            | Self::Resize { window_id, .. }
+            | Self::Move { window_id, .. }
+            | Self::Maximize { window_id, .. }
+            | Self::Minimize { window_id, .. }
+            | Self::SetMode { window_id, .. }
+            | Self::SetLevel { window_id, .. }
+            | Self::DragResize { window_id, .. }
+            | Self::RequestAttention { window_id, .. }
+            | Self::Screenshot { window_id, .. }
+            | Self::SetResizable { window_id, .. }
+            | Self::SetMinSize { window_id, .. }
+            | Self::SetMaxSize { window_id, .. }
+            | Self::SetIcon { window_id, .. }
+            | Self::SetResizeIncrements { window_id, .. } => Some(window_id),
+            Self::Close(id)
+            | Self::ToggleMaximize(id)
+            | Self::ToggleDecorations(id)
+            | Self::FocusWindow(id)
+            | Self::DragWindow(id)
+            | Self::EnableMousePassthrough(id)
+            | Self::DisableMousePassthrough(id)
+            | Self::ShowSystemMenu(id) => Some(id),
+        }
+    }
+}
+
+impl WindowQuery {
+    /// Build a typed [`WindowQuery`] from the wire-protocol `{op,
+    /// window_id, payload}` triple. Returns `None` for unrecognised
+    /// op strings.
+    pub fn from_wire(op: &str, window_id: &str, payload: &Value) -> Option<Self> {
+        let wid = window_id.to_string();
+        let tag = payload
+            .get("tag")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        match op {
+            "get_size" => Some(Self::GetSize {
+                window_id: wid,
+                tag,
+            }),
+            "get_position" => Some(Self::GetPosition {
+                window_id: wid,
+                tag,
+            }),
+            "is_maximized" => Some(Self::IsMaximized {
+                window_id: wid,
+                tag,
+            }),
+            "is_minimized" => Some(Self::IsMinimized {
+                window_id: wid,
+                tag,
+            }),
+            "get_mode" => Some(Self::GetMode {
+                window_id: wid,
+                tag,
+            }),
+            "get_scale_factor" => Some(Self::GetScaleFactor {
+                window_id: wid,
+                tag,
+            }),
+            "monitor_size" => Some(Self::MonitorSize {
+                window_id: wid,
+                tag,
+            }),
+            "raw_id" => Some(Self::RawId {
+                window_id: wid,
+                tag,
+            }),
+            _ => None,
+        }
+    }
+
+    /// Emit the wire-protocol `(op, window_id, payload)` triple.
+    pub fn to_wire(&self) -> (&'static str, String, Value) {
+        use serde_json::json;
+        match self {
+            Self::GetSize { window_id, tag } => {
+                ("get_size", window_id.clone(), json!({"tag": tag}))
+            }
+            Self::GetPosition { window_id, tag } => {
+                ("get_position", window_id.clone(), json!({"tag": tag}))
+            }
+            Self::IsMaximized { window_id, tag } => {
+                ("is_maximized", window_id.clone(), json!({"tag": tag}))
+            }
+            Self::IsMinimized { window_id, tag } => {
+                ("is_minimized", window_id.clone(), json!({"tag": tag}))
+            }
+            Self::GetMode { window_id, tag } => {
+                ("get_mode", window_id.clone(), json!({"tag": tag}))
+            }
+            Self::GetScaleFactor { window_id, tag } => {
+                ("get_scale_factor", window_id.clone(), json!({"tag": tag}))
+            }
+            Self::MonitorSize { window_id, tag } => {
+                ("monitor_size", window_id.clone(), json!({"tag": tag}))
+            }
+            Self::RawId { window_id, tag } => ("raw_id", window_id.clone(), json!({"tag": tag})),
+        }
+    }
+
+    /// Return the window ID this query targets.
+    pub fn window_id(&self) -> &str {
+        match self {
+            Self::GetSize { window_id, .. }
+            | Self::GetPosition { window_id, .. }
+            | Self::IsMaximized { window_id, .. }
+            | Self::IsMinimized { window_id, .. }
+            | Self::GetMode { window_id, .. }
+            | Self::GetScaleFactor { window_id, .. }
+            | Self::MonitorSize { window_id, .. }
+            | Self::RawId { window_id, .. } => window_id,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // System operations
 // ---------------------------------------------------------------------------
@@ -433,6 +888,59 @@ pub enum SystemQuery {
         /// Correlation tag used for matching responses.
         tag: String,
     },
+}
+
+impl SystemOp {
+    /// Build a typed [`SystemOp`] from the wire-protocol `(op, payload)`
+    /// pair. Returns `None` for unrecognised ops.
+    pub fn from_wire(op: &str, payload: &Value) -> Option<Self> {
+        match op {
+            "allow_automatic_tabbing" => {
+                let enabled = payload
+                    .get("enabled")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                Some(Self::AllowAutomaticTabbing(enabled))
+            }
+            _ => None,
+        }
+    }
+
+    /// Emit the wire-protocol `(op, payload)` pair.
+    pub fn to_wire(&self) -> (&'static str, Value) {
+        use serde_json::json;
+        match self {
+            Self::AllowAutomaticTabbing(enabled) => {
+                ("allow_automatic_tabbing", json!({"enabled": enabled}))
+            }
+        }
+    }
+}
+
+impl SystemQuery {
+    /// Build a typed [`SystemQuery`] from the wire-protocol `(op, payload)`
+    /// pair. Returns `None` for unrecognised ops.
+    pub fn from_wire(op: &str, payload: &Value) -> Option<Self> {
+        let tag = payload
+            .get("tag")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        match op {
+            "get_system_theme" => Some(Self::GetTheme { tag }),
+            "get_system_info" => Some(Self::GetInfo { tag }),
+            _ => None,
+        }
+    }
+
+    /// Emit the wire-protocol `(op, payload)` pair.
+    pub fn to_wire(&self) -> (&'static str, Value) {
+        use serde_json::json;
+        match self {
+            Self::GetTheme { tag } => ("get_system_theme", json!({"tag": tag})),
+            Self::GetInfo { tag } => ("get_system_info", json!({"tag": tag})),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

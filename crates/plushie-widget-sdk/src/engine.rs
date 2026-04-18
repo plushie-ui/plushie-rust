@@ -76,40 +76,26 @@ pub enum CoreEffect {
     /// `snap_to`, `snap_to_end`, `select_all`, `select_range`,
     /// `move_cursor_to_front`, `move_cursor_to_end`,
     /// `move_cursor_to_line_start`, `move_cursor_to_line_end`,
-    /// `close_window`, `announce`, `exit`, `pane_split`, `pane_close`,
+    /// `announce`, `exit`, `pane_split`, `pane_close`,
     /// `pane_swap`, `tree_hash`, `list_images`, `clear_images`,
     /// `load_font`, `find_focused`, `system_theme`, `system_info`
     WidgetOp { op: String, payload: Value },
 
-    /// Execute a window operation.
+    /// Execute a typed window operation.
     ///
-    /// # Known ops
-    ///
-    /// `open`, `close`, `update`, `resize`, `move_to`, `maximize`,
-    /// `minimize`, `set_mode`, `toggle_maximize`, `toggle_decorations`,
-    /// `gain_focus`, `set_level`, `drag`, `drag_resize`,
-    /// `request_attention`, `show_system_menu`, `set_resizable`,
-    /// `set_min_size`, `set_max_size`, `mouse_passthrough`,
-    /// `get_size`, `get_position`, `set_icon`
-    WindowOp {
-        op: String,
-        window_id: String,
-        settings: Value,
-    },
+    /// Dispatched directly by [`crate::engine`]; the host matches on the
+    /// [`plushie_core::ops::WindowOp`] variants and produces the right
+    /// iced window task.
+    WindowOp(plushie_core::ops::WindowOp),
 
-    /// Execute a system-wide operation.
-    ///
-    /// # Known ops
-    ///
-    /// `allow_automatic_tabbing`
-    SystemOp { op: String, settings: Value },
+    /// Run a typed window query.
+    WindowQuery(plushie_core::ops::WindowQuery),
 
-    /// Run a system-wide query.
-    ///
-    /// # Known ops
-    ///
-    /// `get_system_theme`, `get_system_info`
-    SystemQuery { op: String, settings: Value },
+    /// Execute a typed system-wide operation.
+    SystemOp(plushie_core::ops::SystemOp),
+
+    /// Run a typed system-wide query.
+    SystemQuery(plushie_core::ops::SystemQuery),
 
     /// The global/root theme changed to an explicit value.
     ///
@@ -460,25 +446,33 @@ impl Core {
                 payload,
             } => {
                 log::debug!("window_op: {op} ({window_id})");
-                effects.push(CoreEffect::WindowOp {
-                    op,
-                    window_id,
-                    settings: payload,
-                });
+                if let Some(typed) =
+                    plushie_core::ops::WindowOp::from_wire(&op, &window_id, &payload)
+                {
+                    effects.push(CoreEffect::WindowOp(typed));
+                } else if let Some(typed) =
+                    plushie_core::ops::WindowQuery::from_wire(&op, &window_id, &payload)
+                {
+                    effects.push(CoreEffect::WindowQuery(typed));
+                } else {
+                    log::warn!("unknown window_op: {op}");
+                }
             }
             IncomingMessage::SystemOp { op, payload } => {
                 log::debug!("system_op: {op}");
-                effects.push(CoreEffect::SystemOp {
-                    op,
-                    settings: payload,
-                });
+                if let Some(typed) = plushie_core::ops::SystemOp::from_wire(&op, &payload) {
+                    effects.push(CoreEffect::SystemOp(typed));
+                } else {
+                    log::warn!("unknown system_op: {op}");
+                }
             }
             IncomingMessage::SystemQuery { op, payload } => {
                 log::debug!("system_query: {op}");
-                effects.push(CoreEffect::SystemQuery {
-                    op,
-                    settings: payload,
-                });
+                if let Some(typed) = plushie_core::ops::SystemQuery::from_wire(&op, &payload) {
+                    effects.push(CoreEffect::SystemQuery(typed));
+                } else {
+                    log::warn!("unknown system_query: {op}");
+                }
             }
             IncomingMessage::Settings { settings } => {
                 log::debug!("settings received");
@@ -622,11 +616,14 @@ impl Core {
 /// walking the optional fallback chain. Emits a
 /// `font_family_not_found` diagnostic on each unresolved family.
 ///
-/// The resolver currently only shortcuts the `monospace` built-in;
-/// runtime-loaded families cannot be matched by name here because
-/// the engine consumes font bytes without parsing family metadata
-/// out of them. See the "font-family attribution across the engine"
-/// backlog entry for the tracking problem.
+/// Resolution order per name:
+/// 1. Built-in shortcut: `monospace` -> `Font::MONOSPACE`.
+/// 2. Runtime-loaded family via [`crate::fonts::is_loaded`] (populated
+///    by `Command::load_font` at execution time).
+/// 3. Fall through to the next name in the chain and emit a
+///    `font_family_not_found` diagnostic.
+///
+/// If every name falls through, returns `Font::DEFAULT`.
 fn resolve_font_with_fallback(v: &Value) -> Font {
     let primary = v.get("family").and_then(|f| f.as_str());
     let fallback_iter = v.get("fallback").and_then(|a| a.as_array());
@@ -644,6 +641,14 @@ fn resolve_font_with_fallback(v: &Value) -> Font {
     for name in &chain {
         if matches!(*name, "monospace") {
             return Font::MONOSPACE;
+        }
+        if crate::fonts::is_loaded(name) {
+            return Font {
+                family: iced::font::Family::Name(
+                    crate::widget::helpers::intern_font_family_public(name),
+                ),
+                ..Font::DEFAULT
+            };
         }
         let diag = plushie_core::Diagnostic::FontFamilyNotFound {
             family: (*name).to_string(),

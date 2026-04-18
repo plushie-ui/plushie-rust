@@ -286,6 +286,19 @@ pub type Result = std::result::Result<(), Error>;
 /// - In wire mode: binary discovery failure, spawn failure, handshake
 ///   failure, or I/O error during the session.
 pub fn run<A: App>() -> Result {
+    // Mode precedence (highest to lowest):
+    //   1. PLUSHIE_SOCKET env or --plushie-socket CLI -> wire-connect.
+    //   2. PLUSHIE_BINARY_PATH env -> wire-spawn with explicit binary.
+    //   3. PLUSHIE_MODE / --plushie-mode -> force mode explicitly.
+    //   4. Feature default: direct if compiled, else wire-spawn via
+    //      four-step discovery.
+    #[cfg(feature = "wire")]
+    {
+        let mode = dispatch::detect_mode();
+        if let Some(decision) = mode {
+            return dispatch_wire_mode::<A>(decision);
+        }
+    }
     #[cfg(feature = "direct")]
     {
         runner::direct::run::<A>()
@@ -299,6 +312,112 @@ pub fn run<A: App>() -> Result {
     {
         Err(Error::NoRunnerFeature)
     }
+}
+
+#[cfg(feature = "wire")]
+fn dispatch_wire_mode<A: App>(decision: dispatch::ModeDecision) -> Result {
+    match decision {
+        dispatch::ModeDecision::Connect(opts) => run_connect::<A>(opts),
+        dispatch::ModeDecision::Spawn(opt_path) => match opt_path {
+            Some(path) => run_with_renderer::<A>(&path),
+            None => run_spawn::<A>(),
+        },
+    }
+}
+
+/// Mode detection helpers.
+///
+/// Split into its own module so the precedence logic is testable in
+/// isolation. All fields are wire-gated because the mode decisions
+/// they produce are wire-specific.
+#[cfg(feature = "wire")]
+mod dispatch {
+    /// Outcome of mode detection.
+    pub enum ModeDecision {
+        /// Connect to an existing socket rather than spawning a binary.
+        Connect(super::ConnectOpts),
+        /// Spawn a renderer binary. `None` triggers auto-discovery;
+        /// `Some(path)` uses the explicit binary.
+        Spawn(Option<String>),
+    }
+
+    /// Inspect env + argv and return a decision, if any of the
+    /// precedence-1-3 conditions fire. `None` means fall through to
+    /// the feature-default branch.
+    pub fn detect_mode() -> Option<ModeDecision> {
+        // Step 1: socket (env + CLI).
+        let cli_socket = cli_value("--plushie-socket");
+        let env_socket = std::env::var("PLUSHIE_SOCKET").ok();
+        if let Some(sock) = cli_socket.or(env_socket)
+            && !sock.trim().is_empty()
+        {
+            let token =
+                cli_value("--plushie-token").or_else(|| std::env::var("PLUSHIE_TOKEN").ok());
+            return Some(ModeDecision::Connect(super::ConnectOpts {
+                socket: Some(sock),
+                token,
+            }));
+        }
+
+        // Step 2: explicit binary path.
+        if let Ok(path) = std::env::var("PLUSHIE_BINARY_PATH") {
+            let trimmed = path.trim().to_string();
+            if !trimmed.is_empty() {
+                return Some(ModeDecision::Spawn(Some(trimmed)));
+            }
+        }
+
+        // Step 3: PLUSHIE_MODE or --plushie-mode forcing.
+        let forced = cli_value("--plushie-mode").or_else(|| std::env::var("PLUSHIE_MODE").ok());
+        if let Some(mode) = forced {
+            match mode.as_str() {
+                "wire" => return Some(ModeDecision::Spawn(None)),
+                "direct" => {
+                    // Signal fall-through by returning None; the
+                    // feature default branch will pick direct if it's
+                    // compiled in.
+                    return None;
+                }
+                other => {
+                    log::warn!("unknown PLUSHIE_MODE `{other}`; falling back to default");
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract the value for `--flag <value>` or `--flag=value` from
+    /// `std::env::args()`. Returns `None` if the flag isn't present.
+    fn cli_value(flag: &str) -> Option<String> {
+        let prefix_eq = format!("{flag}=");
+        let mut args = std::env::args().skip(1);
+        while let Some(arg) = args.next() {
+            if arg == flag {
+                return args.next();
+            }
+            if let Some(rest) = arg.strip_prefix(&prefix_eq) {
+                return Some(rest.to_string());
+            }
+        }
+        None
+    }
+}
+
+/// Options for [`run_connect`] that select which renderer socket to
+/// connect to and what token (if any) to present on handshake.
+///
+/// Socket resolution: explicit `socket` > `PLUSHIE_SOCKET` env > error.
+/// Token resolution: explicit `token` > `PLUSHIE_TOKEN` env > a JSON
+/// negotiation line read from stdin with a 1-second timeout (mirrors
+/// Elixir's `plushie.connect.ex:113`).
+#[cfg(feature = "wire")]
+#[derive(Debug, Clone, Default)]
+pub struct ConnectOpts {
+    /// Socket address (Unix path, `:port`, or `host:port`).
+    pub socket: Option<String>,
+    /// Auth token presented during handshake.
+    pub token: Option<String>,
 }
 
 /// Run the app in wire mode against a specific renderer binary.
@@ -359,4 +478,118 @@ pub fn run_wire<A: App>(binary_path: &str) -> Result {
 #[cfg(feature = "wire")]
 pub fn run_wire_with_runtime<A: App>(binary_path: &str, runtime: tokio::runtime::Handle) -> Result {
     runner::wire::run_wire_with_runtime::<A>(binary_path, runtime)
+}
+
+/// Run the app in wire mode by spawning a renderer binary discovered
+/// via the four-step chain (env, custom build, downloaded, PATH).
+///
+/// This is the explicit building block behind the feature-default
+/// branch of [`run`]. Use it when the auto-dispatch layers in [`run`]
+/// would otherwise pick direct mode and you want to force a subprocess
+/// renderer without providing a fixed binary path.
+///
+/// # Errors
+///
+/// See [`run_with_renderer`] for the wire-mode failure modes, plus
+/// [`Error::BinaryNotFound`] when discovery fails.
+#[cfg(feature = "wire")]
+pub fn run_spawn<A: App>() -> Result {
+    let binary = runner::wire_discovery::discover_renderer()?;
+    runner::wire::run_wire::<A>(&binary)
+}
+
+/// Run the app by connecting to a renderer listening on an existing
+/// socket.
+///
+/// Resolves the socket from `opts.socket` then `PLUSHIE_SOCKET`, and
+/// the token from `opts.token` then `PLUSHIE_TOKEN` then a JSON
+/// negotiation line read from stdin with a one-second timeout.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidSettings`] when no socket can be resolved,
+/// [`Error::Io`] on connect failures, and [`Error::Startup`] for the
+/// follow-on integration work that wires the connected socket into
+/// the normal wire event loop (the Bridge transport refactor is a
+/// follow-on commit; the scaffolding here validates the resolution
+/// chain and opens the connection so the subsequent commit has a
+/// place to plug in).
+#[cfg(feature = "wire")]
+pub fn run_connect<A: App>(opts: ConnectOpts) -> Result {
+    let _ = std::marker::PhantomData::<A>;
+    let socket_str = opts
+        .socket
+        .clone()
+        .or_else(|| std::env::var("PLUSHIE_SOCKET").ok())
+        .ok_or_else(|| {
+            Error::InvalidSettings(
+                "no socket address supplied: pass `ConnectOpts.socket`, set \
+                 PLUSHIE_SOCKET, or use `--plushie-socket <path>`"
+                    .to_string(),
+            )
+        })?;
+
+    // Resolve the token via the same precedence Elixir uses. The
+    // stdin-negotiation step is advisory for now; callers that need
+    // the bidirectional handshake should pass `opts.token` explicitly
+    // or export `PLUSHIE_TOKEN`.
+    let token = opts
+        .token
+        .clone()
+        .or_else(|| std::env::var("PLUSHIE_TOKEN").ok())
+        .or_else(read_token_from_stdin);
+
+    let adapter = runner::socket::SocketAdapter::connect(&socket_str)?;
+    log::info!(
+        "plushie::run_connect: connected to renderer at {:?} (token: {})",
+        adapter.addr,
+        if token.is_some() { "present" } else { "none" }
+    );
+    // Bridge transport abstraction that wires the connected socket
+    // into the normal wire event loop lands in a follow-on commit.
+    // This scaffold validates the resolution + connect path end-to-end
+    // without silently swallowing the request.
+    Err(Error::Startup(
+        "run_connect transport integration is not yet implemented (hat 16 \
+         foundation pass scaffolding); the socket resolution + connect \
+         succeeded but driving the event loop over it requires a Bridge \
+         transport refactor scheduled for a follow-on commit"
+            .to_string(),
+    ))
+}
+
+/// Best-effort read of a newline-terminated JSON token line from stdin.
+///
+/// One-second timeout mirrors Elixir's `plushie.connect.ex:113` read.
+/// Returns `None` on timeout, EOF, or parse failure so the caller can
+/// proceed without a token when negotiation isn't in play.
+#[cfg(feature = "wire")]
+fn read_token_from_stdin() -> Option<String> {
+    use std::io::BufRead;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    let (tx, rx) = mpsc::channel::<Option<String>>();
+    thread::spawn(move || {
+        let mut line = String::new();
+        let n = std::io::stdin().lock().read_line(&mut line).unwrap_or(0);
+        if n == 0 {
+            let _ = tx.send(None);
+            return;
+        }
+        let trimmed = line.trim();
+        // Accept either a bare token string or a `{"token":"..."}`
+        // JSON object.
+        let parsed = serde_json::from_str::<serde_json::Value>(trimmed)
+            .ok()
+            .and_then(|v| {
+                v.get("token")
+                    .and_then(|t| t.as_str())
+                    .map(str::to_string)
+                    .or_else(|| v.as_str().map(str::to_string))
+            });
+        let _ = tx.send(parsed);
+    });
+    rx.recv_timeout(Duration::from_secs(1)).ok().flatten()
 }

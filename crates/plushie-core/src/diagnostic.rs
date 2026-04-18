@@ -1,22 +1,17 @@
 //! Typed diagnostic variants emitted from tree normalization, widget
 //! validation, and runtime bookkeeping.
 //!
-//! The renderer and SDK historically carried diagnostics as raw
-//! `String`s formatted with an ad-hoc `[code=...]` prefix. That worked
-//! for human-readable log output but made downstream filtering
-//! (TestSession strict-mode, future wire-diagnostic channels, custom
-//! sinks on Settings) a string-matching exercise.
+//! [`Diagnostic`] is the canonical payload shape for every diagnostic
+//! emit site in the SDK, widget SDK, and renderer-lib. Variants carry
+//! the structured context the emitter knew (widget ID, prop name,
+//! clamped value, etc.); `Display` renders a terse single-line form
+//! suitable for logs and test assertions. `Serialize` / `Deserialize`
+//! let the same value flow over the wire when the structured-
+//! diagnostic channel lands.
 //!
-//! The [`Diagnostic`] enum is the structured counterpart. Variants
-//! carry exactly the context the emitter knew; `Display` mirrors the
-//! legacy string formatting so existing `log::warn!("{diag}")` sites
-//! keep producing the same human-readable output. `Serialize` /
-//! `Deserialize` let the same value flow over the wire when the
-//! structured-diagnostic channel eventually lands.
-//!
-//! Variants are added opportunistically as emit sites migrate. The
-//! enum is `#[non_exhaustive]` so adding a new variant is not a
-//! semver break.
+//! The enum is `#[non_exhaustive]` so adding a new variant is not a
+//! semver break. New emit sites should add a dedicated variant rather
+//! than shoehorn through an existing one.
 
 use serde::{Deserialize, Serialize};
 
@@ -98,10 +93,6 @@ pub enum DiagnosticKind {
     /// force-flushed. Carried by
     /// [`Diagnostic::EmitterCoalesceCapExceeded`].
     EmitterCoalesceCapExceeded,
-    /// A kind that doesn't (yet) have a dedicated variant. Keeps
-    /// parser round-trips lossless without forcing every emit site to
-    /// migrate in a single pass.
-    Other,
 }
 
 /// A structured diagnostic emitted by the SDK or renderer.
@@ -336,15 +327,6 @@ pub enum Diagnostic {
         /// Cap value (max pending entries).
         cap: usize,
     },
-    /// Catch-all for diagnostics that originated as a pre-migration
-    /// formatted string. Keeps typed consumers from losing the
-    /// payload before the emitter has a dedicated variant.
-    Other {
-        /// Stable diagnostic kind tag (e.g. `"prop_range_exceeded"`).
-        code: String,
-        /// Fully-formatted human-readable message.
-        message: String,
-    },
 }
 
 impl Diagnostic {
@@ -376,85 +358,6 @@ impl Diagnostic {
             Self::SvgDecodeTimeout { .. } => DiagnosticKind::SvgDecodeTimeout,
             Self::DashCacheCapExceeded { .. } => DiagnosticKind::DashCacheCapExceeded,
             Self::EmitterCoalesceCapExceeded { .. } => DiagnosticKind::EmitterCoalesceCapExceeded,
-            Self::Other { .. } => DiagnosticKind::Other,
-        }
-    }
-
-    /// Construct a fallback `Other` variant around a pre-migration
-    /// string. Used by the bridge layer that still traffics in
-    /// `Vec<String>` so typed consumers see a usable shape.
-    pub fn other(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::Other {
-            code: code.into(),
-            message: message.into(),
-        }
-    }
-
-    /// Best-effort parse of a legacy warning string back into a typed
-    /// variant.
-    ///
-    /// Emit sites that still produce `Vec<String>` format via
-    /// [`Display`], which makes the inverse direction a prefix match
-    /// away. Unknown formats become `Diagnostic::Other` so no
-    /// information is lost.
-    ///
-    /// This is an intentionally limited parser: consumers that need
-    /// structured payloads should emit `Diagnostic` directly. It
-    /// exists so [`crate::diagnostic::Diagnostic`] is a complete
-    /// round-trip boundary during the migration to typed diagnostics.
-    pub fn from_legacy_string(s: &str) -> Self {
-        if let Some(rest) = s.strip_prefix("duplicate ID: ") {
-            // `duplicate ID: "scoped" (window: wid)` or without.
-            let (id_part, window_part) = match rest.split_once(" (window: ") {
-                Some((id, tail)) => {
-                    let wid = tail.trim_end_matches(')').to_string();
-                    (
-                        id.trim_matches('"').to_string(),
-                        Some(wid.trim_matches('"').to_string()),
-                    )
-                }
-                None => (rest.trim_matches('"').to_string(), None),
-            };
-            return Self::DuplicateId {
-                id: id_part,
-                window_id: window_part,
-            };
-        }
-        if let Some(rest) = s.strip_prefix("empty_id: ") {
-            let type_name = rest
-                .split_once(' ')
-                .map(|(t, _)| t.to_string())
-                .unwrap_or_else(|| rest.to_string());
-            return Self::EmptyId { type_name };
-        }
-        if let Some(rest) = s.strip_prefix("multiple_top_level_windows: ") {
-            let ids: Vec<String> = rest
-                .split_once('(')
-                .and_then(|(_, tail)| tail.strip_suffix(')'))
-                .map(|inner| {
-                    inner
-                        .split(", ")
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect()
-                })
-                .unwrap_or_default();
-            return Self::MultipleTopLevelWindows { window_ids: ids };
-        }
-        // Fallback: stable `code` prefix extracted from the legacy
-        // `[code=xxx]` or `code: ...` format, else "unknown".
-        let code = if let Some(rest) = s.strip_prefix("[code=") {
-            rest.split_once(']')
-                .map(|(c, _)| c.to_string())
-                .unwrap_or_else(|| "unknown".into())
-        } else if let Some((head, _)) = s.split_once(": ") {
-            head.to_string()
-        } else {
-            "unknown".into()
-        };
-        Self::Other {
-            code,
-            message: s.to_string(),
         }
     }
 }
@@ -465,48 +368,49 @@ impl std::fmt::Display for Diagnostic {
             Self::DuplicateId {
                 id,
                 window_id: Some(wid),
-            } => write!(f, "duplicate ID: \"{id}\" (window: {wid})"),
+            } => write!(f, "duplicate_id: {id} (window {wid})"),
             Self::DuplicateId {
                 id,
                 window_id: None,
-            } => write!(f, "duplicate ID: \"{id}\""),
-            Self::EmptyId { type_name } => write!(
-                f,
-                "empty_id: {type_name} was declared with an empty ID; IDs must be non-empty"
-            ),
-            Self::MultipleTopLevelWindows { window_ids } => write!(
-                f,
-                "multiple_top_level_windows: tree root has more than one window child ({})",
-                window_ids.join(", ")
-            ),
+            } => write!(f, "duplicate_id: {id}"),
+            Self::EmptyId { type_name } => {
+                write!(f, "empty_id: {type_name} declared with empty id")
+            }
+            Self::MultipleTopLevelWindows { window_ids } => {
+                write!(f, "multiple_top_level_windows: [{}]", window_ids.join(", "))
+            }
             Self::UnknownWindow {
                 window_id,
                 subscription_tag,
             } => write!(
                 f,
-                "unknown_window: subscription \"{subscription_tag}\" targets window \
-                 \"{window_id}\" which is not in the current tree"
+                "unknown_window: subscription {subscription_tag} targets {window_id} \
+                 which is not in the tree"
             ),
             Self::UnrecognizedWidgetPlaceholder { id } => write!(
                 f,
-                "unrecognized_widget_placeholder: node id={id:?} carries `__widget__` \
-                 type but no expander was registered; placeholder rendered as a no-op"
+                "unrecognized_widget_placeholder: {id} has no registered expander"
             ),
             Self::TreeDepthExceeded { id, max_depth } => write!(
                 f,
-                "tree_depth_exceeded: subtree rooted at \"{id}\" exceeds \
-                 MAX_TREE_DEPTH={max_depth}, skipping descent"
+                "tree_depth_exceeded: subtree at {id} exceeds MAX_TREE_DEPTH={max_depth}"
             ),
-            Self::TooManyDuplicates { limit } => write!(
+            Self::TooManyDuplicates { limit } => {
+                write!(f, "too_many_duplicates: stopped at {limit}")
+            }
+            Self::WidgetIdInvalid {
+                reason,
+                type_name,
+                id,
+                detail,
+            } => write!(
                 f,
-                "too_many_duplicates: stopped collecting at {limit} entries"
+                "widget_id_invalid: {type_name} id={id:?} ({reason}): {detail}"
             ),
-            Self::WidgetIdInvalid { detail, .. } => write!(f, "widget_id_invalid: {detail}"),
             Self::MissingAccessibleName { type_name, id } => write!(
                 f,
-                "missing_accessible_name: {type_name} \"{id}\" has no \
-                 label, text child, a11y.label, or a11y.labelled_by; \
-                 screen readers will announce no name"
+                "missing_accessible_name: {type_name} {id} has no label, text child, \
+                 a11y.label, or a11y.labelled_by"
             ),
             Self::A11yRefUnresolved {
                 id,
@@ -517,14 +421,14 @@ impl std::fmt::Display for Diagnostic {
                 if *is_member {
                     write!(
                         f,
-                        "a11y_ref_unresolved: {key} member \"{value}\" \
-                         on \"{id}\" does not match any declared widget ID"
+                        "a11y_ref_unresolved: {id} {key} member {value:?} is not a \
+                         declared widget id"
                     )
                 } else {
                     write!(
                         f,
-                        "a11y_ref_unresolved: {key}=\"{value}\" on \"{id}\" \
-                         does not match any declared widget ID"
+                        "a11y_ref_unresolved: {id} {key}={value:?} is not a declared \
+                         widget id"
                     )
                 }
             }
@@ -536,21 +440,16 @@ impl std::fmt::Display for Diagnostic {
                 clamped,
                 non_finite,
             } => {
-                if *non_finite {
-                    write!(
-                        f,
-                        "prop_range_exceeded: widget \"{id}\" ({type_name}) prop \
-                         \"{prop}\" value {raw} is not finite, clamped to \
-                         {clamped}"
-                    )
+                let cause = if *non_finite {
+                    "non-finite"
                 } else {
-                    write!(
-                        f,
-                        "prop_range_exceeded: widget \"{id}\" ({type_name}) prop \
-                         \"{prop}\" value {raw} out of range, clamped to \
-                         {clamped}"
-                    )
-                }
+                    "out of range"
+                };
+                write!(
+                    f,
+                    "prop_range_exceeded: {type_name} {id} prop {prop}={raw} \
+                     ({cause}), clamped to {clamped}"
+                )
             }
             Self::PropTypeMismatch {
                 id,
@@ -560,8 +459,8 @@ impl std::fmt::Display for Diagnostic {
                 expected_debug,
             } => write!(
                 f,
-                "widget '{id}' ({type_name}): prop '{prop}' has unexpected type \
-                 {value_debug} (expected {expected_debug})"
+                "prop_type_mismatch: {type_name} {id} prop {prop} got {value_debug}, \
+                 expected {expected_debug}"
             ),
             Self::PropUnknown {
                 id,
@@ -570,8 +469,7 @@ impl std::fmt::Display for Diagnostic {
                 known_debug,
             } => write!(
                 f,
-                "widget '{id}' ({type_name}): unexpected prop '{prop}' \
-                 (known: {known_debug})"
+                "prop_unknown: {type_name} {id} has no prop {prop:?} (known: {known_debug})"
             ),
             Self::ContentLengthExceeded {
                 id,
@@ -581,13 +479,12 @@ impl std::fmt::Display for Diagnostic {
                 truncated,
             } => write!(
                 f,
-                "[code=content_length_exceeded][id={id}] {field} is {actual} bytes, \
-                 exceeds cap {cap}; truncating to {truncated} bytes"
+                "content_length_exceeded: {id}.{field} = {actual} bytes, cap {cap}, \
+                 truncated to {truncated}"
             ),
             Self::FontCacheCapExceeded { max } => write!(
                 f,
-                "[code=font_cache_cap_exceeded] font family cache full \
-                 ({max} entries); new names will leak without caching"
+                "font_cache_cap_exceeded: cache full ({max} entries); new names leak uncached"
             ),
             Self::FontCapExceeded {
                 max,
@@ -596,49 +493,39 @@ impl std::fmt::Display for Diagnostic {
                 dropped,
             } => write!(
                 f,
-                "[code=font_cap_exceeded] inline fonts exceed the \
-                 {max} font cap; dropping {dropped} entries \
-                 (granted {granted} of {requested})"
+                "font_cap_exceeded: {requested} requested, {granted} granted, {dropped} \
+                 dropped (max {max})"
             ),
-            Self::FontFamilyNotFound { family } => write!(
-                f,
-                "[code=font_family_not_found] font family `{family}` not resolvable; \
-                 trying next fallback"
-            ),
+            Self::FontFamilyNotFound { family } => {
+                write!(f, "font_family_not_found: {family}")
+            }
             Self::InvalidSettings { detail } => {
-                write!(f, "[code=invalid_settings] settings decode: {detail}")
+                write!(f, "invalid_settings: {detail}")
             }
             Self::WidgetPanic {
                 id,
                 type_name,
                 label,
-            } => write!(
-                f,
-                "[code=widget_panic][id={id}] widget `{type_name}` panicked in {label}"
-            ),
-            Self::SvgParseError { id, source, detail } => write!(
-                f,
-                "[code=svg_parse_error][id={id}] svg '{source}' failed to parse: {detail}"
-            ),
+            } => write!(f, "widget_panic: {type_name} {id} panicked in {label}"),
+            Self::SvgParseError { id, source, detail } => {
+                write!(f, "svg_parse_error: {id} {source:?}: {detail}")
+            }
             Self::SvgDecodeTimeout {
                 id,
                 source,
                 deadline_debug,
             } => write!(
                 f,
-                "[code=svg_decode_timeout][id={id}] svg '{source}' \
-                 exceeded {deadline_debug} decode budget; rendering skipped"
+                "svg_decode_timeout: {id} {source:?} exceeded {deadline_debug}"
             ),
             Self::DashCacheCapExceeded { max } => write!(
                 f,
-                "[code=dash_cache_cap_exceeded] dash segment cache full \
-                 ({max} entries); new patterns will leak without caching"
+                "dash_cache_cap_exceeded: cache full ({max} entries); new patterns leak uncached"
             ),
             Self::EmitterCoalesceCapExceeded { cap } => write!(
                 f,
-                "[code=emitter_coalesce_cap_exceeded] pending coalesce map hit cap ({cap}); flushing all"
+                "emitter_coalesce_cap_exceeded: pending map hit cap ({cap}); flushing"
             ),
-            Self::Other { message, .. } => f.write_str(message),
         }
     }
 }
@@ -654,21 +541,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn display_mirrors_legacy_duplicate_id_format() {
-        let d = Diagnostic::DuplicateId {
+    fn duplicate_id_display() {
+        let plain = Diagnostic::DuplicateId {
             id: "main#form/email".into(),
             window_id: None,
         };
-        assert_eq!(d.to_string(), "duplicate ID: \"main#form/email\"");
-    }
+        assert_eq!(plain.to_string(), "duplicate_id: main#form/email");
 
-    #[test]
-    fn display_includes_window_when_present() {
-        let d = Diagnostic::DuplicateId {
+        let scoped = Diagnostic::DuplicateId {
             id: "form/email".into(),
             window_id: Some("main".into()),
         };
-        assert_eq!(d.to_string(), "duplicate ID: \"form/email\" (window: main)");
+        assert_eq!(scoped.to_string(), "duplicate_id: form/email (window main)");
     }
 
     #[test]
@@ -677,19 +561,6 @@ mod tests {
             type_name: "container".into(),
         };
         assert_eq!(d.kind(), DiagnosticKind::EmptyId);
-    }
-
-    #[test]
-    fn other_variant_round_trips_code_and_message() {
-        let d = Diagnostic::other("prop_range_exceeded", "clamped to 1.0");
-        match &d {
-            Diagnostic::Other { code, message } => {
-                assert_eq!(code, "prop_range_exceeded");
-                assert_eq!(message, "clamped to 1.0");
-            }
-            other => panic!("unexpected variant {other:?}"),
-        }
-        assert_eq!(d.to_string(), "clamped to 1.0");
     }
 
     #[test]
@@ -704,35 +575,35 @@ mod tests {
     }
 
     #[test]
-    fn display_tree_depth_exceeded_matches_legacy() {
+    fn tree_depth_exceeded_display() {
         let d = Diagnostic::TreeDepthExceeded {
             id: "root".into(),
             max_depth: 256,
         };
         assert_eq!(
             d.to_string(),
-            "tree_depth_exceeded: subtree rooted at \"root\" exceeds \
-             MAX_TREE_DEPTH=256, skipping descent"
+            "tree_depth_exceeded: subtree at root exceeds MAX_TREE_DEPTH=256"
         );
     }
 
     #[test]
-    fn display_widget_id_invalid_matches_legacy() {
+    fn widget_id_invalid_display_carries_reason_and_detail() {
         let d = Diagnostic::WidgetIdInvalid {
             reason: "reserved_char".into(),
             type_name: "text_input".into(),
             id: "form/field".into(),
-            detail: "ID \"form/field\" contains reserved character '/'. Use container scoping \
-                     instead. (reason=reserved_char)"
-                .into(),
+            detail: "'/' is reserved for scoping".into(),
         };
-        assert!(d.to_string().starts_with("widget_id_invalid: "));
-        assert!(d.to_string().contains("reason=reserved_char"));
+        assert_eq!(
+            d.to_string(),
+            "widget_id_invalid: text_input id=\"form/field\" (reserved_char): \
+             '/' is reserved for scoping"
+        );
     }
 
     #[test]
-    fn display_prop_range_exceeded_matches_legacy() {
-        let d = Diagnostic::PropRangeExceeded {
+    fn prop_range_exceeded_display() {
+        let oob = Diagnostic::PropRangeExceeded {
             id: "slider-1".into(),
             type_name: "slider".into(),
             prop: "value".into(),
@@ -741,14 +612,23 @@ mod tests {
             non_finite: false,
         };
         assert_eq!(
-            d.to_string(),
-            "prop_range_exceeded: widget \"slider-1\" (slider) prop \"value\" value 200 out of \
-             range, clamped to 100"
+            oob.to_string(),
+            "prop_range_exceeded: slider slider-1 prop value=200 (out of range), clamped to 100"
         );
+
+        let non_finite = Diagnostic::PropRangeExceeded {
+            id: "slider-1".into(),
+            type_name: "slider".into(),
+            prop: "value".into(),
+            raw: f64::INFINITY,
+            clamped: 0.0,
+            non_finite: true,
+        };
+        assert!(non_finite.to_string().contains("(non-finite)"));
     }
 
     #[test]
-    fn display_content_length_exceeded_matches_legacy() {
+    fn content_length_exceeded_display() {
         let d = Diagnostic::ContentLengthExceeded {
             id: "input".into(),
             field: "value".into(),
@@ -758,13 +638,12 @@ mod tests {
         };
         assert_eq!(
             d.to_string(),
-            "[code=content_length_exceeded][id=input] value is 100000 bytes, \
-             exceeds cap 65536; truncating to 65535 bytes"
+            "content_length_exceeded: input.value = 100000 bytes, cap 65536, truncated to 65535"
         );
     }
 
     #[test]
-    fn display_widget_panic_matches_legacy() {
+    fn widget_panic_display() {
         let d = Diagnostic::WidgetPanic {
             id: "btn".into(),
             type_name: "custom_button".into(),
@@ -772,12 +651,12 @@ mod tests {
         };
         assert_eq!(
             d.to_string(),
-            "[code=widget_panic][id=btn] widget `custom_button` panicked in render"
+            "widget_panic: custom_button btn panicked in render"
         );
     }
 
     #[test]
-    fn display_font_cap_exceeded_matches_legacy() {
+    fn font_cap_exceeded_display() {
         let d = Diagnostic::FontCapExceeded {
             max: 256,
             requested: 10,
@@ -786,13 +665,12 @@ mod tests {
         };
         assert_eq!(
             d.to_string(),
-            "[code=font_cap_exceeded] inline fonts exceed the 256 font cap; dropping 7 entries \
-             (granted 3 of 10)"
+            "font_cap_exceeded: 10 requested, 3 granted, 7 dropped (max 256)"
         );
     }
 
     #[test]
-    fn display_a11y_ref_unresolved_member_phrasing() {
+    fn a11y_ref_unresolved_switches_phrasing_on_is_member() {
         let single = Diagnostic::A11yRefUnresolved {
             id: "r1".into(),
             key: "labelled_by".into(),
@@ -801,9 +679,9 @@ mod tests {
         };
         assert_eq!(
             single.to_string(),
-            "a11y_ref_unresolved: labelled_by=\"missing\" on \"r1\" does not match any declared \
-             widget ID"
+            "a11y_ref_unresolved: r1 labelled_by=\"missing\" is not a declared widget id"
         );
+
         let member = Diagnostic::A11yRefUnresolved {
             id: "r1".into(),
             key: "radio_group".into(),
@@ -812,14 +690,12 @@ mod tests {
         };
         assert_eq!(
             member.to_string(),
-            "a11y_ref_unresolved: radio_group member \"missing\" on \"r1\" does not match any \
-             declared widget ID"
+            "a11y_ref_unresolved: r1 radio_group member \"missing\" is not a declared widget id"
         );
     }
 
     #[test]
-    fn kind_for_all_non_other_variants_is_unique() {
-        // Spot-check: new variants map to their new kinds.
+    fn kind_for_new_variants_is_unique() {
         let tde = Diagnostic::TreeDepthExceeded {
             id: "x".into(),
             max_depth: 256,

@@ -382,12 +382,15 @@ mod tests {
 
     #[test]
     fn warnings_accumulate_across_transforms() {
+        // Each Warner pushes an EmptyId diagnostic tagged by its name
+        // in `type_name`. That lets the assertion assert both on count
+        // and on which transform fired for which node without needing
+        // a purpose-built variant.
         struct Warner(&'static str);
         impl TreeTransform for Warner {
             fn enter(&mut self, node: &mut TreeNode, ctx: &mut WalkCtx) {
-                ctx.warnings.push(crate::Diagnostic::Other {
-                    code: self.0.to_string(),
-                    message: format!("{}@{}", self.0, node.id),
+                ctx.warnings.push(crate::Diagnostic::EmptyId {
+                    type_name: format!("{}@{}", self.0, node.id),
                 });
             }
         }
@@ -400,10 +403,17 @@ mod tests {
 
         // Two warnings per node (one per transform), two nodes.
         assert_eq!(ctx.warnings.len(), 4);
-        let messages: Vec<String> = ctx.warnings.iter().map(|d| d.to_string()).collect();
-        assert!(messages.contains(&"A@root".to_string()));
-        assert!(messages.contains(&"B@root".to_string()));
-        assert!(messages.contains(&"A@child".to_string()));
-        assert!(messages.contains(&"B@child".to_string()));
+        let tags: Vec<&str> = ctx
+            .warnings
+            .iter()
+            .filter_map(|d| match d {
+                crate::Diagnostic::EmptyId { type_name } => Some(type_name.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(tags.contains(&"A@root"));
+        assert!(tags.contains(&"B@root"));
+        assert!(tags.contains(&"A@child"));
+        assert!(tags.contains(&"B@child"));
     }
 }

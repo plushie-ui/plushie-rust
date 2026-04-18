@@ -835,7 +835,10 @@ mod tests {
         let node = make_node("button", json!({"label": "ok", "bogus": 42}));
         let warnings = collect_prop_warnings(&node);
         assert!(!warnings.is_empty());
-        assert!(warnings[0].contains("unexpected prop 'bogus'"));
+        // Warning renders via Diagnostic::PropUnknown Display; `bogus`
+        // and the `prop_unknown` tag both appear.
+        assert!(warnings[0].contains("prop_unknown"));
+        assert!(warnings[0].contains("bogus"));
     }
 
     #[test]
@@ -851,10 +854,8 @@ mod tests {
     #[test]
     fn oversize_font_emits_range_warning() {
         let node = make_node("text", json!({"size": 5000}));
-        // "size" is Number for text; range check fires.
+        // `size` is Number for text with a lower-only bound; 5000 passes.
         let warnings = collect_prop_warnings(&node);
-        // size has a lower bound only; 5000 is fine. Use text_size
-        // via a widget that accepts it.
         assert!(
             !warnings.iter().any(|w| w.contains("prop_range_exceeded")),
             "size has no upper bound; got {warnings:?}"

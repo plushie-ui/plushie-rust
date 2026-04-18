@@ -92,6 +92,6 @@ opt-level = 3
 opt-level = "z"
 
 # Local development against an in-flight plushie-iced checkout goes
-# through a gitignored `.cargo/config.toml` (see `docs/local-iced.md`)
-# rather than a committed [patch.crates-io] block. Keeps CI and
-# crates.io publishes from tripping over a path that might not exist.
+# through a gitignored `.cargo/config.toml` paths override rather
+# than a committed [patch.crates-io] block. Keeps CI and crates.io
+# publishes from tripping over a path that might not exist.

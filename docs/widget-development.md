@@ -47,7 +47,7 @@ Widgets depend on `plushie-widget-sdk`, not `iced` directly. When
 a widget needs iced types beyond the prelude, use
 `plushie_widget_sdk::iced::*` so the iced version stays pinned to
 the renderer's version. See the
-[patch.crates-io guidance](#patchcrates-io-guidance) below.
+[iced fork guidance](#iced-fork-guidance) below.
 
 ### main.rs
 
@@ -261,21 +261,22 @@ Nightly-only Rust features in widget code will not compile on the
 pinned stable release, so avoid them unless you are ready to bump
 the workspace too.
 
-## `[patch.crates-io]` guidance
+## iced fork guidance
 
-The plushie workspace root's `Cargo.toml` has a `[patch.crates-io]`
-section pointing at a sibling `plushie-iced` checkout during
-development. Widget crates that consume `plushie-widget-sdk`
-should:
+plushie uses a fork published as `plushie-iced` on crates.io. Widget
+crates that consume `plushie-widget-sdk` should:
 
 - Depend on `plushie-iced` (not upstream `iced`) when a direct iced
   dep is unavoidable.
 - Prefer `plushie_widget_sdk::iced::*` for advanced iced types
   (`canvas::Path`, `advanced::Layout`). It is the re-export of the
   exact iced version the renderer uses.
-- Not add a `[patch.crates-io]` entry of their own unless they are
-  actively co-developing the fork. Patches applied only in a
-  consumer crate do not propagate to its dependencies.
+
+Local development against an in-flight `plushie-iced` checkout goes
+through a gitignored `.cargo/config.toml` paths override rather than
+a committed `[patch.crates-io]` block. Consumer crates should not
+add their own `[patch.crates-io]` entries: patches applied only in a
+consumer crate do not propagate to its dependencies.
 
 ## Accessibility for custom widgets
 

@@ -220,8 +220,8 @@ impl PlushieApp {
 
                     let effects = app.core.apply(IncomingMessage::Settings { settings });
                     for effect in effects {
-                        if let plushie_widget_sdk::engine::CoreEffect::WidgetConfig(config) = effect
-                        {
+                        use plushie_widget_sdk::engine::{CoreEffect, StateChange};
+                        if let CoreEffect::StateChange(StateChange::WidgetConfig(config)) = effect {
                             let ctx = plushie_widget_sdk::registry::InitCtx {
                                 config: &config,
                                 theme: &app.theme,

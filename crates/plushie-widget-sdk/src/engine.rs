@@ -23,27 +23,40 @@ use crate::tree::Tree;
 /// Core testable and mode-agnostic.
 ///
 /// Effects are returned in a `Vec` and should be processed in order.
-/// Some variants (e.g. `SyncWindows`) may depend on prior tree mutations
-/// from the same `apply` call.
+/// Some variants (e.g. `StateChange::SyncWindows`) may depend on prior
+/// tree mutations from the same `apply` call.
+///
+/// Variants are grouped by conceptual category so hosts can dispatch
+/// on the outer variant first (emit vs dispatch vs state change) and
+/// then on the inner typed sub-variant.
 #[derive(Debug)]
 pub enum CoreEffect {
-    /// The window set may have changed; re-sync with renderer.
-    ///
-    /// Produced after every Snapshot and Patch that succeeds. The host
-    /// should compare `tree.window_ids()` against its open window set
-    /// and open/close as needed.
-    SyncWindows,
+    /// Write something to the outgoing wire stream.
+    Emit(Emit),
+    /// Run a platform or widget operation against the renderer.
+    Dispatch(Dispatch),
+    /// Update host-owned state that lives outside Core.
+    StateChange(StateChange),
+}
 
-    /// Emit a protocol event to the host process.
-    EmitEvent(OutgoingEvent),
+/// Outgoing wire payloads produced by Core. Every variant is a
+/// fully-formed message the host can encode and write without any
+/// further parsing.
+#[derive(Debug)]
+pub enum Emit {
+    /// Widget or subscription event.
+    Event(OutgoingEvent),
+    /// Response to an effect request (stub or synthetic).
+    EffectResponse(crate::protocol::EffectResponse),
+    /// Acknowledgement that an effect stub registration changed.
+    StubAck(crate::protocol::EffectStubAck),
+}
 
-    /// Emit a pre-built effect response (used for stub responses).
-    /// The host should encode and write this directly.
-    EmitEffectResponse(crate::protocol::EffectResponse),
-
-    /// Emit an effect stub acknowledgement.
-    EmitStubAck(crate::protocol::EffectStubAck),
-
+/// Platform or widget operations the host must execute on Core's
+/// behalf. Core doesn't touch iced, stdout, or the filesystem; it
+/// produces these typed commands and the host dispatches them.
+#[derive(Debug)]
+pub enum Dispatch {
     /// Handle a platform effect (file dialog, clipboard, notification).
     ///
     /// Core does not execute effects; it passes the raw request through
@@ -62,40 +75,54 @@ pub enum CoreEffect {
     /// `clipboard_read_primary`, `clipboard_write_primary`
     ///
     /// **Sync (notification):** `notification`
-    HandleEffect {
+    Effect {
         request_id: String,
         kind: String,
         payload: Value,
     },
 
-    /// Execute a widget operation.
+    /// Renderer-internal widget-targeted operation by op string.
+    ///
+    /// Covers focus, scroll, cursor, pane-grid ops, tree_hash queries,
+    /// list_images, load_font, announce, exit, find_focused.
+    WidgetOp { op: String, payload: Value },
+
+    /// Typed window operation (open, close, resize, move, ...).
+    Window(plushie_core::ops::WindowOp),
+
+    /// Typed window query (get_size, get_position, ...).
+    WindowQuery(plushie_core::ops::WindowQuery),
+
+    /// Typed system-wide operation.
+    System(plushie_core::ops::SystemOp),
+
+    /// Typed system-wide query.
+    SystemQuery(plushie_core::ops::SystemQuery),
+
+    /// Image registry operation (create, update, delete).
     ///
     /// # Known ops
     ///
-    /// `focus`, `focus_next`, `focus_previous`, `scroll_to`, `scroll_by`,
-    /// `snap_to`, `snap_to_end`, `select_all`, `select_range`,
-    /// `move_cursor_to_front`, `move_cursor_to_end`,
-    /// `move_cursor_to_line_start`, `move_cursor_to_line_end`,
-    /// `announce`, `exit`, `pane_split`, `pane_close`,
-    /// `pane_swap`, `tree_hash`, `list_images`, `clear_images`,
-    /// `load_font`, `find_focused`, `system_theme`, `system_info`
-    WidgetOp { op: String, payload: Value },
+    /// `create_from_bytes`, `create_from_rgba`, `delete`
+    Image {
+        op: String,
+        handle: String,
+        data: Option<Vec<u8>>,
+        pixels: Option<Vec<u8>>,
+        width: Option<u32>,
+        height: Option<u32>,
+    },
+}
 
-    /// Execute a typed window operation.
+/// Changes to host-owned state that lives outside Core.
+#[derive(Debug)]
+pub enum StateChange {
+    /// The window set may have changed; re-sync with renderer.
     ///
-    /// Dispatched directly by [`crate::engine`]; the host matches on the
-    /// [`plushie_core::ops::WindowOp`] variants and produces the right
-    /// iced window task.
-    WindowOp(plushie_core::ops::WindowOp),
-
-    /// Run a typed window query.
-    WindowQuery(plushie_core::ops::WindowQuery),
-
-    /// Execute a typed system-wide operation.
-    SystemOp(plushie_core::ops::SystemOp),
-
-    /// Run a typed system-wide query.
-    SystemQuery(plushie_core::ops::SystemQuery),
+    /// Produced after every Snapshot and Patch that succeeds. The host
+    /// should compare `tree.window_ids()` against its open window set
+    /// and open/close as needed.
+    SyncWindows,
 
     /// The global/root theme changed to an explicit value.
     ///
@@ -110,20 +137,6 @@ pub enum CoreEffect {
     /// Nodes removed during a patch that had "exit" props.
     /// The host should promote these to ghost nodes for exit animations.
     ExitNodes(Vec<(String, usize, crate::protocol::TreeNode)>),
-
-    /// Image operation (create/update/delete in-memory handles).
-    ///
-    /// # Known ops
-    ///
-    /// `create_from_bytes`, `create_from_rgba`, `delete`
-    ImageOp {
-        op: String,
-        handle: String,
-        data: Option<Vec<u8>>,
-        pixels: Option<Vec<u8>>,
-        width: Option<u32>,
-        height: Option<u32>,
-    },
 
     /// Widget configuration received from the host's Settings message.
     ///
@@ -329,11 +342,11 @@ impl Core {
         match theming::resolve_theme_only(theme_val) {
             Some(theme) => {
                 self.cached_theme = Some(theme.clone());
-                effects.push(CoreEffect::ThemeChanged(theme));
+                effects.push(CoreEffect::StateChange(StateChange::ThemeChanged(theme)));
             }
             None => {
                 self.cached_theme = None;
-                effects.push(CoreEffect::ThemeFollowsSystem);
+                effects.push(CoreEffect::StateChange(StateChange::ThemeFollowsSystem));
             }
         }
     }
@@ -351,14 +364,14 @@ impl Core {
                 if let Err(duplicates) = self.tree.snapshot(tree) {
                     let dup_list = duplicates.join(", ");
                     log::error!("snapshot contains duplicate node IDs: {dup_list}");
-                    effects.push(CoreEffect::EmitEvent(OutgoingEvent::generic(
+                    effects.push(CoreEffect::Emit(Emit::Event(OutgoingEvent::generic(
                         "error".to_string(),
                         "duplicate_node_ids".to_string(),
                         Some(serde_json::json!({
                             "error": "snapshot contains duplicate node IDs",
                             "duplicates": duplicates,
                         })),
-                    )));
+                    ))));
                 }
                 self.caches.clear();
                 if let Some(root) = self.tree.root()
@@ -366,13 +379,13 @@ impl Core {
                 {
                     Self::emit_prop_validation_warnings(root, &mut effects);
                 }
-                effects.push(CoreEffect::SyncWindows);
+                effects.push(CoreEffect::StateChange(StateChange::SyncWindows));
             }
             IncomingMessage::Patch { ops } => {
                 log::debug!("patch received ({} ops)", ops.len());
                 let exit_nodes = self.tree.apply_patch(ops);
                 if !exit_nodes.is_empty() {
-                    effects.push(CoreEffect::ExitNodes(exit_nodes));
+                    effects.push(CoreEffect::StateChange(StateChange::ExitNodes(exit_nodes)));
                 }
                 // Re-check root theme prop in case a patch changed it.
                 if let Some(root) = self.tree.root()
@@ -385,26 +398,26 @@ impl Core {
                 {
                     Self::emit_prop_validation_warnings(root, &mut effects);
                 }
-                effects.push(CoreEffect::SyncWindows);
+                effects.push(CoreEffect::StateChange(StateChange::SyncWindows));
             }
             IncomingMessage::Effect { id, kind, payload } => {
                 log::debug!("effect request: {kind} ({id})");
                 if let Some(stub_response) = self.effect_stubs.get(&kind) {
                     log::debug!("effect stub hit: {kind} ({id})");
-                    effects.push(CoreEffect::EmitEffectResponse(
+                    effects.push(CoreEffect::Emit(Emit::EffectResponse(
                         crate::protocol::EffectResponse::ok(id, stub_response.clone()),
-                    ));
+                    )));
                 } else {
-                    effects.push(CoreEffect::HandleEffect {
+                    effects.push(CoreEffect::Dispatch(Dispatch::Effect {
                         request_id: id,
                         kind,
                         payload,
-                    });
+                    }));
                 }
             }
             IncomingMessage::WidgetOp { op, payload } => {
                 log::debug!("widget_op: {op}");
-                effects.push(CoreEffect::WidgetOp { op, payload });
+                effects.push(CoreEffect::Dispatch(Dispatch::WidgetOp { op, payload }));
             }
             IncomingMessage::Subscribe {
                 kind,
@@ -449,11 +462,11 @@ impl Core {
                 if let Some(typed) =
                     plushie_core::ops::WindowOp::from_wire(&op, &window_id, &payload)
                 {
-                    effects.push(CoreEffect::WindowOp(typed));
+                    effects.push(CoreEffect::Dispatch(Dispatch::Window(typed)));
                 } else if let Some(typed) =
                     plushie_core::ops::WindowQuery::from_wire(&op, &window_id, &payload)
                 {
-                    effects.push(CoreEffect::WindowQuery(typed));
+                    effects.push(CoreEffect::Dispatch(Dispatch::WindowQuery(typed)));
                 } else {
                     log::warn!("unknown window_op: {op}");
                 }
@@ -461,7 +474,7 @@ impl Core {
             IncomingMessage::SystemOp { op, payload } => {
                 log::debug!("system_op: {op}");
                 if let Some(typed) = plushie_core::ops::SystemOp::from_wire(&op, &payload) {
-                    effects.push(CoreEffect::SystemOp(typed));
+                    effects.push(CoreEffect::Dispatch(Dispatch::System(typed)));
                 } else {
                     log::warn!("unknown system_op: {op}");
                 }
@@ -469,7 +482,7 @@ impl Core {
             IncomingMessage::SystemQuery { op, payload } => {
                 log::debug!("system_query: {op}");
                 if let Some(typed) = plushie_core::ops::SystemQuery::from_wire(&op, &payload) {
-                    effects.push(CoreEffect::SystemQuery(typed));
+                    effects.push(CoreEffect::Dispatch(Dispatch::SystemQuery(typed)));
                 } else {
                     log::warn!("unknown system_query: {op}");
                 }
@@ -522,18 +535,20 @@ impl Core {
                     .get("widget_config")
                     .cloned()
                     .unwrap_or(Value::Null);
-                effects.push(CoreEffect::WidgetConfig(ext_config));
+                effects.push(CoreEffect::StateChange(StateChange::WidgetConfig(
+                    ext_config,
+                )));
             }
             IncomingMessage::ImageOp { op, payload } => {
                 log::debug!("image_op: {op} ({handle})", handle = payload.handle);
-                effects.push(CoreEffect::ImageOp {
+                effects.push(CoreEffect::Dispatch(Dispatch::Image {
                     op,
                     handle: payload.handle,
                     data: payload.data,
                     pixels: payload.pixels,
                     width: payload.width,
                     height: payload.height,
-                });
+                }));
             }
             // Scripting messages handled by the renderer binary (daemon /
             // headless), not by Core. Listed explicitly so adding a new
@@ -568,16 +583,16 @@ impl Core {
             IncomingMessage::RegisterEffectStub { kind, response } => {
                 log::info!("effect stub registered: {kind}");
                 self.effect_stubs.insert(kind.clone(), response);
-                effects.push(CoreEffect::EmitStubAck(
+                effects.push(CoreEffect::Emit(Emit::StubAck(
                     crate::protocol::EffectStubAck::registered(kind),
-                ));
+                )));
             }
             IncomingMessage::UnregisterEffectStub { kind } => {
                 log::info!("effect stub unregistered: {kind}");
                 self.effect_stubs.remove(&kind);
-                effects.push(CoreEffect::EmitStubAck(
+                effects.push(CoreEffect::Emit(Emit::StubAck(
                     crate::protocol::EffectStubAck::unregistered(kind),
-                ));
+                )));
             }
         }
 
@@ -596,7 +611,7 @@ impl Core {
     fn validate_node_recursive(node: &crate::protocol::TreeNode, effects: &mut Vec<CoreEffect>) {
         let warnings = crate::validate::collect_prop_warnings(node);
         if !warnings.is_empty() {
-            effects.push(CoreEffect::EmitEvent(OutgoingEvent::generic(
+            effects.push(CoreEffect::Emit(Emit::Event(OutgoingEvent::generic(
                 "prop_validation",
                 node.id.clone(),
                 Some(serde_json::json!({
@@ -604,7 +619,7 @@ impl Core {
                     "node_type": node.type_name,
                     "warnings": warnings,
                 })),
-            )));
+            ))));
         }
         for child in &node.children {
             Self::validate_node_recursive(child, effects);
@@ -751,7 +766,9 @@ mod tests {
         assert!(core.tree.root().is_some());
         assert_eq!(core.tree.root().unwrap().id, "root");
         // Must include SyncWindows
-        let has_sync = effects.iter().any(|e| matches!(e, CoreEffect::SyncWindows));
+        let has_sync = effects
+            .iter()
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::SyncWindows)));
         assert!(has_sync);
     }
 
@@ -764,7 +781,7 @@ mod tests {
         let effects = core.apply(msg);
         let has_theme = effects
             .iter()
-            .any(|e| matches!(e, CoreEffect::ThemeChanged(_)));
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_))));
         assert!(has_theme);
     }
 
@@ -777,7 +794,7 @@ mod tests {
         let effects = core.apply(msg);
         let has_theme = effects
             .iter()
-            .any(|e| matches!(e, CoreEffect::ThemeChanged(_)));
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_))));
         assert!(!has_theme);
     }
 
@@ -794,7 +811,9 @@ mod tests {
 
         let patch_msg = IncomingMessage::Patch { ops: vec![] };
         let effects = core.apply(patch_msg);
-        let has_sync = effects.iter().any(|e| matches!(e, CoreEffect::SyncWindows));
+        let has_sync = effects
+            .iter()
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::SyncWindows)));
         assert!(has_sync);
     }
 
@@ -967,7 +986,7 @@ mod tests {
         assert_eq!(effects.len(), 1);
         assert!(matches!(
             effects[0],
-            CoreEffect::WidgetConfig(serde_json::Value::Null)
+            CoreEffect::StateChange(StateChange::WidgetConfig(serde_json::Value::Null))
         ));
     }
 
@@ -985,7 +1004,7 @@ mod tests {
         let effects = core.apply(msg);
         let has_ext_config = effects
             .iter()
-            .any(|e| matches!(e, CoreEffect::WidgetConfig(_)));
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::WidgetConfig(_))));
         assert!(has_ext_config);
     }
 
@@ -1000,7 +1019,7 @@ mod tests {
         };
         let effects = core.apply(msg);
         let ext_config = effects.iter().find_map(|e| match e {
-            CoreEffect::WidgetConfig(v) => Some(v),
+            CoreEffect::StateChange(StateChange::WidgetConfig(v)) => Some(v),
             _ => None,
         });
         assert_eq!(
@@ -1119,7 +1138,9 @@ mod tests {
 
         let effects = core.apply(IncomingMessage::Snapshot { tree: root });
 
-        let has_sync = effects.iter().any(|e| matches!(e, CoreEffect::SyncWindows));
+        let has_sync = effects
+            .iter()
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::SyncWindows)));
         assert!(has_sync, "Snapshot with windows should produce SyncWindows");
 
         // Verify the tree has both windows.
@@ -1145,7 +1166,9 @@ mod tests {
         root2.children.push(make_window_node("win-a"));
         let effects = core.apply(IncomingMessage::Snapshot { tree: root2 });
 
-        let has_sync = effects.iter().any(|e| matches!(e, CoreEffect::SyncWindows));
+        let has_sync = effects
+            .iter()
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::SyncWindows)));
         assert!(has_sync, "Second Snapshot should produce SyncWindows");
 
         let ids = core.tree.window_ids();
@@ -1170,7 +1193,9 @@ mod tests {
         root2.children.push(make_window_node("win-c"));
         let effects = core.apply(IncomingMessage::Snapshot { tree: root2 });
 
-        let has_sync = effects.iter().any(|e| matches!(e, CoreEffect::SyncWindows));
+        let has_sync = effects
+            .iter()
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::SyncWindows)));
         assert!(has_sync);
 
         let ids = core.tree.window_ids();
@@ -1188,7 +1213,7 @@ mod tests {
 
         let effects = core.apply(IncomingMessage::Snapshot { tree: root });
         let has_error = effects.iter().any(|e| match e {
-            CoreEffect::EmitEvent(ev) => ev.family == "error",
+            CoreEffect::Emit(Emit::Event(ev)) => ev.family == "error",
             _ => false,
         });
         assert!(has_error, "duplicate IDs should produce an error event");
@@ -1205,7 +1230,7 @@ mod tests {
 
         let effects = core.apply(IncomingMessage::Snapshot { tree: root });
         let has_error = effects.iter().any(|e| match e {
-            CoreEffect::EmitEvent(ev) => ev.family == "error",
+            CoreEffect::Emit(Emit::Event(ev)) => ev.family == "error",
             _ => false,
         });
         assert!(!has_error, "unique IDs should not produce an error event");

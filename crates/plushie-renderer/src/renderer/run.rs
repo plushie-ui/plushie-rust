@@ -261,8 +261,9 @@ fn run_inner(
             // Apply initial settings to Core.
             let effects = app.core.apply(IncomingMessage::Settings { settings });
             for effect in effects {
+                use plushie_widget_sdk::engine::{CoreEffect, StateChange};
                 match effect {
-                    plushie_widget_sdk::engine::CoreEffect::WidgetConfig(config) => {
+                    CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
                         let ctx = plushie_widget_sdk::registry::InitCtx {
                             config: &config,
                             theme: &app.theme,

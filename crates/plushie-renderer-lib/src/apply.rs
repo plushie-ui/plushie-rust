@@ -78,24 +78,21 @@ impl App {
             }
         }
         for effect in effects {
+            use plushie_widget_sdk::engine::{Dispatch, Emit, StateChange};
             match effect {
-                CoreEffect::SyncWindows => {
-                    let task = self.sync_windows();
-                    self.pending_tasks.push(task);
-                }
-                CoreEffect::EmitEvent(event) => self.emitter.emit_event(event)?,
-                CoreEffect::EmitEffectResponse(response) => {
+                CoreEffect::Emit(Emit::Event(event)) => self.emitter.emit_event(event)?,
+                CoreEffect::Emit(Emit::EffectResponse(response)) => {
                     self.emitter.emit_effect_response(response)?;
                 }
-                CoreEffect::EmitStubAck(ack) => {
+                CoreEffect::Emit(Emit::StubAck(ack)) => {
                     let bytes = self.codec.encode(&ack).map_err(io::Error::other)?;
                     self.emitter.write_raw(&bytes)?;
                 }
-                CoreEffect::HandleEffect {
+                CoreEffect::Dispatch(Dispatch::Effect {
                     request_id,
                     kind,
                     payload,
-                } => {
+                }) => {
                     if let Some(request) =
                         plushie_core::ops::effect_request_from_wire(&kind, &payload)
                     {
@@ -122,44 +119,48 @@ impl App {
                         log::warn!("unknown effect kind: {kind}");
                     }
                 }
-                CoreEffect::WidgetOp { op, payload } => {
+                CoreEffect::Dispatch(Dispatch::WidgetOp { op, payload }) => {
                     let task = self.handle_widget_op(&op, &payload);
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::WindowOp(op) => {
+                CoreEffect::Dispatch(Dispatch::Window(op)) => {
                     let task = self.dispatch_window_op(op);
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::WindowQuery(q) => {
+                CoreEffect::Dispatch(Dispatch::WindowQuery(q)) => {
                     let task = self.dispatch_window_query(q);
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::SystemOp(op) => {
+                CoreEffect::Dispatch(Dispatch::System(op)) => {
                     let task = self.dispatch_system_op(op);
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::SystemQuery(q) => {
+                CoreEffect::Dispatch(Dispatch::SystemQuery(q)) => {
                     let task = self.dispatch_system_query(q);
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::ThemeChanged(theme) => {
-                    self.theme = theme;
-                    self.theme_follows_system = false;
-                }
-                CoreEffect::ThemeFollowsSystem => {
-                    self.theme_follows_system = true;
-                }
-                CoreEffect::ImageOp {
+                CoreEffect::Dispatch(Dispatch::Image {
                     op,
                     handle,
                     data,
                     pixels,
                     width,
                     height,
-                } => {
+                }) => {
                     self.handle_image_op(&op, &handle, data, pixels, width, height);
                 }
-                CoreEffect::WidgetConfig(config) => {
+                CoreEffect::StateChange(StateChange::SyncWindows) => {
+                    let task = self.sync_windows();
+                    self.pending_tasks.push(task);
+                }
+                CoreEffect::StateChange(StateChange::ThemeChanged(theme)) => {
+                    self.theme = theme;
+                    self.theme_follows_system = false;
+                }
+                CoreEffect::StateChange(StateChange::ThemeFollowsSystem) => {
+                    self.theme_follows_system = true;
+                }
+                CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
                     let ctx = plushie_widget_sdk::registry::InitCtx {
                         config: &config,
                         theme: &self.theme,
@@ -171,7 +172,7 @@ impl App {
                         self.emitter.emit_event(diag)?;
                     }
                 }
-                CoreEffect::ExitNodes(nodes) => {
+                CoreEffect::StateChange(StateChange::ExitNodes(nodes)) => {
                     for (parent_id, index, node) in nodes {
                         self.transition_manager
                             .ghosts

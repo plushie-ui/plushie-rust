@@ -420,10 +420,10 @@ impl<R: PlushieRenderer> Session<R> {
                     }
                     let effects = self.core.apply(msg);
                     for effect in effects {
-                        use plushie_widget_sdk::engine::CoreEffect;
+                        use plushie_widget_sdk::engine::{CoreEffect, StateChange};
                         match effect {
-                            CoreEffect::ThemeChanged(t) => self.theme = t,
-                            CoreEffect::WidgetConfig(config) => {
+                            CoreEffect::StateChange(StateChange::ThemeChanged(t)) => self.theme = t,
+                            CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
                                 let ctx = plushie_widget_sdk::registry::InitCtx {
                                     config: &config,
                                     theme: &self.theme,
@@ -536,22 +536,22 @@ fn handle_message<R: PlushieRenderer>(
             let effects = s.core.apply(msg);
 
             for effect in effects {
-                use plushie_widget_sdk::engine::CoreEffect;
+                use plushie_widget_sdk::engine::{CoreEffect, Dispatch, Emit, StateChange};
                 match effect {
-                    CoreEffect::EmitEvent(event) => {
+                    CoreEffect::Emit(Emit::Event(event)) => {
                         s.writer.emit(&event.with_session(session_id))?;
                     }
-                    CoreEffect::EmitEffectResponse(response) => {
+                    CoreEffect::Emit(Emit::EffectResponse(response)) => {
                         s.writer.emit(&response.with_session(session_id))?;
                     }
-                    CoreEffect::EmitStubAck(ack) => {
+                    CoreEffect::Emit(Emit::StubAck(ack)) => {
                         s.writer.emit(&ack.with_session(session_id))?;
                     }
-                    CoreEffect::HandleEffect {
+                    CoreEffect::Dispatch(Dispatch::Effect {
                         request_id,
                         kind,
                         payload,
-                    } => {
+                    }) => {
                         if crate::effects::is_async_effect(&kind) {
                             let mode = match s.mode {
                                 Mode::Headless => "headless",
@@ -570,7 +570,7 @@ fn handle_message<R: PlushieRenderer>(
                             s.writer.emit(&response.with_session(session_id))?;
                         }
                     }
-                    CoreEffect::ThemeChanged(t) => {
+                    CoreEffect::StateChange(StateChange::ThemeChanged(t)) => {
                         let mode_str = if t == iced::Theme::Light {
                             "light"
                         } else {
@@ -592,14 +592,14 @@ fn handle_message<R: PlushieRenderer>(
                         }
                         s.theme = t;
                     }
-                    CoreEffect::ImageOp {
+                    CoreEffect::Dispatch(Dispatch::Image {
                         op,
                         handle,
                         data,
                         pixels,
                         width,
                         height,
-                    } => {
+                    }) => {
                         let mode = match s.mode {
                             Mode::Headless => "headless",
                             Mode::Mock => "mock",
@@ -609,7 +609,7 @@ fn handle_message<R: PlushieRenderer>(
                             log::warn!("{mode}: image_op {op} failed: {e}");
                         }
                     }
-                    CoreEffect::WidgetConfig(config) => {
+                    CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
                         let ctx = plushie_widget_sdk::registry::InitCtx {
                             config: &config,
                             theme: &s.theme,
@@ -618,17 +618,17 @@ fn handle_message<R: PlushieRenderer>(
                         };
                         s.registry.init_all(&ctx);
                     }
-                    CoreEffect::SyncWindows => {}
-                    CoreEffect::WidgetOp {
+                    CoreEffect::StateChange(StateChange::SyncWindows) => {}
+                    CoreEffect::Dispatch(Dispatch::WidgetOp {
                         ref op,
                         ref payload,
-                    } if op == "load_font" => {
+                    }) if op == "load_font" => {
                         load_font_from_payload(s, session_id, payload);
                     }
-                    CoreEffect::WidgetOp {
+                    CoreEffect::Dispatch(Dispatch::WidgetOp {
                         ref op,
                         ref payload,
-                    } if op == "announce" => {
+                    }) if op == "announce" => {
                         let announce_text = payload
                             .get("text")
                             .and_then(|v| v.as_str())
@@ -649,10 +649,10 @@ fn handle_message<R: PlushieRenderer>(
                         );
                         let _ = s.writer.emit(&event.with_session(session_id));
                     }
-                    CoreEffect::WidgetOp {
+                    CoreEffect::Dispatch(Dispatch::WidgetOp {
                         ref op,
                         ref payload,
-                    } if op == "find_focused" => {
+                    }) if op == "find_focused" => {
                         // In headless mode we cannot query iced's focus state
                         // (no persistent widget operation runtime). Emit a
                         // response with null to indicate focus tracking is
@@ -671,13 +671,13 @@ fn handle_message<R: PlushieRenderer>(
                         });
                         let _ = s.writer.emit(&resp);
                     }
-                    CoreEffect::WidgetOp { .. } => {}
-                    CoreEffect::WindowOp(_)
-                    | CoreEffect::WindowQuery(_)
-                    | CoreEffect::SystemOp(_)
-                    | CoreEffect::SystemQuery(_) => {}
-                    CoreEffect::ThemeFollowsSystem => {}
-                    CoreEffect::ExitNodes(nodes) => {
+                    CoreEffect::Dispatch(Dispatch::WidgetOp { .. }) => {}
+                    CoreEffect::Dispatch(Dispatch::Window(_))
+                    | CoreEffect::Dispatch(Dispatch::WindowQuery(_))
+                    | CoreEffect::Dispatch(Dispatch::System(_))
+                    | CoreEffect::Dispatch(Dispatch::SystemQuery(_)) => {}
+                    CoreEffect::StateChange(StateChange::ThemeFollowsSystem) => {}
+                    CoreEffect::StateChange(StateChange::ExitNodes(nodes)) => {
                         for (parent_id, index, node) in nodes {
                             s.transition_manager
                                 .ghosts

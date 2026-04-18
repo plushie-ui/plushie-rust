@@ -62,6 +62,12 @@ impl EventSink for RecordingSink {
     fn emit_hello(&mut self, _: &str, _: &str, _: &[&str], _: &[&str], _: &str) -> io::Result<()> {
         Ok(())
     }
+    fn emit_diagnostic(
+        &mut self,
+        _: plushie_widget_sdk::protocol::DiagnosticMessage,
+    ) -> io::Result<()> {
+        Ok(())
+    }
     fn write_raw(&mut self, _: &[u8]) -> io::Result<()> {
         Ok(())
     }

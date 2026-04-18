@@ -14,7 +14,7 @@ use std::sync::{Arc, OnceLock};
 
 use parking_lot::Mutex;
 
-use plushie_widget_sdk::protocol::OutgoingEvent;
+use plushie_widget_sdk::protocol::{DiagnosticMessage, OutgoingEvent};
 
 /// Alias for the sink mutex.
 ///
@@ -70,6 +70,9 @@ pub trait EventSink: Send {
         transport: &str,
     ) -> io::Result<()>;
 
+    /// Emit a structured diagnostic event.
+    fn emit_diagnostic(&mut self, message: DiagnosticMessage) -> io::Result<()>;
+
     /// Write pre-encoded bytes (for stub acks and scripting).
     fn write_raw(&mut self, bytes: &[u8]) -> io::Result<()>;
 }
@@ -84,11 +87,27 @@ static EVENT_SINK: OnceLock<Arc<SinkMutex>> = OnceLock::new();
 ///
 /// Must be called exactly once before any output functions.
 /// Panics on double initialization.
+///
+/// Also installs the [`plushie_widget_sdk::diagnostics`] hook so inline
+/// widget-sdk diagnostic sites route to the wire through the same sink
+/// instead of being log-only.
 pub fn init_sink(sink: Box<dyn EventSink>) {
     let arc = Arc::new(Mutex::new(sink));
     if EVENT_SINK.set(arc).is_err() {
         panic!("event sink already initialized");
     }
+    plushie_widget_sdk::diagnostics::set_hook(Box::new(|level, diag| {
+        if let Some(sink_lock) = EVENT_SINK.get() {
+            let msg = DiagnosticMessage::new(level, diag.clone());
+            let mut guard = sink_lock.lock();
+            if let Err(e) = guard.emit_diagnostic(msg) {
+                // Write failures here are best-effort: the log line
+                // already captured the diagnostic, and surfacing a
+                // second error would require another sink call.
+                log::debug!("emit_diagnostic write error: {e}");
+            }
+        }
+    }));
 }
 
 /// Get a clone of the global sink Arc.
@@ -252,6 +271,12 @@ impl EventSink for WriterSink {
             "widgets": all_widgets,
         });
         let bytes = self.codec.encode(&msg).map_err(io::Error::other)?;
+        self.writer.write_all(&bytes)?;
+        self.writer.flush()
+    }
+
+    fn emit_diagnostic(&mut self, message: DiagnosticMessage) -> io::Result<()> {
+        let bytes = self.codec.encode(&message).map_err(io::Error::other)?;
         self.writer.write_all(&bytes)?;
         self.writer.flush()
     }
@@ -421,6 +446,9 @@ mod tests {
             _: &[&str],
             _: &str,
         ) -> io::Result<()> {
+            Ok(())
+        }
+        fn emit_diagnostic(&mut self, _: DiagnosticMessage) -> io::Result<()> {
             Ok(())
         }
         fn write_raw(&mut self, _: &[u8]) -> io::Result<()> {

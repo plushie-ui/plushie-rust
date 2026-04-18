@@ -180,13 +180,12 @@ pub fn parse_inline_fonts(settings: &Value) -> Vec<Vec<u8>> {
     };
     if granted < requested {
         let dropped = requested - granted;
-        let diag = plushie_core::Diagnostic::FontCapExceeded {
+        plushie_widget_sdk::diagnostics::warn(plushie_core::Diagnostic::FontCapExceeded {
             max,
             requested,
             granted,
             dropped,
-        };
-        log::warn!("{diag}");
+        });
         decoded.truncate(granted as usize);
     }
     decoded

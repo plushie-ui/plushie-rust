@@ -2,8 +2,7 @@
 //!
 //! Tracks font family names that have been registered with iced via
 //! runtime `LoadFont` commands. `default_font` resolution in
-//! [`crate::engine`] and custom font family lookups in
-//! [`crate::iced_convert`] consult this registry before emitting a
+//! [`crate::engine`] consults this registry before emitting a
 //! `font_family_not_found` diagnostic so app-loaded fonts resolve
 //! without round-tripping through font-file metadata parsing.
 //!

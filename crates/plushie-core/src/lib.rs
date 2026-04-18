@@ -12,6 +12,7 @@ pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent, widget};
 pub mod animation;
 pub mod codec_safety;
 pub mod diagnostic;
+pub mod diagnostics;
 pub mod event_type;
 pub mod key;
 pub mod ops;

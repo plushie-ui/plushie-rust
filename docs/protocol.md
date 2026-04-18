@@ -155,7 +155,7 @@ protocol version:
   "type": "hello",
   "session": "",
   "protocol": 1,
-  "version": "0.3.0",
+  "version": "0.6.1",
   "name": "plushie-renderer",
   "mode": "headless",
   "backend": "tiny-skia",
@@ -657,16 +657,18 @@ query renderer state.
 
 | Op | Payload | Description |
 |----|---------|-------------|
-| `close_window` | `window_id` | Close a window |
 | `announce` | `text`, optional `politeness` (`"polite"` or `"assertive"`, default `"assertive"`) | Screen reader announcement (no visible widget needed) |
 | `focus_next_within` | `scope` (widget ID) | Move focus to the next focusable widget within the subtree rooted at `scope` |
 | `focus_previous_within` | `scope` (widget ID) | Move focus to the previous focusable widget within the subtree rooted at `scope` |
 | `exit` | -- | Exit the renderer |
 | `tree_hash` | `tag` (optional) | Compute SHA-256 hash of current tree; response via `op_query_response` |
 | `find_focused` | `tag` (optional) | Find the currently focused widget; response via `op_query_response` |
-| `load_font` | `data` (base64 TTF/OTF) | Load a font at runtime |
+| `load_font` | `family` (string), `data` (base64 TTF/OTF) | Load a font at runtime. `family` is the name the host uses to reference the font in `default_font` and widget font props. |
 | `list_images` | `tag` (optional) | List all image handle names; response via `op_query_response` |
 | `clear_images` | -- | Remove all in-memory image handles |
+
+Window lifecycle (open / close / update) is driven by `window` tree
+nodes and the `window_op` message type; see the WindowOp section below.
 
 Widget op query responses (`tree_hash`, `find_focused`, `list_images`)
 use the `op_query_response` outgoing message type.
@@ -1262,6 +1264,34 @@ Messages without responses: Settings, Snapshot, Patch,
 Subscribe, Unsubscribe, Command, Commands, WidgetOp
 (non-query), WindowOp (non-query), SystemOp, ImageOp,
 AdvanceFrame.
+
+### diagnostic
+
+Structured diagnostic emitted by the renderer when something
+unexpected happens (invalid settings, font family not found, content
+truncated by an internal cap, widget panic, and so on). Hosts can
+surface these to end users, log them, or feed them into a test
+assertion. Each diagnostic is also mirrored to the renderer's log
+channel so existing log consumers still see the message.
+
+```json
+{
+  "type": "diagnostic",
+  "session": "s1",
+  "level": "warn",
+  "diagnostic": {
+    "kind": "font_family_not_found",
+    "family": "Inter"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"diagnostic"` |
+| `session` | string | Session the diagnostic is attributable to (may be empty for process-level sites) |
+| `level` | string | Severity: `"info"`, `"warn"`, `"error"` |
+| `diagnostic` | object | Typed payload. `kind` identifies the variant; remaining fields are variant-specific. See [`plushie_core::Diagnostic`](../crates/plushie-core/src/diagnostic.rs) for the full shape per variant. |
 
 ### event
 

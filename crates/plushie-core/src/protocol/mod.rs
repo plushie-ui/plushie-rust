@@ -15,8 +15,8 @@ pub const PROTOCOL_VERSION: u32 = 1;
 
 pub use incoming::IncomingMessage;
 pub use outgoing::{
-    CoalesceHint, EffectResponse, EffectStubAck, InteractResponse, KeyModifiers, OutgoingEvent,
-    QueryResponse, ResetResponse, TreeHashResponse,
+    CoalesceHint, DiagnosticLevel, DiagnosticMessage, EffectResponse, EffectStubAck,
+    InteractResponse, KeyModifiers, OutgoingEvent, QueryResponse, ResetResponse, TreeHashResponse,
 };
 pub use props::{PropMap, PropValue, Props};
 pub use types::{PatchOp, TreeNode};

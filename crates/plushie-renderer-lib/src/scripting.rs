@@ -1087,6 +1087,12 @@ mod tests {
             ) -> std::io::Result<()> {
                 Ok(())
             }
+            fn emit_diagnostic(
+                &mut self,
+                _: plushie_widget_sdk::protocol::DiagnosticMessage,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
             fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> {
                 Ok(())
             }

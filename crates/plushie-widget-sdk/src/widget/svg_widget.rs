@@ -82,21 +82,19 @@ impl SvgWidget {
         match svg_guard::parse_with_timeout(bytes, deadline) {
             DecodeOutcome::Ok => {}
             DecodeOutcome::ParseError(msg) => {
-                let diag = plushie_core::Diagnostic::SvgParseError {
+                crate::diagnostics::warn(plushie_core::Diagnostic::SvgParseError {
                     id: node_id.to_string(),
                     source: source.to_string(),
                     detail: msg,
-                };
-                log::warn!("{diag}");
+                });
                 Self::record_failure(source, DecodeFailure::ParseError);
             }
             DecodeOutcome::Timeout => {
-                let diag = plushie_core::Diagnostic::SvgDecodeTimeout {
+                crate::diagnostics::warn(plushie_core::Diagnostic::SvgDecodeTimeout {
                     id: node_id.to_string(),
                     source: source.to_string(),
                     deadline_debug: format!("{deadline:?}"),
-                };
-                log::warn!("{diag}");
+                });
                 Self::record_failure(source, DecodeFailure::Timeout);
             }
         }

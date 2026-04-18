@@ -650,10 +650,9 @@ fn resolve_font_with_fallback(v: &Value) -> Font {
                 ..Font::DEFAULT
             };
         }
-        let diag = plushie_core::Diagnostic::FontFamilyNotFound {
+        crate::diagnostics::warn(plushie_core::Diagnostic::FontFamilyNotFound {
             family: (*name).to_string(),
-        };
-        log::warn!("{diag}");
+        });
     }
     Font::DEFAULT
 }
@@ -700,10 +699,9 @@ fn validate_wire_settings(settings: &Value) {
     match serde_json::from_value::<WireSettings>(settings.clone()) {
         Ok(_) => {}
         Err(e) => {
-            let diag = plushie_core::Diagnostic::InvalidSettings {
+            crate::diagnostics::warn(plushie_core::Diagnostic::InvalidSettings {
                 detail: e.to_string(),
-            };
-            log::warn!("{diag}");
+            });
         }
     }
 }

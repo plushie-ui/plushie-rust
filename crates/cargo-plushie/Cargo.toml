@@ -24,6 +24,7 @@ workspace = true
 anyhow = "1"
 cargo_metadata = "0.19"
 clap = { version = "4", features = ["derive"] }
+plushie-core = { workspace = true }
 # ureq is a blocking HTTP client with rustls by default; keeps the
 # build tool async-free (no tokio pulled in just for downloads).
 ureq = { version = "2", default-features = false, features = ["tls"] }

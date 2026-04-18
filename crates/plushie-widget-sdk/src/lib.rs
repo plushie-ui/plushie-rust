@@ -62,6 +62,11 @@ pub mod testing;
 
 pub mod animation;
 
+/// Re-export of [`plushie_core::diagnostics`] for convenience so widget
+/// crates that already depend on `plushie-widget-sdk` don't need a
+/// second direct dep on `plushie-core` just for diagnostic emission.
+pub use plushie_core::diagnostics;
+
 pub mod fonts;
 
 pub mod iced_convert;

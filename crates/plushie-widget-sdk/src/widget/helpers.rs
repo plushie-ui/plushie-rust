@@ -82,16 +82,11 @@ pub(crate) fn intern_font_family(name: &str) -> &'static str {
 
     if cache.len() >= MAX_FONT_FAMILY_CACHE {
         if !WARNED.swap(true, Ordering::Relaxed) {
-            // Typed diagnostic emitted through Display so the log line
-            // stays consistent with other typed sites. There is no
-            // outgoing wire channel for non-canvas diagnostics today,
-            // so log-only is the whole pipeline. The atomic guards
-            // the emit to once per process; names past this point
-            // still leak uncached.
-            let diag = plushie_core::Diagnostic::FontCacheCapExceeded {
+            // The atomic guards the emit to once per process; names
+            // past this point still leak uncached.
+            crate::diagnostics::warn(plushie_core::Diagnostic::FontCacheCapExceeded {
                 max: MAX_FONT_FAMILY_CACHE,
-            };
-            log::warn!("{diag}");
+            });
         }
         return leaked;
     }

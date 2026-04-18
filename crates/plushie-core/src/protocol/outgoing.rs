@@ -945,6 +945,82 @@ fn sanitize_f64(v: f64) -> f64 {
 // Response types (serialized to stdout in reply to incoming messages)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Diagnostic (renderer -> host)
+// ---------------------------------------------------------------------------
+
+/// Severity level for an outgoing diagnostic.
+///
+/// Wire form is a snake_case string (`"info"`, `"warn"`, `"error"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticLevel {
+    /// Informational message; not a problem.
+    Info,
+    /// Something irregular but recoverable.
+    Warn,
+    /// Unrecoverable by the renderer; host intervention may be needed.
+    Error,
+}
+
+impl std::fmt::Display for DiagnosticLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Info => f.write_str("info"),
+            Self::Warn => f.write_str("warn"),
+            Self::Error => f.write_str("error"),
+        }
+    }
+}
+
+/// A structured diagnostic sent from the renderer to the host.
+///
+/// Wire form:
+///
+/// ```json
+/// {
+///   "type": "diagnostic",
+///   "session": "s1",
+///   "level": "warn",
+///   "diagnostic": {"kind": "font_family_not_found", "family": "Inter"}
+/// }
+/// ```
+///
+/// The `diagnostic` field is a [`plushie_core::Diagnostic`]
+/// serialised via its existing `#[serde(tag = "kind")]` representation,
+/// so hosts can decode directly into the typed enum (or pattern-match
+/// on the `kind` discriminant) without bespoke parsing.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiagnosticMessage {
+    /// Always `"diagnostic"`.
+    #[serde(rename = "type")]
+    pub message_type: &'static str,
+    /// Session that produced this diagnostic.
+    pub session: String,
+    /// Severity.
+    pub level: DiagnosticLevel,
+    /// The typed diagnostic payload.
+    pub diagnostic: crate::Diagnostic,
+}
+
+impl DiagnosticMessage {
+    /// Construct a new value with empty session.
+    pub fn new(level: DiagnosticLevel, diagnostic: crate::Diagnostic) -> Self {
+        Self {
+            message_type: "diagnostic",
+            session: String::new(),
+            level,
+            diagnostic,
+        }
+    }
+
+    /// Set the session ID for this diagnostic.
+    pub fn with_session(mut self, session: impl Into<String>) -> Self {
+        self.session = session.into();
+        self
+    }
+}
+
 /// Response to an effect request, written to stdout as JSONL.
 #[derive(Debug, Serialize)]
 pub struct EffectResponse {

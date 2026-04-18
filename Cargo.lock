@@ -801,6 +801,7 @@ dependencies = [
  "anyhow",
  "cargo_metadata",
  "clap",
+ "plushie-core",
  "serde",
  "serde_json",
  "sha2",

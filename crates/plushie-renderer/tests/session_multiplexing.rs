@@ -265,9 +265,9 @@ fn hello_message_fields() {
     assert_eq!(hello["type"], "hello");
 
     // Protocol version must match the constant in plushie-core.
-    // plushie_widget_sdk::protocol::PROTOCOL_VERSION == 1 at time of writing.
     assert_eq!(
-        hello["protocol"], 1,
+        hello["protocol"],
+        plushie_widget_sdk::protocol::PROTOCOL_VERSION,
         "hello.protocol should match PROTOCOL_VERSION"
     );
 

@@ -13,6 +13,10 @@ relative to 0.6.1.
 
 ### Breaking changes
 
+- **`close_window` moved from `widget_op` to `window_op`.** Hosts that
+  sent `widget_op` with `op: "close_window"` must switch to
+  `window_op` with `op: "close"` and a `window_id` field. The renderer
+  no longer handles the old widget_op form.
 - **Workspace restructured into per-role crates.** The former single
   renderer crate is split across `plushie-core`, `plushie-renderer-lib`,
   `plushie-renderer` (native binary), `plushie-renderer-wasm`,

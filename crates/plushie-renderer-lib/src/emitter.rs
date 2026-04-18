@@ -426,8 +426,9 @@ impl EventEmitter {
             // emitter fires this branch exactly when the sink is under
             // pressure, so adding another event would feed the jam we
             // are trying to drain.
-            let diag = plushie_core::Diagnostic::EmitterCoalesceCapExceeded { cap: PENDING_CAP };
-            log::warn!("{diag}");
+            plushie_widget_sdk::diagnostics::warn(
+                plushie_core::Diagnostic::EmitterCoalesceCapExceeded { cap: PENDING_CAP },
+            );
             self.flush_all();
         }
         self.pending
@@ -571,6 +572,12 @@ mod tests {
             _: &[&str],
             _: &[&str],
             _: &str,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_diagnostic(
+            &mut self,
+            _: plushie_widget_sdk::protocol::DiagnosticMessage,
         ) -> std::io::Result<()> {
             Ok(())
         }

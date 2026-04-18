@@ -522,13 +522,15 @@ impl WidgetStateStore {
     /// container carrying a diagnostic breadcrumb.
     ///
     /// The breadcrumb lives in the `a11y.label` prop so screen readers
-    /// surface the bug too. Renderer sinks that scrape warnings see
-    /// a matching [`plushie_core::Diagnostic::UnrecognizedWidgetPlaceholder`]
-    /// in the normalization output through the legacy string channel.
+    /// surface the bug too; the same
+    /// [`plushie_core::Diagnostic::UnrecognizedWidgetPlaceholder`] is
+    /// emitted through the typed diagnostic channel so hosts observe
+    /// the issue programmatically.
     fn rewrite_unrecognized_placeholder(node: &mut View) {
         let id = std::mem::take(&mut node.id);
-        let diag = plushie_core::Diagnostic::UnrecognizedWidgetPlaceholder { id: id.clone() };
-        log::warn!("{diag}");
+        plushie_core::diagnostics::warn(plushie_core::Diagnostic::UnrecognizedWidgetPlaceholder {
+            id: id.clone(),
+        });
         let mut props = plushie_core::protocol::PropMap::new();
         props.insert(
             "a11y",

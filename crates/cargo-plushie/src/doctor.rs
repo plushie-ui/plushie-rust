@@ -392,8 +392,11 @@ fn probe_renderer_version(binary: &Path) -> Option<String> {
         .spawn()
         .ok()?;
 
-    let settings = r#"{"type":"settings","session":"","protocol_version":1,"codec":"json"}
-"#;
+    let settings = format!(
+        r#"{{"type":"settings","session":"","protocol_version":{},"codec":"json"}}{}"#,
+        plushie_core::protocol::PROTOCOL_VERSION,
+        "\n"
+    );
     {
         let mut stdin = child.stdin.take()?;
         let _ = stdin.write_all(settings.as_bytes());

@@ -831,11 +831,10 @@ fn validate_subscription_windows(
         if let Some(wid) = sub.window_id()
             && !windows.contains(wid)
         {
-            let diag = plushie_core::Diagnostic::UnknownWindow {
+            plushie_core::diagnostics::warn(plushie_core::Diagnostic::UnknownWindow {
                 window_id: wid.to_string(),
                 subscription_tag: sub.kind().to_string(),
-            };
-            log::warn!("{diag}");
+            });
         }
     }
 }
@@ -1035,11 +1034,14 @@ fn wire_to_sdk_events(
     use plushie_core::protocol::{EffectResponse, OutgoingEvent};
 
     let Some(decoded) = decode_incoming(msg) else {
-        // No `type` field at all: not our message shape.
-        let diag = plushie_core::Diagnostic::UnknownMessageType {
+        // No `type` field at all: not our message shape. We are on the
+        // SDK side here (reading renderer output), so the diagnostic
+        // channel hook on the renderer does not apply; log as warn
+        // with the raw payload for diagnosis.
+        plushie_core::diagnostics::warn(plushie_core::Diagnostic::UnknownMessageType {
             msg_type: String::new(),
-        };
-        log::warn!("{diag}: {msg}");
+        });
+        log::warn!("raw unknown-type message: {msg}");
         return vec![];
     };
 
@@ -1053,11 +1055,9 @@ fn wire_to_sdk_events(
                 .collect();
         }
         IncomingRendererMessage::Unknown { msg_type, raw: _ } => {
-            // SDK is receiving renderer events here, so there is no
-            // outgoing sink to route through. Emit via the typed
-            // Diagnostic's Display impl to the shared log channel.
-            let diag = plushie_core::Diagnostic::UnknownMessageType { msg_type };
-            log::error!("{diag}");
+            plushie_core::diagnostics::error(plushie_core::Diagnostic::UnknownMessageType {
+                msg_type,
+            });
             return vec![];
         }
         IncomingRendererMessage::Event {

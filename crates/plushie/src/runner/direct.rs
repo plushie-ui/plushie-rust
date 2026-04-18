@@ -641,7 +641,7 @@ fn placeholder_tree() -> TreeNode {
     TreeNode {
         id: String::new(),
         type_name: "container".to_string(),
-        props: plushie_widget_sdk::protocol::Props::Typed(
+        props: plushie_widget_sdk::protocol::Props::from(
             plushie_widget_sdk::protocol::PropMap::new(),
         ),
         children: vec![],

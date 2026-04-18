@@ -437,7 +437,10 @@ fn node_to_value(node: &TreeNode) -> Value {
 #[cfg(test)]
 fn matches_role(node: &TreeNode, role: &str) -> bool {
     if let Some(a11y) = node.props.get("a11y") {
-        a11y.get("role").and_then(|v| v.as_str()) == Some(role)
+        a11y.as_object()
+            .and_then(|m| m.get("role"))
+            .and_then(|v| v.as_str())
+            == Some(role)
     } else {
         node.type_name == role
     }
@@ -447,7 +450,10 @@ fn matches_role(node: &TreeNode, role: &str) -> bool {
 #[cfg(test)]
 fn matches_label(node: &TreeNode, label: &str) -> bool {
     if let Some(a11y) = node.props.get("a11y")
-        && let Some(node_label) = a11y.get("label").and_then(|v| v.as_str())
+        && let Some(node_label) = a11y
+            .as_object()
+            .and_then(|m| m.get("label"))
+            .and_then(|v| v.as_str())
         && node_label == label
     {
         return true;
@@ -482,7 +488,11 @@ fn is_focused(node: &TreeNode) -> bool {
         return true;
     }
     if let Some(a11y) = node.props.get("a11y")
-        && a11y.get("focused").and_then(|v| v.as_bool()) == Some(true)
+        && a11y
+            .as_object()
+            .and_then(|m| m.get("focused"))
+            .and_then(|v| v.as_bool())
+            == Some(true)
     {
         return true;
     }
@@ -1272,17 +1282,21 @@ mod tests {
         root.children.push(make_text_node("btn1", "Click me"));
         root.children.push({
             let mut n = make_node("input1", "text_input");
-            n.props = json!({"placeholder": "Type here", "value": ""}).into();
+            n.props = plushie_widget_sdk::protocol::Props::from_json(
+                json!({"placeholder": "Type here", "value": ""}),
+            );
             n
         });
         root.children.push({
             let mut n = make_node("toggle1", "toggler");
-            n.props = json!({"is_toggled": false}).into();
+            n.props = plushie_widget_sdk::protocol::Props::from_json(json!({"is_toggled": false}));
             n
         });
         root.children.push({
             let mut n = make_node("slider1", "slider");
-            n.props = json!({"min": 0.0, "max": 100.0, "value": 50.0}).into();
+            n.props = plushie_widget_sdk::protocol::Props::from_json(
+                json!({"min": 0.0, "max": 100.0, "value": 50.0}),
+            );
             n
         });
         core.apply(plushie_widget_sdk::protocol::IncomingMessage::Snapshot { tree: root });
@@ -1516,7 +1530,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: json!({"a11y": a11y}).into(),
+            props: plushie_widget_sdk::protocol::Props::from_json(json!({"a11y": a11y})),
             children: vec![],
         }
     }
@@ -1577,7 +1591,8 @@ mod tests {
     #[test]
     fn search_by_label_matches_label_prop() {
         let mut node = make_node("chk", "checkbox");
-        node.props = json!({"label": "Accept terms"}).into();
+        node.props =
+            plushie_widget_sdk::protocol::Props::from_json(json!({"label": "Accept terms"}));
         let result = search_tree(
             &node,
             0,
@@ -1612,7 +1627,7 @@ mod tests {
     #[test]
     fn search_focused_matches_focused_prop() {
         let mut node = make_node("inp", "text_input");
-        node.props = json!({"focused": true}).into();
+        node.props = plushie_widget_sdk::protocol::Props::from_json(json!({"focused": true}));
         let result = search_tree(&node, 0, &is_focused, &node_to_value);
         assert!(result.is_some());
         assert_eq!(result.unwrap()["id"], "inp");
@@ -1629,7 +1644,7 @@ mod tests {
     #[test]
     fn search_focused_skips_unfocused() {
         let mut node = make_node("inp", "text_input");
-        node.props = json!({"focused": false}).into();
+        node.props = plushie_widget_sdk::protocol::Props::from_json(json!({"focused": false}));
         assert!(search_tree(&node, 0, &is_focused, &node_to_value).is_none());
     }
 
@@ -1637,7 +1652,7 @@ mod tests {
     fn search_focused_finds_in_children() {
         let mut root = make_node("root", "column");
         let mut child = make_node("inp", "text_input");
-        child.props = json!({"focused": true}).into();
+        child.props = plushie_widget_sdk::protocol::Props::from_json(json!({"focused": true}));
         root.children.push(child);
         let result = search_tree(&root, 0, &is_focused, &node_to_value);
         assert!(result.is_some());
@@ -1674,7 +1689,7 @@ mod tests {
     fn find_id_focused_returns_id() {
         let mut root = make_node("root", "column");
         let mut child = make_node("inp", "text_input");
-        child.props = json!({"focused": true}).into();
+        child.props = plushie_widget_sdk::protocol::Props::from_json(json!({"focused": true}));
         root.children.push(child);
         assert_eq!(find_id_focused(&root, 0), Some("inp".to_string()));
     }

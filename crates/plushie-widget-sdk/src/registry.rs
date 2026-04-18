@@ -2026,7 +2026,7 @@ mod tests {
         TreeNode {
             id: "root".into(),
             type_name: "container".into(),
-            props: serde_json::json!({}).into(),
+            props: plushie_core::protocol::Props::default(),
             children,
         }
     }
@@ -2035,7 +2035,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: serde_json::json!({}).into(),
+            props: plushie_core::protocol::Props::default(),
             children: vec![],
         }
     }
@@ -2127,7 +2127,7 @@ mod tests {
             node = TreeNode {
                 id: format!("n{i}"),
                 type_name: "stacked".into(),
-                props: serde_json::json!({}).into(),
+                props: plushie_core::protocol::Props::default(),
                 children: vec![node],
             };
         }

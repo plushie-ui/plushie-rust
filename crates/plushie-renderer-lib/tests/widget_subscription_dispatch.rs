@@ -153,7 +153,7 @@ fn tick_node(id: &str) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: "tick_widget".to_string(),
-        props: Props::Typed(PropMap::new()),
+        props: Props::from(PropMap::new()),
         children: vec![],
     }
 }
@@ -162,7 +162,7 @@ fn root_with(children: Vec<TreeNode>) -> TreeNode {
     TreeNode {
         id: "root".to_string(),
         type_name: "column".to_string(),
-        props: Props::Typed(PropMap::new()),
+        props: Props::from(PropMap::new()),
         children,
     }
 }

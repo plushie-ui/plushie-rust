@@ -359,8 +359,8 @@ impl Core {
         match message {
             IncomingMessage::Snapshot { tree } => {
                 log::debug!("snapshot received (root id={})", tree.id);
-                if let Some(theme_val) = tree.props.get("theme") {
-                    self.resolve_and_cache_theme(theme_val, &mut effects);
+                if let Some(theme_val) = tree.props.get_value("theme") {
+                    self.resolve_and_cache_theme(&theme_val, &mut effects);
                 }
                 if let Err(duplicates) = self.tree.snapshot(tree) {
                     let dup_list = duplicates.join(", ");
@@ -390,9 +390,8 @@ impl Core {
                 }
                 // Re-check root theme prop in case a patch changed it.
                 if let Some(root) = self.tree.root()
-                    && let Some(theme_val) = root.props.get("theme")
+                    && let Some(theme_val) = root.props.get_value("theme")
                 {
-                    let theme_val = theme_val.clone();
                     self.resolve_and_cache_theme(&theme_val, &mut effects);
                 }
                 if let Some(root) = self.tree.root()
@@ -1111,7 +1110,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: "window".to_string(),
-            props: serde_json::json!({}).into(),
+            props: plushie_core::protocol::Props::default(),
             children: vec![],
         }
     }

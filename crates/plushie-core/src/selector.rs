@@ -391,14 +391,13 @@ fn is_focused(node: &TreeNode) -> bool {
 mod tests {
     use super::*;
     use crate::protocol::Props;
-    use serde_json::json;
 
     /// Construct a minimal [`TreeNode`] for tree-search tests.
     fn node(id: &str, type_name: &str) -> TreeNode {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: Props::Wire(json!({})),
+            props: Props::default(),
             children: vec![],
         }
     }
@@ -408,7 +407,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: Props::Wire(json!({})),
+            props: Props::default(),
             children,
         }
     }

@@ -306,7 +306,7 @@ impl<W: Widget> WidgetView<W> {
         View {
             id: self.id,
             type_name: "__widget__".to_string(),
-            props: plushie_core::protocol::Props::Typed(props),
+            props: plushie_core::protocol::Props::from(props),
             children: vec![],
         }
     }

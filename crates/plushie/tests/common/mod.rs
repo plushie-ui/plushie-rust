@@ -77,7 +77,7 @@ pub fn text_node(id: &str, content: &str) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: "text".to_string(),
-        props: Props::Wire(Value::Object(props)),
+        props: Props::from_json(Value::Object(props)),
         children: vec![],
     }
 }
@@ -89,7 +89,7 @@ pub fn button_node(id: &str, label: &str) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: "button".to_string(),
-        props: Props::Wire(Value::Object(props)),
+        props: Props::from_json(Value::Object(props)),
         children: vec![],
     }
 }
@@ -99,7 +99,7 @@ pub fn container_node(id: &str, children: Vec<TreeNode>) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: "column".to_string(),
-        props: Props::Wire(Value::Object(Default::default())),
+        props: Props::from_json(Value::Object(Default::default())),
         children,
     }
 }
@@ -109,7 +109,7 @@ pub fn window_node(id: &str, children: Vec<TreeNode>) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: "window".to_string(),
-        props: Props::Wire(Value::Object(Default::default())),
+        props: Props::from_json(Value::Object(Default::default())),
         children,
     }
 }
@@ -121,7 +121,7 @@ pub fn a11y_node(id: &str, type_name: &str, role: &str) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props: Props::Wire(Value::Object(props)),
+        props: Props::from_json(Value::Object(props)),
         children: vec![],
     }
 }

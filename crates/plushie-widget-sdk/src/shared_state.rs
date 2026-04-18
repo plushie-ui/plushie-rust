@@ -122,9 +122,9 @@ impl Default for SharedState {
 /// Cache parsed `StyleOverrides` for a node's `style` prop. Only
 /// re-parses when the content hash of the JSON value changes.
 pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedState) {
-    let style_val = match node.props.get("style").and_then(|v| v.as_object()) {
-        Some(obj) => obj,
-        None => return,
+    let style_val = match node.props.get_value("style") {
+        Some(serde_json::Value::Object(obj)) => obj,
+        _ => return,
     };
 
     // Hash the map directly rather than wrapping it in a fresh
@@ -132,7 +132,7 @@ pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedS
     // branch of `hash_json_value` so the resulting hash is stable
     // across refactors of that helper.
     let mut hasher = DefaultHasher::new();
-    hash_json_map(style_val, &mut hasher);
+    hash_json_map(&style_val, &mut hasher);
     let hash = hasher.finish();
 
     if let Some((cached_hash, _)) = caches.style_overrides.get(&node.id)
@@ -141,7 +141,7 @@ pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedS
         return;
     }
 
-    let overrides = crate::widget::helpers::parse_style_overrides(style_val);
+    let overrides = crate::widget::helpers::parse_style_overrides(&style_val);
     caches
         .style_overrides
         .insert(node.id.clone(), (hash, overrides));

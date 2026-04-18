@@ -40,7 +40,7 @@ fn flat_shape_to_tree_node(val: &Value) -> TreeNode {
     TreeNode {
         id,
         type_name,
-        props: Value::Object(props).into(),
+        props: plushie_core::protocol::Props::from_json(Value::Object(props)),
         children,
     }
 }
@@ -90,7 +90,7 @@ fn make_canvas_node(props: Value, children: Vec<TreeNode>) -> TreeNode {
     TreeNode {
         id: "test-canvas".to_string(),
         type_name: "canvas".to_string(),
-        props: props.into(),
+        props: plushie_core::protocol::Props::from_json(props),
         children,
     }
 }
@@ -99,7 +99,7 @@ fn make_layer_node(name: &str, shape_children: Vec<TreeNode>) -> TreeNode {
     TreeNode {
         id: format!("auto:layer:{name}"),
         type_name: "__layer__".to_string(),
-        props: json!({"name": name}).into(),
+        props: plushie_core::protocol::Props::from_json(json!({"name": name})),
         children: shape_children,
     }
 }
@@ -108,7 +108,7 @@ fn make_shape_node(id: &str, type_name: &str, props: Value) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props: props.into(),
+        props: plushie_core::protocol::Props::from_json(props),
         children: vec![],
     }
 }

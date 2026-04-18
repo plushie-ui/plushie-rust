@@ -569,21 +569,10 @@ fn install_a11y(
     base: &plushie_core::protocol::Props,
     obj: serde_json::Map<String, serde_json::Value>,
 ) -> plushie_core::protocol::Props {
-    match base {
-        plushie_core::protocol::Props::Typed(map) => {
-            let mut map = map.clone();
-            map.remove("a11y");
-            map.insert("a11y", PropValue::from(serde_json::Value::Object(obj)));
-            plushie_core::protocol::Props::Typed(map)
-        }
-        plushie_core::protocol::Props::Wire(v) => {
-            let mut v = v.clone();
-            if let Some(m) = v.as_object_mut() {
-                m.insert("a11y".to_string(), serde_json::Value::Object(obj));
-            }
-            plushie_core::protocol::Props::Wire(v)
-        }
-    }
+    let mut map = base.as_prop_map().clone();
+    map.remove("a11y");
+    map.insert("a11y", PropValue::from(serde_json::Value::Object(obj)));
+    plushie_core::protocol::Props::from(map)
 }
 
 /// Rewrite a cross-widget ID reference through the scope-prefix logic.
@@ -760,7 +749,7 @@ mod tests {
         TreeNode {
             id: format!("memo:{key}"),
             type_name: "__memo__".to_string(),
-            props: plushie_core::protocol::Props::Typed(props),
+            props: plushie_core::protocol::Props::from(props),
             children: vec![inner],
         }
     }
@@ -860,7 +849,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: json!({}).into(),
+            props: plushie_core::protocol::Props::from_json(json!({})),
             children,
         }
     }
@@ -869,7 +858,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: props.into(),
+            props: plushie_core::protocol::Props::from_json(props),
             children: vec![],
         }
     }
@@ -1268,13 +1257,13 @@ mod tests {
         let text_child = TreeNode {
             id: "auto:text:1".to_string(),
             type_name: "text".to_string(),
-            props: json!({"content": "Save"}).into(),
+            props: plushie_core::protocol::Props::from_json(json!({"content": "Save"})),
             children: vec![],
         };
         let button = TreeNode {
             id: "save".to_string(),
             type_name: "button".to_string(),
-            props: json!({}).into(),
+            props: plushie_core::protocol::Props::from_json(json!({})),
             children: vec![text_child],
         };
         let tree = node("root", "column", vec![button]);

@@ -195,7 +195,7 @@ fn element_prop_accessors() {
     let node = TreeNode {
         id: "n".to_string(),
         type_name: "text".to_string(),
-        props: Props::Wire(serde_json::Value::Object(props)),
+        props: Props::from_json(serde_json::Value::Object(props)),
         children: vec![],
     };
     let elem = Element::new(&node);

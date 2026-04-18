@@ -99,7 +99,7 @@ fn run_wire_inner<A: App>(
     let seed = plushie_core::protocol::TreeNode {
         id: String::new(),
         type_name: "container".to_string(),
-        props: plushie_core::protocol::Props::Typed(plushie_core::protocol::PropMap::new()),
+        props: plushie_core::protocol::Props::from(plushie_core::protocol::PropMap::new()),
         children: vec![],
     };
     let mut current_tree = match crate::runtime::view_errors::run_guarded_view_wire::<A>(

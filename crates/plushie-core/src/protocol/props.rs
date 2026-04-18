@@ -1,16 +1,18 @@
 //! Typed prop storage for the widget tree.
 //!
-//! [`Props`] is dual-mode: [`Props::Typed`] stores values in a
-//! [`PropMap`] without JSON overhead (direct mode), while
-//! [`Props::Wire`] wraps a `serde_json::Value` for wire protocol
-//! compatibility. The typed accessor methods on Props dispatch
-//! transparently so consumers don't need to know which mode is
-//! active.
+//! [`Props`] wraps a [`PropMap`], a small ordered vector of
+//! `(String, PropValue)` pairs. Both direct-mode SDK builders and
+//! wire-mode JSON input produce the same underlying shape: wire
+//! deserialisation walks the `serde_json::Value` once and converts
+//! each entry into a [`PropValue`].
 //!
-//! Direct mode validates types at the boundary: if a builder sets a
-//! prop as f64 but the renderer expects a string, the mismatch is
-//! caught immediately. This gives confidence that the wire format
-//! (which uses the same prop names and types) will also be correct.
+//! Earlier versions of this module had two variants (`Typed` and
+//! `Wire`) so wire props could wrap `serde_json::Value` without
+//! converting. That traded a one-time deserialize cost for a
+//! per-access branch on every accessor, and several accessors were
+//! silently variant-asymmetric (e.g. `get` returned `None` for the
+//! typed variant). The render path dominates the cost; unifying on
+//! `PropMap` removes the footgun without a measurable hit.
 //!
 //! # Null-valued entries are wire-canonical "absent"
 //!
@@ -18,8 +20,8 @@
 //! `update_props` op. There is no way to transmit "set this key to
 //! an explicit null value." As a result, equality on [`Props`] and
 //! [`PropMap`] treats null-valued entries as equivalent to absent
-//! entries, so round-tripping a tree through diff + apply is lossless.
-//! See the `PartialEq` impls below.
+//! entries, so round-tripping a tree through diff + apply is
+//! lossless. See the `PartialEq` impl on [`PropMap`] below.
 
 use serde_json::Value;
 
@@ -319,43 +321,33 @@ impl PropMap {
 // Props
 // ---------------------------------------------------------------------------
 
-/// Dual-mode prop storage for TreeNode.
+/// Prop storage for [`TreeNode`](super::TreeNode).
 ///
-/// - [`Props::Typed`]: used in direct mode where the SDK builders
-///   produce typed values. No JSON allocation overhead during
-///   tree construction.
-/// - [`Props::Wire`]: used in wire mode where props arrive as JSON
-///   from the host process via the wire protocol.
-///
-/// The typed accessor methods dispatch transparently so consumers
-/// don't need to know which mode is active. For code that needs
-/// raw `&Value` access, [`as_value_cow`] provides a zero-cost
-/// reference for Wire and a cached conversion for Typed.
-#[derive(Debug, Clone)]
-pub enum Props {
-    /// Typed prop storage (direct mode).
-    Typed(PropMap),
-    /// JSON value storage (wire mode).
-    Wire(Value),
-}
-
-// Note: PartialEq is implemented manually below to handle cross-variant comparison.
+/// Wraps a [`PropMap`]. Both direct-mode SDK builders and wire-mode
+/// JSON deserialisation land in the same representation; accessors
+/// are plain delegations with no per-variant branching.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Props(PropMap);
 
 impl Props {
+    /// Construct from a `serde_json::Value`. Non-object values (a stray
+    /// string, number, etc.) become an empty [`PropMap`] rather than a
+    /// panic, so malformed wire input degrades gracefully.
+    pub fn from_json(value: Value) -> Self {
+        match value {
+            Value::Object(map) => Self(PropMap::from_json_map(map)),
+            _ => Self(PropMap::new()),
+        }
+    }
+
     /// Get a string prop.
     pub fn get_str(&self, key: &str) -> Option<&str> {
-        match self {
-            Self::Typed(map) => map.get(key)?.as_str(),
-            Self::Wire(v) => v.get(key)?.as_str(),
-        }
+        self.0.get(key)?.as_str()
     }
 
     /// Get a numeric prop as f64.
     pub fn get_f64(&self, key: &str) -> Option<f64> {
-        match self {
-            Self::Typed(map) => map.get(key)?.as_f64(),
-            Self::Wire(v) => v.get(key)?.as_f64(),
-        }
+        self.0.get(key)?.as_f64()
     }
 
     /// Get a numeric prop as f32.
@@ -365,179 +357,76 @@ impl Props {
 
     /// Get a boolean prop.
     pub fn get_bool(&self, key: &str) -> Option<bool> {
-        match self {
-            Self::Typed(map) => map.get(key)?.as_bool(),
-            Self::Wire(v) => v.get(key)?.as_bool(),
-        }
+        self.0.get(key)?.as_bool()
     }
 
     /// Get an integer prop as i64.
     pub fn get_i64(&self, key: &str) -> Option<i64> {
-        match self {
-            Self::Typed(map) => map.get(key)?.as_i64(),
-            Self::Wire(v) => v.get(key)?.as_i64(),
-        }
+        self.0.get(key)?.as_i64()
     }
 
     /// Get an unsigned integer prop as u64.
     pub fn get_u64(&self, key: &str) -> Option<u64> {
-        match self {
-            Self::Typed(map) => map.get(key)?.as_u64(),
-            Self::Wire(v) => v.get(key)?.as_u64(),
-        }
+        self.0.get(key)?.as_u64()
     }
 
     /// Check if a key exists.
     pub fn contains_key(&self, key: &str) -> bool {
-        match self {
-            Self::Typed(map) => map.contains_key(key),
-            Self::Wire(v) => v.get(key).is_some(),
-        }
+        self.0.contains_key(key)
     }
 
     /// Convert to a JSON Value for consumption by prop_helpers.
     ///
-    /// Zero-cost for Wire (returns a reference). Allocates for Typed
-    /// (converts PropMap to JSON Map). Called once per widget render.
+    /// Always allocates (converts PropMap to JSON Map). Callers that
+    /// only need field-by-field access should use the typed accessors
+    /// directly instead.
     pub fn as_value_cow(&self) -> std::borrow::Cow<'_, Value> {
-        match self {
-            Self::Wire(v) => std::borrow::Cow::Borrowed(v),
-            Self::Typed(m) => std::borrow::Cow::Owned(Value::Object(m.clone().into_json_map())),
-        }
+        std::borrow::Cow::Owned(Value::Object(self.0.clone().into_json_map()))
     }
 
-    /// Access as a JSON object map (Wire variant only).
-    ///
-    /// Returns None for Typed props. Prefer `as_value_cow()` for
-    /// code that needs to work with both variants.
-    pub fn as_object(&self) -> Option<&serde_json::Map<String, Value>> {
-        match self {
-            Self::Wire(v) => v.as_object(),
-            Self::Typed(_) => None,
-        }
+    /// Borrow the underlying [`PropMap`].
+    pub fn as_prop_map(&self) -> &PropMap {
+        &self.0
     }
 
-    /// Mutable access to the JSON object map (Wire variant only).
-    pub fn as_object_mut(&mut self) -> Option<&mut serde_json::Map<String, Value>> {
-        match self {
-            Self::Wire(v) => v.as_object_mut(),
-            Self::Typed(_) => None,
-        }
+    /// Mutably borrow the underlying [`PropMap`].
+    pub fn as_prop_map_mut(&mut self) -> &mut PropMap {
+        &mut self.0
     }
 
-    /// Get a raw Value ref by key (Wire variant only).
-    ///
-    /// Returns None for Typed props. Use `get_value()` for code
-    /// that needs to work with both variants.
-    pub fn get(&self, key: &str) -> Option<&Value> {
-        match self {
-            Self::Wire(v) => v.get(key),
-            Self::Typed(_) => None,
-        }
+    /// Get a prop by key as `&PropValue`.
+    pub fn get(&self, key: &str) -> Option<&PropValue> {
+        self.0.get(key)
     }
 
-    /// Get a prop value as an owned `Value`, working with both variants.
-    ///
-    /// For Wire, clones the value. For Typed, converts PropValue to Value.
-    /// Use sparingly for complex prop access (styles, fonts). For simple
-    /// types, prefer `get_str`/`get_f64`/`get_bool`.
+    /// Get a prop value as an owned `Value`. Allocates. Use sparingly;
+    /// prefer the typed accessors (`get_str`, `get_f64`, etc.) when
+    /// possible.
     pub fn get_value(&self, key: &str) -> Option<Value> {
-        match self {
-            Self::Wire(v) => v.get(key).cloned(),
-            Self::Typed(m) => m.get(key).map(|pv| Value::from(pv.clone())),
-        }
+        self.0.get(key).map(|pv| Value::from(pv.clone()))
     }
 
-    /// Access the typed PropMap (Typed only).
-    pub fn as_prop_map(&self) -> Option<&PropMap> {
-        match self {
-            Self::Typed(m) => Some(m),
-            Self::Wire(_) => None,
-        }
-    }
-
-    /// Convert to a serde_json::Value (for wire serialization).
+    /// Convert to a `serde_json::Value` (for wire serialization).
     pub fn to_value(&self) -> Value {
-        match self {
-            Self::Typed(map) => Value::Object(map.clone().into_json_map()),
-            Self::Wire(v) => v.clone(),
-        }
+        Value::Object(self.0.clone().into_json_map())
     }
 
-    /// True if the props contain an object/map structure.
-    /// Always true for Typed (PropMap). For Wire, checks if the
-    /// underlying Value is actually a JSON object.
+    /// True if the props contain an object/map structure. Always
+    /// true for the unified representation.
     pub fn is_object(&self) -> bool {
-        match self {
-            Self::Typed(_) => true,
-            Self::Wire(v) => v.is_object(),
-        }
-    }
-}
-
-impl Default for Props {
-    fn default() -> Self {
-        Self::Typed(PropMap::new())
-    }
-}
-
-impl PartialEq for Props {
-    /// Wire-canonical equality: null-valued keys in either map are
-    /// treated as absent. See [`PropMap::eq`] for the rationale; the
-    /// same invariant holds for the Wire variant so that `Typed` and
-    /// `Wire` forms agree and `tree_diff` + `apply_patch` can round-trip.
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Typed(a), Self::Typed(b)) => a == b,
-            (Self::Wire(a), Self::Wire(b)) => wire_values_eq(a, b),
-            // Mixed comparison: convert typed to value for comparison.
-            (Self::Typed(m), Self::Wire(v)) | (Self::Wire(v), Self::Typed(m)) => {
-                let typed_val = Value::Object(m.clone().into_json_map());
-                wire_values_eq(&typed_val, v)
-            }
-        }
-    }
-}
-
-/// Wire-canonical equality for `serde_json::Value`: recursively treats
-/// null-valued entries in JSON objects as absent. Non-object values
-/// compare with standard equality.
-fn wire_values_eq(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Object(ma), Value::Object(mb)) => {
-            let non_null_count =
-                |m: &serde_json::Map<String, Value>| m.iter().filter(|(_, v)| !v.is_null()).count();
-            if non_null_count(ma) != non_null_count(mb) {
-                return false;
-            }
-            ma.iter()
-                .filter(|(_, v)| !v.is_null())
-                .all(|(k, v)| match mb.get(k) {
-                    Some(ov) if !ov.is_null() => wire_values_eq(v, ov),
-                    _ => false,
-                })
-        }
-        (Value::Array(aa), Value::Array(ab)) => {
-            aa.len() == ab.len() && aa.iter().zip(ab.iter()).all(|(x, y)| wire_values_eq(x, y))
-        }
-        _ => a == b,
+        true
     }
 }
 
 impl From<PropMap> for Props {
     fn from(map: PropMap) -> Self {
-        Self::Typed(map)
-    }
-}
-
-impl From<Value> for Props {
-    fn from(v: Value) -> Self {
-        Self::Wire(v)
+        Self(map)
     }
 }
 
 // ---------------------------------------------------------------------------
-// Serde: Props serializes as JSON object, deserializes as Wire
+// Serde: Props serializes as a JSON object and deserializes from any Value
+// (non-object inputs collapse to an empty PropMap).
 // ---------------------------------------------------------------------------
 
 impl serde::Serialize for Props {
@@ -549,7 +438,7 @@ impl serde::Serialize for Props {
 impl<'de> serde::Deserialize<'de> for Props {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = Value::deserialize(deserializer)?;
-        Ok(Self::Wire(value))
+        Ok(Self::from_json(value))
     }
 }
 
@@ -600,7 +489,7 @@ mod tests {
         map.insert("title", "Hello");
         map.insert("size", 24.0f64);
         map.insert("visible", true);
-        let props = Props::Typed(map);
+        let props = Props::from(map);
 
         assert_eq!(props.get_str("title"), Some("Hello"));
         assert_eq!(props.get_f64("size"), Some(24.0));
@@ -611,7 +500,7 @@ mod tests {
 
     #[test]
     fn props_wire_accessors() {
-        let props = Props::Wire(json!({"title": "Hello", "size": 24.0, "visible": true}));
+        let props = Props::from_json(json!({"title": "Hello", "size": 24.0, "visible": true}));
 
         assert_eq!(props.get_str("title"), Some("Hello"));
         assert_eq!(props.get_f64("size"), Some(24.0));
@@ -619,13 +508,42 @@ mod tests {
     }
 
     #[test]
+    fn props_deserialize_round_trip_accessors() {
+        let json_str = r#"{"a": 1, "b": "x", "c": true}"#;
+        let props: Props = serde_json::from_str(json_str).unwrap();
+        assert_eq!(props.get_i64("a"), Some(1));
+        assert_eq!(props.get_str("b"), Some("x"));
+        assert_eq!(props.get_bool("c"), Some(true));
+    }
+
+    #[test]
+    fn props_from_non_object_json_is_empty() {
+        let props = Props::from_json(json!("stray string"));
+        assert!(props.as_prop_map().is_empty());
+        assert!(props.is_object());
+        assert_eq!(props.get_str("anything"), None);
+    }
+
+    #[test]
+    fn props_null_entries_are_absent_for_eq() {
+        let mut with_null = PropMap::new();
+        with_null.insert("content", "hello");
+        with_null.insert("size", PropValue::Null);
+        let empty_size = PropMap::new();
+        let mut plain = empty_size.clone();
+        plain.insert("content", "hello");
+
+        assert_eq!(Props::from(with_null), Props::from(plain));
+    }
+
+    #[test]
     fn props_typed_eq_wire() {
         let mut map = PropMap::new();
         map.insert("content", "hello");
         map.insert("size", 18.0f64);
-        let typed = Props::Typed(map);
+        let typed = Props::from(map);
 
-        let wire = Props::Wire(json!({"content": "hello", "size": 18.0}));
+        let wire = Props::from_json(json!({"content": "hello", "size": 18.0}));
 
         assert_eq!(typed, wire);
     }
@@ -650,24 +568,24 @@ mod tests {
     fn props_serializes_as_json_object() {
         let mut map = PropMap::new();
         map.insert("label", "Save");
-        let props = Props::Typed(map);
+        let props = Props::from(map);
 
         let json_str = serde_json::to_string(&props).unwrap();
         assert!(json_str.contains("\"label\":\"Save\""));
     }
 
     #[test]
-    fn props_deserializes_as_wire() {
+    fn props_deserializes_to_prop_map() {
         let json_str = r#"{"label":"Save","size":18}"#;
         let props: Props = serde_json::from_str(json_str).unwrap();
-        assert!(matches!(props, Props::Wire(_)));
         assert_eq!(props.get_str("label"), Some("Save"));
+        assert_eq!(props.get_i64("size"), Some(18));
     }
 
     #[test]
-    fn props_default_is_typed_empty() {
+    fn props_default_is_empty() {
         let props = Props::default();
-        assert!(matches!(props, Props::Typed(_)));
+        assert!(props.as_prop_map().is_empty());
     }
 
     #[test]
@@ -698,7 +616,7 @@ mod tests {
         map.insert("zebra", "z");
         map.insert("mango", "m");
         map.insert("apple", "a");
-        let props = Props::Typed(map);
+        let props = Props::from(map);
 
         let json_str = serde_json::to_string(&props).unwrap();
         // Alphabetical: apple, mango, zebra.
@@ -720,7 +638,7 @@ mod tests {
         let mut outer = PropMap::new();
         outer.insert("z_field", PropValue::Object(inner));
         outer.insert("a_field", "a");
-        let props = Props::Typed(outer);
+        let props = Props::from(outer);
 
         let json_str = serde_json::to_string(&props).unwrap();
         assert_eq!(

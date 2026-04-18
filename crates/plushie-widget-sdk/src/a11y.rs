@@ -571,7 +571,7 @@ mod tests {
     use serde_json::json;
 
     fn wire(v: serde_json::Value) -> plushie_core::protocol::Props {
-        plushie_core::protocol::Props::Wire(v)
+        plushie_core::protocol::Props::from_json(v)
     }
 
     // -- from_props -----------------------------------------------------------
@@ -584,13 +584,13 @@ mod tests {
 
     #[test]
     fn from_props_none_when_empty_a11y() {
-        let props = plushie_core::protocol::Props::Wire(json!({"a11y": {}}));
+        let props = plushie_core::protocol::Props::from_json(json!({"a11y": {}}));
         assert!(A11yOverrides::from_props(&props).is_none());
     }
 
     #[test]
     fn from_props_none_when_all_defaults() {
-        let props = plushie_core::protocol::Props::Wire(
+        let props = plushie_core::protocol::Props::from_json(
             json!({"a11y": {"hidden": false, "required": false}}),
         );
         assert!(A11yOverrides::from_props(&props).is_none());
@@ -619,7 +619,7 @@ mod tests {
 
     #[test]
     fn from_props_parses_all_fields() {
-        let props = plushie_core::protocol::Props::Wire(json!({
+        let props = plushie_core::protocol::Props::from_json(json!({
             "a11y": {
                 "role": "alert",
                 "label": "Error message",
@@ -781,7 +781,7 @@ mod tests {
     #[test]
     fn level_rejects_out_of_range() {
         for n in [0, 7, 100] {
-            let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"level": n}}));
+            let props = plushie_core::protocol::Props::from_json(json!({"a11y": {"level": n}}));
             assert!(A11yOverrides::from_props(&props).is_none());
         }
     }
@@ -789,7 +789,7 @@ mod tests {
     #[test]
     fn level_accepts_1_through_6() {
         for n in 1..=6 {
-            let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"level": n}}));
+            let props = plushie_core::protocol::Props::from_json(json!({"a11y": {"level": n}}));
             let o = A11yOverrides::from_props(&props).unwrap();
             assert_eq!(o.core.level, Some(n as usize));
         }
@@ -805,7 +805,7 @@ mod tests {
 
     #[test]
     fn mnemonic_none_when_empty_string() {
-        let props = plushie_core::protocol::Props::Wire(json!({"a11y": {"mnemonic": ""}}));
+        let props = plushie_core::protocol::Props::from_json(json!({"a11y": {"mnemonic": ""}}));
         assert!(A11yOverrides::from_props(&props).is_none());
     }
 

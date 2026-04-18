@@ -16,10 +16,10 @@
 //! ```
 
 use iced::Theme;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::image_registry::ImageRegistry;
-use crate::protocol::TreeNode;
+use crate::protocol::{Props, TreeNode};
 use crate::registry::WidgetRegistry;
 use crate::render_ctx::RenderCtx;
 use crate::shared_state::SharedState;
@@ -33,7 +33,7 @@ pub fn node(id: &str, type_name: &str) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props: json!({}).into(),
+        props: Props::default(),
         children: vec![],
     }
 }
@@ -43,7 +43,7 @@ pub fn node_with_props(id: &str, type_name: &str, props: Value) -> TreeNode {
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props: props.into(),
+        props: Props::from_json(props),
         children: vec![],
     }
 }
@@ -53,7 +53,7 @@ pub fn node_with_children(id: &str, type_name: &str, children: Vec<TreeNode>) ->
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props: json!({}).into(),
+        props: Props::default(),
         children,
     }
 }
@@ -71,7 +71,7 @@ pub fn node_with_props_and_children(
     TreeNode {
         id: id.to_string(),
         type_name: type_name.to_string(),
-        props: props.into(),
+        props: Props::from_json(props),
         children,
     }
 }
@@ -205,6 +205,7 @@ mod tests {
     use super::*;
     use crate::prop_helpers::{prop_f32, prop_str};
     use crate::registry::GenerationCounter;
+    use serde_json::json;
 
     // -- TreeNode constructors ------------------------------------------------
 

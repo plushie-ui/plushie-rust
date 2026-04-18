@@ -45,7 +45,7 @@ pub(crate) fn view_node(id: String, type_name: &str, props: PropMap, children: V
     View {
         id,
         type_name: type_name.to_string(),
-        props: plushie_core::protocol::Props::Typed(props),
+        props: plushie_core::protocol::Props::from(props),
         children,
     }
 }

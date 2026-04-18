@@ -23,18 +23,12 @@ use crate::iced_convert::hex_to_iced_color;
 // ---------------------------------------------------------------------------
 
 /// A borrowed reference to a JSON object's field map, or `None` when
-/// the node has no props (e.g. `Value::Null`).
+/// the node has no props.
 ///
 /// Deprecated: use `&Props` directly. Kept for backward compatibility
 /// with external widget code that hasn't migrated yet.
 #[deprecated(note = "use &Props directly")]
 pub type JsonProps<'a> = Option<&'a serde_json::Map<String, Value>>;
-
-/// Access the Wire-mode JSON map from `&Props`. Returns `None` for
-/// `Props::Typed`. Use this for fallback paths that need raw map access.
-pub fn wire_map(props: &Props) -> Option<&serde_json::Map<String, Value>> {
-    props.as_object()
-}
 
 /// Safely narrow an f64 to f32, clamping values outside f32's range
 /// instead of silently producing infinity.
@@ -52,187 +46,99 @@ pub fn f64_to_f32(v: f64) -> f32 {
 
 /// Get a string prop value.
 pub fn prop_str(props: &Props, key: &str) -> Option<String> {
-    if let Props::Typed(_) = props {
-        return props.get_str(key).map(|s| s.to_string());
-    }
-    let val = props.as_object()?.get(key)?;
-    match val.as_str() {
-        Some(s) => Some(s.to_owned()),
-        None => {
-            log::trace!("prop '{}': expected string, got {:?}", key, val);
-            None
-        }
-    }
+    props.get_str(key).map(|s| s.to_string())
 }
 
-/// Get an f32 prop value. Accepts both JSON numbers and numeric strings.
+/// Get an f32 prop value. Accepts numeric props or numeric strings.
 pub fn prop_f32(props: &Props, key: &str) -> Option<f32> {
-    if let Props::Typed(_) = props {
-        return props.get_f32(key);
+    if let Some(f) = props.get_f64(key) {
+        return Some(f64_to_f32(f));
     }
-    let val = props.as_object()?.get(key)?;
-    match val {
-        Value::Number(n) => match n.as_f64() {
-            Some(f) => Some(f64_to_f32(f)),
-            None => {
-                log::trace!("prop '{}': number failed f64 conversion: {:?}", key, val);
-                None
-            }
-        },
-        Value::String(s) => match s.parse::<f32>().ok().filter(|f| f.is_finite()) {
-            Some(f) => Some(f),
-            None => {
-                log::trace!("prop '{}': string not parseable as f32: {:?}", key, s);
-                None
-            }
-        },
-        _ => {
-            log::trace!("prop '{}': expected f64, got {:?}", key, val);
+    let s = props.get_str(key)?;
+    match s.parse::<f32>().ok().filter(|f| f.is_finite()) {
+        Some(f) => Some(f),
+        None => {
+            log::trace!("prop '{}': string not parseable as f32: {:?}", key, s);
             None
         }
     }
 }
 
-/// Get an f64 prop value. Accepts both JSON numbers and numeric strings.
+/// Get an f64 prop value. Accepts numeric props or numeric strings.
 pub fn prop_f64(props: &Props, key: &str) -> Option<f64> {
-    if let Props::Typed(_) = props {
-        return props.get_f64(key);
+    if let Some(f) = props.get_f64(key) {
+        return Some(f);
     }
-    let val = props.as_object()?.get(key)?;
-    match val {
-        Value::Number(n) => match n.as_f64() {
-            Some(f) => Some(f),
-            None => {
-                log::trace!("prop '{}': number failed f64 conversion: {:?}", key, val);
-                None
-            }
-        },
-        Value::String(s) => match s.parse::<f64>().ok().filter(|f| f.is_finite()) {
-            Some(f) => Some(f),
-            None => {
-                log::trace!("prop '{}': string not parseable as f64: {:?}", key, s);
-                None
-            }
-        },
-        _ => {
-            log::trace!("prop '{}': expected f64, got {:?}", key, val);
+    let s = props.get_str(key)?;
+    match s.parse::<f64>().ok().filter(|f| f.is_finite()) {
+        Some(f) => Some(f),
+        None => {
+            log::trace!("prop '{}': string not parseable as f64: {:?}", key, s);
             None
         }
     }
 }
 
-/// Get a u32 prop value. Accepts JSON numbers and numeric strings.
+/// Get a u32 prop value. Accepts numeric props or numeric strings.
 pub fn prop_u32(props: &Props, key: &str) -> Option<u32> {
-    if let Props::Typed(_) = props {
-        return props.get_u64(key).and_then(|v| u32::try_from(v).ok());
+    if let Some(u) = props.get_u64(key).and_then(|v| u32::try_from(v).ok()) {
+        return Some(u);
     }
-    let val = props.as_object()?.get(key)?;
-    match val {
-        Value::Number(n) => match n.as_u64().and_then(|v| u32::try_from(v).ok()) {
-            Some(u) => Some(u),
-            None => {
-                log::trace!("prop '{}': expected u32, got {:?}", key, val);
-                None
-            }
-        },
-        Value::String(s) => match s.parse::<u32>() {
-            Ok(u) => Some(u),
-            Err(_) => {
-                log::trace!("prop '{}': string not parseable as u32: {:?}", key, s);
-                None
-            }
-        },
-        _ => {
-            log::trace!("prop '{}': expected u32, got {:?}", key, val);
+    let s = props.get_str(key)?;
+    match s.parse::<u32>() {
+        Ok(u) => Some(u),
+        Err(_) => {
+            log::trace!("prop '{}': string not parseable as u32: {:?}", key, s);
             None
         }
     }
 }
 
-/// Get a u64 prop value. Accepts JSON numbers and numeric strings.
+/// Get a u64 prop value. Accepts numeric props or numeric strings.
 pub fn prop_u64(props: &Props, key: &str) -> Option<u64> {
-    if let Props::Typed(_) = props {
-        return props.get_u64(key);
+    if let Some(u) = props.get_u64(key) {
+        return Some(u);
     }
-    let val = props.as_object()?.get(key)?;
-    match val {
-        Value::Number(n) => match n.as_u64() {
-            Some(u) => Some(u),
-            None => {
-                log::trace!("prop '{}': expected u64, got {:?}", key, val);
-                None
-            }
-        },
-        Value::String(s) => match s.parse::<u64>() {
-            Ok(u) => Some(u),
-            Err(_) => {
-                log::trace!("prop '{}': string not parseable as u64: {:?}", key, s);
-                None
-            }
-        },
-        _ => {
-            log::trace!("prop '{}': expected u64, got {:?}", key, val);
+    let s = props.get_str(key)?;
+    match s.parse::<u64>() {
+        Ok(u) => Some(u),
+        Err(_) => {
+            log::trace!("prop '{}': string not parseable as u64: {:?}", key, s);
             None
         }
     }
 }
 
-/// Get a usize prop value. Accepts JSON numbers and numeric strings.
+/// Get a usize prop value. Accepts numeric props or numeric strings.
 pub fn prop_usize(props: &Props, key: &str) -> Option<usize> {
     prop_u64(props, key).and_then(|v| usize::try_from(v).ok())
 }
 
-/// Get an i32 prop value. Accepts both JSON numbers and numeric strings.
+/// Get an i32 prop value. Accepts numeric props or numeric strings.
 pub fn prop_i32(props: &Props, key: &str) -> Option<i32> {
-    if let Props::Typed(_) = props {
-        return props.get_i64(key).and_then(|v| i32::try_from(v).ok());
+    if let Some(i) = props.get_i64(key).and_then(|v| i32::try_from(v).ok()) {
+        return Some(i);
     }
-    let val = props.as_object()?.get(key)?;
-    match val {
-        Value::Number(n) => match n.as_i64().and_then(|v| i32::try_from(v).ok()) {
-            Some(i) => Some(i),
-            None => {
-                log::trace!("prop '{}': expected i32, got {:?}", key, val);
-                None
-            }
-        },
-        Value::String(s) => match s.parse::<i32>() {
-            Ok(i) => Some(i),
-            Err(_) => {
-                log::trace!("prop '{}': string not parseable as i32: {:?}", key, s);
-                None
-            }
-        },
-        _ => {
-            log::trace!("prop '{}': expected i32, got {:?}", key, val);
+    let s = props.get_str(key)?;
+    match s.parse::<i32>() {
+        Ok(i) => Some(i),
+        Err(_) => {
+            log::trace!("prop '{}': string not parseable as i32: {:?}", key, s);
             None
         }
     }
 }
 
-/// Get an i64 prop value. Accepts JSON numbers and numeric strings.
+/// Get an i64 prop value. Accepts numeric props or numeric strings.
 pub fn prop_i64(props: &Props, key: &str) -> Option<i64> {
-    if let Props::Typed(_) = props {
-        return props.get_i64(key);
+    if let Some(i) = props.get_i64(key) {
+        return Some(i);
     }
-    let val = props.as_object()?.get(key)?;
-    match val {
-        Value::Number(n) => match n.as_i64() {
-            Some(i) => Some(i),
-            None => {
-                log::trace!("prop '{}': expected i64, got {:?}", key, val);
-                None
-            }
-        },
-        Value::String(s) => match s.parse::<i64>() {
-            Ok(i) => Some(i),
-            Err(_) => {
-                log::trace!("prop '{}': string not parseable as i64: {:?}", key, s);
-                None
-            }
-        },
-        _ => {
-            log::trace!("prop '{}': expected i64, got {:?}", key, val);
+    let s = props.get_str(key)?;
+    match s.parse::<i64>() {
+        Ok(i) => Some(i),
+        Err(_) => {
+            log::trace!("prop '{}': string not parseable as i64: {:?}", key, s);
             None
         }
     }
@@ -240,17 +146,7 @@ pub fn prop_i64(props: &Props, key: &str) -> Option<i64> {
 
 /// Get a boolean prop value.
 pub fn prop_bool(props: &Props, key: &str) -> Option<bool> {
-    if let Props::Typed(_) = props {
-        return props.get_bool(key);
-    }
-    let val = props.as_object()?.get(key)?;
-    match val.as_bool() {
-        Some(b) => Some(b),
-        None => {
-            log::trace!("prop '{}': expected bool, got {:?}", key, val);
-            None
-        }
-    }
+    props.get_bool(key)
 }
 
 /// Get a boolean prop value with a default.
@@ -392,9 +288,7 @@ pub fn prop_animated_f32(
         return val.as_f64().map(f64_to_f32);
     }
     // Fall back to tree props (skip descriptor maps)
-    if let Some(val) = props.get(key)
-        && val.is_object()
-    {
+    if let Some(plushie_core::protocol::PropValue::Object(_)) = props.get(key) {
         // This is likely an animation descriptor; the renderer hasn't
         // started animating yet (first frame) or it just completed.
         // Return None so the widget uses its default.
@@ -415,9 +309,7 @@ pub fn prop_animated_color(
     {
         return val.as_str().and_then(hex_to_iced_color);
     }
-    if let Some(val) = props.get(key)
-        && val.is_object()
-    {
+    if let Some(plushie_core::protocol::PropValue::Object(_)) = props.get(key) {
         return None;
     }
     plushie_core::types::Color::extract(props, key).map(|c| crate::iced_convert::color(&c))
@@ -433,7 +325,7 @@ mod tests {
     use serde_json::json;
 
     fn make_props(val: Value) -> Props {
-        Props::Wire(val)
+        Props::from_json(val)
     }
 
     #[test]
@@ -818,7 +710,7 @@ mod tests {
         map.insert("count", 42i64);
         map.insert("visible", true);
         map.insert("color", "#ff0000");
-        Props::Typed(map)
+        Props::from(map)
     }
 
     #[test]

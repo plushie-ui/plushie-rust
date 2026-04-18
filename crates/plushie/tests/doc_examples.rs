@@ -188,7 +188,7 @@ fn widget_trait_compiles() {
     let props = UntypedProps::from_node(&TreeNode {
         id: "w".to_string(),
         type_name: "__widget__".to_string(),
-        props: plushie_core::protocol::Props::Typed(PropMap::new()),
+        props: plushie_core::protocol::Props::from(PropMap::new()),
         children: vec![],
     });
     let _view = StarRating::view("rating", &props, &state);

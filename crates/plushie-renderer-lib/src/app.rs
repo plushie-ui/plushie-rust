@@ -110,7 +110,7 @@ impl App {
     pub fn title_for_window(&self, iced_id: window::Id) -> String {
         if let Some(window_id) = self.windows.get_window_id(&iced_id)
             && let Some(node) = self.core.tree.find_window(window_id)
-            && let Some(title) = node.props.get("title").and_then(|v| v.as_str())
+            && let Some(title) = node.props.get_str("title")
         {
             return title.chars().filter(|c| !c.is_control()).collect();
         }
@@ -145,9 +145,7 @@ impl App {
         // Fall back to the tree node's scale_factor prop.
         let sf = window_id
             .and_then(|jid| self.core.tree.find_window(jid))
-            .and_then(|node| node.props.get("scale_factor"))
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
+            .and_then(|node| node.props.get_f32("scale_factor"))
             .unwrap_or(self.scale_factor);
         validate_scale_factor(sf)
     }

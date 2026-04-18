@@ -198,14 +198,14 @@ fn build_overlay_node() -> TreeNode {
     let text_node = TreeNode {
         id: String::new(),
         type_name: "text".to_string(),
-        props: Props::Typed(text_props),
+        props: Props::from(text_props),
         children: vec![],
     };
 
     TreeNode {
         id: FROZEN_OVERLAY_ID.to_string(),
         type_name: "container".to_string(),
-        props: Props::Typed(container_props),
+        props: Props::from(container_props),
         children: vec![text_node],
     }
 }

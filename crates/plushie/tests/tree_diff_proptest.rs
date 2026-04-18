@@ -26,7 +26,7 @@ fn arb_leaf_value() -> impl Strategy<Value = Value> {
 fn arb_props() -> impl Strategy<Value = Props> {
     prop::collection::vec(("[a-z]{1,6}", arb_leaf_value()), 0..4).prop_map(|pairs| {
         let map: serde_json::Map<String, Value> = pairs.into_iter().collect();
-        Props::Wire(Value::Object(map))
+        Props::from_json(Value::Object(map))
     })
 }
 

@@ -642,7 +642,7 @@ mod tests {
 
     /// Helper: build a Props from a json! value. The value must be an object.
     fn make_props(v: Value) -> Props {
-        Props::Wire(v)
+        Props::from_json(v)
     }
 
     // -- prop_f32 --

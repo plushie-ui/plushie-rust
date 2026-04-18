@@ -151,25 +151,20 @@ impl Tree {
                     .get("props")
                     .ok_or("update_props: missing 'props' field")?;
 
-                if !target.props.is_object() {
-                    log::error!(
-                        "update_props: target node '{}' props is not an object: {:?}",
-                        target.id,
-                        target.props
-                    );
-                    return Ok(());
-                }
                 if !props.is_object() {
                     log::error!("update_props: patch props is not an object: {}", props);
                     return Ok(());
                 }
-                let target_map = target.props.as_object_mut().unwrap();
+                let target_map = target.props.as_prop_map_mut();
                 let patch_map = props.as_object().unwrap();
                 for (k, v) in patch_map {
                     if v.is_null() {
                         target_map.remove(k);
                     } else {
-                        target_map.insert(k.clone(), v.clone());
+                        target_map.insert(
+                            k.clone(),
+                            plushie_core::protocol::PropValue::from(v.clone()),
+                        );
                     }
                 }
                 Ok(())
@@ -782,7 +777,8 @@ mod tests {
     #[test]
     fn patch_update_props_non_object_target_props_does_not_panic() {
         let mut tree = Tree::new();
-        // Target has a non-object props value (a string)
+        // A non-object props value collapses to an empty map on construction;
+        // the merge then proceeds normally, inserting the patch keys.
         let _ = tree.snapshot(node_with_props("root", "text", json!("not an object")));
         let op = make_patch_op(
             "update_props",
@@ -792,11 +788,7 @@ mod tests {
             }),
         );
         tree.apply_patch(vec![op]);
-        // Props unchanged: the merge was skipped
-        assert_eq!(
-            tree.root().unwrap().props,
-            plushie_core::protocol::Props::Wire(json!("not an object"))
-        );
+        assert_eq!(tree.root().unwrap().props.get_str("content"), Some("new"));
     }
 
     #[test]

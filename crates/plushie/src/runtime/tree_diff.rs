@@ -99,11 +99,11 @@ fn apply_one(tree: &mut TreeNode, op: &PatchOp) {
                         target_map.insert(k.clone(), v.clone());
                     }
                 }
-                target.props = plushie_core::protocol::Props::Wire(target_value);
+                target.props = plushie_core::protocol::Props::from_json(target_value);
             } else {
                 // Fall back to whole-props replacement when either side
                 // isn't an object.
-                target.props = plushie_core::protocol::Props::Wire(props.clone());
+                target.props = plushie_core::protocol::Props::from_json(props.clone());
             }
         }
         PatchOp::InsertChild { path, index, node } => {
@@ -537,7 +537,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: type_name.to_string(),
-            props: props.into(),
+            props: plushie_core::protocol::Props::from_json(props),
             children,
         }
     }

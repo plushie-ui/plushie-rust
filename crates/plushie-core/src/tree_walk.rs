@@ -198,7 +198,7 @@ mod tests {
         TreeNode {
             id: id.to_string(),
             type_name: "test".to_string(),
-            props: crate::protocol::Props::Wire(serde_json::Value::Object(Default::default())),
+            props: crate::protocol::Props::default(),
             children,
         }
     }

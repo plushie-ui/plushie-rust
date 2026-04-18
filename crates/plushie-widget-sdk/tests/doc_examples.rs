@@ -73,7 +73,7 @@ fn doc_gauge_no_props() {
 
 #[test]
 fn doc_prop_parsing() {
-    let props = Props::Wire(json!({
+    let props = Props::from_json(json!({
         "value": 42.5,
         "label": "test",
         "color": "#3498db",
@@ -326,7 +326,7 @@ fn widget_props_container_builder_gains_child_methods() {
     let child_node = plushie_core::protocol::TreeNode {
         id: "inner".into(),
         type_name: "doc_leaf".into(),
-        props: serde_json::json!({}).into(),
+        props: plushie_core::protocol::Props::default(),
         children: vec![],
     };
     let builder = DocStack::builder("stack").child(child_node.clone());

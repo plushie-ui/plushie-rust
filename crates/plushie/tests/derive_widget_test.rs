@@ -32,7 +32,7 @@ fn props_from_node_all_present() {
     let node = TreeNode {
         id: "w1".to_string(),
         type_name: "test_widget".to_string(),
-        props: Props::Wire(json!({"label": "hello", "size": 14.0, "visible": true})),
+        props: Props::from_json(json!({"label": "hello", "size": 14.0, "visible": true})),
         children: vec![],
     };
 
@@ -47,7 +47,7 @@ fn props_from_node_partial() {
     let node = TreeNode {
         id: "w2".to_string(),
         type_name: "test_widget".to_string(),
-        props: Props::Wire(json!({"label": "partial"})),
+        props: Props::from_json(json!({"label": "partial"})),
         children: vec![],
     };
 
@@ -62,7 +62,7 @@ fn props_from_node_empty() {
     let node = TreeNode {
         id: "w3".to_string(),
         type_name: "test_widget".to_string(),
-        props: Props::Wire(json!({})),
+        props: Props::from_json(json!({})),
         children: vec![],
     };
 
@@ -77,7 +77,7 @@ fn props_from_node_type_mismatch() {
     let node = TreeNode {
         id: "w4".to_string(),
         type_name: "test_widget".to_string(),
-        props: Props::Wire(json!({"label": 42, "size": "not a number", "visible": "yes"})),
+        props: Props::from_json(json!({"label": 42, "size": "not a number", "visible": "yes"})),
         children: vec![],
     };
 
@@ -106,7 +106,7 @@ fn complex_type_extraction() {
     let node = TreeNode {
         id: "cb1".to_string(),
         type_name: "color_box".to_string(),
-        props: Props::Wire(json!({
+        props: Props::from_json(json!({
             "color": "#ff0000",
             "opacity": 0.8,
             "count": 3
@@ -134,7 +134,7 @@ fn props_debug_format() {
     let node = TreeNode {
         id: "d1".to_string(),
         type_name: "test_widget".to_string(),
-        props: Props::Wire(json!({"label": "debug_me"})),
+        props: Props::from_json(json!({"label": "debug_me"})),
         children: vec![],
     };
 
@@ -199,7 +199,7 @@ fn builder_roundtrip_through_props() {
     let node = TreeNode {
         id: b.0.id.clone(),
         type_name: b.0.type_name.to_string(),
-        props: Props::Typed(b.0.props),
+        props: Props::from(b.0.props),
         children: vec![],
     };
 

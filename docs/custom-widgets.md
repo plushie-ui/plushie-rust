@@ -5,8 +5,9 @@ widgets and native widgets. This document covers native widgets:
 renderer-side primitives that implement iced-based drawing and are
 compiled into a custom renderer binary by `cargo plushie build`.
 
-For the other style, see [Composite widgets](#when-to-write-a-native-widget)
-below.
+For the other style, see [When to write a native widget](#when-to-write-a-native-widget)
+below; it contrasts native widgets against composite widgets and
+explains when to reach for each.
 
 ## When to write a native widget
 

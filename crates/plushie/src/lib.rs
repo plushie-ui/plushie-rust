@@ -47,11 +47,18 @@
 //!
 //! # Two modes
 //!
-//! - **Direct mode** (`plushie::run`): Renders in-process using iced.
-//!   No subprocess, no serialization. Default.
-//! - **Wire mode** (`plushie::run_wire`): Spawns a renderer binary
-//!   and communicates over stdin/stdout. Same API, same behavior,
-//!   higher latency.
+//! `plushie::run::<A>()` is feature-agnostic. It dispatches to
+//! whichever runner is compiled in:
+//!
+//! - **Direct mode** (`direct` feature, default): In-process iced
+//!   rendering. No subprocess, no serialization.
+//! - **Wire mode** (`wire` feature): Spawns a renderer binary and
+//!   communicates over stdin/stdout. Auto-discovers the binary via
+//!   `PLUSHIE_BINARY_PATH` then `PATH`.
+//!
+//! When both features are enabled, direct wins. Pass an explicit
+//! renderer path via [`run_with_renderer`] to force a specific wire
+//! binary.
 
 pub mod animation;
 pub mod automation;
@@ -177,9 +184,10 @@ pub trait App: Send + 'static {
         WindowConfig::default()
     }
 
-    /// Called synchronously before [`run_wire`] returns
-    /// [`Error::RendererExit`] when the renderer subprocess exits.
-    /// Wire mode only; direct mode never calls this.
+    /// Called synchronously before [`run`] (or
+    /// [`run_with_renderer`]) returns [`Error::RendererExit`] when
+    /// the renderer subprocess exits. Wire mode only; direct mode
+    /// never calls this.
     ///
     /// Use this hook to save state, log diagnostics, or clean up
     /// model-side resources. The typed error coordinates
@@ -215,22 +223,73 @@ pub trait App: Send + 'static {
 pub type Result = std::result::Result<(), Error>;
 
 // ---------------------------------------------------------------------------
-// Entry points (stubs until runners are implemented)
+// Entry points
 // ---------------------------------------------------------------------------
 
-/// Run the app in direct mode (in-process renderer).
+/// Run the app.
 ///
-/// This is the default and most common entry point. The renderer
-/// runs in the same process with no subprocess or serialization.
+/// Feature-agnostic entry point. The runner is selected at compile
+/// time from the enabled features:
+///
+/// - `direct` (default): in-process iced rendering. No subprocess.
+/// - `wire`: spawns a renderer binary and talks stdin/stdout.
+///
+/// When both features are enabled, `direct` wins. To force wire mode
+/// against a specific binary, use [`run_with_renderer`].
+///
+/// # Wire binary discovery
+///
+/// Wire mode locates the renderer in this order:
+///
+/// 1. `PLUSHIE_BINARY_PATH` environment variable.
+/// 2. `PATH` search for `plushie-renderer` (on Windows,
+///    `plushie-renderer.exe`).
+///
+/// If neither resolves to an executable, returns
+/// [`Error::BinaryNotFound`] with guidance.
 ///
 /// # Errors
 ///
-/// Returns an error if iced fails to initialize the event loop, the
-/// app's [`App::init`] panics, or the renderer encounters an
-/// unrecoverable window-system failure.
-#[cfg(feature = "direct")]
+/// - [`Error::NoRunnerFeature`] if neither `direct` nor `wire` is
+///   enabled at compile time.
+/// - In direct mode: iced event-loop init failure, `init` panic,
+///   or unrecoverable window-system failure.
+/// - In wire mode: binary discovery failure, spawn failure, handshake
+///   failure, or I/O error during the session.
 pub fn run<A: App>() -> Result {
-    runner::direct::run::<A>()
+    #[cfg(feature = "direct")]
+    {
+        runner::direct::run::<A>()
+    }
+    #[cfg(all(feature = "wire", not(feature = "direct")))]
+    {
+        let binary = runner::wire_discovery::discover_renderer()?;
+        runner::wire::run_wire::<A>(&binary)
+    }
+    #[cfg(not(any(feature = "direct", feature = "wire")))]
+    {
+        Err(Error::NoRunnerFeature)
+    }
+}
+
+/// Run the app in wire mode against a specific renderer binary.
+///
+/// Escape hatch for apps that ship a custom renderer (for example, a
+/// build with additional `PlushieWidget` implementations). The caller
+/// supplies the path explicitly; no discovery is attempted.
+///
+/// Under the default feature set, consider pointing this at the stock
+/// `plushie-renderer` binary via `env!("CARGO_BIN_EXE_plushie-renderer")`
+/// from a build that depends on `plushie-renderer` as a dev-dep.
+///
+/// # Errors
+///
+/// Returns an error if the renderer binary cannot be spawned, the
+/// protocol handshake fails (version mismatch or malformed hello),
+/// or stdin/stdout I/O fails during the session.
+#[cfg(feature = "wire")]
+pub fn run_with_renderer<A: App>(binary_path: &str) -> Result {
+    runner::wire::run_wire::<A>(binary_path)
 }
 
 /// Run the app in wire mode (subprocess renderer).
@@ -244,6 +303,12 @@ pub fn run<A: App>() -> Result {
 /// Returns an error if the renderer binary cannot be spawned, the
 /// protocol handshake fails (version mismatch or malformed hello),
 /// or stdin/stdout I/O fails during the session.
+#[doc(hidden)]
+#[deprecated(
+    since = "0.6.2",
+    note = "use `plushie::run_with_renderer(path)` for an explicit path, or \
+            `plushie::run()` to trigger auto-discovery"
+)]
 #[cfg(feature = "wire")]
 pub fn run_wire<A: App>(binary_path: &str) -> Result {
     runner::wire::run_wire::<A>(binary_path)
@@ -251,7 +316,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> Result {
 
 /// Run the app in wire mode on a caller-provided tokio runtime.
 ///
-/// Identical to [`run_wire`] except SDK-local async tasks
+/// Identical to [`run_with_renderer`] except SDK-local async tasks
 /// ([`Command::async_task`](crate::command::Command::async_task),
 /// streams, delayed events, and effect-timeout deadlines) are
 /// spawned on the supplied [`tokio::runtime::Handle`] instead of
@@ -261,7 +326,7 @@ pub fn run_wire<A: App>(binary_path: &str) -> Result {
 ///
 /// # Errors
 ///
-/// Same as [`run_wire`].
+/// Same as [`run_with_renderer`].
 #[cfg(feature = "wire")]
 pub fn run_wire_with_runtime<A: App>(binary_path: &str, runtime: tokio::runtime::Handle) -> Result {
     runner::wire::run_wire_with_runtime::<A>(binary_path, runtime)

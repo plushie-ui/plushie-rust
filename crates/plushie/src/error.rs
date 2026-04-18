@@ -63,6 +63,24 @@ pub enum Error {
     /// Invalid settings (field type coercion, unknown keys, etc.).
     #[error("invalid settings: {0}")]
     InvalidSettings(String),
+
+    /// Neither `direct` nor `wire` feature is enabled. Build plushie
+    /// with at least one of the runner features to get a working
+    /// `run()` entry point.
+    #[error(
+        "plushie was built with neither the `direct` nor the `wire` feature; \
+         enable at least one to use `plushie::run`"
+    )]
+    NoRunnerFeature,
+
+    /// Wire mode could not locate a renderer binary. Tried the
+    /// `PLUSHIE_BINARY_PATH` env var first, then a `PATH` search for
+    /// `plushie-renderer`.
+    #[error(
+        "renderer binary not found (looked at PLUSHIE_BINARY_PATH and searched PATH for \
+         `plushie-renderer`): {hint}"
+    )]
+    BinaryNotFound { hint: String },
 }
 
 impl Error {

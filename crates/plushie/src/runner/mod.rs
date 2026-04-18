@@ -1,11 +1,13 @@
 //! Execution backends for plushie apps.
 //!
-//! Two modes are available:
+//! `plushie::run::<A>()` dispatches to whichever backend is compiled in:
 //!
-//! - **Direct** (`plushie::run`): Renders in-process using iced.
-//!   No subprocess, no serialization. Default.
-//! - **Wire** (`plushie::run_wire`): Spawns a renderer binary
-//!   and communicates over stdin/stdout.
+//! - **Direct** (`direct` feature, default): Renders in-process using
+//!   iced. No subprocess, no serialization.
+//! - **Wire** (`wire` feature): Spawns a renderer binary and
+//!   communicates over stdin/stdout. The binary path is discovered
+//!   from `PLUSHIE_BINARY_PATH`, then `PATH`. Use
+//!   [`crate::run_with_renderer`] to supply an explicit path.
 
 #[cfg(feature = "direct")]
 pub mod direct;
@@ -28,6 +30,12 @@ pub(crate) mod env;
 
 #[cfg(feature = "wire")]
 pub mod wire;
+
+// Wire-binary discovery is only used when wire is the sole runner
+// feature (direct wins otherwise). Gate tightly so we don't carry
+// dead code under the default feature set.
+#[cfg(all(feature = "wire", not(feature = "direct")))]
+pub(crate) mod wire_discovery;
 
 // ---------------------------------------------------------------------------
 // Shared helpers (direct + wire)

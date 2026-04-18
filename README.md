@@ -36,6 +36,22 @@ get native desktop windows. Send updates, get events back.
 The Rust SDK can also run the renderer in-process (no subprocess),
 sharing the same API for both modes.
 
+### Direct vs wire in the Rust SDK
+
+`plushie::run::<App>()` is feature-agnostic. Which runner actually
+fires depends on the feature flags enabled at build time:
+
+- **Built-in widgets only**: any mode. The default (`direct`) runs
+  in-process with no setup. `--features wire --no-default-features`
+  auto-discovers the stock `plushie-renderer` binary via
+  `PLUSHIE_BINARY_PATH` then `PATH`.
+- **Custom `PlushieWidget` impls**: build a custom renderer crate that
+  registers your widgets, install that binary instead, and point the
+  SDK at it with `PLUSHIE_BINARY_PATH=/path/to/my-renderer` or call
+  `plushie::run_with_renderer(path)` directly.
+- **WebAssembly**: wire mode runs in-browser today only when using the
+  pure direct setup; a future Web Worker transport is planned.
+
 The [protocol reference](docs/protocol.md) documents the full wire
 format, message types, and startup handshake.
 

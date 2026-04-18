@@ -1,6 +1,6 @@
 //! Wire-mode integration test.
 //!
-//! Drives a minimal Counter app through `plushie::run_wire::<Counter>()`
+//! Drives a minimal Counter app through `plushie::run_with_renderer::<Counter>()`
 //! against a real `plushie-renderer` subprocess in `--mock` mode and
 //! asserts that the SDK's wire client negotiates the handshake, sends
 //! the initial snapshot, and exits cleanly when the renderer stops
@@ -196,7 +196,7 @@ fn wire_mode_handshake_and_exit() {
 
     // run_wire blocks; drive it from a worker thread so the test can
     // detect progress and enforce a wall-clock deadline.
-    let handle = std::thread::spawn(move || plushie::run_wire::<Counter>(&wrapper_path));
+    let handle = std::thread::spawn(move || plushie::run_with_renderer::<Counter>(&wrapper_path));
 
     // Wait for init() to run: that confirms the SDK reached the
     // post-handshake state (settings sent, hello received, snapshot

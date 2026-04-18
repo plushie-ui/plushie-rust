@@ -19,6 +19,10 @@ preflight: check check-release clippy fmt test test-examples test-wire
 check:
     cargo check --workspace --all-targets
     cargo check -p plushie --all-targets --features wire
+    # Feature-permutation spot checks: catch regressions in the
+    # wire-only and direct-only builds before CI does.
+    cargo check -p plushie --no-default-features --features direct --all-targets
+    cargo check -p plushie --no-default-features --features wire --all-targets
 
 check-release:
     cargo check --workspace --release

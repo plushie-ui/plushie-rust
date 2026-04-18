@@ -21,9 +21,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use plushie_core::protocol::{PropMap, PropValue, Props, TreeNode};
 
 use crate::App;
+#[cfg(feature = "direct")]
 use crate::runtime::prepare_tree;
 #[cfg(feature = "wire")]
 use crate::widget::WidgetRegistrar;
+#[cfg(feature = "direct")]
 use crate::widget::WidgetStateStore;
 
 /// Number of consecutive `A::view()` panics before the frozen-UI
@@ -75,6 +77,7 @@ pub enum ViewOutcome {
 /// On success, resets the counter and clears any prior overlay
 /// from the returned tree. On panic, increments the counter and
 /// (at threshold) injects the frozen-UI overlay into `last_good`.
+#[cfg(feature = "direct")]
 pub fn run_guarded_view<A: App>(
     state: &mut ViewErrors,
     model: &A::Model,

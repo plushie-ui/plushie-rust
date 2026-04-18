@@ -423,15 +423,23 @@ fn spawn_listen_child(command: &str, socket_addr: &str, token: &str) -> io::Resu
     Ok(child)
 }
 
+/// Print the listen-mode address and token to stderr.
+///
+/// The renderer supports six host SDKs (Elixir, Gleam, Python, Ruby,
+/// TypeScript, Rust), each with its own connect primitive, so this
+/// output is deliberately host-agnostic. Stderr keeps stdout free for
+/// machine-readable output and the existing log infrastructure.
 fn print_connection_info(addr: &str, token: &str) {
-    println!("Plushie renderer listening.\n");
-    println!("  Address: {addr}");
-    println!("  Token:   {token}\n");
-    println!("Connect with:");
-    println!("  mix plushie.connect MyApp {addr} --token {token}\n");
-    println!("Via SSH:");
-    println!("  ssh -T -R {addr}:{addr} server \\");
-    println!("    'mix plushie.connect MyApp {addr} --token {token}'\n");
+    eprintln!("Plushie renderer listening.\n");
+    eprintln!("  Address: {addr}");
+    eprintln!("  Token:   {token}\n");
+    eprintln!(
+        "Use your Plushie SDK's connect primitive with the address and \
+         token above. Each SDK documents the exact command and argument \
+         order; see the SDK's README or run its CLI with `--help`.\n"
+    );
+    eprintln!("Via SSH, forward the socket to a remote host first:");
+    eprintln!("  ssh -T -R {addr}:{addr} server <SDK-connect-command>\n");
 }
 
 // ---------------------------------------------------------------------------

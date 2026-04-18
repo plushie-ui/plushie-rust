@@ -108,7 +108,7 @@ use plushie_core::widget;
 
 widget! {
     /// Circular gauge.
-    #[widget(type_name = "my_gauge", constructor = "my_gauge::factory::MyGaugeFactory::new()")]
+    #[widget(type_name = "my_gauge")]
     pub struct MyGauge {
         /// Current value, clamped to `[0.0, max]` at render time.
         pub value: f32,
@@ -124,13 +124,15 @@ The `#[widget(...)]` attribute on the struct accepts:
 
 - `type_name = "..."` (required): the wire-protocol type name. Must
   match the `type_name` in `Cargo.toml`.
-- `constructor = "..."` (optional in the macro, required in the
-  `Cargo.toml` table): a Rust path call returning the factory type
-  that the custom renderer will register. The string in the macro
-  is for documentation purposes; the canonical value is the one in
-  `Cargo.toml`.
 - `crate = "..."` (optional): source crate name embedded in the
   metadata JSON for tooling.
+
+The factory constructor string lives in
+`[package.metadata.plushie.widget]` in the widget crate's
+`Cargo.toml`. Keeping one copy means the scaffold does not drift and
+authors cannot edit one and forget the other. Passing `constructor`
+to the macro is a hard error; see the
+[Build tool metadata reference](build-tool.md#metadata-reference).
 
 ### Generated items
 
@@ -157,7 +159,7 @@ A trailing `events { ... }` block generates a sibling enum with
 use plushie_core::widget;
 
 widget! {
-    #[widget(type_name = "my_gauge", constructor = "my_gauge::factory::MyGaugeFactory::new()")]
+    #[widget(type_name = "my_gauge")]
     pub struct MyGauge {
         pub value: f32,
         pub max: f32,

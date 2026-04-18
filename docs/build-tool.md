@@ -397,6 +397,8 @@ constructor = "my_gauge::factory::MyGaugeFactory::new()"
   (for example `my_gauge::factory::MyGaugeFactory::new()`). Malformed
   expressions surface as compile errors when the generated workspace
   builds; the build-tool currently does not pre-validate the shape.
+  This Cargo.toml entry is the single source of truth: the `widget!`
+  macro does not accept a `constructor` attribute.
 
 ## Binary discovery
 

@@ -108,6 +108,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod discover;
+pub mod doctor;
 pub mod download;
 pub mod generator;
 pub mod platform;

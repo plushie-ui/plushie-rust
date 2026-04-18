@@ -6,7 +6,7 @@
 //! through the same clap parser below.
 
 use anyhow::{Context, Result};
-use cargo_plushie::{discover, download, generator, platform, scaffold};
+use cargo_plushie::{discover, doctor, download, generator, platform, scaffold};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -101,6 +101,10 @@ enum PlushieSubcommand {
     /// Scaffold a new plushie app crate with a wired-up main.rs,
     /// automation-script example, and a sample `.plushie` script.
     Init(InitArgs),
+    /// Print a diagnostic report (toolchain, env, renderer discovery,
+    /// widgets, version skew). Exits non-zero if any critical issue
+    /// is detected.
+    Doctor(DoctorArgs),
 }
 
 #[derive(Args, Debug)]
@@ -136,6 +140,13 @@ struct NewWidgetArgs {
     /// `./native/<name>`.
     #[arg(long)]
     path: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct DoctorArgs {
+    /// Path to the app crate manifest (defaults to `./Cargo.toml`).
+    #[arg(long)]
+    manifest_path: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -180,7 +191,23 @@ fn main() -> Result<()> {
         PlushieSubcommand::Run(r) => cmd_run(&r),
         PlushieSubcommand::NewWidget(n) => cmd_new_widget(&n),
         PlushieSubcommand::Init(i) => cmd_init(&i),
+        PlushieSubcommand::Doctor(d) => cmd_doctor(&d),
     }
+}
+
+fn cmd_doctor(args: &DoctorArgs) -> Result<()> {
+    let manifest_dir = resolve_manifest_dir(args.manifest_path.as_ref())?;
+    let opts = doctor::DoctorOpts {
+        manifest_dir: &manifest_dir,
+        min_rustc_version: "1.92",
+    };
+    let report = doctor::run_doctor(&opts)?;
+    let mut stdout = std::io::stdout().lock();
+    doctor::write_report(&report, &mut stdout)?;
+    if report.critical {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 fn cmd_init(args: &InitArgs) -> Result<()> {

@@ -8,7 +8,7 @@
 use anyhow::{Context, Result};
 use cargo_plushie::{discover, doctor, download, generator, platform, scaffold};
 use clap::{Args, Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Built-in renderer widget type names. Populated at compile time by
 /// the plushie-widget-sdk const so the build tool and the renderer
@@ -118,6 +118,14 @@ struct BuildArgs {
     /// Path to the app crate manifest (defaults to `./Cargo.toml`).
     #[arg(long)]
     manifest_path: Option<PathBuf>,
+    /// Build the `plushie-renderer-wasm` bundle via wasm-pack
+    /// instead of producing a native custom renderer.
+    #[arg(long)]
+    wasm: bool,
+    /// Output directory for the wasm-pack bundle. Defaults to
+    /// `target/plushie/pkg/`.
+    #[arg(long)]
+    wasm_dir: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -281,6 +289,11 @@ fn target_dir(manifest_dir: &std::path::Path) -> PathBuf {
 
 fn cmd_build(args: &BuildArgs) -> Result<()> {
     let manifest_dir = resolve_manifest_dir(args.manifest_path.as_ref())?;
+
+    if args.wasm {
+        return cmd_build_wasm(&manifest_dir, args);
+    }
+
     let target = target_dir(&manifest_dir);
     let output_dir = target.join("plushie-renderer");
     std::fs::create_dir_all(&output_dir)?;
@@ -376,6 +389,125 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     Ok(())
 }
 
+/// WASM build path: delegate to `wasm-pack` against the
+/// `plushie-renderer-wasm` crate under the resolved source path.
+///
+/// Unlike the native build, WASM needs a plushie-rust checkout on
+/// disk so wasm-pack has a crate to compile: there is no registry
+/// path that publishes a pre-wasm'd bundle. The source path comes
+/// from `PLUSHIE_SOURCE_PATH`, the app's `[package.metadata.plushie]
+/// source_path` key, or a workspace sibling (`..`), in that order.
+fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
+    // Verify wasm-pack up front with a clear message; the command
+    // will fail later otherwise with a less obvious IO error.
+    if std::process::Command::new("wasm-pack")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| !s.success())
+        .unwrap_or(true)
+    {
+        return Err(anyhow::anyhow!(
+            "`wasm-pack` not found on PATH. Install it with \
+             `cargo install wasm-pack` or `curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`."
+        ));
+    }
+
+    let source = resolve_wasm_source(manifest_dir)?;
+    let crate_dir = source.join("crates/plushie-renderer-wasm");
+    if !crate_dir.is_dir() {
+        return Err(anyhow::anyhow!(
+            "resolved source path `{}` does not contain crates/plushie-renderer-wasm",
+            source.display()
+        ));
+    }
+
+    let target = target_dir(manifest_dir);
+    let output_dir = args
+        .wasm_dir
+        .clone()
+        .unwrap_or_else(|| target.join("plushie/pkg"));
+    std::fs::create_dir_all(&output_dir)?;
+
+    let mut cmd = std::process::Command::new("wasm-pack");
+    cmd.arg("build")
+        .arg(&crate_dir)
+        .args(["--target", "web"])
+        .args(["--out-dir", &output_dir.display().to_string()]);
+    if args.release {
+        cmd.arg("--release");
+    } else {
+        cmd.arg("--dev");
+    }
+    if args.verbose {
+        eprintln!(
+            "running: wasm-pack build {crate_dir} --target web --out-dir {out}{profile}",
+            crate_dir = crate_dir.display(),
+            out = output_dir.display(),
+            profile = if args.release { " --release" } else { " --dev" },
+        );
+    }
+
+    let status = cmd.status().with_context(|| "failed to run wasm-pack")?;
+    if !status.success() {
+        return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
+    }
+    println!("plushie: wasm bundle generated at {}", output_dir.display());
+    Ok(())
+}
+
+/// Resolve the `plushie-renderer-wasm` source path.
+///
+/// Priority:
+///
+/// 1. `PLUSHIE_SOURCE_PATH` env var (pointing at a plushie-rust
+///    checkout root).
+/// 2. `[package.metadata.plushie].source_path` on the caller's
+///    manifest.
+/// 3. A sibling workspace at `..` (the convention for developing
+///    multiple plushie-* repos in parallel).
+fn resolve_wasm_source(manifest_dir: &Path) -> Result<PathBuf> {
+    if let Some(env) = std::env::var_os("PLUSHIE_SOURCE_PATH") {
+        let path = PathBuf::from(env);
+        return std::fs::canonicalize(&path)
+            .with_context(|| format!("PLUSHIE_SOURCE_PATH `{}` does not exist", path.display()));
+    }
+
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .manifest_path(manifest_dir.join("Cargo.toml"))
+        .no_deps()
+        .exec()
+        .with_context(|| "cargo metadata (no-deps) failed")?;
+    let app_pkg = metadata
+        .resolve
+        .as_ref()
+        .and_then(|r| r.root.as_ref())
+        .and_then(|id| metadata.packages.iter().find(|p| &p.id == id))
+        .or_else(|| metadata.packages.first());
+    if let Some(pkg) = app_pkg
+        && let Some(meta_path) = pkg
+            .metadata
+            .get("plushie")
+            .and_then(|v| v.get("source_path"))
+            .and_then(|v| v.as_str())
+    {
+        let resolved = manifest_dir.join(meta_path);
+        if let Ok(abs) = std::fs::canonicalize(&resolved) {
+            return Ok(abs);
+        }
+    }
+
+    let sibling = manifest_dir.join("..");
+    if sibling.join("crates/plushie-renderer-wasm").is_dir() {
+        return Ok(std::fs::canonicalize(&sibling).unwrap_or(sibling));
+    }
+    Err(anyhow::anyhow!(
+        "unable to locate plushie-renderer-wasm source. Set PLUSHIE_SOURCE_PATH \
+         or add `[package.metadata.plushie].source_path = \"...\"` to the app manifest."
+    ))
+}
+
 fn cmd_download(args: &DownloadArgs) -> Result<()> {
     let manifest_dir = resolve_manifest_dir(args.manifest_path.as_ref())?;
     let target = target_dir(&manifest_dir);
@@ -448,6 +580,8 @@ fn cmd_run(args: &RunArgs) -> Result<()> {
         release: args.release,
         verbose: false,
         manifest_path: args.manifest_path.clone(),
+        wasm: false,
+        wasm_dir: None,
     };
     cmd_build(&build)?;
 

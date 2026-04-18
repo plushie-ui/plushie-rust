@@ -6,16 +6,214 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+This release introduces the Rust application SDK (`plushie` crate),
+the widget SDK (`plushie-widget-sdk`), the `cargo-plushie` tool, and
+moves the workspace to a crate-split layout. Everything below is
+relative to 0.6.1.
+
+### Breaking changes
+
+- **Workspace restructured into per-role crates.** The former single
+  renderer crate is split across `plushie-core`, `plushie-renderer-lib`,
+  `plushie-renderer` (native binary), `plushie-renderer-wasm`,
+  `plushie-widget-sdk`, and `plushie` (app SDK). Workspace crates now
+  live under `crates/`.
+- **`Props` representation unified.** The `Props` enum (Typed vs Wire
+  variants) collapses to a single `PropMap`. SDK builders, prop
+  helpers, and widget renderers now operate on one representation.
+  Callers that matched on `Props::Typed` or `Props::Wire` need to
+  migrate to the unified API.
+- **`plushie-widget-sdk` is optional.** It is gated by the `direct`
+  feature on the `plushie` crate. Wire-only consumers get a slimmer
+  build. App authors using built-in widgets see no change; widget
+  authors must depend on `plushie-widget-sdk` explicitly.
+- **`PlushieRenderer` trait is sealed.** External implementations are
+  no longer permitted. All supported backends ship with the crate.
+- **Scripting `interact` payload format.** Typed `Key`, `KeyPress`,
+  `MouseButton`, `InteractAction`, and `EffectKind` replace the
+  stringly-typed forms. The `cmd`/`command` modifier is now resolved
+  to the platform-appropriate physical modifier by the renderer.
+- **Canonical renderer env whitelist.** The renderer subprocess inherits
+  only an explicit list of environment variables (names and prefixes).
+  Custom vars must match a documented prefix or be passed via a
+  supported hook. See `docs/protocol.md`.
+- **Diagnostic wire format.** Diagnostics emitted by the renderer use
+  the typed `Diagnostic` enum with structured variants instead of
+  free-form strings. Host SDKs that pattern-match diagnostic text
+  must migrate to the variant form.
+- **Widget-command wire format unified.** Per-widget command variants
+  (`PaneGridOp`, etc.) are replaced by a single `widget_command`
+  envelope with typed payloads. Extension authors that hand-built
+  command messages must move to the `#[derive(WidgetCommand)]` path.
+- **`WidgetExtension` trait removed.** Replaced by `PlushieWidget`,
+  `WidgetRegistry`, and factory-based dispatch. The term "extension"
+  is retired throughout the API in favour of "widget".
+- **`[patch.crates-io]` replaced by `.cargo/config.toml` path
+  overrides** for the `plushie-iced` fork during development. Consumer
+  projects vendoring the fork need to update their override mechanism.
+
 ### Added
 
-- `plushie::automation::Backend` enum (`Mock`, `Headless`, `Windowed`)
-  and `runner::run_with_backend` dispatch. `.plushie` scripts with
-  `backend: windowed` now spawn a real `plushie-renderer` subprocess
-  so the user can watch the script execute.
-- `plushie::automation::cli::replay::<A>(path)` drives the real
-  renderer instead of returning a not-yet-implemented stub.
-- `plushie::automation::runner_wire::run_windowed_with_renderer` for
-  callers that need to pass an explicit renderer-binary path.
+- **`plushie` Rust application SDK.** Elm-style `App` trait with
+  `init`/`update`/`view`/`subscriptions`, direct and wire runners,
+  typed commands, subscription lifecycle diffing, effect dispatch,
+  and composite-widget support.
+- **`plushie-widget-sdk` for custom widget authors.** `PlushieWidget`
+  trait, `WidgetRegistry`, `CanvasEngine`, `#[derive(PlushieWidget)]`,
+  `#[derive(WidgetCommand)]`, `#[derive(WidgetEvent)]`,
+  `#[derive(WidgetProps)]`, `widget!` function-like macro,
+  `BUILTIN_TYPE_NAMES`, widget-scoped subscriptions, typed config
+  helpers, panic-isolated entry points, and test helpers.
+- **`cargo-plushie` build tool.** `build` (including `--wasm` via
+  wasm-pack), `download` (renderer binaries), `run` (with `--watch`
+  hot-reload via cargo-watch), `new-widget`, `init`, `doctor`, and
+  `wasm` subcommands. Reads `[package.metadata.plushie]` and
+  `[package.metadata.plushie.widget]` for project and widget
+  configuration.
+- **Dev-mode hot-reload.** `dev::watch_renderer` plus the `--watch`
+  orchestrator in `cargo-plushie run`. The wire runner swaps the
+  renderer subprocess on rebuild without losing session state. A
+  `RebuildingOverlay` is injected into the view tree with interactive
+  dismiss, auto-dismiss, and event interception.
+- **`plushie::cli::run::<A>()` easy-path entrypoint** with the
+  `--plushie-*` reserved flag prefix for framework-owned options.
+- **`plushie::automation` module.** `TestSession` (direct) and
+  `WidgetTestSession` (widget-scoped) for integration-style testing,
+  `.plushie` script format (header + instructions), `Selector` with
+  tree search, typed assertions (`AssertModel`, `run_with_model_debug`,
+  `resolved_a11y` surfacing of inferred a11y). `automation::cli`
+  primitives `script`, `replay`, and `inspect`. The `Backend` enum
+  (`Mock`, `Headless`, `Windowed`) routes scripts through the
+  appropriate runner, including a real renderer subprocess for
+  `Windowed` replay.
+- **`run_connect` + renderer-spawned-us mode.** The SDK can attach to
+  a renderer launched externally via the `PLUSHIE_SOCKET` env var,
+  using a new `SocketAdapter` and split `Bridge` transport
+  (`Subprocess` + `Socket`).
+- **Four-step renderer binary discovery.** `cargo-plushie` path,
+  `PLUSHIE_RENDERER` env, workspace `target/` probe, and `PATH`
+  lookup, with an advisory architecture check.
+- **Multi-window lifecycle sync** in the wire runtime, at parity with
+  the Elixir SDK.
+- **Wire bridge auto-restart with heartbeat watchdog.** Transient
+  renderer failures no longer terminate the app.
+- **Protocol version handshake.** The SDK validates the renderer's
+  `hello` message protocol version and honours the negotiated codec.
+- **Typed `Diagnostic` enum in `plushie-core`** with structured
+  variants. Widget SDK and renderer-lib emit typed diagnostics at all
+  former log-warn sites.
+- **`RENDERER_VERSION` const** exported from `plushie-renderer-lib`,
+  deduplicated with `PROTOCOL_VERSION`.
+- **Typed `Error` enum** on the `plushie` crate and a wire-renderer
+  exit hook so app code sees a typed failure surface.
+- **`plushie-core-macros` proc-macro crate.** `PlushieEnum` derive
+  (used for FontWeight, FontStyle, FontStretch, and many other
+  enums), wire-encode/decode generation, and the `widget!`
+  function-like macro for built-in widget descriptions.
+- **Typed core domain types.** `Color` (hex parsing with short-form
+  expansion), `Angle` (dual-storage, degrees on the wire), `Padding`
+  (per-side and axis constructors), `Length`, `Theme`/`CustomTheme`
+  with shade overrides, `A11y` with merge semantics, `PathCommand`,
+  `PointerKind`, `MouseButton` (with Back/Forward), `ArrowMode`,
+  `SortOrder`, `ErrorCorrection`, `ValueRange` (renamed from `Range`),
+  `EventType`, `OutgoingMessage`, and `ScopedId`.
+- **Composable `TreeTransform` walker** in core. Normalize, widget
+  expansion, and animation scan now share a single walk.
+- **Generic `Animatable<T>` types** and type-safe animation on
+  widget-builder setters. Angle-bearing APIs and Image/SVG rotation
+  flow through `Angle` with animation support.
+- **Widget-scoped subscriptions.** `SubscribeCtx`, dispatch helpers,
+  and native renderer wiring let widget authors manage their own
+  subscription lifecycles.
+- **Accessibility inference.** Widget-level `infer_a11y` merges with
+  explicit host-supplied `A11y`. SDK builders set a11y defaults on
+  the tree so tests can assert. Scoped refs rewrite automatically,
+  implicit radio groups are populated, and pick_list gains an
+  `infer_a11y` fallback. A `missing_accessible_name` diagnostic
+  flags unlabelled widgets. `Command::focus_next_within` and
+  `focus_previous_within` scope keyboard navigation.
+- **Automation backend dispatch.** `.plushie` scripts with
+  `backend: windowed` spawn a real `plushie-renderer` subprocess so
+  the run can be watched.
+- **`[profile.dist]`** for shipping artifacts and Sigstore signing of
+  release binaries.
+- **CI matrix expanded** to macOS (including darwin-x86_64) and
+  Windows, with nightly `cargo audit` and `cargo deny` workflows.
+- **Workspace-level `[workspace.dependencies]`** pins shared crates
+  in one place.
+- **Comprehensive rustdoc pass** with `#![deny(missing_docs)]` on
+  `plushie`, `plushie-core`, and `plushie-widget-sdk`, plus
+  Panics/Errors sections and workspace clippy lints.
+- **docs.rs metadata** on every crate; README badges, versioning
+  policy, and a pull-request template.
+
+### Changed
+
+- `plushie::run` unified across direct and wire modes; same API, mode
+  selected by features and environment.
+- `EffectHandler` returns `Future` instead of an iced `Task`.
+- Codec state is per-App (`EventSink`, `WriterSink`) rather than
+  global; `Codec::get_global()` and the last of the global singletons
+  are removed.
+- `TestSession` ergonomics pass: richer event-bridge polish,
+  subscription grouping, assertion helpers, multi-finger touch,
+  multi-window coverage, async delivery contract for `Err`/`Cancel`/
+  panic, and end-to-end `run_wire` integration.
+- `parking_lot::Mutex` on hot paths (direct-mode event queue,
+  renderer sink).
+- Nextest CI profile tuned; `just test-examples` runs inline tests in
+  simple examples, added to preflight.
+- Canvas shape hashing is direct instead of going through `Debug`
+  strings; per-event allocations trimmed on hot paths;
+  `scope`-string buffer threaded through normalize with a fast path
+  when widget expansion is a no-op.
+- `memo()` actually memoizes at normalize time.
+- Msgpack depth pre-check and invalid UTF-8 rejection share a single
+  codec-boundary guard.
+- Protocol envelope unified: `_op` messages nested under a payload
+  envelope; effect-stub acks renamed to `*_register_ack`.
+
+### Fixed
+
+- Widget-state invariant violations surface as panics (were silent).
+- `Bridge::receive` reuses a single `BufReader` across calls.
+- `Props` equality treats null-valued keys as absent; tree-diff
+  round-trips null props correctly.
+- Cooperative `SendAfter` delay and async panic guard in the wire
+  runner.
+- `Length::wire_decode` rejects off-canonical shapes.
+- Coalesce compatibility check includes the `Accumulate` field list.
+- Scripting cursor and scroll events normalize to `f32`.
+- Pointer-area registration and derived `type_names` corrected in
+  the widget SDK.
+- Toggle inverts current state; `Display` shows the window; interact
+  processes all pending events.
+- `cargo-plushie` output polish and rustdoc link hygiene.
+
+### Security
+
+- **Renderer subprocess env whitelist.** Only an explicit set of
+  variables and prefixes cross the process boundary.
+- **Canonical widget-id rules enforced** in the Rust SDK.
+- **Tree-depth cap enforced centrally** in the walker; duplicate-id
+  collection short-circuits past a sane cap.
+- **Msgpack depth pre-check and UTF-8 validation** at the codec
+  boundary.
+- **SVG decode bounded** by a pinned `usvg` version and a wall-clock
+  pre-parse guard.
+- **Inline startup fonts counted** against the process-wide font load
+  cap.
+- **Unix socket creation hardened** (`bind_unix`), with a safer auto
+  socket directory.
+- **WASM settings validated** before wiring up the event sink.
+- **Pathological viewport dimensions** rejected in `.plushie`
+  automation files.
+- **Oversized text prop content truncated** at the renderer boundary.
+- **Numeric prop ranges** emit a warning when out of sane bounds.
+- **Native writer channel** has a backpressure timeout and
+  diagnostic.
+- **TOCTOU and pass-through trust boundaries** documented on platform
+  effects.
 
 ## [0.6.1] - 2026-04-02
 

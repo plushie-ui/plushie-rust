@@ -310,7 +310,10 @@ fn filter_native_widgets(
         .map(|d| d.name.as_str())
         .collect();
     let discovered_by_name: std::collections::HashMap<&str, &cargo_plushie::WidgetMetadata> =
-        discovered.iter().map(|w| (w.crate_name.as_str(), w)).collect();
+        discovered
+            .iter()
+            .map(|w| (w.crate_name.as_str(), w))
+            .collect();
 
     let mut out = Vec::with_capacity(allowlist.len());
     for name in allowlist {

@@ -242,32 +242,58 @@ fn render_main_rs(config: &WorkspaceConfig<'_>) -> String {
     body
 }
 
-/// Parse the workspace root `Cargo.toml` at `source_path` for
-/// `[patch.crates-io]` entries. Returns `(name, resolved_path)` pairs
-/// for any entry that points at an existing directory.
+/// Parse `[patch.crates-io]` entries from the plushie-rust source tree.
+///
+/// Reads both `<source>/Cargo.toml` (the committed workspace manifest)
+/// and `<source>/.cargo/config.toml` (a gitignored local-dev overrides
+/// file, e.g. redirecting `plushie-iced-*` crates to a sibling
+/// checkout). Entries from the committed manifest come first; any
+/// additional names found in the local config are appended. A name
+/// declared in both files keeps the first occurrence (Cargo.toml).
+///
+/// Returns `(name, resolved_path)` pairs for every entry whose `path`
+/// resolves to an existing directory relative to `source_path`.
 ///
 /// The caller is expected to drop forwarding entries for
 /// `plushie-widget-sdk` and `plushie-renderer`, which the generator
 /// always emits explicitly.
 fn forwarded_patches(source_path: &Path) -> Option<Vec<(String, PathBuf)>> {
-    let manifest = source_path.join("Cargo.toml");
-    let contents = std::fs::read_to_string(&manifest).ok()?;
-    let parsed = contents.parse::<toml_edit::DocumentMut>().ok()?;
-    let patch = parsed.get("patch")?.get("crates-io")?.as_table()?;
-    let mut out = Vec::new();
-    for (name, item) in patch.iter() {
-        let Some(table) = item.as_inline_table().map(|t| t.clone().into_table()) else {
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    let sources = [
+        source_path.join("Cargo.toml"),
+        source_path.join(".cargo/config.toml"),
+    ];
+    for manifest in &sources {
+        let Ok(contents) = std::fs::read_to_string(manifest) else {
             continue;
         };
-        let Some(path_value) = table.get("path").and_then(|v| v.as_str()) else {
+        let Ok(parsed) = contents.parse::<toml_edit::DocumentMut>() else {
             continue;
         };
-        let resolved = source_path.join(path_value);
-        if resolved.is_dir() {
-            out.push((name.to_string(), resolved));
+        let Some(patch) = parsed.get("patch").and_then(|p| p.get("crates-io")) else {
+            continue;
+        };
+        let Some(table) = patch.as_table() else {
+            continue;
+        };
+        for (name, item) in table.iter() {
+            if out.iter().any(|(existing, _)| existing == name) {
+                continue;
+            }
+            let entry = item.as_inline_table().map(|t| t.clone().into_table());
+            let Some(entry) = entry else {
+                continue;
+            };
+            let Some(path_value) = entry.get("path").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let resolved = source_path.join(path_value);
+            if resolved.is_dir() {
+                out.push((name.to_string(), resolved));
+            }
         }
     }
-    Some(out)
+    if out.is_empty() { None } else { Some(out) }
 }
 
 #[cfg(test)]
@@ -385,6 +411,56 @@ mod tests {
         assert!(cargo.contains("[patch.crates-io]"));
         assert!(cargo.contains("crates/plushie-widget-sdk"));
         assert!(cargo.contains("crates/plushie-renderer"));
+    }
+
+    #[test]
+    fn forwarded_patches_merges_cargo_toml_and_cargo_config() {
+        let src = tempdir().unwrap();
+        let src_root = src.path();
+
+        // Create sibling checkout dirs that the patches will resolve to.
+        std::fs::create_dir_all(src_root.join("crates/plushie-widget-sdk")).unwrap();
+        std::fs::create_dir_all(src_root.join("crates/plushie-renderer")).unwrap();
+        std::fs::create_dir_all(src_root.join("vendor/some-lib")).unwrap();
+        std::fs::create_dir_all(src_root.join("../plushie-iced-sibling")).unwrap();
+
+        // Main Cargo.toml declares one forwarded patch.
+        let cargo_toml = r#"
+[workspace]
+members = []
+
+[patch.crates-io]
+some-lib = { path = "vendor/some-lib" }
+plushie-widget-sdk = { path = "crates/plushie-widget-sdk" }
+"#;
+        std::fs::write(src_root.join("Cargo.toml"), cargo_toml).unwrap();
+
+        // .cargo/config.toml declares an additional local-only patch.
+        std::fs::create_dir_all(src_root.join(".cargo")).unwrap();
+        let config_toml = r#"
+[patch.crates-io]
+plushie-iced = { path = "../plushie-iced-sibling" }
+# Declared in both files: Cargo.toml wins.
+some-lib = { path = "vendor/some-lib" }
+"#;
+        std::fs::write(src_root.join(".cargo/config.toml"), config_toml).unwrap();
+
+        let patches = forwarded_patches(src_root).expect("patches parsed");
+        let names: Vec<&str> = patches.iter().map(|(n, _)| n.as_str()).collect();
+
+        assert!(names.contains(&"some-lib"), "Cargo.toml entry present");
+        assert!(
+            names.contains(&"plushie-widget-sdk"),
+            "Cargo.toml entry present"
+        );
+        assert!(
+            names.contains(&"plushie-iced"),
+            ".cargo/config.toml entry merged in"
+        );
+
+        // No duplicates from the overlap.
+        let some_lib_count = names.iter().filter(|n| **n == "some-lib").count();
+        assert_eq!(some_lib_count, 1, "duplicate entries dropped");
     }
 
     #[test]

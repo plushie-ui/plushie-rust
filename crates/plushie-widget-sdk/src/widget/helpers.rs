@@ -155,6 +155,15 @@ pub fn get_style_overrides(
     parse_style_overrides(obj)
 }
 
+/// Parse a style-map object into a [`StyleOverrides`].
+///
+/// The `base` field names a compile-time preset (resolved via a
+/// hardcoded `match` at render time, e.g. in `pick_list_widget` or
+/// `container_widget`). It is **not** a data-driven lookup and does
+/// not expand into another style map, so malicious or pathological
+/// `base` chains cannot recurse or blow the stack. Adding new
+/// preset names requires a matching `match` arm in the render path;
+/// unknown names fall back to the widget's default preset.
 pub fn parse_style_overrides(obj: &serde_json::Map<String, Value>) -> StyleOverrides {
     StyleOverrides {
         base: parse_style_map_fields(obj),

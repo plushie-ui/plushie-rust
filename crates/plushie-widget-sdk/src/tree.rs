@@ -279,15 +279,30 @@ fn collect_window_ids_recursive(node: &TreeNode, ids: &mut Vec<String>, depth: u
     }
 }
 
+/// Maximum number of duplicate IDs collected per validation pass
+/// before short-circuiting.
+///
+/// A pathological tree (legitimate bug or hostile host) can legally
+/// contain millions of nodes under the 64 MiB wire cap. Reporting
+/// every duplicate burns CPU and memory walking the rest of the
+/// tree; one `too_many_duplicate_ids` diagnostic is more useful than
+/// a list that no one will read.
+const MAX_DUPLICATE_IDS: usize = 100;
+
 /// Walk the tree and check that all node IDs are unique.
 ///
 /// Returns `Ok(())` if no duplicates are found, or `Err` with a list of
 /// `"id (type_name)"` strings for each ID that appears more than once.
 /// Empty IDs are skipped (some internal nodes may not have meaningful IDs).
+///
+/// The traversal short-circuits after [`MAX_DUPLICATE_IDS`] duplicates
+/// have been collected; a single summary entry (`too_many_duplicates`)
+/// is appended so the caller knows the list is capped.
 fn validate_unique_ids(root: &TreeNode) -> Result<(), Vec<String>> {
     let mut seen = HashSet::new();
     let mut duplicates = Vec::new();
-    collect_duplicate_ids(root, &mut seen, &mut duplicates, 0);
+    let mut summary_emitted = false;
+    collect_duplicate_ids(root, &mut seen, &mut duplicates, &mut summary_emitted, 0);
     if duplicates.is_empty() {
         Ok(())
     } else {
@@ -299,16 +314,26 @@ fn collect_duplicate_ids(
     node: &TreeNode,
     seen: &mut HashSet<String>,
     duplicates: &mut Vec<String>,
+    summary_emitted: &mut bool,
     depth: usize,
 ) {
     if depth > MAX_TREE_DEPTH {
+        return;
+    }
+    if duplicates.len() >= MAX_DUPLICATE_IDS {
+        if !*summary_emitted {
+            duplicates.push(format!(
+                "too_many_duplicates: stopped collecting at {MAX_DUPLICATE_IDS} entries"
+            ));
+            *summary_emitted = true;
+        }
         return;
     }
     if !node.id.is_empty() && !seen.insert(node.id.clone()) {
         duplicates.push(format!("{} ({})", node.id, node.type_name));
     }
     for child in &node.children {
-        collect_duplicate_ids(child, seen, duplicates, depth + 1);
+        collect_duplicate_ids(child, seen, duplicates, summary_emitted, depth + 1);
     }
 }
 
@@ -1322,6 +1347,34 @@ mod tests {
         let root = node_with_children("root", "column", vec![node("", "text"), node("", "text")]);
         // Empty IDs should not be flagged as duplicates
         assert!(tree.snapshot(root).is_ok());
+    }
+
+    #[test]
+    fn duplicate_collection_short_circuits_past_cap() {
+        // Build a flat tree with MAX_DUPLICATE_IDS + 50 duplicated IDs.
+        // The caller must still see an error, but the list is capped
+        // and a summary entry tells downstream code the list was cut
+        // short.
+        let over = super::MAX_DUPLICATE_IDS + 50;
+        let mut children = Vec::with_capacity(over * 2);
+        for _ in 0..over {
+            children.push(node("shared", "text"));
+            children.push(node("shared", "text"));
+        }
+        let root = node_with_children("root", "column", children);
+        let mut tree = Tree::new();
+        let dupes = tree.snapshot(root).unwrap_err();
+
+        // List should be capped at MAX_DUPLICATE_IDS duplicate entries
+        // plus the one summary entry.
+        assert_eq!(dupes.len(), super::MAX_DUPLICATE_IDS + 1);
+        assert!(
+            dupes
+                .last()
+                .is_some_and(|s| s.contains("too_many_duplicates")),
+            "expected summary entry, got {:?}",
+            dupes.last()
+        );
     }
 
     #[test]

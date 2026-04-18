@@ -43,6 +43,61 @@ pub enum DiagnosticKind {
     /// registered expander. Carried by
     /// [`Diagnostic::UnrecognizedWidgetPlaceholder`].
     UnrecognizedWidgetPlaceholder,
+    /// Tree traversal hit the depth cap. Carried by
+    /// [`Diagnostic::TreeDepthExceeded`].
+    TreeDepthExceeded,
+    /// Duplicate-ID validation short-circuited after collecting the
+    /// configured maximum. Carried by [`Diagnostic::TooManyDuplicates`].
+    TooManyDuplicates,
+    /// A user-authored widget ID violated the canonical ID ruleset.
+    /// Carried by [`Diagnostic::WidgetIdInvalid`].
+    WidgetIdInvalid,
+    /// A widget required an accessible name but declared none.
+    /// Carried by [`Diagnostic::MissingAccessibleName`].
+    MissingAccessibleName,
+    /// A cross-widget a11y reference did not resolve to a declared
+    /// widget. Carried by [`Diagnostic::A11yRefUnresolved`].
+    A11yRefUnresolved,
+    /// A numeric prop value fell outside its declared range and was
+    /// clamped. Carried by [`Diagnostic::PropRangeExceeded`].
+    PropRangeExceeded,
+    /// A prop value had an unexpected type. Carried by
+    /// [`Diagnostic::PropTypeMismatch`].
+    PropTypeMismatch,
+    /// A widget carried a prop name not recognised by its schema.
+    /// Carried by [`Diagnostic::PropUnknown`].
+    PropUnknown,
+    /// A text-like content prop exceeded its per-widget byte cap.
+    /// Carried by [`Diagnostic::ContentLengthExceeded`].
+    ContentLengthExceeded,
+    /// The leaked font-family-name cache reached its entry cap.
+    /// Carried by [`Diagnostic::FontCacheCapExceeded`].
+    FontCacheCapExceeded,
+    /// Inline fonts declared in Settings exceeded the process-wide
+    /// font load cap. Carried by [`Diagnostic::FontCapExceeded`].
+    FontCapExceeded,
+    /// A font family from `default_font` or its fallback chain could
+    /// not be resolved. Carried by [`Diagnostic::FontFamilyNotFound`].
+    FontFamilyNotFound,
+    /// The Settings payload failed typed `deny_unknown_fields`
+    /// validation. Carried by [`Diagnostic::InvalidSettings`].
+    InvalidSettings,
+    /// A non-trusted widget panicked inside the panic firewall.
+    /// Carried by [`Diagnostic::WidgetPanic`].
+    WidgetPanic,
+    /// SVG decode returned a parse error. Carried by
+    /// [`Diagnostic::SvgParseError`].
+    SvgParseError,
+    /// SVG decode exceeded its wall-clock budget. Carried by
+    /// [`Diagnostic::SvgDecodeTimeout`].
+    SvgDecodeTimeout,
+    /// The leaked dash-segment cache reached its entry cap. Carried
+    /// by [`Diagnostic::DashCacheCapExceeded`].
+    DashCacheCapExceeded,
+    /// The renderer-lib event coalesce map hit its cap and was
+    /// force-flushed. Carried by
+    /// [`Diagnostic::EmitterCoalesceCapExceeded`].
+    EmitterCoalesceCapExceeded,
     /// A kind that doesn't (yet) have a dedicated variant. Keeps
     /// parser round-trips lossless without forcing every emit site to
     /// migrate in a single pass.
@@ -100,6 +155,187 @@ pub enum Diagnostic {
         /// ID of the placeholder node.
         id: String,
     },
+    /// Tree traversal reached the global depth cap. The subtree is
+    /// skipped and (in normalize / render) pruned.
+    TreeDepthExceeded {
+        /// ID of the node whose subtree was skipped.
+        id: String,
+        /// The depth cap that was hit.
+        max_depth: usize,
+    },
+    /// Duplicate-ID validation stopped collecting after reaching the
+    /// configured cap. The tree may contain more duplicates than are
+    /// listed.
+    TooManyDuplicates {
+        /// Cap at which collection was stopped.
+        limit: usize,
+    },
+    /// A user-authored widget ID violated the canonical ID ruleset
+    /// (length, ASCII-printable range, reserved characters).
+    WidgetIdInvalid {
+        /// Stable machine-readable reason tag. One of `too_long`,
+        /// `non_ascii`, or `reserved_char`.
+        reason: String,
+        /// Widget type name the ID was declared on.
+        type_name: String,
+        /// The offending ID verbatim (may be empty or truncated in
+        /// `Display` for very long cases).
+        id: String,
+        /// Human-readable detail sentence describing the violation.
+        /// `Display` appends this to `widget_id_invalid: `.
+        detail: String,
+    },
+    /// A widget that requires a screen-reader-announcable name was
+    /// declared without one.
+    MissingAccessibleName {
+        /// Widget type name (e.g. `"button"`).
+        type_name: String,
+        /// Scoped ID of the offending widget.
+        id: String,
+    },
+    /// A cross-widget a11y reference (`labelled_by`, `described_by`,
+    /// `error_message`, `active_descendant`, or a `radio_group`
+    /// entry) did not resolve to any declared widget.
+    A11yRefUnresolved {
+        /// Scoped ID of the widget carrying the reference.
+        id: String,
+        /// a11y field name. For `radio_group` entries, this is
+        /// `"radio_group"`.
+        key: String,
+        /// Raw (pre-rewrite) reference value.
+        value: String,
+        /// True when the reference appeared as an element of an
+        /// array-valued a11y field like `radio_group`. Used by
+        /// `Display` to produce the "member" phrasing.
+        is_member: bool,
+    },
+    /// A numeric prop was outside its declared range and clamped.
+    PropRangeExceeded {
+        /// Scoped ID of the widget.
+        id: String,
+        /// Widget type name.
+        type_name: String,
+        /// Prop name.
+        prop: String,
+        /// Raw (pre-clamp) value as it appeared on the wire.
+        raw: f64,
+        /// Clamped value stored back into the prop.
+        clamped: f64,
+        /// True when the raw value was non-finite (NaN or Inf);
+        /// changes the `Display` phrasing.
+        non_finite: bool,
+    },
+    /// A prop value had an unexpected JSON type.
+    PropTypeMismatch {
+        /// Scoped ID of the widget.
+        id: String,
+        /// Widget type name.
+        type_name: String,
+        /// Prop name.
+        prop: String,
+        /// Debug-rendered value that failed the type check.
+        value_debug: String,
+        /// Debug-rendered expected type enum value.
+        expected_debug: String,
+    },
+    /// A widget carried a prop name not in its declared schema.
+    PropUnknown {
+        /// Scoped ID of the widget.
+        id: String,
+        /// Widget type name.
+        type_name: String,
+        /// The unexpected prop name.
+        prop: String,
+        /// Debug-rendered list of known prop names.
+        known_debug: String,
+    },
+    /// A text-like content prop exceeded its per-widget byte cap and
+    /// was truncated on a UTF-8 char boundary.
+    ContentLengthExceeded {
+        /// Widget ID whose content was truncated.
+        id: String,
+        /// Field name (`value`, `content`, etc.).
+        field: String,
+        /// Actual byte length on input.
+        actual: usize,
+        /// Configured cap.
+        cap: usize,
+        /// Byte length after truncation (may be < `cap` when the cap
+        /// fell mid-codepoint).
+        truncated: usize,
+    },
+    /// The leaked font-family-name cache reached its entry cap.
+    /// Subsequent names still resolve but leak without caching.
+    FontCacheCapExceeded {
+        /// Cap value (max cache entries).
+        max: usize,
+    },
+    /// Inline fonts declared in Settings exceeded the process-wide
+    /// font load cap. Excess entries are dropped.
+    FontCapExceeded {
+        /// Process-wide font cap.
+        max: u32,
+        /// Entries requested in this Settings call.
+        requested: u32,
+        /// Entries granted (loaded).
+        granted: u32,
+        /// Entries dropped (`requested - granted`).
+        dropped: u32,
+    },
+    /// A font family from `default_font` or its fallback chain did
+    /// not resolve to a loaded or built-in family.
+    FontFamilyNotFound {
+        /// Family name that could not be resolved.
+        family: String,
+    },
+    /// The Settings payload failed typed `deny_unknown_fields`
+    /// validation. The per-field `get`-and-coerce path still runs so
+    /// partial settings take effect.
+    InvalidSettings {
+        /// Detail from the serde decode error.
+        detail: String,
+    },
+    /// A non-trusted widget panicked inside the registry's
+    /// catch_unwind firewall. The renderer ignores the widget's
+    /// contribution for this call and continues.
+    WidgetPanic {
+        /// Scoped ID of the panicking node.
+        id: String,
+        /// Widget type name.
+        type_name: String,
+        /// Human-readable method label (e.g. `"prepare"`, `"render"`).
+        label: String,
+    },
+    /// SVG decode returned a parse error.
+    SvgParseError {
+        /// Scoped ID of the SVG widget.
+        id: String,
+        /// Source path or identifier that failed.
+        source: String,
+        /// Detail from the parser.
+        detail: String,
+    },
+    /// SVG decode exceeded its wall-clock budget.
+    SvgDecodeTimeout {
+        /// Scoped ID of the SVG widget.
+        id: String,
+        /// Source path or identifier that timed out.
+        source: String,
+        /// Deadline that was exceeded, rendered exactly as `{:?}` on
+        /// the original `std::time::Duration` for Display parity.
+        deadline_debug: String,
+    },
+    /// The leaked dash-segment cache reached its entry cap.
+    DashCacheCapExceeded {
+        /// Cap value (max cache entries).
+        max: usize,
+    },
+    /// The renderer-lib event coalesce map hit its cap and was
+    /// force-flushed to keep memory bounded.
+    EmitterCoalesceCapExceeded {
+        /// Cap value (max pending entries).
+        cap: usize,
+    },
     /// Catch-all for diagnostics that originated as a pre-migration
     /// formatted string. Keeps typed consumers from losing the
     /// payload before the emitter has a dedicated variant.
@@ -122,6 +358,24 @@ impl Diagnostic {
             Self::UnrecognizedWidgetPlaceholder { .. } => {
                 DiagnosticKind::UnrecognizedWidgetPlaceholder
             }
+            Self::TreeDepthExceeded { .. } => DiagnosticKind::TreeDepthExceeded,
+            Self::TooManyDuplicates { .. } => DiagnosticKind::TooManyDuplicates,
+            Self::WidgetIdInvalid { .. } => DiagnosticKind::WidgetIdInvalid,
+            Self::MissingAccessibleName { .. } => DiagnosticKind::MissingAccessibleName,
+            Self::A11yRefUnresolved { .. } => DiagnosticKind::A11yRefUnresolved,
+            Self::PropRangeExceeded { .. } => DiagnosticKind::PropRangeExceeded,
+            Self::PropTypeMismatch { .. } => DiagnosticKind::PropTypeMismatch,
+            Self::PropUnknown { .. } => DiagnosticKind::PropUnknown,
+            Self::ContentLengthExceeded { .. } => DiagnosticKind::ContentLengthExceeded,
+            Self::FontCacheCapExceeded { .. } => DiagnosticKind::FontCacheCapExceeded,
+            Self::FontCapExceeded { .. } => DiagnosticKind::FontCapExceeded,
+            Self::FontFamilyNotFound { .. } => DiagnosticKind::FontFamilyNotFound,
+            Self::InvalidSettings { .. } => DiagnosticKind::InvalidSettings,
+            Self::WidgetPanic { .. } => DiagnosticKind::WidgetPanic,
+            Self::SvgParseError { .. } => DiagnosticKind::SvgParseError,
+            Self::SvgDecodeTimeout { .. } => DiagnosticKind::SvgDecodeTimeout,
+            Self::DashCacheCapExceeded { .. } => DiagnosticKind::DashCacheCapExceeded,
+            Self::EmitterCoalesceCapExceeded { .. } => DiagnosticKind::EmitterCoalesceCapExceeded,
             Self::Other { .. } => DiagnosticKind::Other,
         }
     }
@@ -238,6 +492,152 @@ impl std::fmt::Display for Diagnostic {
                 "unrecognized_widget_placeholder: node id={id:?} carries `__widget__` \
                  type but no expander was registered; placeholder rendered as a no-op"
             ),
+            Self::TreeDepthExceeded { id, max_depth } => write!(
+                f,
+                "tree_depth_exceeded: subtree rooted at \"{id}\" exceeds \
+                 MAX_TREE_DEPTH={max_depth}, skipping descent"
+            ),
+            Self::TooManyDuplicates { limit } => write!(
+                f,
+                "too_many_duplicates: stopped collecting at {limit} entries"
+            ),
+            Self::WidgetIdInvalid { detail, .. } => write!(f, "widget_id_invalid: {detail}"),
+            Self::MissingAccessibleName { type_name, id } => write!(
+                f,
+                "missing_accessible_name: {type_name} \"{id}\" has no \
+                 label, text child, a11y.label, or a11y.labelled_by; \
+                 screen readers will announce no name"
+            ),
+            Self::A11yRefUnresolved {
+                id,
+                key,
+                value,
+                is_member,
+            } => {
+                if *is_member {
+                    write!(
+                        f,
+                        "a11y_ref_unresolved: {key} member \"{value}\" \
+                         on \"{id}\" does not match any declared widget ID"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "a11y_ref_unresolved: {key}=\"{value}\" on \"{id}\" \
+                         does not match any declared widget ID"
+                    )
+                }
+            }
+            Self::PropRangeExceeded {
+                id,
+                type_name,
+                prop,
+                raw,
+                clamped,
+                non_finite,
+            } => {
+                if *non_finite {
+                    write!(
+                        f,
+                        "prop_range_exceeded: widget \"{id}\" ({type_name}) prop \
+                         \"{prop}\" value {raw} is not finite, clamped to \
+                         {clamped}"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "prop_range_exceeded: widget \"{id}\" ({type_name}) prop \
+                         \"{prop}\" value {raw} out of range, clamped to \
+                         {clamped}"
+                    )
+                }
+            }
+            Self::PropTypeMismatch {
+                id,
+                type_name,
+                prop,
+                value_debug,
+                expected_debug,
+            } => write!(
+                f,
+                "widget '{id}' ({type_name}): prop '{prop}' has unexpected type \
+                 {value_debug} (expected {expected_debug})"
+            ),
+            Self::PropUnknown {
+                id,
+                type_name,
+                prop,
+                known_debug,
+            } => write!(
+                f,
+                "widget '{id}' ({type_name}): unexpected prop '{prop}' \
+                 (known: {known_debug})"
+            ),
+            Self::ContentLengthExceeded {
+                id,
+                field,
+                actual,
+                cap,
+                truncated,
+            } => write!(
+                f,
+                "[code=content_length_exceeded][id={id}] {field} is {actual} bytes, \
+                 exceeds cap {cap}; truncating to {truncated} bytes"
+            ),
+            Self::FontCacheCapExceeded { max } => write!(
+                f,
+                "[code=font_cache_cap_exceeded] font family cache full \
+                 ({max} entries); new names will leak without caching"
+            ),
+            Self::FontCapExceeded {
+                max,
+                requested,
+                granted,
+                dropped,
+            } => write!(
+                f,
+                "[code=font_cap_exceeded] inline fonts exceed the \
+                 {max} font cap; dropping {dropped} entries \
+                 (granted {granted} of {requested})"
+            ),
+            Self::FontFamilyNotFound { family } => write!(
+                f,
+                "[code=font_family_not_found] font family `{family}` not resolvable; \
+                 trying next fallback"
+            ),
+            Self::InvalidSettings { detail } => {
+                write!(f, "[code=invalid_settings] settings decode: {detail}")
+            }
+            Self::WidgetPanic {
+                id,
+                type_name,
+                label,
+            } => write!(
+                f,
+                "[code=widget_panic][id={id}] widget `{type_name}` panicked in {label}"
+            ),
+            Self::SvgParseError { id, source, detail } => write!(
+                f,
+                "[code=svg_parse_error][id={id}] svg '{source}' failed to parse: {detail}"
+            ),
+            Self::SvgDecodeTimeout {
+                id,
+                source,
+                deadline_debug,
+            } => write!(
+                f,
+                "[code=svg_decode_timeout][id={id}] svg '{source}' \
+                 exceeded {deadline_debug} decode budget; rendering skipped"
+            ),
+            Self::DashCacheCapExceeded { max } => write!(
+                f,
+                "[code=dash_cache_cap_exceeded] dash segment cache full \
+                 ({max} entries); new patterns will leak without caching"
+            ),
+            Self::EmitterCoalesceCapExceeded { cap } => write!(
+                f,
+                "[code=emitter_coalesce_cap_exceeded] pending coalesce map hit cap ({cap}); flushing all"
+            ),
             Self::Other { message, .. } => f.write_str(message),
         }
     }
@@ -301,5 +701,136 @@ mod tests {
         let json = serde_json::to_value(&d).unwrap();
         let back: Diagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(d, back);
+    }
+
+    #[test]
+    fn display_tree_depth_exceeded_matches_legacy() {
+        let d = Diagnostic::TreeDepthExceeded {
+            id: "root".into(),
+            max_depth: 256,
+        };
+        assert_eq!(
+            d.to_string(),
+            "tree_depth_exceeded: subtree rooted at \"root\" exceeds \
+             MAX_TREE_DEPTH=256, skipping descent"
+        );
+    }
+
+    #[test]
+    fn display_widget_id_invalid_matches_legacy() {
+        let d = Diagnostic::WidgetIdInvalid {
+            reason: "reserved_char".into(),
+            type_name: "text_input".into(),
+            id: "form/field".into(),
+            detail: "ID \"form/field\" contains reserved character '/'. Use container scoping \
+                     instead. (reason=reserved_char)"
+                .into(),
+        };
+        assert!(d.to_string().starts_with("widget_id_invalid: "));
+        assert!(d.to_string().contains("reason=reserved_char"));
+    }
+
+    #[test]
+    fn display_prop_range_exceeded_matches_legacy() {
+        let d = Diagnostic::PropRangeExceeded {
+            id: "slider-1".into(),
+            type_name: "slider".into(),
+            prop: "value".into(),
+            raw: 200.0,
+            clamped: 100.0,
+            non_finite: false,
+        };
+        assert_eq!(
+            d.to_string(),
+            "prop_range_exceeded: widget \"slider-1\" (slider) prop \"value\" value 200 out of \
+             range, clamped to 100"
+        );
+    }
+
+    #[test]
+    fn display_content_length_exceeded_matches_legacy() {
+        let d = Diagnostic::ContentLengthExceeded {
+            id: "input".into(),
+            field: "value".into(),
+            actual: 100_000,
+            cap: 65_536,
+            truncated: 65_535,
+        };
+        assert_eq!(
+            d.to_string(),
+            "[code=content_length_exceeded][id=input] value is 100000 bytes, \
+             exceeds cap 65536; truncating to 65535 bytes"
+        );
+    }
+
+    #[test]
+    fn display_widget_panic_matches_legacy() {
+        let d = Diagnostic::WidgetPanic {
+            id: "btn".into(),
+            type_name: "custom_button".into(),
+            label: "render".into(),
+        };
+        assert_eq!(
+            d.to_string(),
+            "[code=widget_panic][id=btn] widget `custom_button` panicked in render"
+        );
+    }
+
+    #[test]
+    fn display_font_cap_exceeded_matches_legacy() {
+        let d = Diagnostic::FontCapExceeded {
+            max: 256,
+            requested: 10,
+            granted: 3,
+            dropped: 7,
+        };
+        assert_eq!(
+            d.to_string(),
+            "[code=font_cap_exceeded] inline fonts exceed the 256 font cap; dropping 7 entries \
+             (granted 3 of 10)"
+        );
+    }
+
+    #[test]
+    fn display_a11y_ref_unresolved_member_phrasing() {
+        let single = Diagnostic::A11yRefUnresolved {
+            id: "r1".into(),
+            key: "labelled_by".into(),
+            value: "missing".into(),
+            is_member: false,
+        };
+        assert_eq!(
+            single.to_string(),
+            "a11y_ref_unresolved: labelled_by=\"missing\" on \"r1\" does not match any declared \
+             widget ID"
+        );
+        let member = Diagnostic::A11yRefUnresolved {
+            id: "r1".into(),
+            key: "radio_group".into(),
+            value: "missing".into(),
+            is_member: true,
+        };
+        assert_eq!(
+            member.to_string(),
+            "a11y_ref_unresolved: radio_group member \"missing\" on \"r1\" does not match any \
+             declared widget ID"
+        );
+    }
+
+    #[test]
+    fn kind_for_all_non_other_variants_is_unique() {
+        // Spot-check: new variants map to their new kinds.
+        let tde = Diagnostic::TreeDepthExceeded {
+            id: "x".into(),
+            max_depth: 256,
+        };
+        assert_eq!(tde.kind(), DiagnosticKind::TreeDepthExceeded);
+        let wid = Diagnostic::WidgetIdInvalid {
+            reason: "r".into(),
+            type_name: "t".into(),
+            id: "i".into(),
+            detail: "d".into(),
+        };
+        assert_eq!(wid.kind(), DiagnosticKind::WidgetIdInvalid);
     }
 }

@@ -420,9 +420,12 @@ impl EventEmitter {
             self.flush_key(key);
         }
         if self.pending.len() >= PENDING_CAP {
-            // Typed diagnostic so hosts can detect coalesce pressure
-            // programmatically via the renderer's structured diagnostic
-            // channel; Display still produces the legacy tagged log line.
+            // Typed diagnostic emitted through Display so the log line
+            // stays consistent with other typed sites. We deliberately
+            // do not route this through the outgoing event sink: the
+            // emitter fires this branch exactly when the sink is under
+            // pressure, so adding another event would feed the jam we
+            // are trying to drain.
             let diag = plushie_core::Diagnostic::EmitterCoalesceCapExceeded { cap: PENDING_CAP };
             log::warn!("{diag}");
             self.flush_all();

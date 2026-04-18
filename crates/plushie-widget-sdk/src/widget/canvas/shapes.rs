@@ -237,9 +237,12 @@ fn intern_dash_segments(segments: Vec<f32>) -> &'static [f32] {
 
     if cache.len() >= MAX_DASH_CACHE {
         if !WARNED.swap(true, Ordering::Relaxed) {
-            // Typed diagnostic so hosts can detect the cap programmatically
-            // via the renderer's structured diagnostic channel; Display
-            // still produces the legacy tagged log line.
+            // Typed diagnostic emitted through Display so the log line
+            // stays consistent with other typed sites. There is no
+            // outgoing wire channel for non-canvas diagnostics today,
+            // so log-only is the whole pipeline. The atomic guards
+            // the emit to once per process; patterns past this point
+            // still leak uncached.
             let diag = plushie_core::Diagnostic::DashCacheCapExceeded {
                 max: MAX_DASH_CACHE,
             };

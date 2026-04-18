@@ -1,8 +1,13 @@
-//! Wire protocol bridge: subprocess management and message framing.
+//! Wire protocol bridge: transport management and message framing.
 //!
-//! The bridge spawns a plushie renderer binary as a child process and
-//! communicates over stdin/stdout using length-prefixed MessagePack
-//! or JSONL framing.
+//! Two transports share a single framing + heartbeat implementation:
+//!
+//! - `Subprocess`: spawn `plushie-renderer` as a child process and
+//!   talk over stdin/stdout. The default shape for `plushie::run`,
+//!   `plushie::run_spawn`, and `plushie::run_with_renderer`.
+//! - `Socket`: attach to a renderer already listening on a Unix or
+//!   TCP socket (started via `plushie-renderer --listen`). Used by
+//!   `plushie::run_connect`.
 //!
 //! Reading is handled by a background thread that feeds a bounded
 //! channel so the main event loop can `recv_timeout` and detect
@@ -16,7 +21,7 @@
 #[cfg(feature = "wire")]
 use std::io::{self, BufRead, BufReader, Read, Write};
 #[cfg(feature = "wire")]
-use std::process::{Child, ChildStdout, Command as ProcessCommand, Stdio};
+use std::process::{Child, Command as ProcessCommand, Stdio};
 #[cfg(feature = "wire")]
 use std::sync::Arc;
 #[cfg(feature = "wire")]
@@ -33,6 +38,9 @@ use plushie_core::outgoing_message::OutgoingMessage;
 #[cfg(feature = "wire")]
 use serde_json::Value;
 
+#[cfg(feature = "wire")]
+use super::socket::SocketStream;
+
 /// Wire protocol codec selection.
 #[cfg(feature = "wire")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,26 +51,51 @@ pub enum Codec {
     MsgPack,
 }
 
-/// A connection to a renderer subprocess.
+/// Type-erased reader for the background reader thread.
+#[cfg(feature = "wire")]
+type BoxedReader = Box<dyn Read + Send>;
+
+/// The I/O transport `Bridge` is running over.
+///
+/// `Subprocess` owns a child process plus its stdin/stdout pair.
+/// `Socket` owns a pre-connected Unix/TCP stream. Both expose the
+/// same read/write surface to the upper layers.
+#[cfg(feature = "wire")]
+enum Transport {
+    Subprocess {
+        child: Child,
+        /// Child stdin. `None` once Drop closes it.
+        stdin: Option<Box<dyn Write + Send>>,
+    },
+    Socket {
+        /// Writer half of the socket stream.
+        writer: Box<dyn Write + Send>,
+        /// The read-half handle kept around so `shutdown` can reach
+        /// both directions when Drop wants to wake the reader thread.
+        shutdown_handle: SocketStream,
+    },
+}
+
+/// A connection to a renderer.
 #[cfg(feature = "wire")]
 pub struct Bridge {
-    child: Child,
+    transport: Transport,
     codec: Codec,
-    /// Buffered reader owning the child's stdout.
+    /// Buffered reader owning the incoming byte stream.
     ///
     /// Held by the struct (rather than created per-call in
     /// [`Self::receive`]) so JSON-mode reads don't discard the
-    /// lookahead buffer between calls. `BufReader::new(stdout)` on
-    /// every call would drop any bytes the previous call had already
-    /// pulled in past the newline, corrupting framing on back-to-back
+    /// lookahead buffer between calls. `BufReader::new(...)` on every
+    /// call would drop any bytes the previous call had already pulled
+    /// in past the newline, corrupting framing on back-to-back
     /// renderer messages.
     ///
     /// `None` after [`Self::start_reader`] takes ownership for the
     /// background reader thread.
-    sync_stdout: Option<BufReader<ChildStdout>>,
-    /// Background reader thread state. `None` between spawn() and
-    /// the first start_reader() call (used by tests that don't need
-    /// a reader).
+    sync_reader: Option<BufReader<BoxedReader>>,
+    /// Background reader thread state. `None` between construction
+    /// and the first `start_reader` call (used by tests that don't
+    /// need a reader).
     reader: Option<ReaderHandle>,
 }
 
@@ -102,18 +135,47 @@ impl Bridge {
             .stderr(Stdio::inherit())
             .spawn()?;
 
-        // Wrap stdout in a BufReader up-front so the sync receive() path
-        // keeps any lookahead buffering across calls. start_reader()
-        // takes this back out if the background reader is started.
         let stdout = child
             .stdout
             .take()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout unavailable"))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdin unavailable"))?;
+
+        let sync_reader: BufReader<BoxedReader> =
+            BufReader::with_capacity(64 * 1024, Box::new(stdout));
 
         Ok(Self {
-            child,
-            codec: Codec::Json, // default, may be negotiated via hello
-            sync_stdout: Some(BufReader::new(stdout)),
+            transport: Transport::Subprocess {
+                child,
+                stdin: Some(Box::new(stdin)),
+            },
+            codec: Codec::Json,
+            sync_reader: Some(sync_reader),
+            reader: None,
+        })
+    }
+
+    /// Attach to a renderer already listening on a socket.
+    ///
+    /// The provided [`SocketStream`] must be connected; we clone the
+    /// handle (one half for reads, one half for writes) and keep a
+    /// third clone around so `Drop` can call `shutdown(Both)` to wake
+    /// the reader thread during graceful teardown.
+    pub fn connect(stream: SocketStream) -> io::Result<Self> {
+        let read_half = stream.try_clone()?;
+        let write_half = stream.try_clone()?;
+        let sync_reader: BufReader<BoxedReader> =
+            BufReader::with_capacity(64 * 1024, Box::new(read_half));
+        Ok(Self {
+            transport: Transport::Socket {
+                writer: Box::new(write_half),
+                shutdown_handle: stream,
+            },
+            codec: Codec::Json,
+            sync_reader: Some(sync_reader),
             reader: None,
         })
     }
@@ -122,20 +184,15 @@ impl Bridge {
     ///
     /// Must be called after codec negotiation (i.e. after `set_codec`
     /// if the hello message changed the codec). Takes ownership of
-    /// the child's stdout handle.
+    /// the buffered reader.
     pub fn start_reader(&mut self) -> io::Result<()> {
         if self.reader.is_some() {
             return Ok(());
         }
-        // Hand the owning BufReader (with any lookahead already
-        // buffered by sync receive() calls during hello processing)
-        // over to the background reader thread. Framing is preserved
-        // across the handoff because the reader thread keeps reading
-        // from the same buffered handle.
         let reader = self
-            .sync_stdout
+            .sync_reader
             .take()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout already taken"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "reader already taken"))?;
         let (tx, rx) = mpsc::sync_channel::<io::Result<Value>>(256);
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
@@ -189,29 +246,40 @@ impl Bridge {
         }
     }
 
-    /// Send a typed message to the renderer's stdin.
+    /// Return a mutable reference to the writer half. Returns an I/O
+    /// error if the transport has been closed (e.g. during Drop).
+    fn writer_mut(&mut self) -> io::Result<&mut dyn Write> {
+        match &mut self.transport {
+            Transport::Subprocess { stdin, .. } => stdin
+                .as_deref_mut()
+                .map(|w| w as &mut dyn Write)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdin closed")),
+            Transport::Socket { writer, .. } => Ok(writer.as_mut()),
+        }
+    }
+
+    /// Send a typed message to the renderer.
     ///
     /// Encode failures return [`crate::Error::WireEncode`]; I/O
     /// failures return [`crate::Error::Io`].
     pub fn send(&mut self, message: &OutgoingMessage) -> crate::Result {
-        let stdin = self.child.stdin.as_mut().ok_or_else(|| {
-            crate::Error::Io(io::Error::new(io::ErrorKind::BrokenPipe, "stdin closed"))
-        })?;
+        let codec = self.codec;
+        let writer = self.writer_mut().map_err(crate::Error::Io)?;
 
-        match self.codec {
+        match codec {
             Codec::Json => {
                 let json = serde_json::to_string(message)
                     .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
-                writeln!(stdin, "{json}")?;
-                stdin.flush()?;
+                writeln!(writer, "{json}")?;
+                writer.flush()?;
             }
             Codec::MsgPack => {
                 let bytes = rmp_serde::to_vec(message)
                     .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
                 let len = (bytes.len() as u32).to_be_bytes();
-                stdin.write_all(&len)?;
-                stdin.write_all(&bytes)?;
-                stdin.flush()?;
+                writer.write_all(&len)?;
+                writer.write_all(&bytes)?;
+                writer.flush()?;
             }
         }
 
@@ -378,47 +446,73 @@ impl Bridge {
         })
     }
 
-    /// Read the next message from the renderer's stdout.
+    /// Read the next message from the renderer.
     ///
-    /// Reads inline from the child's stdout (no reader thread).
-    /// Used for the hello handshake before the main event loop
-    /// starts the background reader. Prefer
-    /// [`recv_timeout`](Self::recv_timeout) in the main loop so
-    /// heartbeat silence can be detected.
+    /// Reads inline from the held buffered reader (no reader thread).
+    /// Used for the hello handshake before the main event loop starts
+    /// the background reader. Prefer [`recv_timeout`](Self::recv_timeout)
+    /// in the main loop so heartbeat silence can be detected.
     pub fn receive(&mut self) -> io::Result<Value> {
+        let codec = self.codec;
         let reader = self
-            .sync_stdout
+            .sync_reader
             .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout closed"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "reader already handed off"))?;
 
-        read_one(reader, self.codec)
+        read_one(reader, codec)
     }
 
-    /// Check if the child process is still running.
+    /// Check if the renderer is still connected.
+    ///
+    /// For subprocess transports this polls the child's exit status.
+    /// Socket transports don't expose a non-invasive liveness probe;
+    /// they return true here and let the reader thread surface the
+    /// disconnect via `recv_timeout`.
     pub fn is_alive(&mut self) -> bool {
-        self.child.try_wait().ok().flatten().is_none()
-    }
-
-    /// Kill the child process.
-    pub fn kill(&mut self) -> io::Result<()> {
-        self.child.kill()
-    }
-
-    /// Reap the child if it has already exited, returning the exit
-    /// code. Does not block.
-    pub fn try_reap(&mut self) -> Option<i32> {
-        match self.child.try_wait() {
-            Ok(Some(status)) => status.code(),
-            _ => None,
+        match &mut self.transport {
+            Transport::Subprocess { child, .. } => child.try_wait().ok().flatten().is_none(),
+            Transport::Socket { .. } => true,
         }
     }
 
-    /// Wait for the child to exit, returning the exit code.
+    /// Force-close the renderer connection.
     ///
-    /// Blocks until the child terminates. Use after `kill()` to reap
-    /// the process and avoid zombies.
+    /// Subprocess transports send `SIGKILL`; socket transports
+    /// shutdown both directions so the renderer observes a clean
+    /// close on its end.
+    pub fn kill(&mut self) -> io::Result<()> {
+        match &mut self.transport {
+            Transport::Subprocess { child, .. } => child.kill(),
+            Transport::Socket {
+                shutdown_handle, ..
+            } => {
+                shutdown_handle.shutdown();
+                Ok(())
+            }
+        }
+    }
+
+    /// Reap the child if it has already exited, returning the exit
+    /// code. Does not block. Socket transports always return `None`.
+    pub fn try_reap(&mut self) -> Option<i32> {
+        match &mut self.transport {
+            Transport::Subprocess { child, .. } => match child.try_wait() {
+                Ok(Some(status)) => status.code(),
+                _ => None,
+            },
+            Transport::Socket { .. } => None,
+        }
+    }
+
+    /// Wait for the renderer to exit, returning the exit code.
+    ///
+    /// Blocks until the child terminates (subprocess) or returns
+    /// immediately with `None` (socket, there is no child to reap).
     pub fn wait(&mut self) -> io::Result<Option<i32>> {
-        Ok(self.child.wait()?.code())
+        match &mut self.transport {
+            Transport::Subprocess { child, .. } => Ok(child.wait()?.code()),
+            Transport::Socket { .. } => Ok(None),
+        }
     }
 
     /// Set the codec after hello message negotiation.
@@ -430,56 +524,76 @@ impl Bridge {
 #[cfg(feature = "wire")]
 impl Drop for Bridge {
     fn drop(&mut self) {
-        // Order matters. Signalling stop without killing first can
-        // deadlock: the reader thread is blocked inside `read_one`,
-        // which only returns after the child closes its stdout. The
-        // child doesn't close it until we get EOF on stdin, kill it,
-        // or it exits on its own.
-        //
-        // Sequence:
-        // 1. Close stdin so the child observes EOF and can drain any
-        //    outstanding work in its own graceful-shutdown path.
-        // 2. Give it a short grace period (`GRACE`) to exit cleanly.
-        //    On a well-behaved renderer this closes stdout quickly
-        //    and the reader thread's `read_one` returns with
-        //    UnexpectedEof, which lets `stop_reader` join cleanly.
-        // 3. If the child is still alive after the grace window,
-        //    fall back to SIGKILL + reap. This guarantees we don't
-        //    block forever on a wedged renderer.
+        // Signal the reader thread to stop; the transport-specific
+        // teardown below wakes it up by closing its read side.
         if let Some(reader) = self.reader.as_ref() {
             reader.stop.store(true, Ordering::SeqCst);
         }
 
-        // Step 1: close stdin.
-        drop(self.child.stdin.take());
+        // Release the transport's outbound half (close stdin / drop
+        // the writer + shutdown the socket) in a scoped borrow so we
+        // can call self.stop_reader() afterwards without fighting the
+        // borrow checker over `self`.
+        {
+            match &mut self.transport {
+                Transport::Subprocess { child, stdin } => {
+                    // Order matters (inherited from the pre-refactor
+                    // Bridge::Drop). Signalling stop without closing
+                    // stdin can deadlock the reader thread because
+                    // `read_one` only returns after the child closes
+                    // its stdout, which doesn't happen until we close
+                    // stdin or SIGKILL.
+                    //
+                    // Sequence:
+                    //   1. Close stdin -> child observes EOF and can
+                    //      drain its graceful-shutdown path.
+                    //   2. Wait up to GRACE for a clean exit.
+                    //   3. SIGKILL if the child is still alive.
+                    drop(stdin.take());
 
-        // Step 2: wait up to GRACE for the child to exit on its own.
-        const GRACE: Duration = Duration::from_millis(500);
-        let deadline = std::time::Instant::now() + GRACE;
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(_)) => break, // child exited cleanly
-                Ok(None) if std::time::Instant::now() >= deadline => break,
-                Ok(None) => {
-                    std::thread::sleep(Duration::from_millis(10));
+                    const GRACE: Duration = Duration::from_millis(500);
+                    let deadline = std::time::Instant::now() + GRACE;
+                    loop {
+                        match child.try_wait() {
+                            Ok(Some(_)) => break,
+                            Ok(None) if std::time::Instant::now() >= deadline => break,
+                            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                            Err(_) => break,
+                        }
+                    }
+
+                    if matches!(child.try_wait(), Ok(None)) {
+                        let _ = child.kill();
+                    }
                 }
-                Err(_) => break,
+                Transport::Socket {
+                    writer,
+                    shutdown_handle,
+                } => {
+                    // Drop the writer first so the peer observes EOF
+                    // on its read side, then shutdown the kept handle
+                    // so our own reader thread's blocked read returns
+                    // with EOF and the loop exits.
+                    drop(std::mem::replace(writer, Box::new(io::sink())));
+                    shutdown_handle.shutdown();
+                }
             }
         }
 
-        // Step 3: force-kill if the child is still around.
-        if matches!(self.child.try_wait(), Ok(None)) {
-            let _ = self.kill();
-        }
+        // Reader thread wakes up on the EOF produced above; join it
+        // before reaping the child (subprocess path only).
         self.stop_reader();
-        // Reap to capture the exit code and avoid zombies on
-        // platforms where kill() returns before the process is
-        // actually reaped.
-        let _ = self.child.wait();
+
+        if let Transport::Subprocess { child, .. } = &mut self.transport {
+            // Reap to capture the exit code and avoid zombies on
+            // platforms where kill() returns before the process is
+            // actually reaped.
+            let _ = child.wait();
+        }
     }
 }
 
-/// Read a single message from a buffered stdout handle, with
+/// Read a single message from a buffered reader handle, with
 /// codec-specific framing. Helper shared by synchronous `receive()`
 /// and the background reader loop.
 ///
@@ -532,13 +646,13 @@ fn read_one<R: Read>(reader: &mut BufReader<R>, codec: Codec) -> io::Result<Valu
     }
 }
 
-/// Background reader thread. Reads frames from the buffered child
-/// stdout until an I/O error occurs or `stop` flips. Every frame (or
+/// Background reader thread. Reads frames from the buffered stream
+/// until an I/O error occurs or `stop` flips. Every frame (or
 /// terminating error) is sent to the receiver; when the sender is
 /// dropped, the main loop's `recv_timeout` returns Disconnected.
 #[cfg(feature = "wire")]
 fn reader_loop(
-    mut reader: BufReader<ChildStdout>,
+    mut reader: BufReader<BoxedReader>,
     codec: Codec,
     tx: mpsc::SyncSender<io::Result<Value>>,
     stop: Arc<AtomicBool>,

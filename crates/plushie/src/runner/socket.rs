@@ -101,6 +101,40 @@ impl SocketStream {
             ))?)),
         }
     }
+
+    /// Clone the underlying file descriptor so reader and writer
+    /// halves can live on separate threads.
+    ///
+    /// The TCP and Unix stream families both support `try_clone`, so
+    /// this is an O(1) dup of the OS handle.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the underlying `try_clone` failure.
+    pub fn try_clone(&self) -> io::Result<Self> {
+        match self {
+            #[cfg(unix)]
+            SocketStream::Unix(s) => Ok(SocketStream::Unix(s.try_clone()?)),
+            SocketStream::Tcp(s) => Ok(SocketStream::Tcp(s.try_clone()?)),
+        }
+    }
+
+    /// Signal graceful shutdown on both halves of the socket.
+    ///
+    /// After shutdown the reader thread observes EOF the next time it
+    /// attempts to read, mirroring the "child closed stdout" signal
+    /// that terminates the subprocess reader loop.
+    pub fn shutdown(&self) {
+        match self {
+            #[cfg(unix)]
+            SocketStream::Unix(s) => {
+                let _ = s.shutdown(std::net::Shutdown::Both);
+            }
+            SocketStream::Tcp(s) => {
+                let _ = s.shutdown(std::net::Shutdown::Both);
+            }
+        }
+    }
 }
 
 impl io::Read for SocketStream {

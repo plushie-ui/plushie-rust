@@ -228,3 +228,59 @@ fn wrapped_widget_view_compiles() {
     let mut registrar = WidgetRegistrar::new();
     let _view = WrappedApp::view(&(), &mut registrar);
 }
+
+// ---------------------------------------------------------------------------
+// Subscription: mirrors the Subscription::every / on_key_press patterns.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn subscription_builders_compile() {
+    let _every = Subscription::every(std::time::Duration::from_secs(1), "tick");
+    let _keys = Subscription::on_key_press();
+    let _window_ev = Subscription::on_window_event();
+}
+
+// ---------------------------------------------------------------------------
+// Assertion helpers: exercise TestSession assertion surface area so a
+// signature change surfaces as a test compile error.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_session_assertions_compile() {
+    let session = TestSession::<Counter>::start();
+    session.assert_exists("inc");
+    session.assert_not_exists("missing");
+    session.assert_no_diagnostics();
+    let _hash = session.tree_hash();
+    let _snap = session.tree_snapshot();
+}
+
+#[test]
+fn test_session_assertion_signatures_compile() {
+    // Referencing the generic-over-Selector assertion helpers keeps
+    // the documented signature honest without panicking on a missing
+    // widget. The actual runtime behaviour is covered by other tests.
+    fn _use_assert_text(s: &TestSession<Counter>, sel: &str, exp: &str) {
+        let _ = |s: &TestSession<Counter>| s.assert_exists(sel);
+        let _ = |_: ()| s.assert_text(sel, exp);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Prelude glob: ensure every documented re-export remains nameable from
+// a single `use plushie::prelude::*;`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn prelude_glob_imports_compile() {
+    // Smoke-test a sampling of re-exports: one enum, one trait, a few
+    // types, an event family, and the animation descriptors. If any of
+    // these re-exports is removed from the prelude this test stops
+    // compiling, which is the signal we want.
+    let _align: Align = Align::Center;
+    let _color: Color = Color::red();
+    let _ease: Easing = Easing::EaseInOut;
+    let _role: Role = Role::Button;
+    fn _takes_app<A: App>() {}
+    fn _takes_plushie_type<T: PlushieType>() {}
+}

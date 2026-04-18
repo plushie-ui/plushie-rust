@@ -1,18 +1,11 @@
 //! Integration tests that drive the library layer of `cargo-plushie`
-//! end-to-end without spawning the binary.
-//!
-//! The end-to-end "compile a real app + widget and exec the produced
-//! binary" test is marked `#[ignore]` because it needs `cargo` on PATH,
-//! a working plushie-renderer-lib toolchain, and several minutes of
-//! wall time. It is meaningful to run before a hat 16 release:
-//!
-//! ```sh
-//! cargo test -p cargo-plushie --test workspace_generation -- \
-//!     --ignored --nocapture
-//! ```
+//! without spawning the binary. Exercises workspace generation against
+//! a real tempdir so the on-disk shape of the generated files is
+//! verified end-to-end from `WorkspaceConfig` through to
+//! `Cargo.toml` + `src/main.rs`.
 
 use cargo_plushie::{WidgetMetadata, generator};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tempfile::tempdir;
 
 fn widget(crate_name: &str, type_name: &str, path: &Path, ctor: &str) -> WidgetMetadata {
@@ -107,18 +100,8 @@ fn write_if_changed_preserves_mtime_on_noop_regenerate() {
     );
 }
 
-#[test]
-#[ignore = "exercises cargo build end-to-end; run manually before release"]
-fn end_to_end_build_produces_binary() {
-    // This is a placeholder documenting the shape of the full smoke
-    // test. When enabled it would:
-    //   1. Scaffold a minimal app crate + widget crate via fixtures
-    //      under tempdir.
-    //   2. Run `cargo plushie build` against that manifest.
-    //   3. Launch the resulting binary with `--version` and assert the
-    //      version string matches RENDERER_VERSION.
-    //
-    // The full exercise requires a live plushie-widget-sdk checkout on
-    // PLUSHIE_SOURCE_PATH so it's intentionally kept as a manual step.
-    let _guard: PathBuf = tempdir().unwrap().keep();
-}
+// End-to-end smoke test (scaffold app + widget, run `cargo plushie
+// build`, launch the resulting binary and assert its `--version`) is
+// tracked separately. It requires cargo on PATH, a live
+// plushie-widget-sdk checkout on PLUSHIE_SOURCE_PATH, and several
+// minutes of wall time, so it doesn't fit in this test module.

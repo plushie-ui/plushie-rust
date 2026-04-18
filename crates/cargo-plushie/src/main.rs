@@ -345,11 +345,9 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
         })
     });
 
-    let workspace_version = metadata.workspace_metadata.to_string();
-    // cargo_metadata doesn't give us [workspace.package].version; fall
-    // back to the app package version, which equals the workspace
-    // version when the app is inside a workspace using `.workspace = true`.
-    let _ = workspace_version;
+    // cargo_metadata doesn't surface `[workspace.package].version`
+    // separately; the app package version already resolves to it when
+    // the app uses `version.workspace = true`, so we use that directly.
     let effective_version = app_pkg.version.to_string();
 
     let config = generator::WorkspaceConfig {

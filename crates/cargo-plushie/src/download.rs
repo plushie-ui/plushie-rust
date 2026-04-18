@@ -13,18 +13,6 @@ use std::path::{Path, PathBuf};
 /// Canonical base URL for Plushie renderer releases.
 pub const RELEASE_BASE_URL: &str = "https://github.com/plushie-ui/plushie-rust/releases/download";
 
-/// Input options for `cargo plushie download`.
-pub struct DownloadOpts<'a> {
-    /// Directory containing the app's `Cargo.toml` (used to locate the
-    /// Cargo target directory).
-    pub manifest_dir: &'a Path,
-    /// Renderer version to download (normally `env!("CARGO_PKG_VERSION")`
-    /// of `plushie-renderer-lib`).
-    pub version: &'a str,
-    /// Overwrite an existing binary.
-    pub force: bool,
-}
-
 /// Resolved paths for the download target.
 #[derive(Debug)]
 pub struct DownloadTarget {

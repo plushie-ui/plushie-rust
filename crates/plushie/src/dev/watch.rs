@@ -11,12 +11,12 @@
 //!
 //! # Scope
 //!
-//! This is the MVP: the loop rebuilds the custom renderer binary and
-//! pushes status into the overlay handle. In-process Bridge restart
-//! (to swap renderers on a running app without losing Model state)
-//! lands in a follow-on commit once the wire runner grows a graceful
-//! reload hook. Today a successful rebuild is visible on the next
-//! app launch (or to a future Bridge restart wired into run_wire).
+//! The loop rebuilds the custom renderer binary, pushes status into
+//! the overlay handle, and publishes a
+//! [`ControlSignal::SwapRenderer`](crate::dev::ControlSignal::SwapRenderer)
+//! so the wire runner respawns the renderer subprocess in-place
+//! against the fresh binary. The app's `Model`, subscriptions, and
+//! in-flight effects survive the swap (see `run_wire_inner`).
 
 use crate::dev::overlay::{DevOverlayHandle, Status};
 use crate::{App, Error, Result};

@@ -458,8 +458,9 @@ impl WidgetStateStore {
     /// naming both types and panics. Silent acceptance would leave
     /// the downcast path to trip later with no actionable context.
     ///
-    /// TODO(M-6): once the renderer's structured-diagnostic plumbing
-    /// lands, replace the `log::error!` with a proper diagnostic emit.
+    /// Today the emit is a `log::error!` with a `[code=...]` tag;
+    /// the typed `Diagnostic` sink is scoped to the tree-walk
+    /// `WalkCtx` and does not cover registration-time call sites.
     pub(crate) fn register_expander(&mut self, id: String, expander: Box<dyn DynWidgetExpander>) {
         let incoming_type = expander.state_type_id();
         let incoming_name = expander.widget_type_name();

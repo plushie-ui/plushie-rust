@@ -54,7 +54,9 @@
 //!   rendering. No subprocess, no serialization.
 //! - **Wire mode** (`wire` feature): Spawns a renderer binary and
 //!   communicates over stdin/stdout. Auto-discovers the binary via
-//!   `PLUSHIE_BINARY_PATH` then `PATH`.
+//!   `PLUSHIE_BINARY_PATH`, then a custom build output under
+//!   `target/plushie-renderer/`, then a downloaded stock binary under
+//!   `target/plushie/bin/`, then `PATH`.
 //!
 //! When both features are enabled, direct wins. Pass an explicit
 //! renderer path via [`run_with_renderer`] to force a specific wire
@@ -271,14 +273,20 @@ pub type Result = std::result::Result<(), Error>;
 ///
 /// # Wire binary discovery
 ///
-/// Wire mode locates the renderer in this order:
+/// Wire mode locates the renderer in this order (first hit wins):
 ///
-/// 1. `PLUSHIE_BINARY_PATH` environment variable.
-/// 2. `PATH` search for `plushie-renderer` (on Windows,
-///    `plushie-renderer.exe`).
+/// 1. `PLUSHIE_BINARY_PATH` environment variable (explicit; fails
+///    fast if the file is missing).
+/// 2. Custom build output at
+///    `target/plushie-renderer/target/{release,debug}/<bin>`, where
+///    `cargo plushie build` deposits widget-aware binaries.
+/// 3. Downloaded stock binary at
+///    `target/plushie/bin/plushie-renderer-<os>-<arch>[.exe]` from
+///    `cargo plushie download`.
+/// 4. `plushie-renderer` on `PATH` (on Windows, `plushie-renderer.exe`).
 ///
-/// If neither resolves to an executable, returns
-/// [`Error::BinaryNotFound`] with guidance.
+/// If none resolve to an executable, returns
+/// [`Error::BinaryNotFound`] with guidance naming each install path.
 ///
 /// # Errors
 ///

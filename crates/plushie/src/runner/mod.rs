@@ -5,8 +5,10 @@
 //! - **Direct** (`direct` feature, default): Renders in-process using
 //!   iced. No subprocess, no serialization.
 //! - **Wire** (`wire` feature): Spawns a renderer binary and
-//!   communicates over stdin/stdout. The binary path is discovered
-//!   from `PLUSHIE_BINARY_PATH`, then `PATH`. Use
+//!   communicates over stdin/stdout. The binary path is discovered via
+//!   the four-step chain: `PLUSHIE_BINARY_PATH`, custom build output
+//!   (`target/plushie-renderer/`), downloaded stock binary
+//!   (`target/plushie/bin/`), then `PATH`. Use
 //!   [`crate::run_with_renderer`] to supply an explicit path.
 
 #[cfg(feature = "direct")]

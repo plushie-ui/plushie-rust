@@ -1028,9 +1028,9 @@ fn wire_to_sdk_events(
                 .collect();
         }
         IncomingRendererMessage::Unknown { msg_type, raw: _ } => {
-            // TODO(M-6): Replace with structured diagnostic event
-            // once the M-6 inbound diagnostic stream is wired. For
-            // now a tagged log line is the observable path.
+            // Emit is `log::error!` with a `[code=...]` tag today;
+            // `WalkCtx` only covers view-tree normalization, so the
+            // typed `Diagnostic` sink does not reach this site.
             log::error!(
                 "[code=unknown_message_type] unrecognised renderer message type `{msg_type}`; \
                      likely a host/renderer version skew"

@@ -11,11 +11,10 @@
 //! moved. MessagePack uses a 4-byte big-endian length prefix per
 //! message; JSONL uses newline-delimited records.
 //!
-//! This module is the scaffold laid during the hat 16 foundation pass.
-//! The `run_connect` entry point resolves options and opens the
-//! socket; full Bridge integration (replacing the subprocess stdin /
-//! stdout pair with the socket reader/writer) arrives in a follow-on
-//! commit that refactors `Bridge` behind a transport trait.
+//! `run_connect` resolves options and opens the socket; the full
+//! Bridge integration (replacing the subprocess stdin/stdout pair
+//! with the socket reader/writer halves) is wired up by
+//! [`crate::runner::bridge::Bridge::connect`].
 
 use std::io;
 use std::net::TcpStream;

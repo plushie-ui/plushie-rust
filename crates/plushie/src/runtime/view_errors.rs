@@ -104,9 +104,9 @@ pub fn run_guarded_view<A: App>(
                 "[code=view_panicked] A::view() panicked ({} consecutive): {message}",
                 state.consecutive
             );
-            // TODO(M-6): also emit a structured diagnostic event
-            // with code `view_panicked` once the M-6 diagnostic
-            // stream is wired.
+            // Emit is log-only today. The typed `Diagnostic` pipeline
+            // is scoped to `WalkCtx`, populated by a successful walk;
+            // a panicking walk cannot push into it.
             let tree = if state.consecutive >= VIEW_ERROR_THRESHOLD && !state.overlay_active {
                 state.overlay_active = true;
                 inject_overlay(last_good)

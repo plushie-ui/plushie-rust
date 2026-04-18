@@ -80,13 +80,10 @@ pub enum Error {
     )]
     NoRunnerFeature,
 
-    /// Wire mode could not locate a renderer binary. Tried the
-    /// `PLUSHIE_BINARY_PATH` env var first, then a `PATH` search for
-    /// `plushie-renderer`.
-    #[error(
-        "renderer binary not found (looked at PLUSHIE_BINARY_PATH and searched PATH for \
-         `plushie-renderer`): {hint}"
-    )]
+    /// Wire mode could not locate a renderer binary. The four-step
+    /// discovery chain (see [`crate::runner`]) exhausted every
+    /// candidate without finding an executable.
+    #[error("renderer binary not found: {hint}")]
     BinaryNotFound {
         /// Human-readable hint describing the search order and remediation.
         hint: String,

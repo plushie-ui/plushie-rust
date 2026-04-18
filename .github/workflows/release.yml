@@ -33,6 +33,10 @@ jobs:
             os: macos-latest
             binary: plushie-renderer
             asset: plushie-renderer-darwin-aarch64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            binary: plushie-renderer
+            asset: plushie-renderer-darwin-x86_64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             binary: plushie-renderer.exe

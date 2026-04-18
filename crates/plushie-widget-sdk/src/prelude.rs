@@ -29,7 +29,7 @@ pub use crate::registry::InitCtx;
 pub use crate::registry::PlushieWidget;
 /// Object-safe render slice used by the widget dispatcher.
 pub use crate::registry::PlushieWidgetRender;
-/// Context passed to [`PlushieWidget::subscribe`].
+/// Context passed to `PlushieWidget::subscribe`.
 pub use crate::registry::SubscribeCtx;
 /// Registry of widget implementations keyed by type name.
 pub use crate::registry::WidgetRegistry;

@@ -145,11 +145,33 @@ fn run_wire_inner<A: App>(
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
         );
-        // Surface renderer-vs-SDK version skew early. A mismatch is
-        // not fatal (wire-protocol compatibility is PROTOCOL_VERSION,
-        // not CARGO_PKG_VERSION), but divergence here often signals a
-        // stale installed renderer binary. The hint text names the
-        // exact install command.
+
+        // Protocol-version gate. A mismatch between the SDK's
+        // PROTOCOL_VERSION and whatever the renderer advertises is
+        // fatal: wire shapes are tied to the version, and proceeding
+        // would lead to misparsed messages further down. Reap the
+        // child before returning so we don't leave a zombie.
+        let expected = plushie_core::protocol::PROTOCOL_VERSION;
+        let remote_protocol = hello
+            .get("protocol")
+            .or_else(|| hello.get("protocol_version"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32);
+        if remote_protocol != Some(expected) {
+            log::error!(
+                "protocol version mismatch: SDK expects {expected}, renderer advertised {remote_protocol:?}"
+            );
+            drop(bridge);
+            return Err(crate::Error::ProtocolVersionMismatch {
+                expected,
+                got: remote_protocol,
+            });
+        }
+
+        // CARGO_PKG_VERSION skew is advisory: wire-protocol compatibility
+        // is PROTOCOL_VERSION, not CARGO_PKG_VERSION. Divergence often
+        // signals a stale installed renderer binary though, so the hint
+        // names the exact install command.
         if let Some(remote) = hello.get("version").and_then(|v| v.as_str())
             && remote != crate::RENDERER_VERSION
         {
@@ -160,6 +182,25 @@ fn run_wire_inner<A: App>(
                 expected = crate::RENDERER_VERSION,
                 got = remote,
             );
+        }
+
+        // Honour the renderer's declared codec if the hello message
+        // carries one. The SDK sends the settings in JSON; the renderer
+        // detects codec from the first byte and mirrors it today, so
+        // this path is effectively a no-op in the happy case. It
+        // remains here as the documented negotiation hook so a future
+        // renderer that selects a codec upstream is respected without
+        // an SDK change.
+        if let Some(codec_str) = hello.get("codec").and_then(|v| v.as_str()) {
+            let codec = match codec_str {
+                "msgpack" => super::bridge::Codec::MsgPack,
+                "json" => super::bridge::Codec::Json,
+                other => {
+                    log::warn!("renderer advertised unknown codec `{other}`; keeping JSON");
+                    super::bridge::Codec::Json
+                }
+            };
+            bridge.set_codec(codec);
         }
 
         bridge.start_reader()?;

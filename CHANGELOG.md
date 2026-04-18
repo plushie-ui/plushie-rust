@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `plushie::automation::Backend` enum (`Mock`, `Headless`, `Windowed`)
+  and `runner::run_with_backend` dispatch. `.plushie` scripts with
+  `backend: windowed` now spawn a real `plushie-renderer` subprocess
+  so the user can watch the script execute.
+- `plushie::automation::cli::replay::<A>(path)` drives the real
+  renderer instead of returning a not-yet-implemented stub.
+- `plushie::automation::runner_wire::run_windowed_with_renderer` for
+  callers that need to pass an explicit renderer-binary path.
+
 ## [0.6.1] - 2026-04-02
 
 ### Fixed

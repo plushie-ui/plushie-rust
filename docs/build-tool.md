@@ -497,8 +497,8 @@ prefix pass through untouched, so user-owned CLIs can coexist.
 | `--plushie-mode=<mode>`   | Force `direct` or `wire` (see [Mode precedence](#mode-precedence)). |
 | `--plushie-socket <path>` | Attach to a listen-mode renderer over socket.              |
 | `--plushie-token <token>` | Token presented during socket handshake.                   |
-| `--plushie-script <path>` | Execute a `.plushie` automation script and exit.           |
-| `--plushie-replay <path>` | Replay a `.plushie` script against a real renderer.        |
+| `--plushie-script <path>` | Execute a `.plushie` automation script against a headless TestSession and exit. Honors the header's `backend:` field (`mock`, `headless`, `windowed`). |
+| `--plushie-replay <path>` | Replay a `.plushie` script against a live windowed renderer. Forces `backend: windowed` regardless of the header so the user can watch the replay. |
 | `--plushie-inspect`       | Emit a pretty-JSON snapshot of the initial view tree and exit. |
 
 Apps that need their own CLI can skip the easy path entirely and

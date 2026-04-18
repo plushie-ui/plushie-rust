@@ -451,28 +451,6 @@ pub fn run_with_renderer<A: App>(binary_path: &str) -> Result {
     runner::wire::run_wire::<A>(binary_path)
 }
 
-/// Run the app in wire mode (subprocess renderer).
-///
-/// Spawns the renderer binary at `binary_path` and communicates
-/// over stdin/stdout using the plushie wire protocol. Uses a
-/// private 2-worker tokio runtime for SDK-local async work.
-///
-/// # Errors
-///
-/// Returns an error if the renderer binary cannot be spawned, the
-/// protocol handshake fails (version mismatch or malformed hello),
-/// or stdin/stdout I/O fails during the session.
-#[doc(hidden)]
-#[deprecated(
-    since = "0.6.2",
-    note = "use `plushie::run_with_renderer(path)` for an explicit path, or \
-            `plushie::run()` to trigger auto-discovery"
-)]
-#[cfg(feature = "wire")]
-pub fn run_wire<A: App>(binary_path: &str) -> Result {
-    runner::wire::run_wire::<A>(binary_path)
-}
-
 /// Run the app in wire mode on a caller-provided tokio runtime.
 ///
 /// Identical to [`run_with_renderer`] except SDK-local async tasks

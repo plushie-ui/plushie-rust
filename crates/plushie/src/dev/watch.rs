@@ -33,9 +33,12 @@ pub struct WatchOpts {
     /// single rebuild. 250 ms matches the Elixir dev server's Rust
     /// watcher defaults.
     pub debounce: Duration,
-    /// Optional handle the watcher pushes rebuild status to. When set,
-    /// the matching [`dev::overlay::inject`](crate::dev::overlay::inject)
-    /// call surfaces rebuild state in-tree.
+    /// Optional handle the watcher pushes rebuild status to. When
+    /// set, pair this with
+    /// [`dev::overlay::inject`](crate::dev::overlay::inject) in your
+    /// view to render the rebuild banner in-tree; the watcher updates
+    /// the handle as builds progress and the inject call reads from
+    /// it.
     pub overlay: Option<DevOverlayHandle>,
     /// Build with the `--release` profile (slower rebuilds, faster
     /// renderer). Defaults to debug.

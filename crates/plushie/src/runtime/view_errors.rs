@@ -166,7 +166,7 @@ pub fn run_guarded_view_wire<A: App>(
 }
 
 /// Extract a best-effort string message from a panic payload.
-fn panic_payload_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(s) = payload.downcast_ref::<&'static str>() {
         (*s).to_string()
     } else if let Some(s) = payload.downcast_ref::<String>() {
@@ -231,5 +231,92 @@ fn attach_overlay(tree: &mut TreeNode, overlay: &TreeNode) {
     }
     if !attached {
         tree.children.push(overlay.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn window_node(id: &str) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: "window".to_string(),
+            props: Props::from(PropMap::new()),
+            children: vec![],
+        }
+    }
+
+    fn overlay_count(node: &TreeNode) -> usize {
+        let mut n = if node.id == FROZEN_OVERLAY_ID { 1 } else { 0 };
+        for child in &node.children {
+            n += overlay_count(child);
+        }
+        n
+    }
+
+    #[test]
+    fn inject_overlay_attaches_to_every_window() {
+        // Root with three windows: the overlay must land inside every
+        // one so the user sees the banner on any visible window.
+        let tree = TreeNode {
+            id: "root".to_string(),
+            type_name: "container".to_string(),
+            props: Props::from(PropMap::new()),
+            children: vec![
+                window_node("main"),
+                window_node("secondary"),
+                window_node("tertiary"),
+            ],
+        };
+
+        let result = inject_overlay(&tree);
+
+        assert_eq!(overlay_count(&result), 3, "one overlay per window");
+        for child in &result.children {
+            let overlay_children: Vec<&TreeNode> = child
+                .children
+                .iter()
+                .filter(|c| c.id == FROZEN_OVERLAY_ID)
+                .collect();
+            assert_eq!(
+                overlay_children.len(),
+                1,
+                "window {:?} should carry exactly one overlay",
+                child.id
+            );
+        }
+    }
+
+    #[test]
+    fn inject_overlay_falls_through_when_no_windows() {
+        // Without any window children, the overlay lands on the root
+        // so the frozen-UI banner still reaches a top-level node.
+        let tree = TreeNode {
+            id: "root".to_string(),
+            type_name: "column".to_string(),
+            props: Props::from(PropMap::new()),
+            children: vec![],
+        };
+
+        let result = inject_overlay(&tree);
+
+        assert_eq!(overlay_count(&result), 1);
+        assert_eq!(result.children.len(), 1);
+        assert_eq!(result.children[0].id, FROZEN_OVERLAY_ID);
+    }
+
+    #[test]
+    fn inject_overlay_handles_root_window() {
+        // Single top-level window as the root itself: the overlay is
+        // appended to its children rather than wrapping.
+        let tree = window_node("only");
+
+        let result = inject_overlay(&tree);
+
+        assert_eq!(overlay_count(&result), 1);
+        assert_eq!(result.type_name, "window");
+        assert_eq!(result.children.len(), 1);
+        assert_eq!(result.children[0].id, FROZEN_OVERLAY_ID);
     }
 }

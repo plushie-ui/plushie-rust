@@ -2367,7 +2367,12 @@ Clicking empty canvas area clears internal focus.
 
 | Op | Payload | Description |
 |----|---------|-------------|
+| `focus` | - | Programmatically focus the canvas element named by the widget op's scoped target (for example `canvas/element` or `main#canvas/element`). The canvas stores the request as pending focus and applies it on the next render so the focus ring and active-descendant state reflect the new element. |
 
+Canvas-level focus moves (`focus_next`, `focus_previous`, and the
+`*_within` variants) are application-wide widget ops dispatched
+outside the canvas; see the application focus and keyboard sections
+for their payloads.
 
 ### Test interact actions
 

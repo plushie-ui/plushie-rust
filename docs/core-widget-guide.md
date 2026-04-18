@@ -49,7 +49,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
 
     fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>) -> Element<'a, Message, Theme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0);
-        let width = plushie_core::types::Length::extract(node.props(), "width")
+        let width = plushie_core::types::Length::extract(&node.props, "width")
             .map(|l| iced_convert::length(&l))
             .unwrap_or(Length::Fixed(100.0));
         let color = node.prop_color("color")
@@ -402,10 +402,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let color = node.prop_color("color")
             .unwrap_or(ctx.theme.palette().primary.base.color);
-        let width = plushie_core::types::Length::extract(node.props(), "width")
+        let width = plushie_core::types::Length::extract(&node.props, "width")
             .map(|l| iced_convert::length(&l))
             .unwrap_or(Length::Fixed(100.0));
-        let height = plushie_core::types::Length::extract(node.props(), "height")
+        let height = plushie_core::types::Length::extract(&node.props, "height")
             .map(|l| iced_convert::length(&l))
             .unwrap_or(Length::Fixed(100.0));
 

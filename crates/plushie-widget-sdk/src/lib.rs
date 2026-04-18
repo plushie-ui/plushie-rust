@@ -1,4 +1,4 @@
-//! # plushie-core
+//! # plushie-widget-sdk
 //!
 //! The public SDK for plushie. Widget authors depend on this crate to
 //! implement the [`PlushieWidget`](registry::PlushieWidget) trait and

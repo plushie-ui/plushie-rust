@@ -38,7 +38,7 @@ impl App for Counter {
         Command::none()
     }
 
-    fn view(model: &Self) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
         window("main").title("Counter").child(
             column().spacing(8.0).padding(16)
                 .child(text(&format!("Count: {}", model.count)).size(24.0))

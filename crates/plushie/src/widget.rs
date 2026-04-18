@@ -520,7 +520,17 @@ impl WidgetStateStore {
 
         for (i, ancestor_id) in scope.iter().enumerate() {
             if let Some(expander) = self.expanders.get(ancestor_id) {
-                let (_type_id, state) = self.states.get_mut(ancestor_id)?;
+                // Invariant: every expander entry has a matching state
+                // entry; `register_expander` installs both together and
+                // the stale-cleanup path prunes them in lockstep. A
+                // missing state slot here means the store's invariants
+                // are violated, not a routine event that should be
+                // dropped. The enclosing catch_unwind at the renderer
+                // boundary (widget-sdk) keeps the session alive on
+                // panic and surfaces the violation loudly.
+                let (_type_id, state) = self.states.get_mut(ancestor_id).expect(
+                    "widget state invariant: expander registered without matching state entry",
+                );
                 let result = expander.handle_event(event, state.as_mut());
                 match result {
                     EventResult::Ignored => continue,

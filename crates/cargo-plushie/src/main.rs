@@ -98,6 +98,9 @@ enum PlushieSubcommand {
     /// Scaffold a new native widget crate with the conventional
     /// `[package.metadata.plushie.widget]` layout.
     NewWidget(NewWidgetArgs),
+    /// Scaffold a new plushie app crate with a wired-up main.rs,
+    /// automation-script example, and a sample `.plushie` script.
+    Init(InitArgs),
 }
 
 #[derive(Args, Debug)]
@@ -136,6 +139,16 @@ struct NewWidgetArgs {
 }
 
 #[derive(Args, Debug)]
+struct InitArgs {
+    /// Kebab-case app name (e.g. `my-app`). Becomes the Cargo
+    /// package name and a PascalCase App struct.
+    name: String,
+    /// Destination path for the new crate. Defaults to `./<name>`.
+    #[arg(long)]
+    path: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
 struct RunArgs {
     /// Watch the app's src/ for changes and restart on edit.
     /// Delegates to `cargo-watch` if it's installed, otherwise
@@ -166,7 +179,34 @@ fn main() -> Result<()> {
         PlushieSubcommand::Download(d) => cmd_download(&d),
         PlushieSubcommand::Run(r) => cmd_run(&r),
         PlushieSubcommand::NewWidget(n) => cmd_new_widget(&n),
+        PlushieSubcommand::Init(i) => cmd_init(&i),
     }
+}
+
+fn cmd_init(args: &InitArgs) -> Result<()> {
+    let opts = scaffold::InitOpts {
+        name: &args.name,
+        path: args.path.as_deref(),
+    };
+    let result = scaffold::scaffold_app(&opts)?;
+    let shown = result
+        .crate_root
+        .strip_prefix(std::env::current_dir().unwrap_or_default())
+        .unwrap_or(&result.crate_root)
+        .display()
+        .to_string();
+    let shown = if shown.is_empty() {
+        result.crate_root.display().to_string()
+    } else {
+        shown
+    };
+    println!(
+        "Scaffolded {name} at {shown}.\n\nNext steps:\n  \
+         cd {name}\n  cargo run                 # direct mode\n  \
+         cargo plushie run --watch # custom renderer + dev loop",
+        name = args.name,
+    );
+    Ok(())
 }
 
 fn cmd_new_widget(args: &NewWidgetArgs) -> Result<()> {

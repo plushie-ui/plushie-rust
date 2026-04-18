@@ -1,9 +1,11 @@
-//! Scaffolder for `cargo plushie new-widget`.
+//! Scaffolders for `cargo plushie new-widget` and `cargo plushie init`.
 //!
-//! Produces a fresh widget crate on disk with the conventional
+//! `new-widget` produces a widget crate with the conventional
 //! `[package.metadata.plushie.widget]` layout and an optional `impl`
 //! feature that pulls in `plushie-widget-sdk` for the renderer-side
-//! implementation.
+//! implementation. `init` produces a plushie app crate with the
+//! `plushie::cli::run` easy-path main, an automation-script example,
+//! and a sample `.plushie` script under `scripts/`.
 //!
 //! The scaffolders are intentionally template-based rather than
 //! shelling out to `cargo new`: the generated files are tiny, and
@@ -105,6 +107,14 @@ pub struct NewWidgetOpts<'a> {
     pub path: Option<&'a Path>,
     /// Reserved widget type names the scaffold must not conflict with.
     pub builtin_type_names: &'a [&'a str],
+}
+
+/// Input for `cargo plushie init`.
+pub struct InitOpts<'a> {
+    /// Kebab-case app crate name (e.g. `my-app`).
+    pub name: &'a str,
+    /// Destination directory; defaults to `./<name>`.
+    pub path: Option<&'a Path>,
 }
 
 /// Outcome returned from [`scaffold_widget`]. The caller is expected
@@ -310,6 +320,179 @@ pub mod factory {{
     )
 }
 
+/// Create a new plushie app crate rooted at `opts.path` (or `./<name>`).
+///
+/// The scaffolded crate's `main.rs` wires the `plushie::cli::run`
+/// easy path, so the user gets `--plushie-script`,
+/// `--plushie-replay`, `--plushie-inspect`, and mode selection for
+/// free. A sample automation script and a thin example entry point
+/// are scaffolded alongside.
+///
+/// # Errors
+///
+/// - `name` must be kebab-case (see [`validate_kebab_name`]).
+/// - The destination must not already exist.
+pub fn scaffold_app(opts: &InitOpts<'_>) -> Result<ScaffoldResult> {
+    validate_kebab_name(opts.name)?;
+
+    let default_path = PathBuf::from(opts.name);
+    let target = opts.path.map(Path::to_path_buf).unwrap_or(default_path);
+    if target.exists() {
+        return Err(Error::Other(anyhow::anyhow!(
+            "destination `{}` already exists; pick another path",
+            target.display()
+        )));
+    }
+
+    std::fs::create_dir_all(target.join("src"))?;
+    std::fs::create_dir_all(target.join("examples"))?;
+    std::fs::create_dir_all(target.join("scripts"))?;
+
+    let struct_name = to_pascal_case(opts.name);
+    let cargo_toml = render_app_cargo_toml(opts.name);
+    let main_rs = render_app_main_rs(&struct_name);
+    let script_example = render_script_example_rs(&struct_name);
+    let sample_script = render_sample_script(&struct_name);
+
+    std::fs::write(target.join("Cargo.toml"), cargo_toml)?;
+    std::fs::write(target.join("src").join("main.rs"), main_rs)?;
+    std::fs::write(
+        target.join("examples").join("plushie_script.rs"),
+        script_example,
+    )?;
+    std::fs::write(target.join("scripts").join("smoke.plushie"), sample_script)?;
+    maybe_write_iced_paths_override(&target)?;
+
+    let crate_root = std::fs::canonicalize(&target).unwrap_or(target);
+    Ok(ScaffoldResult { crate_root })
+}
+
+/// Render the app crate's `Cargo.toml`.
+fn render_app_cargo_toml(name: &str) -> String {
+    let mut out = String::new();
+    out.push_str("[package]\n");
+    out.push_str(&format!("name = \"{name}\"\n"));
+    out.push_str("version = \"0.1.0\"\n");
+    out.push_str("edition = \"2024\"\n\n");
+    out.push_str("[package.metadata.plushie]\n");
+    out.push_str("# App marker; cargo-plushie uses the presence of this\n");
+    out.push_str("# section to detect plushie apps in the workspace.\n");
+    out.push_str("app = true\n\n");
+    out.push_str("[dependencies]\n");
+    if let Some(source) = source_path_override() {
+        let plushie = source.join("crates/plushie");
+        out.push_str(&format!(
+            "plushie = {{ path = {:?} }}\n",
+            plushie.display().to_string()
+        ));
+    } else {
+        out.push_str("plushie = \"0.6\"\n");
+    }
+    out
+}
+
+/// Render the app crate's `src/main.rs`.
+///
+/// Uses the `plushie::cli::run` easy path so `--plushie-script`,
+/// `--plushie-replay`, `--plushie-inspect`, and mode / socket
+/// selection all work out of the box.
+fn render_app_main_rs(struct_name: &str) -> String {
+    format!(
+        r#"use plushie::prelude::*;
+
+#[derive(Default)]
+pub struct {struct_name};
+
+impl App for {struct_name} {{
+    type Model = Self;
+
+    fn init() -> (Self, Command) {{
+        (Self::default(), Command::none())
+    }}
+
+    fn update(_model: &mut Self, _event: Event) -> Command {{
+        Command::none()
+    }}
+
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {{
+        window("main")
+            .title("{struct_name}")
+            .child(text("Hello, plushie!"))
+            .into()
+    }}
+}}
+
+fn main() -> plushie::Result {{
+    plushie::cli::run::<{struct_name}>()
+}}
+"#
+    )
+}
+
+/// Render the scaffolded automation-script example.
+///
+/// Cargo examples can't reach the binary's private items, so the
+/// example redeclares the app type. Keeping it self-contained means
+/// `cargo run --example plushie_script -- --plushie-script ...`
+/// works in a fresh checkout without any wiring.
+fn render_script_example_rs(struct_name: &str) -> String {
+    format!(
+        r#"//! Entry point that exposes the app to `--plushie-script`,
+//! `--plushie-replay`, and `--plushie-inspect` without invoking
+//! the main binary. Useful when iterating on automation stubs.
+//!
+//! Example usage:
+//!
+//! ```sh
+//! cargo run --example plushie_script -- --plushie-script scripts/smoke.plushie
+//! ```
+
+use plushie::prelude::*;
+
+#[derive(Default)]
+struct {struct_name};
+
+impl App for {struct_name} {{
+    type Model = Self;
+
+    fn init() -> (Self, Command) {{
+        (Self::default(), Command::none())
+    }}
+
+    fn update(_model: &mut Self, _event: Event) -> Command {{
+        Command::none()
+    }}
+
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {{
+        window("main")
+            .title("{struct_name} automation")
+            .child(text("Plushie script harness"))
+            .into()
+    }}
+}}
+
+fn main() -> plushie::Result {{
+    plushie::cli::run::<{struct_name}>()
+}}
+"#
+    )
+}
+
+/// Render a sample `.plushie` automation script.
+fn render_sample_script(struct_name: &str) -> String {
+    format!(
+        "# Sample plushie automation script for {struct_name}. Run with:\n\
+         #\n\
+         #     cargo plushie script scripts/smoke.plushie\n\
+         #\n\
+         # Actions are one per line. Blank lines and lines starting\n\
+         # with `#` are ignored.\n\
+         \n\
+         # No-op by default. Add actions like `click <widget>` or\n\
+         # `assert_text <widget> \"expected\"` as your app grows.\n"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,6 +553,32 @@ mod tests {
             builtin_type_names: &[],
         };
         assert!(scaffold_widget(&opts).is_err());
+    }
+
+    #[test]
+    fn scaffold_app_writes_expected_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("my-app");
+        let opts = InitOpts {
+            name: "my-app",
+            path: Some(&target),
+        };
+        let result = scaffold_app(&opts).unwrap();
+        assert!(result.crate_root.join("Cargo.toml").is_file());
+        assert!(result.crate_root.join("src/main.rs").is_file());
+        assert!(
+            result
+                .crate_root
+                .join("examples/plushie_script.rs")
+                .is_file()
+        );
+        assert!(result.crate_root.join("scripts/smoke.plushie").is_file());
+        let cargo = std::fs::read_to_string(result.crate_root.join("Cargo.toml")).unwrap();
+        assert!(cargo.contains("name = \"my-app\""));
+        assert!(cargo.contains("[package.metadata.plushie]"));
+        let main = std::fs::read_to_string(result.crate_root.join("src/main.rs")).unwrap();
+        assert!(main.contains("impl App for MyApp"));
+        assert!(main.contains("plushie::cli::run::<MyApp>"));
     }
 
     #[test]

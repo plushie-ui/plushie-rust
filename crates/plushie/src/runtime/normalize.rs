@@ -158,54 +158,74 @@ impl TreeTransform for NormalizeTransform {
             return;
         }
 
+        // Snapshot where the enclosing scope ended so `exit` can
+        // restore `ctx.scope` to exactly this length.
         let prev_scope_len = ctx.scope.len();
-        let id = &node.id;
         let type_name = &node.type_name;
-        let is_auto = id.starts_with("auto:");
+        let is_auto = node.id.starts_with("auto:");
         let is_window = type_name == "window";
 
-        // Scope-rewrite this node's ID.
-        let scoped_id = if is_auto || ctx.scope.is_empty() {
-            id.clone()
-        } else if ctx.scope.ends_with('#') {
-            format!("{}{}", ctx.scope, id)
+        // Reserved-character validation (user IDs only). Run before
+        // touching `ctx.scope` so diagnostic text references the
+        // original ID.
+        if !is_auto {
+            if node.id.contains('/') {
+                ctx.warnings.push(format!(
+                    "ID \"{id}\" contains reserved character '/'. \
+                     Use container scoping instead.",
+                    id = node.id,
+                ));
+            }
+            if node.id.contains('#') {
+                ctx.warnings.push(format!(
+                    "ID \"{id}\" contains reserved character '#'. \
+                     '#' is reserved for window-qualified paths.",
+                    id = node.id,
+                ));
+            }
+        }
+
+        // Build the scoped ID directly into `ctx.scope`. The shared
+        // buffer is our single scratch allocation for scope paths; we
+        // grow it on enter and truncate on exit, so nested levels
+        // don't each allocate their own path string.
+        //
+        // After this block `ctx.scope` equals the child-scope that
+        // descendants should see (with the window suffix applied for
+        // window nodes).
+        let scoped_id = if is_auto || node.id.is_empty() {
+            // Auto-IDs and empty IDs never scope-prefix and never
+            // contribute to the child-scope path. Leave `ctx.scope`
+            // untouched.
+            node.id.clone()
+        } else if ctx.scope.is_empty() {
+            // Top-level node: its ID becomes the root of the scope.
+            ctx.scope.push_str(&node.id);
+            node.id.clone()
         } else {
-            format!("{}/{}", ctx.scope, id)
+            // Nested user-ID: append "/id" unless we're directly under
+            // a window boundary ("name#"), in which case the '#' is
+            // the separator.
+            if !ctx.scope.ends_with('#') {
+                ctx.scope.push('/');
+            }
+            ctx.scope.push_str(&node.id);
+            ctx.scope.clone()
         };
 
-        // Duplicate detection (non-auto only).
+        // Duplicate detection (non-auto only). One clone for the
+        // HashSet entry.
         if !is_auto && !scoped_id.is_empty() && !self.seen_ids.insert(scoped_id.clone()) {
             ctx.warnings.push(format!("duplicate ID: \"{scoped_id}\""));
         }
 
-        // Reserved-character validation (user IDs only).
-        if !is_auto {
-            if id.contains('/') {
-                ctx.warnings.push(format!(
-                    "ID \"{id}\" contains reserved character '/'. \
-                     Use container scoping instead."
-                ));
-            }
-            if id.contains('#') {
-                ctx.warnings.push(format!(
-                    "ID \"{id}\" contains reserved character '#'. \
-                     '#' is reserved for window-qualified paths."
-                ));
-            }
+        // Windows append a trailing '#' so their children slot in
+        // after the window-qualified path (e.g. "main#form").
+        if is_window {
+            ctx.scope.push('#');
         }
 
-        // Build child scope.
-        let child_scope = if is_window {
-            format!("{scoped_id}#")
-        } else if is_auto || id.is_empty() {
-            ctx.scope.clone()
-        } else {
-            scoped_id.clone()
-        };
-
-        // Install the rewritten ID on the node and push scope frame.
         node.id = scoped_id;
-        ctx.scope = child_scope;
         self.scope_stack.push(prev_scope_len);
         self.truncate_children.push(false);
         self.depth += 1;
@@ -612,6 +632,89 @@ mod tests {
             props: props.into(),
             children: vec![],
         }
+    }
+
+    #[test]
+    fn scope_buffer_survives_deep_nesting() {
+        // Regression: the scope-string buffer threaded through
+        // normalize_node's walk must grow on enter and shrink on
+        // exit so siblings at the same depth see the same scope
+        // regardless of traversal order.
+        let tree = node(
+            "main",
+            "window",
+            vec![
+                node(
+                    "form",
+                    "container",
+                    vec![
+                        node("a", "text_input", vec![]),
+                        node(
+                            "row",
+                            "row",
+                            vec![
+                                node("b", "text_input", vec![]),
+                                node("c", "text_input", vec![]),
+                            ],
+                        ),
+                        node("d", "text_input", vec![]),
+                    ],
+                ),
+                node("footer", "container", vec![node("e", "text", vec![])]),
+            ],
+        );
+        let (result, warnings) = normalize(&tree);
+        assert!(warnings.is_empty(), "got {warnings:?}");
+        let form = &result.children[0];
+        assert_eq!(form.id, "main#form");
+        assert_eq!(form.children[0].id, "main#form/a");
+        let row = &form.children[1];
+        assert_eq!(row.id, "main#form/row");
+        assert_eq!(row.children[0].id, "main#form/row/b");
+        assert_eq!(row.children[1].id, "main#form/row/c");
+        // `d` at the same depth as `row` must see the scope restored
+        // after `row`'s exit - not leak "/row".
+        assert_eq!(form.children[2].id, "main#form/d");
+        let footer = &result.children[1];
+        assert_eq!(footer.id, "main#footer");
+        assert_eq!(footer.children[0].id, "main#footer/e");
+    }
+
+    #[test]
+    fn normalize_is_deterministic_across_runs() {
+        // Same input tree twice through normalize must yield the same
+        // normalized ID shape. Guards the scope buffer against leaking
+        // state across calls.
+        let build = || {
+            node(
+                "main",
+                "window",
+                vec![node(
+                    "form",
+                    "container",
+                    vec![
+                        node("a", "text_input", vec![]),
+                        node("b", "text_input", vec![]),
+                    ],
+                )],
+            )
+        };
+        let (a, _) = normalize(&build());
+        let (b, _) = normalize(&build());
+        let collect_ids = |n: &TreeNode, out: &mut Vec<String>| {
+            fn walk(n: &TreeNode, out: &mut Vec<String>) {
+                out.push(n.id.clone());
+                for c in &n.children {
+                    walk(c, out);
+                }
+            }
+            walk(n, out);
+        };
+        let mut a_ids = Vec::new();
+        let mut b_ids = Vec::new();
+        collect_ids(&a, &mut a_ids);
+        collect_ids(&b, &mut b_ids);
+        assert_eq!(a_ids, b_ids);
     }
 
     #[test]

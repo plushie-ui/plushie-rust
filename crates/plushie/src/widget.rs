@@ -560,6 +560,14 @@ impl TreeTransform for ExpandWidgetsTransform<'_> {
         // placeholder. The walker will descend into the expanded
         // children on its own, so nested widget placeholders inside
         // the expansion get picked up as the traversal continues.
+        //
+        // Fast path: apps with no composite widgets skip the work
+        // entirely. `expand_in_place` already early-returns on the
+        // first loop iteration in that case, but branching here
+        // avoids the lookup on every node.
+        if self.store.expanders.is_empty() {
+            return;
+        }
         self.store.expand_in_place(node);
     }
 }

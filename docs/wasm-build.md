@@ -166,9 +166,9 @@ The largest contributors (approximate, based on feature analysis):
 - **canvas** - 2D drawing, hit testing, tessellation
 
 Feature-gating `markdown`, `highlighter`, `image`, and `svg` in
-plushie-core would let WASM builds exclude unused capabilities. This
-is not yet implemented but would be the next meaningful size
-reduction (estimated 20-30% for a minimal build).
+plushie-widget-sdk would let WASM builds exclude unused capabilities.
+Tracked in the backlog as the next meaningful size reduction
+(estimated 20-30% for a minimal build).
 
 ## Known issues
 

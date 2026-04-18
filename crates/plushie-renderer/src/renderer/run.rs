@@ -24,7 +24,7 @@ pub(crate) fn run(builder: plushie_widget_sdk::app::PlushieAppBuilder) -> iced::
     let args: Vec<String> = std::env::args().collect();
 
     // Levelled logging via RUST_LOG. Default: warn (quiet). Use
-    // RUST_LOG=plushie=debug (or =info, =trace) for more output.
+    // RUST_LOG=plushie_renderer=debug (or =info, =trace) for more output.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
     run_inner(builder, args)

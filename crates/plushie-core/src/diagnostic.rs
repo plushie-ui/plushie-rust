@@ -5,9 +5,9 @@
 //! emit site in the SDK, widget SDK, and renderer-lib. Variants carry
 //! the structured context the emitter knew (widget ID, prop name,
 //! clamped value, etc.); `Display` renders a terse single-line form
-//! suitable for logs and test assertions. `Serialize` / `Deserialize`
-//! let the same value flow over the wire when the structured-
-//! diagnostic channel lands.
+//! suitable for logs and test assertions. The type also derives
+//! `Serialize` / `Deserialize` so a structured-diagnostic wire
+//! channel can carry the same value unchanged if one is added later.
 //!
 //! The enum is `#[non_exhaustive]` so adding a new variant is not a
 //! semver break. New emit sites should add a dedicated variant rather

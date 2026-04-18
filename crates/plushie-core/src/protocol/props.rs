@@ -62,7 +62,7 @@ impl PropValue {
         }
     }
 
-    /// Borrow the value as a f64.
+    /// Borrow the value as an f64.
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             Self::F64(v) => Some(*v),
@@ -80,7 +80,7 @@ impl PropValue {
         }
     }
 
-    /// Borrow the value as a i64.
+    /// Borrow the value as an i64.
     pub fn as_i64(&self) -> Option<i64> {
         match self {
             Self::I64(v) => Some(*v),
@@ -90,7 +90,7 @@ impl PropValue {
         }
     }
 
-    /// Borrow the value as a u64.
+    /// Borrow the value as an unsigned 64-bit integer.
     pub fn as_u64(&self) -> Option<u64> {
         match self {
             Self::U64(v) => Some(*v),
@@ -100,7 +100,7 @@ impl PropValue {
         }
     }
 
-    /// Borrow the value as a array.
+    /// Borrow the value as an array.
     pub fn as_array(&self) -> Option<&[PropValue]> {
         match self {
             Self::Array(a) => Some(a),
@@ -108,7 +108,7 @@ impl PropValue {
         }
     }
 
-    /// Borrow the value as a object.
+    /// Borrow the value as an object.
     pub fn as_object(&self) -> Option<&PropMap> {
         match self {
             Self::Object(m) => Some(m),

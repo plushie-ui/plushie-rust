@@ -143,7 +143,7 @@ system package manager if the wasm-pack bundled version is too old.
 
 ### Size comparison
 
-Measured with Rust 1.92, plushie-iced 0.6, wasm-opt from binaryen:
+Measured with Rust 1.92, plushie-iced 0.8, wasm-opt from binaryen:
 
 | | Default | Profile opts | + wasm-opt -Oz |
 |---|---|---|---|

@@ -102,7 +102,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = { package = "plushie-iced", version = "0.6" }
+iced = { package = "plushie-iced", version = "0.8" }
 ```
 
 **Note:** Use `plushie-iced` (the fork), not upstream `iced`. plushie

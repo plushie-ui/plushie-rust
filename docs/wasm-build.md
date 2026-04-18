@@ -84,18 +84,31 @@ decoding, and accessibility.
 
 ### Profile settings
 
-Uncomment the release profile in the workspace `Cargo.toml`:
+Shipping builds go through the `dist` profile defined in the
+workspace `Cargo.toml`:
 
 ```toml
-[profile.release]
+[profile.dist]
+inherits = "release"
 lto = true
 codegen-units = 1
-opt-level = "z"
 strip = true
+opt-level = 3
+
+[profile.dist.package.plushie-renderer-wasm]
+opt-level = "z"
 ```
 
-These increase compile times (~3-5x) but apply to both native and
-WASM targets.
+Native crates get `opt-level = 3` (speed); the WASM crate overrides
+to `opt-level = "z"` (size). Invoke the profile explicitly:
+
+```bash
+cargo build --profile dist -p plushie-renderer-wasm --target wasm32-unknown-unknown
+```
+
+`dist` increases compile times (~3-5x) compared to the default
+`release` profile. Keep `release` for local iteration; reach for
+`dist` only for shipping artifacts and CI release builds.
 
 ### wasm-opt post-processing
 

@@ -38,17 +38,23 @@ unreachable_patterns = "deny"
 # justfile. Specific clippy denials go here only when they should block
 # local development too (not just CI).
 
-# Release profile optimizations. Commented out because they increase
-# compile times significantly (~3-5x). Uncomment for release/CI builds.
-# These apply to both native and WASM targets.
+# Shipping profile for optimized artifacts. CI and release-build
+# pipelines use `cargo build --profile dist`; local `cargo run
+# --release` and `cargo test --release` stay on the default
+# `release` profile so dev iteration remains fast.
 #
-# See docs/wasm-build.md for WASM-specific size measurements.
-#
-# [profile.release]
-# lto = true           # cross-crate dead code elimination (~20-30% smaller)
-# codegen-units = 1    # single codegen unit, better optimization opportunities
-# opt-level = "z"      # optimize for size over speed (UI is GPU-bound, not CPU)
-# strip = true         # remove symbol names from the binary
+# Native crates get `opt-level = 3` (speed); the WASM crate overrides
+# to `opt-level = "z"` (size wins for wasm bundles). See
+# `docs/wasm-build.md` for WASM-specific size measurements.
+[profile.dist]
+inherits = "release"
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3
+
+[profile.dist.package.plushie-renderer-wasm]
+opt-level = "z"
 
 # Local development: uncomment to use the local plushie-iced checkout
 # so renderer builds pick up unpublished iced changes.

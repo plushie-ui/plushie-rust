@@ -82,17 +82,21 @@ impl SvgWidget {
         match svg_guard::parse_with_timeout(bytes, deadline) {
             DecodeOutcome::Ok => {}
             DecodeOutcome::ParseError(msg) => {
-                log::warn!(
-                    "[code=svg_parse_error][id={node_id}] svg '{source}' failed to parse: {msg}"
-                );
+                let diag = plushie_core::Diagnostic::SvgParseError {
+                    id: node_id.to_string(),
+                    source: source.to_string(),
+                    detail: msg,
+                };
+                log::warn!("{diag}");
                 Self::record_failure(source, DecodeFailure::ParseError);
             }
             DecodeOutcome::Timeout => {
-                log::warn!(
-                    "[code=svg_decode_timeout][id={node_id}] svg '{source}' \
-                     exceeded {:?} decode budget; rendering skipped",
-                    deadline
-                );
+                let diag = plushie_core::Diagnostic::SvgDecodeTimeout {
+                    id: node_id.to_string(),
+                    source: source.to_string(),
+                    deadline_debug: format!("{deadline:?}"),
+                };
+                log::warn!("{diag}");
                 Self::record_failure(source, DecodeFailure::Timeout);
             }
         }

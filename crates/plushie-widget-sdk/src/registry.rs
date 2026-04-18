@@ -887,9 +887,12 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(widget))) {
             Ok(v) => v,
             Err(_) => {
-                log::error!(
-                    "[code=widget_panic][id={node_id}] widget `{type_name}` panicked in {label}",
-                );
+                let diag = plushie_core::Diagnostic::WidgetPanic {
+                    id: node_id.to_string(),
+                    type_name: type_name.to_string(),
+                    label: label.to_string(),
+                };
+                log::error!("{diag}");
                 fallback()
             }
         }
@@ -918,9 +921,12 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(widget))) {
             Ok(v) => v,
             Err(_) => {
-                log::error!(
-                    "[code=widget_panic][id={node_id}] widget `{type_name}` panicked in {label}",
-                );
+                let diag = plushie_core::Diagnostic::WidgetPanic {
+                    id: node_id.to_string(),
+                    type_name: type_name.to_string(),
+                    label: label.to_string(),
+                };
+                log::error!("{diag}");
                 fallback()
             }
         }
@@ -958,10 +964,12 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             })) {
                 Ok(element) => element,
                 Err(_) => {
-                    log::error!(
-                        "[code=widget_panic][id={}] widget `{type_name}` panicked in render",
-                        node.id,
-                    );
+                    let diag = plushie_core::Diagnostic::WidgetPanic {
+                        id: node.id.clone(),
+                        type_name: type_name.to_string(),
+                        label: "render".to_string(),
+                    };
+                    log::error!("{diag}");
                     iced::widget::text(format!("Widget error: `{type_name}`"))
                         .color(iced::Color::from_rgb(1.0, 0.0, 0.0))
                         .into()

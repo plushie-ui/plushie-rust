@@ -654,10 +654,10 @@ fn resolve_font_with_fallback(v: &Value, known_loaded: &[&str]) -> Font {
             log::debug!("font family `{name}` resolved (loaded at runtime)");
             return Font::DEFAULT;
         }
-        log::warn!(
-            "[code=font_family_not_found] font family `{name}` not resolvable; \
-             trying next fallback"
-        );
+        let diag = plushie_core::Diagnostic::FontFamilyNotFound {
+            family: (*name).to_string(),
+        };
+        log::warn!("{diag}");
     }
     Font::DEFAULT
 }
@@ -704,9 +704,10 @@ fn validate_wire_settings(settings: &Value) {
     match serde_json::from_value::<WireSettings>(settings.clone()) {
         Ok(_) => {}
         Err(e) => {
-            // TODO(M-6): emit a structured diagnostic event with
-            // code=invalid_settings once the M-6 stream is wired.
-            log::warn!("[code=invalid_settings] settings decode: {e}");
+            let diag = plushie_core::Diagnostic::InvalidSettings {
+                detail: e.to_string(),
+            };
+            log::warn!("{diag}");
         }
     }
 }

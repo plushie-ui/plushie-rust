@@ -237,14 +237,13 @@ fn intern_dash_segments(segments: Vec<f32>) -> &'static [f32] {
 
     if cache.len() >= MAX_DASH_CACHE {
         if !WARNED.swap(true, Ordering::Relaxed) {
-            // TODO(M-6): once structured-diagnostic plumbing lands,
-            // upgrade this to emit a `dash_cache_cap_exceeded`
-            // diagnostic event so hosts can detect it programmatically
-            // rather than parsing log lines.
-            log::warn!(
-                "[code=dash_cache_cap_exceeded] dash segment cache full \
-                 ({MAX_DASH_CACHE} entries); new patterns will leak without caching"
-            );
+            // Typed diagnostic so hosts can detect the cap programmatically
+            // via the renderer's structured diagnostic channel; Display
+            // still produces the legacy tagged log line.
+            let diag = plushie_core::Diagnostic::DashCacheCapExceeded {
+                max: MAX_DASH_CACHE,
+            };
+            log::warn!("{diag}");
         }
         return leaked;
     }

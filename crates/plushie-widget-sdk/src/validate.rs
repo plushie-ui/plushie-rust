@@ -146,14 +146,15 @@ fn check_numeric_range(
         // Non-finite values should have been filtered upstream. Treat
         // them as out-of-range and clamp to zero.
         let clamped = 0.0;
-        return Some((
-            format!(
-                "prop_range_exceeded: widget \"{node_id}\" ({type_name}) prop \
-                 \"{prop_name}\" value {raw} is not finite, clamped to \
-                 {clamped}"
-            ),
+        let diag = plushie_core::Diagnostic::PropRangeExceeded {
+            id: node_id.to_string(),
+            type_name: type_name.to_string(),
+            prop: prop_name.to_string(),
+            raw,
             clamped,
-        ));
+            non_finite: true,
+        };
+        return Some((diag.to_string(), clamped));
     }
     let mut clamped = raw;
     if let Some(min) = range.min
@@ -167,14 +168,15 @@ fn check_numeric_range(
         clamped = max;
     }
     if clamped != raw {
-        Some((
-            format!(
-                "prop_range_exceeded: widget \"{node_id}\" ({type_name}) prop \
-                 \"{prop_name}\" value {raw} out of range, clamped to \
-                 {clamped}"
-            ),
+        let diag = plushie_core::Diagnostic::PropRangeExceeded {
+            id: node_id.to_string(),
+            type_name: type_name.to_string(),
+            prop: prop_name.to_string(),
+            raw,
             clamped,
-        ))
+            non_finite: false,
+        };
+        Some((diag.to_string(), clamped))
     } else {
         None
     }
@@ -720,10 +722,14 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
         match expected.iter().find(|(name, _)| name == key) {
             Some((_, expected_type)) => {
                 if !prop_type_matches(val, *expected_type) {
-                    warnings.push(format!(
-                        "widget '{}' ({}): prop '{}' has unexpected type {:?} (expected {:?})",
-                        node.id, node.type_name, key, val, expected_type
-                    ));
+                    let diag = plushie_core::Diagnostic::PropTypeMismatch {
+                        id: node.id.clone(),
+                        type_name: node.type_name.clone(),
+                        prop: key.clone(),
+                        value_debug: format!("{val:?}"),
+                        expected_debug: format!("{expected_type:?}"),
+                    };
+                    warnings.push(diag.to_string());
                 }
                 // Range check only applies to numeric values; string
                 // lengths are validated elsewhere.
@@ -735,10 +741,13 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
                 }
             }
             None => {
-                warnings.push(format!(
-                    "widget '{}' ({}): unexpected prop '{}' (known: {:?})",
-                    node.id, node.type_name, key, expected_names
-                ));
+                let diag = plushie_core::Diagnostic::PropUnknown {
+                    id: node.id.clone(),
+                    type_name: node.type_name.clone(),
+                    prop: key.clone(),
+                    known_debug: format!("{expected_names:?}"),
+                };
+                warnings.push(diag.to_string());
             }
         }
     }

@@ -54,10 +54,14 @@ pub fn enforce_content_cap(widget_id: &str, field: &str, raw: String, cap: usize
     while end > 0 && !raw.is_char_boundary(end) {
         end -= 1;
     }
-    log::warn!(
-        "[code=content_length_exceeded][id={widget_id}] {field} is {actual} bytes, \
-         exceeds cap {cap}; truncating to {end} bytes"
-    );
+    let diag = plushie_core::Diagnostic::ContentLengthExceeded {
+        id: widget_id.to_string(),
+        field: field.to_string(),
+        actual,
+        cap,
+        truncated: end,
+    };
+    log::warn!("{diag}");
     raw[..end].to_owned()
 }
 

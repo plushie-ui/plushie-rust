@@ -15,6 +15,10 @@ default = ["direct"]
 direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "dep:tokio", "dep:parking_lot", "plushie-widget-sdk/tokio"]
 wire = ["dep:tokio", "dep:rmp-serde", "dep:base64"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 plushie-core = { workspace = true }
 plushie-core-macros = { workspace = true }

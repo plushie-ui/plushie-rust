@@ -11,6 +11,9 @@ authors.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [lints]
 workspace = true
 

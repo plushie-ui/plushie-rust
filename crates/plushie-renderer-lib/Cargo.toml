@@ -15,6 +15,9 @@ readme = "README.md"
 name = "plushie_renderer_lib"
 path = "src/lib.rs"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [lints]
 workspace = true
 

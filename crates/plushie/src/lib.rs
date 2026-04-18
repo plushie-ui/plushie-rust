@@ -59,6 +59,7 @@
 //! When both features are enabled, direct wins. Pass an explicit
 //! renderer path via [`run_with_renderer`] to force a specific wire
 //! binary.
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 pub mod animation;
 pub mod automation;

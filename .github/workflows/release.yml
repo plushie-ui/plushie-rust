@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -58,16 +60,16 @@ jobs:
 
       - name: Build (native)
         if: "!matrix.cross"
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --profile dist --target ${{ matrix.target }}
 
       - name: Build (cross)
         if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }}
+        run: cross build --profile dist --target ${{ matrix.target }}
 
       - name: Rename binary
         shell: bash
         run: |
-          src="target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          src="target/${{ matrix.target }}/dist/${{ matrix.binary }}"
           cp "$src" "${{ matrix.asset }}"
 
       - name: Generate checksum
@@ -78,6 +80,11 @@ jobs:
           else
             shasum -a 256 "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
           fi
+
+      - name: Generate Sigstore attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ matrix.asset }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -124,6 +131,11 @@ jobs:
 
       - name: Generate checksum
         run: sha256sum plushie-renderer-wasm.tar.gz > plushie-renderer-wasm.tar.gz.sha256
+
+      - name: Generate Sigstore attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: plushie-renderer-wasm.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:

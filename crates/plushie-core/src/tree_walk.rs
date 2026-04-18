@@ -90,8 +90,10 @@ pub struct WalkCtx {
     /// set this in `enter` and clear it in `exit`.
     pub window_id: String,
 
-    /// Diagnostic messages accumulated during the walk.
-    pub warnings: Vec<String>,
+    /// Diagnostic messages accumulated during the walk. Each entry is
+    /// a typed [`crate::Diagnostic`]; call sites that need the legacy
+    /// string form can map through `Display`.
+    pub warnings: Vec<crate::Diagnostic>,
 
     /// Current descent depth, maintained by [`walk`]. Zero at the
     /// root; incremented on descent into children, decremented on
@@ -162,11 +164,10 @@ pub fn walk(node: &mut TreeNode, transforms: &mut [&mut dyn TreeTransform], ctx:
     // its own depth counter.
     let depth_cap_hit = ctx.depth >= MAX_TREE_DEPTH && !node.children.is_empty();
     if depth_cap_hit {
-        let diag = crate::Diagnostic::TreeDepthExceeded {
+        ctx.warnings.push(crate::Diagnostic::TreeDepthExceeded {
             id: node.id.clone(),
             max_depth: MAX_TREE_DEPTH,
-        };
-        ctx.warnings.push(diag.to_string());
+        });
     }
 
     if !transform_skip && !depth_cap_hit {
@@ -367,7 +368,7 @@ mod tests {
         assert!(
             ctx.warnings
                 .iter()
-                .any(|w| w.contains("tree_depth_exceeded")),
+                .any(|w| matches!(w.kind(), crate::DiagnosticKind::TreeDepthExceeded)),
             "expected tree_depth_exceeded warning, got {:?}",
             ctx.warnings,
         );
@@ -384,7 +385,10 @@ mod tests {
         struct Warner(&'static str);
         impl TreeTransform for Warner {
             fn enter(&mut self, node: &mut TreeNode, ctx: &mut WalkCtx) {
-                ctx.warnings.push(format!("{}@{}", self.0, node.id));
+                ctx.warnings.push(crate::Diagnostic::Other {
+                    code: self.0.to_string(),
+                    message: format!("{}@{}", self.0, node.id),
+                });
             }
         }
 
@@ -396,9 +400,10 @@ mod tests {
 
         // Two warnings per node (one per transform), two nodes.
         assert_eq!(ctx.warnings.len(), 4);
-        assert!(ctx.warnings.contains(&"A@root".to_string()));
-        assert!(ctx.warnings.contains(&"B@root".to_string()));
-        assert!(ctx.warnings.contains(&"A@child".to_string()));
-        assert!(ctx.warnings.contains(&"B@child".to_string()));
+        let messages: Vec<String> = ctx.warnings.iter().map(|d| d.to_string()).collect();
+        assert!(messages.contains(&"A@root".to_string()));
+        assert!(messages.contains(&"B@root".to_string()));
+        assert!(messages.contains(&"A@child".to_string()));
+        assert!(messages.contains(&"B@child".to_string()));
     }
 }

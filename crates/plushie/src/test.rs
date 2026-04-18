@@ -96,7 +96,7 @@ pub struct TestSession<A: App> {
     effect_stubs: HashMap<String, EffectResult>,
     /// Accumulated view normalization warnings (duplicate IDs,
     /// reserved characters). Collected on every view render cycle.
-    diagnostics: Vec<String>,
+    diagnostics: Vec<plushie_core::Diagnostic>,
     /// When true, Drop panics if any diagnostics have accumulated.
     /// Defaults to true (strict by default). Disabled by
     /// [`allow_diagnostics`](Self::allow_diagnostics).
@@ -945,31 +945,32 @@ impl<A: App> TestSession<A> {
     /// (or the last `drain_diagnostics` / `reset` call).
     ///
     /// Diagnostics include duplicate ID warnings and reserved
-    /// character warnings from the view normalization pass.
-    pub fn diagnostics(&self) -> &[String] {
-        &self.diagnostics
+    /// character warnings from the view normalization pass. Returns
+    /// each entry as its [`Display`](std::fmt::Display) string so
+    /// existing callers that assert on substrings keep working; use
+    /// [`typed_diagnostics`](Self::typed_diagnostics) to match on
+    /// variant shape directly.
+    pub fn diagnostics(&self) -> Vec<String> {
+        self.diagnostics.iter().map(|d| d.to_string()).collect()
     }
 
-    /// Take ownership of accumulated diagnostics, clearing the
-    /// internal buffer.
+    /// Take ownership of accumulated diagnostics as rendered strings,
+    /// clearing the internal buffer.
     pub fn drain_diagnostics(&mut self) -> Vec<String> {
         std::mem::take(&mut self.diagnostics)
+            .into_iter()
+            .map(|d| d.to_string())
+            .collect()
     }
 
-    /// Accumulated diagnostics parsed back into structured
+    /// Accumulated diagnostics as their structured
     /// [`Diagnostic`](plushie_core::Diagnostic) variants.
     ///
-    /// Today the runtime still traffics in `Vec<String>` at several
-    /// emit sites; this helper runs each message through
-    /// [`Diagnostic::from_legacy_string`](plushie_core::Diagnostic::from_legacy_string)
-    /// so tests can match on variant shape rather than substring
-    /// match. As emit sites migrate to producing `Diagnostic`
-    /// directly the parser path becomes a no-op.
+    /// Every emit site now produces a typed diagnostic directly;
+    /// this accessor hands them back verbatim for tests that want to
+    /// match on variant shape.
     pub fn typed_diagnostics(&self) -> Vec<plushie_core::Diagnostic> {
-        self.diagnostics
-            .iter()
-            .map(|s| plushie_core::Diagnostic::from_legacy_string(s))
-            .collect()
+        self.diagnostics.clone()
     }
 
     /// True when any accumulated diagnostic has the given kind.
@@ -978,7 +979,7 @@ impl<A: App> TestSession<A> {
     /// [`diagnostics`](Self::diagnostics) when the test only cares
     /// about "did *any* `duplicate_id` fire", not the full payload.
     pub fn has_diagnostic(&self, kind: plushie_core::DiagnosticKind) -> bool {
-        self.typed_diagnostics().iter().any(|d| d.kind() == kind)
+        self.diagnostics.iter().any(|d| d.kind() == kind)
     }
 
     /// Renderer ops the app has issued through `Command::Renderer`

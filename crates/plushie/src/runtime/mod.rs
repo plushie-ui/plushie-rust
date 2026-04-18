@@ -40,7 +40,7 @@ pub fn prepare_tree<A: App>(
     model: &A::Model,
     widget_store: &mut WidgetStateStore,
     memo_cache: &mut MemoCache,
-) -> (TreeNode, Vec<String>) {
+) -> (TreeNode, Vec<plushie_core::Diagnostic>) {
     let mut registrar = crate::widget::WidgetRegistrar::new();
     let mut tree = A::view(model, &mut registrar);
 

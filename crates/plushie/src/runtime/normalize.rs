@@ -76,7 +76,7 @@ use plushie_core::tree_walk::{MAX_TREE_DEPTH, TreeTransform, WalkCtx};
 /// compose [`NormalizeTransform`] with other transforms through
 /// `walk()` directly and then invoke [`finalize_a11y`].
 #[cfg(any(test, feature = "wire"))]
-pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
+pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<Diagnostic>) {
     let mut result = tree.clone();
     let mut transform = NormalizeTransform::new();
     let mut ctx = WalkCtx::default();
@@ -94,12 +94,9 @@ pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
         .map(|c| c.id.clone())
         .collect();
     if peer_windows.len() > 1 {
-        ctx.warnings.push(
-            Diagnostic::MultipleTopLevelWindows {
-                window_ids: peer_windows,
-            }
-            .to_string(),
-        );
+        ctx.warnings.push(Diagnostic::MultipleTopLevelWindows {
+            window_ids: peer_windows,
+        });
     }
 
     walk(&mut result, &mut [&mut transform], &mut ctx);
@@ -122,7 +119,7 @@ const MAX_WIDGET_ID_LEN: usize = 1024;
 /// - `too_long`: > 1024 bytes
 /// - `non_ascii`: contains bytes outside 0x21..=0x7E printable ASCII
 /// - `reserved_char`: contains `/` or `#`
-fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
+fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<Diagnostic>) {
     // Invariant: auto-generated IDs (prefixed `auto:`) never contain
     // `/` or `#`. `NormalizeTransform::enter` only calls this helper
     // for user-authored IDs; if that ever changes, the reserved-char
@@ -141,15 +138,12 @@ fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
             id.len(),
             MAX_WIDGET_ID_LEN,
         );
-        warnings.push(
-            Diagnostic::WidgetIdInvalid {
-                reason: "too_long".to_string(),
-                type_name: type_name.to_string(),
-                id: id.to_string(),
-                detail,
-            }
-            .to_string(),
-        );
+        warnings.push(Diagnostic::WidgetIdInvalid {
+            reason: "too_long".to_string(),
+            type_name: type_name.to_string(),
+            id: id.to_string(),
+            detail,
+        });
         return;
     }
     // ASCII printable range 0x21..=0x7E excludes space and control
@@ -165,15 +159,12 @@ fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
             "ID \"{id}\" contains non-printable or non-ASCII byte \
              0x{byte:02X} at offset {offset} (reason=non_ascii)"
         );
-        warnings.push(
-            Diagnostic::WidgetIdInvalid {
-                reason: "non_ascii".to_string(),
-                type_name: type_name.to_string(),
-                id: id.to_string(),
-                detail,
-            }
-            .to_string(),
-        );
+        warnings.push(Diagnostic::WidgetIdInvalid {
+            reason: "non_ascii".to_string(),
+            type_name: type_name.to_string(),
+            id: id.to_string(),
+            detail,
+        });
         return;
     }
     if id.contains('/') {
@@ -181,30 +172,24 @@ fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
             "ID \"{id}\" contains reserved character '/'. Use container \
              scoping instead. (reason=reserved_char)"
         );
-        warnings.push(
-            Diagnostic::WidgetIdInvalid {
-                reason: "reserved_char".to_string(),
-                type_name: type_name.to_string(),
-                id: id.to_string(),
-                detail,
-            }
-            .to_string(),
-        );
+        warnings.push(Diagnostic::WidgetIdInvalid {
+            reason: "reserved_char".to_string(),
+            type_name: type_name.to_string(),
+            id: id.to_string(),
+            detail,
+        });
     }
     if id.contains('#') {
         let detail = format!(
             "ID \"{id}\" contains reserved character '#'. '#' is reserved \
              for window-qualified paths. (reason=reserved_char)"
         );
-        warnings.push(
-            Diagnostic::WidgetIdInvalid {
-                reason: "reserved_char".to_string(),
-                type_name: type_name.to_string(),
-                id: id.to_string(),
-                detail,
-            }
-            .to_string(),
-        );
+        warnings.push(Diagnostic::WidgetIdInvalid {
+            reason: "reserved_char".to_string(),
+            type_name: type_name.to_string(),
+            id: id.to_string(),
+            detail,
+        });
     }
 }
 
@@ -216,7 +201,7 @@ fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
 /// normalization with other transforms in a single traversal can still
 /// reuse the cross-widget a11y logic, which has to run *after* the
 /// full set of declared IDs is known.
-pub(crate) fn finalize_a11y(tree: &mut TreeNode, mut ctx: WalkCtx) -> (Vec<String>, WalkCtx) {
+pub(crate) fn finalize_a11y(tree: &mut TreeNode, mut ctx: WalkCtx) -> (Vec<Diagnostic>, WalkCtx) {
     let declared_ids = collect_ids(tree);
     let radio_groups = collect_radio_groups(tree);
     rewrite_a11y_in_place(tree, "", &declared_ids, &radio_groups, &mut ctx.warnings, 0);
@@ -321,12 +306,9 @@ impl TreeTransform for NormalizeTransform<'_> {
                     "__widget__" | "__memo__" | "__noop__"
                 )
             {
-                ctx.warnings.push(
-                    Diagnostic::EmptyId {
-                        type_name: node.type_name.clone(),
-                    }
-                    .to_string(),
-                );
+                ctx.warnings.push(Diagnostic::EmptyId {
+                    type_name: node.type_name.clone(),
+                });
             }
         }
 
@@ -361,13 +343,10 @@ impl TreeTransform for NormalizeTransform<'_> {
         // Duplicate detection (non-auto only). One clone for the
         // HashSet entry.
         if !is_auto && !scoped_id.is_empty() && !self.seen_ids.insert(scoped_id.clone()) {
-            ctx.warnings.push(
-                Diagnostic::DuplicateId {
-                    id: scoped_id.clone(),
-                    window_id: None,
-                }
-                .to_string(),
-            );
+            ctx.warnings.push(Diagnostic::DuplicateId {
+                id: scoped_id.clone(),
+                window_id: None,
+            });
         }
 
         // Windows append a trailing '#' so their children slot in
@@ -526,7 +505,7 @@ fn rewrite_a11y_in_place(
     scope: &str,
     declared: &HashSet<String>,
     radio_groups: &BTreeMap<RadioGroupKey, Vec<String>>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Diagnostic>,
     depth: usize,
 ) {
     if depth > MAX_TREE_DEPTH {
@@ -555,7 +534,7 @@ fn apply_a11y_rewrites(
     scope: &str,
     declared: &HashSet<String>,
     radio_groups: &BTreeMap<RadioGroupKey, Vec<String>>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Diagnostic>,
 ) -> plushie_core::protocol::Props {
     let existing_role = node
         .props
@@ -607,15 +586,12 @@ fn apply_a11y_rewrites(
         {
             let rewritten = resolve_ref(s, scope);
             if !declared.contains(&rewritten) && !s.is_empty() {
-                warnings.push(
-                    Diagnostic::A11yRefUnresolved {
-                        id: node.id.clone(),
-                        key: key.to_string(),
-                        value: s.to_string(),
-                        is_member: false,
-                    }
-                    .to_string(),
-                );
+                warnings.push(Diagnostic::A11yRefUnresolved {
+                    id: node.id.clone(),
+                    key: key.to_string(),
+                    value: s.to_string(),
+                    is_member: false,
+                });
             }
             obj.insert(key.to_string(), serde_json::Value::String(rewritten));
         }
@@ -631,15 +607,12 @@ fn apply_a11y_rewrites(
             .map(|s| {
                 let r = resolve_ref(s, scope);
                 if !declared.contains(&r) && !s.is_empty() {
-                    warnings.push(
-                        Diagnostic::A11yRefUnresolved {
-                            id: node.id.clone(),
-                            key: "radio_group".to_string(),
-                            value: s.to_string(),
-                            is_member: true,
-                        }
-                        .to_string(),
-                    );
+                    warnings.push(Diagnostic::A11yRefUnresolved {
+                        id: node.id.clone(),
+                        key: "radio_group".to_string(),
+                        value: s.to_string(),
+                        is_member: true,
+                    });
                 }
                 serde_json::Value::String(r)
             })
@@ -709,16 +682,13 @@ fn resolve_ref(raw: &str, scope: &str) -> String {
 ///
 /// Canvas interactive elements have their own diagnostic in
 /// `canvas/interaction.rs`; this check skips them.
-fn check_missing_accessible_name(node: &TreeNode, warnings: &mut Vec<String>) {
-    fn walk(node: &TreeNode, warnings: &mut Vec<String>) {
+fn check_missing_accessible_name(node: &TreeNode, warnings: &mut Vec<Diagnostic>) {
+    fn walk(node: &TreeNode, warnings: &mut Vec<Diagnostic>) {
         if widget_requires_accessible_name(&node.type_name) && !has_accessible_name(node) {
-            warnings.push(
-                Diagnostic::MissingAccessibleName {
-                    type_name: node.type_name.clone(),
-                    id: node.id.clone(),
-                }
-                .to_string(),
-            );
+            warnings.push(Diagnostic::MissingAccessibleName {
+                type_name: node.type_name.clone(),
+                id: node.id.clone(),
+            });
         }
         for child in &node.children {
             walk(child, warnings);
@@ -830,7 +800,7 @@ mod tests {
     fn normalize_with_memo(
         tree: &TreeNode,
         cache: &mut super::super::memo_cache::MemoCache,
-    ) -> (TreeNode, Vec<String>) {
+    ) -> (TreeNode, Vec<Diagnostic>) {
         cache.begin_cycle();
         let mut result = tree.clone();
         let mut transform = NormalizeTransform::with_memo_cache(Some(cache));
@@ -1069,7 +1039,10 @@ mod tests {
         // The unnamed button triggers missing_accessible_name; that's
         // expected given no label/text child, and is the only warning.
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("missing_accessible_name"));
+        assert!(matches!(
+            warnings[0].kind(),
+            plushie_core::DiagnosticKind::MissingAccessibleName
+        ));
         assert_eq!(result.children[0].id, "btn");
     }
 
@@ -1121,8 +1094,13 @@ mod tests {
         let tree = node("bad#id", "text", vec![]);
         let (_, warnings) = normalize(&tree);
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("reserved character '#'"));
-        assert!(warnings[0].contains("widget_id_invalid"));
+        match &warnings[0] {
+            Diagnostic::WidgetIdInvalid { reason, detail, .. } => {
+                assert_eq!(reason, "reserved_char");
+                assert!(detail.contains("reserved character '#'"));
+            }
+            other => panic!("unexpected diagnostic: {other:?}"),
+        }
     }
 
     #[test]
@@ -1130,9 +1108,10 @@ mod tests {
         let tree = node("caf\u{00e9}", "text", vec![]);
         let (_, warnings) = normalize(&tree);
         assert!(
-            warnings
-                .iter()
-                .any(|w| w.contains("widget_id_invalid") && w.contains("non_ascii")),
+            warnings.iter().any(|w| matches!(
+                w,
+                Diagnostic::WidgetIdInvalid { reason, .. } if reason == "non_ascii"
+            )),
             "expected non_ascii diagnostic, got {warnings:?}"
         );
     }
@@ -1142,9 +1121,10 @@ mod tests {
         let tree = node("has\tctrl", "text", vec![]);
         let (_, warnings) = normalize(&tree);
         assert!(
-            warnings
-                .iter()
-                .any(|w| w.contains("widget_id_invalid") && w.contains("non_ascii")),
+            warnings.iter().any(|w| matches!(
+                w,
+                Diagnostic::WidgetIdInvalid { reason, .. } if reason == "non_ascii"
+            )),
             "expected non_ascii diagnostic for control char, got {warnings:?}"
         );
     }
@@ -1155,9 +1135,10 @@ mod tests {
         let tree = node(&huge, "text", vec![]);
         let (_, warnings) = normalize(&tree);
         assert!(
-            warnings
-                .iter()
-                .any(|w| w.contains("widget_id_invalid") && w.contains("too_long")),
+            warnings.iter().any(|w| matches!(
+                w,
+                Diagnostic::WidgetIdInvalid { reason, .. } if reason == "too_long"
+            )),
             "expected too_long diagnostic, got {warnings:?}"
         );
     }
@@ -1170,7 +1151,9 @@ mod tests {
         let tree = node("auto:col:\u{00e9}", "column", vec![]);
         let (_, warnings) = normalize(&tree);
         assert!(
-            !warnings.iter().any(|w| w.contains("widget_id_invalid")),
+            !warnings
+                .iter()
+                .any(|w| matches!(w, Diagnostic::WidgetIdInvalid { .. })),
             "auto IDs must not raise widget_id_invalid, got {warnings:?}"
         );
     }
@@ -1184,7 +1167,11 @@ mod tests {
         );
         let (_, warnings) = normalize(&tree);
         // Two unnamed buttons also trigger missing_accessible_name.
-        assert!(warnings.iter().any(|w| w.contains("duplicate ID")));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| matches!(w, Diagnostic::DuplicateId { .. }))
+        );
     }
 
     #[test]
@@ -1192,8 +1179,13 @@ mod tests {
         let tree = node("form/field", "text_input", vec![]);
         let (_, warnings) = normalize(&tree);
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("reserved character"));
-        assert!(warnings[0].contains("widget_id_invalid"));
+        match &warnings[0] {
+            Diagnostic::WidgetIdInvalid { reason, detail, .. } => {
+                assert_eq!(reason, "reserved_char");
+                assert!(detail.contains("reserved character"));
+            }
+            other => panic!("unexpected diagnostic: {other:?}"),
+        }
     }
 
     #[test]
@@ -1208,7 +1200,9 @@ mod tests {
 
         let (_result, warnings) = normalize(&tree);
         assert!(
-            warnings.iter().any(|w| w.contains("tree_depth_exceeded")),
+            warnings
+                .iter()
+                .any(|w| matches!(w, Diagnostic::TreeDepthExceeded { .. })),
             "expected tree_depth_exceeded diagnostic; got {warnings:?}"
         );
     }
@@ -1306,7 +1300,9 @@ mod tests {
         );
         let (_result, warnings) = normalize(&tree);
         assert!(
-            warnings.iter().any(|w| w.contains("a11y_ref_unresolved")),
+            warnings
+                .iter()
+                .any(|w| matches!(w, Diagnostic::A11yRefUnresolved { .. })),
             "expected a11y_ref_unresolved diagnostic, got {warnings:?}"
         );
     }
@@ -1344,9 +1340,10 @@ mod tests {
         let tree = node("root", "column", vec![node("save", "button", vec![])]);
         let (_result, warnings) = normalize(&tree);
         assert!(
-            warnings
-                .iter()
-                .any(|w| w.contains("missing_accessible_name") && w.contains("save")),
+            warnings.iter().any(|w| matches!(
+                w,
+                Diagnostic::MissingAccessibleName { id, .. } if id == "root/save"
+            )),
             "expected missing_accessible_name for icon-only button, got {warnings:?}"
         );
     }
@@ -1401,7 +1398,9 @@ mod tests {
         };
         let (_, warnings) = normalize(&tree);
         assert!(
-            warnings.iter().any(|w| w.contains("empty_id")),
+            warnings
+                .iter()
+                .any(|w| matches!(w, Diagnostic::EmptyId { .. })),
             "expected empty_id diagnostic, got {warnings:?}"
         );
     }
@@ -1423,7 +1422,7 @@ mod tests {
         assert!(
             warnings
                 .iter()
-                .any(|w| w.contains("multiple_top_level_windows")),
+                .any(|w| matches!(w, Diagnostic::MultipleTopLevelWindows { .. })),
             "expected multiple_top_level_windows diagnostic, got {warnings:?}"
         );
     }

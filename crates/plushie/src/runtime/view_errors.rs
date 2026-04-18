@@ -53,7 +53,7 @@ pub struct ViewErrors {
 pub enum ViewOutcome {
     /// View returned normally. The [`ViewErrors`] counter has been
     /// reset; any active overlay has been cleared from `tree`.
-    Ok(TreeNode, Vec<String>),
+    Ok(TreeNode, Vec<plushie_core::Diagnostic>),
     /// View panicked. `last_good` is the previous tree, with the
     /// frozen-UI overlay optionally injected when the consecutive
     /// count reaches [`VIEW_ERROR_THRESHOLD`].

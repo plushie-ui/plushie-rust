@@ -740,6 +740,15 @@ fn process_event<A: App>(
     window_sync: &mut crate::runtime::windows::WindowSync,
     base_settings: &Value,
 ) -> crate::Result {
+    // Dev-mode overlay interception: if the event belongs to the
+    // rebuilding-overlay ID namespace, handle it internally and skip
+    // the app's update. Compiled out when the `dev` feature is off.
+    #[cfg(feature = "dev")]
+    {
+        if crate::dev::intercept_event(&event) {
+            return Ok(());
+        }
+    }
     let cmd = A::update(model, event);
     execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
 

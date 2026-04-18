@@ -250,9 +250,7 @@ fn is_rust_source_path(path: &Path) -> bool {
 /// so the wire runner respawns the subprocess against the fresh
 /// binary.
 fn run_build(opts: &WatchOpts) {
-    if let Some(h) = &opts.overlay {
-        h.publish(Status::Rebuilding, "");
-    }
+    publish_status(opts, Status::Rebuilding, String::new());
 
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut cmd = std::process::Command::new(cargo);
@@ -267,9 +265,7 @@ fn run_build(opts: &WatchOpts) {
         Err(e) => {
             let msg = format!("cargo plushie build failed to spawn: {e}");
             log::warn!("plushie dev: {msg}");
-            if let Some(h) = &opts.overlay {
-                h.publish(Status::Failed, msg);
-            }
+            publish_status(opts, Status::Failed, msg);
             return;
         }
     };
@@ -292,15 +288,32 @@ fn run_build(opts: &WatchOpts) {
 
     if output.status.success() {
         log::info!("plushie dev: rebuild succeeded");
-        if let Some(h) = &opts.overlay {
-            h.publish(Status::Success, combined);
-        }
+        publish_status(opts, Status::Success, combined);
         crate::dev::send_control_signal(crate::dev::ControlSignal::SwapRenderer);
     } else {
         log::warn!("plushie dev: rebuild failed (status {:?})", output.status);
-        if let Some(h) = &opts.overlay {
-            h.publish(Status::Failed, combined);
-        }
+        publish_status(opts, Status::Failed, combined);
+    }
+}
+
+/// Install a fresh overlay status. Routes through the runtime helper
+/// (when a global handle is installed) so `Success` transitions
+/// trigger the auto-dismiss timer. Falls back to the direct handle
+/// when the caller passed one in `opts` but didn't register it
+/// globally (e.g. a test fixture).
+fn publish_status(opts: &WatchOpts, status: Status, detail: String) {
+    let expanded = matches!(status, Status::Failed | Status::Frozen);
+    let success_at = matches!(status, Status::Success).then(std::time::Instant::now);
+    let overlay = crate::dev::RebuildingOverlay {
+        status,
+        detail,
+        expanded,
+        success_at,
+    };
+    if let Some(h) = &opts.overlay {
+        crate::dev::dev_overlay::handle_overlay_message(h, overlay);
+    } else {
+        crate::dev::publish_overlay(overlay);
     }
 }
 

@@ -290,6 +290,15 @@ impl<A: App> DirectApp<A> {
     /// the user's App::update(). Returns a Task if a command was
     /// produced. Does NOT refresh the view (the caller batches that).
     fn deliver_event(&mut self, event: Event) -> Option<Task<Message>> {
+        // Dev-mode overlay interception: consume `__plushie_dev__/*`
+        // events without forwarding them to the app. Compiled out
+        // when the `dev` feature is off.
+        #[cfg(feature = "dev")]
+        {
+            if crate::dev::intercept_event(&event) {
+                return None;
+            }
+        }
         match self.widget_store.intercept_event(&event) {
             Some(Interception {
                 result: WidgetEventResult::Consumed,
@@ -306,6 +315,15 @@ impl<A: App> DirectApp<A> {
                     scoped_id: plushie_core::ScopedId::new(widget_id, outer_scope, Some(window_id)),
                     value,
                 });
+                // Overlay events can arrive after widget-expand
+                // rewrites the scope; re-check the synthesized event
+                // to keep the short-circuit reliable.
+                #[cfg(feature = "dev")]
+                {
+                    if crate::dev::intercept_event(&new_event) {
+                        return None;
+                    }
+                }
                 let cmd = A::update(&mut self.model, new_event);
                 Some(self.execute_command(cmd))
             }

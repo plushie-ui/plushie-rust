@@ -38,6 +38,7 @@
 //! process, or the `cargo plushie run --watch` convenience wrapper,
 //! for app-src live reload.
 
+pub(crate) mod dev_overlay;
 pub mod overlay;
 mod watch;
 
@@ -117,6 +118,29 @@ pub fn register_overlay(handle: DevOverlayHandle) {
 /// production builds don't compile this path at all.
 pub(crate) fn current_overlay_snapshot() -> Option<RebuildingOverlay> {
     GLOBAL_OVERLAY.get().and_then(|h| h.snapshot())
+}
+
+/// Try to route an event to the dev overlay. Returns `true` when the
+/// event was consumed and should not reach `A::update`. Runner code
+/// calls this once per incoming event before dispatch.
+///
+/// Events outside the overlay's namespace pass through (returns
+/// `false`). When no overlay handle is registered, every event
+/// passes through too.
+pub(crate) fn intercept_event(event: &crate::event::Event) -> bool {
+    let Some(handle) = GLOBAL_OVERLAY.get() else {
+        return false;
+    };
+    dev_overlay::maybe_handle_event(handle, event)
+}
+
+/// Install a fresh overlay snapshot via the shared runtime helper.
+/// Handles the Success -> schedule_dismiss transition so callers
+/// can push status without managing the timer themselves.
+pub fn publish_overlay(overlay: RebuildingOverlay) {
+    if let Some(h) = GLOBAL_OVERLAY.get() {
+        dev_overlay::handle_overlay_message(h, overlay);
+    }
 }
 
 #[cfg(test)]

@@ -194,6 +194,8 @@ libraries can detect incompatibilities.
 - [WASM build](docs/wasm-build.md) - building for WebAssembly
 - [Versioning policy](docs/versioning.md) - how plushie-rust
   versions relate to host SDK versions and the wire protocol
+- [Release guide](docs/release.md) - pre-release checklist,
+  publish order, and recovery from partial publishes
 
 ## License
 

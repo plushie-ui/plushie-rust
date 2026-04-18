@@ -62,6 +62,31 @@ For iced types not in the prelude, use `plushie_widget_sdk::iced::*`
 instead of adding a direct `iced` dependency. This avoids version
 conflicts.
 
+## Dependencies
+
+Widget crates need **both** `plushie-widget-sdk` and `plushie-core`
+as direct dependencies:
+
+```toml
+[dependencies]
+plushie-widget-sdk = "0.6"
+plushie-core = "0.6"
+```
+
+The widget derive macros (`#[derive(WidgetEvent)]`,
+`#[derive(WidgetCommand)]`, `#[derive(WidgetProps)]`,
+`#[derive(PlushieWidget)]`) emit code that references
+`::plushie_core::*` paths. Without a direct `plushie-core` dep the
+generated code will not resolve.
+
+## iced stability
+
+`plushie-widget-sdk` re-exports iced as a transitive dependency.
+iced surfaces may change on any plushie minor release. For stable
+semantics, prefer prelude names and `iced_convert::*` conversions;
+reach into `plushie_widget_sdk::iced::*` only for iced-specific
+constructs that are not covered by the prelude.
+
 ## Features
 
 - **PlushieWidget trait** - three required methods, optional lifecycle

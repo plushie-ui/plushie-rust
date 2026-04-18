@@ -384,13 +384,27 @@ edition = "2024"
 
 [dependencies]
 plushie-widget-sdk = "0.6"
+plushie-core = "0.6"
 my-gauge = { path = "../my-gauge" }
 ```
+
+Widget crates need both `plushie-widget-sdk` and `plushie-core` as
+direct dependencies. The derive macros emit code that references
+`::plushie_core::*` paths.
+
+### iced stability
+
+`plushie-widget-sdk` re-exports iced as a transitive dependency.
+iced surfaces may change on any plushie minor release. For stable
+semantics, prefer prelude names and `iced_convert::*` conversions;
+reach into `plushie_widget_sdk::iced::*` only for iced-specific
+constructs that are not in the prelude.
 
 ### The wrapper
 
 ```rust
 use plushie_widget_sdk::prelude::*;
+use plushie_widget_sdk::iced::{Length as IcedLength, Theme as IcedTheme};
 use my_gauge::gauge;
 
 pub struct GaugeWidget;
@@ -398,16 +412,18 @@ pub struct GaugeWidget;
 impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
     fn type_names(&self) -> &[&str] { &["gauge"] }
 
-    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>) -> Element<'a, Message, Theme, R> {
+    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>) -> Element<'a, Message, IcedTheme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let color = node.prop_color("color")
             .unwrap_or(ctx.theme.palette().primary.base.color);
-        let width = plushie_core::types::Length::extract(&node.props, "width")
+        // Widget logic reads plushie-core `Length`; convert to iced
+        // `Length` only at the render boundary.
+        let width = Length::extract(&node.props, "width")
             .map(|l| iced_convert::length(&l))
-            .unwrap_or(Length::Fixed(100.0));
-        let height = plushie_core::types::Length::extract(&node.props, "height")
+            .unwrap_or(IcedLength::Fixed(100.0));
+        let height = Length::extract(&node.props, "height")
             .map(|l| iced_convert::length(&l))
-            .unwrap_or(Length::Fixed(100.0));
+            .unwrap_or(IcedLength::Fixed(100.0));
 
         gauge(value)
             .color(color)

@@ -9,6 +9,22 @@
 //! This crate also provides the rendering engine, wire protocol, and
 //! widget infrastructure used internally by the `plushie` binary.
 //!
+//! ## Dependencies
+//!
+//! Widget crates need both `plushie-widget-sdk` and `plushie-core`
+//! as direct dependencies. The widget derive macros
+//! (`#[derive(WidgetEvent)]`, `#[derive(WidgetCommand)]`,
+//! `#[derive(WidgetProps)]`, `#[derive(PlushieWidget)]`) emit code
+//! that references `::plushie_core::*` paths.
+//!
+//! ## iced stability
+//!
+//! iced is re-exported as a transitive dependency. iced surfaces may
+//! change on any plushie minor release. For stable semantics, prefer
+//! prelude names and [`iced_convert`] conversions; reach into
+//! `plushie_widget_sdk::iced::*` only for iced-specific constructs
+//! that are not in the prelude.
+//!
 //! ## Module guide
 //!
 //! **Widget SDK (stable API):**
@@ -74,10 +90,12 @@ pub mod tree;
 #[doc(hidden)]
 pub mod widget;
 
-// Re-export the widget derive macros for widget authors. Keeping the
-// re-exports here (and mirrored in the prelude) means a widget crate
-// depends on `plushie-widget-sdk` alone; there is no reason to pull
-// in `plushie-core` directly.
+// Re-export the widget derive macros for widget authors.
+//
+// The generated code references `::plushie_core::*` paths so widget
+// crates must still add `plushie-core` as a direct dependency
+// alongside `plushie-widget-sdk`; see the crate-level "Dependencies"
+// section.
 //
 // `PlushieWidget` from plushie_core_macros is the derive macro; it
 // shares a name with the `registry::PlushieWidget` trait. Rust

@@ -111,3 +111,4 @@ pub mod discover;
 pub mod download;
 pub mod generator;
 pub mod platform;
+pub mod scaffold;

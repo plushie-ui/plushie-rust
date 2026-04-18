@@ -6,7 +6,7 @@
 //! through the same clap parser below.
 
 use anyhow::{Context, Result};
-use cargo_plushie::{discover, download, generator, platform};
+use cargo_plushie::{discover, download, generator, platform, scaffold};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -95,6 +95,9 @@ enum PlushieSubcommand {
     /// Build the custom renderer and run the app binary with
     /// `PLUSHIE_BINARY_PATH` pre-wired so wire mode finds it.
     Run(RunArgs),
+    /// Scaffold a new native widget crate with the conventional
+    /// `[package.metadata.plushie.widget]` layout.
+    NewWidget(NewWidgetArgs),
 }
 
 #[derive(Args, Debug)]
@@ -118,6 +121,18 @@ struct DownloadArgs {
     /// Path to the app crate manifest (defaults to `./Cargo.toml`).
     #[arg(long)]
     manifest_path: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct NewWidgetArgs {
+    /// Kebab-case widget name (e.g. `my-gauge`). Becomes the
+    /// Cargo package name, the `type_name` (snake-cased), and
+    /// a PascalCase builder struct.
+    name: String,
+    /// Destination path for the new crate. Defaults to
+    /// `./native/<name>`.
+    #[arg(long)]
+    path: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -150,7 +165,35 @@ fn main() -> Result<()> {
         PlushieSubcommand::Build(b) => cmd_build(&b),
         PlushieSubcommand::Download(d) => cmd_download(&d),
         PlushieSubcommand::Run(r) => cmd_run(&r),
+        PlushieSubcommand::NewWidget(n) => cmd_new_widget(&n),
     }
+}
+
+fn cmd_new_widget(args: &NewWidgetArgs) -> Result<()> {
+    let opts = scaffold::NewWidgetOpts {
+        name: &args.name,
+        path: args.path.as_deref(),
+        builtin_type_names: BUILTIN_TYPE_NAMES,
+    };
+    let result = scaffold::scaffold_widget(&opts)?;
+    let relative = result
+        .crate_root
+        .strip_prefix(std::env::current_dir().unwrap_or_default())
+        .unwrap_or(&result.crate_root)
+        .display()
+        .to_string();
+    let shown = if relative.is_empty() {
+        result.crate_root.display().to_string()
+    } else {
+        relative
+    };
+    println!(
+        "Scaffolded {name} at {shown}. Add it to your app's \
+         [package.metadata.plushie].native_widgets or let auto-discovery \
+         pick it up via cargo plushie build.",
+        name = args.name,
+    );
+    Ok(())
 }
 
 fn resolve_manifest_dir(manifest_path: Option<&PathBuf>) -> Result<PathBuf> {

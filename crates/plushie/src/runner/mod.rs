@@ -15,8 +15,10 @@ pub mod direct;
 #[cfg(feature = "direct")]
 mod effects;
 
+#[cfg(any(feature = "direct", feature = "wire"))]
 pub(crate) mod event_bridge;
 
+#[cfg(any(feature = "direct", feature = "wire"))]
 pub(crate) mod effect_tracker;
 
 #[cfg(feature = "direct")]

@@ -14,7 +14,9 @@ pub(crate) mod memo_cache;
 pub mod normalize;
 pub mod subscriptions;
 pub mod tree_diff;
+#[cfg(any(feature = "direct", feature = "wire"))]
 pub mod view_errors;
+#[cfg(any(feature = "direct", feature = "wire"))]
 pub mod windows;
 
 pub(crate) use memo_cache::MemoCache;

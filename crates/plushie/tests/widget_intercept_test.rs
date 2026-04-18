@@ -11,8 +11,8 @@
 
 use plushie::WidgetEvent;
 use plushie::prelude::*;
-use plushie::test::WidgetTestSession;
-use plushie::widget::{EventResult, Widget};
+use plushie::test::{TestSession, WidgetTestSession};
+use plushie::widget::{EventResult, Widget, WidgetRegistrar, WidgetView};
 use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
@@ -124,4 +124,182 @@ fn ignored_falls_through_to_update_unchanged() {
         "Ignored must forward the event's original family"
     );
     assert_eq!(value, &Value::Null, "click events carry a null payload");
+}
+
+// ---------------------------------------------------------------------------
+// Nested composite widgets: re-entrant scope walk through multiple
+// interceptors.
+// ---------------------------------------------------------------------------
+//
+// Scenario: an Outer composite wraps an Inner composite. The Inner
+// returns Ignored on a child click so the scope walk continues up to
+// Outer; Outer transforms the click into a typed `Payment` event and
+// emits it. The emitted event must reach `A::update` carrying Outer's
+// interceptor identity in `scoped_id`, not the original button or
+// Inner's.
+//
+// This pins the documented contract for `EventResult::Emit` scope
+// walks: each composite in the scope chain sees the event in
+// innermost-first order, and an `Emit` is routed to `A::update` with
+// the emitting widget's ID as its scoped identity.
+
+#[derive(WidgetEvent)]
+enum OuterEvent {
+    // Typed transformation of the inner click. Payload carries the
+    // amount Outer computed, not the original click's null value.
+    Payment(u64),
+}
+
+struct Inner;
+
+impl Widget for Inner {
+    type State = NoState;
+    type Props = UntypedProps;
+
+    fn view(id: &str, _props: &UntypedProps, _state: &NoState) -> View {
+        // Wrap the child in a container carrying Inner's own ID so
+        // the button's scope chain includes Inner as an ancestor.
+        column().id(id).child(button("pay-btn", "Pay")).into()
+    }
+
+    fn handle_event(_event: &Event, _state: &mut NoState) -> EventResult {
+        // Inner stays out of the way; the click must fall through to
+        // Outer in the scope walk.
+        EventResult::Ignored
+    }
+}
+
+struct Outer;
+
+impl Widget for Outer {
+    type State = NoState;
+    type Props = UntypedProps;
+
+    fn view(id: &str, _props: &UntypedProps, _state: &NoState) -> View {
+        // Outer's expanded view wraps an Inner `__widget__` placeholder
+        // under Outer's own ID. WidgetRegistrar isn't reachable from
+        // inside a Widget::view, but a manually-built placeholder node
+        // still resolves through WidgetStateStore as long as the app's
+        // view registered an expander for the same ID above; see the
+        // `nested_app::view` below where Inner is registered under
+        // "inner".
+        let inner_placeholder = View {
+            id: "inner".to_string(),
+            type_name: "__widget__".to_string(),
+            props: plushie_core::protocol::Props::from(plushie_core::protocol::PropMap::new()),
+            children: vec![],
+        };
+        column().id(id).child(inner_placeholder).into()
+    }
+
+    fn handle_event(event: &Event, _state: &mut NoState) -> EventResult {
+        // Pattern-match the raw click bubbling up from the inner's
+        // button; transform it into a typed `Payment` event.
+        match event.widget_match() {
+            Some(Click(_)) => EventResult::emit_event(OuterEvent::Payment(42)),
+            _ => EventResult::Ignored,
+        }
+    }
+}
+
+// Host app that registers both widgets and records every event its
+// update function sees.
+struct NestedApp {
+    events: Vec<Event>,
+}
+
+impl App for NestedApp {
+    type Model = Self;
+
+    fn init() -> (Self, Command) {
+        (Self { events: Vec::new() }, Command::None)
+    }
+
+    fn update(model: &mut Self, event: Event) -> Command {
+        model.events.push(event);
+        Command::None
+    }
+
+    fn view(_model: &Self, widgets: &mut WidgetRegistrar) -> View {
+        // Register both widgets. Outer wraps Inner through a
+        // manually-built `__widget__` placeholder inside its own
+        // `view()`, so only one call to WidgetView::register is
+        // needed per widget.
+        let outer = WidgetView::<Outer>::new("outer").register(widgets);
+        // Register Inner's expander under the id the placeholder in
+        // Outer's view uses.
+        let _inner_register = WidgetView::<Inner>::new("inner");
+        // The side effect of registering is attaching the expander
+        // to the WidgetRegistrar. Call register() but discard the
+        // returned placeholder View; Outer's view already provides
+        // a placeholder node at the same ID in the tree.
+        let _ = _inner_register.register(widgets);
+        window("main")
+            .child(column().id("root").child(outer))
+            .into()
+    }
+}
+
+#[test]
+fn nested_outer_intercepts_inner_click_and_emits_with_outer_identity() {
+    let mut session = TestSession::<NestedApp>::start();
+
+    // Click the inner button via its scope-qualified selector.
+    // After normalization the button's scoped ID is
+    // "main#root/outer/inner/pay-btn"; TestSession.click resolves
+    // the selector against the tree and dispatches a Click event
+    // carrying that scope chain.
+    session.click("pay-btn");
+
+    // A::update must have received exactly one widget event
+    // (Outer's emitted Payment) after init.
+    let widget_events: Vec<&Event> = session
+        .model()
+        .events
+        .iter()
+        .filter(|e| matches!(e, Event::Widget(_)))
+        .collect();
+    assert_eq!(
+        widget_events.len(),
+        1,
+        "expected exactly one widget event (the emitted Payment), got {:?}",
+        session.model().events
+    );
+
+    let widget = widget_events[0].as_widget().expect("Widget event");
+
+    // Family must match the typed `WidgetEvent` derive's snake_case
+    // mapping: `OuterEvent::Payment(_)` -> "payment".
+    assert_eq!(
+        widget.event_type.as_family(),
+        "payment",
+        "emitted family must be the outer's transformed name, not the inner click's"
+    );
+
+    // Payload must be the value Outer chose, not the original null
+    // click payload.
+    assert_eq!(
+        widget.value,
+        json!(42),
+        "emitted payload must be Outer's transformed value"
+    );
+
+    // The interceptor identity on the emitted event is Outer's own
+    // scoped ID, not Inner's and not the button's. Outer lives at
+    // the top of the scope chain (above the app's "root" column),
+    // so its full ID is "main#root/outer".
+    assert_eq!(
+        widget.scoped_id.id, "outer",
+        "emitted event's local id must be the interceptor's, not the inner target's"
+    );
+    assert_eq!(
+        widget.scoped_id.window_id.as_deref(),
+        Some("main"),
+        "window_id must survive the Emit re-emit"
+    );
+    assert!(
+        !widget.scoped_id.scope.iter().any(|s| s == "inner"),
+        "emitted event's scope must not include Inner; found {:?}",
+        widget.scoped_id.scope
+    );
 }

@@ -144,6 +144,23 @@ All crates live under `crates/`:
 
     echo '{"type":"settings","settings":{}}' | cargo run -p plushie-renderer -- --json
 
+### Build tool
+
+For custom renderer builds (native widgets), precompiled stock
+downloads, scaffolders, WASM bundles, and a dev-loop runner, install
+the `cargo-plushie` companion:
+
+    cargo install cargo-plushie
+    cargo plushie doctor          # environment sanity check
+    cargo plushie new-widget ...  # scaffold a native widget crate
+    cargo plushie init ...        # scaffold a plushie app crate
+    cargo plushie build           # build a custom renderer
+    cargo plushie download        # fetch a prebuilt stock renderer
+    cargo plushie run --watch     # dev-loop runner
+
+See [docs/build-tool.md](docs/build-tool.md) for the full command
+reference, metadata schema, binary discovery, and mode precedence.
+
 ## Development
 
 Install [just](https://just.systems) and

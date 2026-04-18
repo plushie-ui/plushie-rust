@@ -9,9 +9,29 @@ and communicates with the host via JavaScript callbacks.
 ```bash
 rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
+cargo install cargo-plushie   # recommended entry point
 ```
 
-## Quick build
+## Quick build via `cargo plushie` (recommended)
+
+```bash
+cargo plushie build --wasm
+cargo plushie build --wasm --release        # optimized bundle
+cargo plushie build --wasm --wasm-dir dist  # custom output directory
+```
+
+`cargo plushie build --wasm` wraps `wasm-pack` with the flags plushie
+expects (`--target web`), resolves the `plushie-renderer-wasm` source
+path from `PLUSHIE_SOURCE_PATH` or `[package.metadata.plushie].source_path`,
+and places the bundle under `target/plushie/pkg/` by default. See
+[docs/build-tool.md](build-tool.md#cargo-plushie-build) for the full
+flag reference.
+
+The raw `wasm-pack` invocation below is still available for users
+who want to bypass cargo-plushie or tweak flags not exposed by the
+subcommand.
+
+## Manual build
 
 ```bash
 wasm-pack build crates/plushie-renderer-wasm --target web

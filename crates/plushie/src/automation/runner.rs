@@ -9,10 +9,27 @@
 //! let session = TestSession::<MyApp>::start();
 //! let result = plushie::automation::runner::run(&file, &mut session);
 //! ```
+//!
+//! # Backends
+//!
+//! The parsed `.plushie` header carries a `backend:` field selecting
+//! `mock`, `headless`, or `windowed` (see
+//! [`crate::automation::Backend`]). [`run_with_backend`] honours that
+//! field and dispatches to the matching path:
+//!
+//! - `Mock` / `Headless` run through a headless
+//!   [`TestSession`](crate::test::TestSession) without spawning a
+//!   renderer. This is the fast in-process path the CLI's
+//!   `--plushie-script` uses.
+//! - `Windowed` spawns the real `plushie-renderer` binary so the user
+//!   can watch the script execute. Implemented in
+//!   [`crate::automation::runner_wire`] and gated on the `wire`
+//!   feature.
 
 use crate::App;
 use crate::automation::file::{Instruction, PlushieFile};
 use crate::test::TestSession;
+use crate::{Error, Result as PlushieResult};
 
 /// Result of running a `.plushie` file.
 #[derive(Debug)]
@@ -86,6 +103,77 @@ where
     }
 
     RunResult { passed, failures }
+}
+
+/// Run a parsed `.plushie` file, honouring the header's
+/// `backend:` field.
+///
+/// Parses [`crate::automation::Backend`] from the header and
+/// dispatches to the matching path:
+///
+/// - [`Backend::Mock`](crate::automation::Backend::Mock) and
+///   [`Backend::Headless`](crate::automation::Backend::Headless)
+///   construct a [`TestSession`] and delegate to [`run`]. The
+///   renderer is not spawned.
+/// - [`Backend::Windowed`](crate::automation::Backend::Windowed)
+///   spawns the real `plushie-renderer` binary and drives it via
+///   the wire protocol. Requires the `wire` feature.
+///
+/// Returns `Ok(())` when every instruction passes and an
+/// [`Error::Startup`] summarising the failing lines otherwise. Errors
+/// encountered before the script runs (unknown backend, wire feature
+/// missing, renderer discovery failure) surface as
+/// [`Error::InvalidSettings`], [`Error::NoRunnerFeature`], or
+/// [`Error::BinaryNotFound`] from the relevant subsystem.
+///
+/// # Errors
+///
+/// Propagates the errors described above. The script itself is
+/// reported through the returned result; instruction failures surface
+/// as [`Error::Startup`] with a one-line summary.
+pub fn run_with_backend<A: App>(file: &PlushieFile) -> PlushieResult {
+    let backend =
+        crate::automation::Backend::from_header(&file.header.backend).ok_or_else(|| {
+            Error::InvalidSettings(format!(
+                "unknown backend `{}` (expected mock, headless, or windowed)",
+                file.header.backend
+            ))
+        })?;
+
+    match backend {
+        crate::automation::Backend::Mock | crate::automation::Backend::Headless => {
+            let mut session = TestSession::<A>::start().allow_diagnostics();
+            let result = run::<A>(file, &mut session);
+            if result.is_ok() {
+                Ok(())
+            } else {
+                Err(Error::Startup(format!(
+                    "{} instruction(s) failed",
+                    result.failures.len()
+                )))
+            }
+        }
+        crate::automation::Backend::Windowed => run_windowed::<A>(file),
+    }
+}
+
+/// Route a windowed-backend run to the wire-based implementation.
+///
+/// Without the `wire` feature the SDK cannot spawn a renderer, so we
+/// fail fast with [`Error::NoRunnerFeature`]. The feature-enabled
+/// branch forwards to the renderer-spawn implementation.
+#[cfg(feature = "wire")]
+fn run_windowed<A: App>(file: &PlushieFile) -> PlushieResult {
+    crate::automation::runner_wire::run_windowed::<A>(file)
+}
+
+/// Wire-feature-disabled stub. The `A` type parameter is retained so
+/// the two definitions share a signature from the caller's point of
+/// view.
+#[cfg(not(feature = "wire"))]
+fn run_windowed<A: App>(_file: &PlushieFile) -> PlushieResult {
+    let _ = std::marker::PhantomData::<A>;
+    Err(Error::NoRunnerFeature)
 }
 
 fn execute_instruction<A: App>(

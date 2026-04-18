@@ -76,6 +76,13 @@ pub fn watch_renderer<A: App>() -> Result {
 ///
 /// Same as [`watch_renderer`].
 pub fn watch_renderer_with_opts<A: App>(opts: WatchOpts) -> Result {
+    // Register the overlay handle globally so the runtime tree walker
+    // can inject rebuild status without the caller re-wiring the
+    // handle through App::view.
+    if let Some(h) = opts.overlay.clone() {
+        crate::dev::register_overlay(h);
+    }
+
     let crates = discover_widget_crates()?;
     if crates.is_empty() {
         log::info!("plushie dev: no widget crates declared; running without watcher");

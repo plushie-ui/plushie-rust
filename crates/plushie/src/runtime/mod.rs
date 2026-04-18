@@ -62,5 +62,17 @@ pub fn prepare_tree<A: App>(
     // in a separate traversal because they need the full set of
     // declared IDs before they can resolve cross-widget references.
     let (warnings, _ctx) = normalize::finalize_a11y(&mut tree, ctx);
+
+    // Dev-mode overlay injection. Gated behind the `dev` feature so
+    // production builds don't carry the handle lookup at all; a
+    // registered overlay handle (see `plushie::dev::register_overlay`)
+    // wraps every window's content with a rebuild-status stack.
+    #[cfg(feature = "dev")]
+    {
+        if let Some(snapshot) = crate::dev::current_overlay_snapshot() {
+            tree = crate::dev::overlay::inject(tree, Some(&snapshot));
+        }
+    }
+
     (tree, warnings)
 }

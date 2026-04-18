@@ -42,4 +42,35 @@ pub mod overlay;
 mod watch;
 
 pub use overlay::{DevOverlayHandle, RebuildingOverlay, Status};
-pub use watch::{WatchOpts, watch_renderer};
+pub use watch::{WatchOpts, watch_renderer, watch_renderer_with_opts};
+
+use std::sync::OnceLock;
+
+/// Process-global dev-overlay handle. Registered once (ideally before
+/// `plushie::run` starts) so the runtime's tree walker can read the
+/// current overlay snapshot on each frame without passing the handle
+/// through every layer. `None` when no handle is registered, which is
+/// the production default; the runtime treats the absence as "no
+/// overlay" and skips the injection pass entirely.
+static GLOBAL_OVERLAY: OnceLock<DevOverlayHandle> = OnceLock::new();
+
+/// Register a dev-overlay handle with the runtime.
+///
+/// Once registered, the handle cannot be swapped out (OnceLock
+/// semantics); a second call is a no-op. Typically called by the
+/// watcher before handing off to [`crate::run`], but library code
+/// that wants to build its own watcher can register a handle here
+/// and push status to it directly.
+pub fn register_overlay(handle: DevOverlayHandle) {
+    let _ = GLOBAL_OVERLAY.set(handle);
+}
+
+/// Best-effort read of the current overlay snapshot, dismissing
+/// expired `Success` states so the auto-dismiss timer fires the
+/// next time the tree gets rebuilt.
+///
+/// `crate::runtime::prepare_tree` calls this once per view cycle;
+/// production builds don't compile this path at all.
+pub(crate) fn current_overlay_snapshot() -> Option<RebuildingOverlay> {
+    GLOBAL_OVERLAY.get().and_then(|h| h.snapshot())
+}

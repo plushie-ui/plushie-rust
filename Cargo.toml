@@ -84,15 +84,7 @@ opt-level = 3
 [profile.dist.package.plushie-renderer-wasm]
 opt-level = "z"
 
-# Local development: uncomment to use the local plushie-iced checkout
-# so renderer builds pick up unpublished iced changes.
-[patch.crates-io]
-plushie-iced = { path = "../plushie-iced" }
-plushie-iced-core = { path = "../plushie-iced/core" }
-plushie-iced-graphics = { path = "../plushie-iced/graphics" }
-plushie-iced-runtime = { path = "../plushie-iced/runtime" }
-plushie-iced-widget = { path = "../plushie-iced/widget" }
-plushie-iced-renderer = { path = "../plushie-iced/renderer" }
-plushie-iced-winit = { path = "../plushie-iced/winit" }
-plushie-iced-test = { path = "../plushie-iced/test" }
-plushie-iced-futures = { path = "../plushie-iced/futures" }
+# Local development against an in-flight plushie-iced checkout goes
+# through a gitignored `.cargo/config.toml` (see `docs/local-iced.md`)
+# rather than a committed [patch.crates-io] block. Keeps CI and
+# crates.io publishes from tripping over a path that might not exist.

@@ -7,7 +7,10 @@
 use std::io;
 
 #[cfg(feature = "direct")]
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+#[cfg(feature = "direct")]
+use parking_lot::Mutex;
 
 #[cfg(feature = "direct")]
 use plushie_widget_sdk::protocol::{EffectResponse, OutgoingEvent};
@@ -20,6 +23,10 @@ pub(crate) use super::event_bridge::SinkEvent;
 /// Events are stored in a shared queue. The DirectApp drains the
 /// queue after each iced update cycle to convert events to SDK
 /// Events and deliver them to the user's App::update().
+///
+/// Uses `parking_lot::Mutex` rather than `std::sync::Mutex` to match
+/// the renderer-lib emitter sink. parking_lot locks are faster under
+/// contention and have no poisoning state to reason about.
 #[cfg(feature = "direct")]
 pub(crate) struct QueueSink {
     queue: Arc<Mutex<Vec<SinkEvent>>>,
@@ -39,27 +46,14 @@ impl QueueSink {
 }
 
 #[cfg(feature = "direct")]
-impl QueueSink {
-    /// Lock the queue, recovering from poisoning rather than aborting
-    /// the process. Poisoning means some upstream path panicked while
-    /// holding the lock; the queue contents are still valid to observe.
-    fn lock_queue(&self) -> std::sync::MutexGuard<'_, Vec<SinkEvent>> {
-        self.queue.lock().unwrap_or_else(|e| {
-            log::error!("QueueSink event queue lock poisoned; recovering");
-            e.into_inner()
-        })
-    }
-}
-
-#[cfg(feature = "direct")]
 impl plushie_renderer_lib::EventSink for QueueSink {
     fn emit_event(&mut self, event: OutgoingEvent) -> io::Result<()> {
-        self.lock_queue().push(SinkEvent::Event(event));
+        self.queue.lock().push(SinkEvent::Event(event));
         Ok(())
     }
 
     fn emit_effect_response(&mut self, response: EffectResponse) -> io::Result<()> {
-        self.lock_queue().push(SinkEvent::EffectResponse(response));
+        self.queue.lock().push(SinkEvent::EffectResponse(response));
         Ok(())
     }
 
@@ -69,7 +63,7 @@ impl plushie_renderer_lib::EventSink for QueueSink {
         tag: &str,
         data: &serde_json::Value,
     ) -> io::Result<()> {
-        self.lock_queue().push(SinkEvent::QueryResponse {
+        self.queue.lock().push(SinkEvent::QueryResponse {
             kind: kind.to_string(),
             tag: tag.to_string(),
             data: data.clone(),

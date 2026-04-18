@@ -11,8 +11,9 @@
 //! and delivers them to the user's `App::update()`.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use parking_lot::Mutex;
 use plushie_widget_sdk::iced::{Element, Task, Theme};
 
 use plushie_widget_sdk::message::Message;
@@ -182,10 +183,7 @@ impl<A: App> DirectApp<A> {
     /// to the user's App::update(), then refresh the view once.
     fn drain_event_queue(&mut self) -> Option<Task<Message>> {
         let events: Vec<SinkEvent> = {
-            let mut queue = self.event_queue.lock().unwrap_or_else(|e| {
-                log::error!("event_queue lock poisoned in drain_event_queue");
-                e.into_inner()
-            });
+            let mut queue = self.event_queue.lock();
             if queue.is_empty() {
                 return None;
             }
@@ -404,16 +402,10 @@ impl<A: App> DirectApp<A> {
                 let guarded =
                     async move { super::run_task_with_panic_guard(&tag_for_guard, future).await };
                 let (task, handle) = Task::perform(guarded, move |result| {
-                    queue
-                        .lock()
-                        .unwrap_or_else(|e| {
-                            log::error!("event_queue lock poisoned in Async completion");
-                            e.into_inner()
-                        })
-                        .push(SinkEvent::AsyncResult {
-                            tag: tag_clone,
-                            result,
-                        });
+                    queue.lock().push(SinkEvent::AsyncResult {
+                        tag: tag_clone,
+                        result,
+                    });
                     Message::NoOp
                 })
                 .abortable();
@@ -431,10 +423,6 @@ impl<A: App> DirectApp<A> {
                 emitter.attach_sink(Box::new(move |t, value| {
                     sink_queue
                         .lock()
-                        .unwrap_or_else(|e| {
-                            log::error!("event_queue lock poisoned in Stream sink");
-                            e.into_inner()
-                        })
                         .push(SinkEvent::StreamValue { tag: t, value });
                     // Nudge iced so the queue drains on next update.
                     // (The renderer batches this naturally via its
@@ -447,16 +435,10 @@ impl<A: App> DirectApp<A> {
                 let guarded =
                     async move { super::run_task_with_panic_guard(&tag_for_guard, future).await };
                 let (task, handle) = Task::perform(guarded, move |result| {
-                    queue
-                        .lock()
-                        .unwrap_or_else(|e| {
-                            log::error!("event_queue lock poisoned in Stream completion");
-                            e.into_inner()
-                        })
-                        .push(SinkEvent::AsyncResult {
-                            tag: final_tag,
-                            result,
-                        });
+                    queue.lock().push(SinkEvent::AsyncResult {
+                        tag: final_tag,
+                        result,
+                    });
                     Message::NoOp
                 })
                 .abortable();
@@ -481,13 +463,7 @@ impl<A: App> DirectApp<A> {
                         super::platform_sleep(delay).await;
                     },
                     move |_| {
-                        queue
-                            .lock()
-                            .unwrap_or_else(|e| {
-                                log::error!("event_queue lock poisoned in SendAfter");
-                                e.into_inner()
-                            })
-                            .push(SinkEvent::DelayedEvent(*event));
+                        queue.lock().push(SinkEvent::DelayedEvent(*event));
                         Message::NoOp
                     },
                 )
@@ -526,10 +502,6 @@ impl<A: App> DirectApp<A> {
             .as_millis() as u64;
         self.event_queue
             .lock()
-            .unwrap_or_else(|e| {
-                log::error!("event_queue lock poisoned in handle_timer_tick");
-                e.into_inner()
-            })
             .push(SinkEvent::DelayedEvent(Event::Timer(
                 crate::event::TimerEvent { tag, timestamp },
             )));

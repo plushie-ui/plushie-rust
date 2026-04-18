@@ -12,7 +12,7 @@ categories = ["gui", "rendering"]
 
 [features]
 default = ["direct"]
-direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "dep:tokio", "plushie-widget-sdk/tokio"]
+direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "dep:tokio", "dep:parking_lot", "plushie-widget-sdk/tokio"]
 wire = ["dep:tokio", "dep:rmp-serde", "dep:base64"]
 
 [dependencies]
@@ -30,6 +30,7 @@ arboard = { version = "3", optional = true }
 notify-rust = { version = "4", optional = true }
 log = "0.4"
 base64 = { version = "0.22.1", optional = true }
+parking_lot = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

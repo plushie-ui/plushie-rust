@@ -57,6 +57,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use plushie_core::diagnostic::Diagnostic;
 use plushie_core::protocol::{PropValue, TreeNode};
 #[cfg(any(test, feature = "wire"))]
 use plushie_core::tree_walk::walk;
@@ -79,6 +80,28 @@ pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<String>) {
     let mut result = tree.clone();
     let mut transform = NormalizeTransform::new();
     let mut ctx = WalkCtx::default();
+
+    // Top-level shape check: more than one `window` child directly
+    // under the root is supported by other host SDKs as peer windows,
+    // but the Rust SDK's idiomatic shape is one root window plus
+    // others opened via `Command::open_window`. Flag the shape here
+    // before the walk so the diagnostic is surfaced alongside the
+    // rest and the render pipeline still treats the tree uniformly.
+    let peer_windows: Vec<String> = tree
+        .children
+        .iter()
+        .filter(|c| c.type_name == "window" && !c.id.is_empty())
+        .map(|c| c.id.clone())
+        .collect();
+    if peer_windows.len() > 1 {
+        ctx.warnings.push(
+            Diagnostic::MultipleTopLevelWindows {
+                window_ids: peer_windows,
+            }
+            .to_string(),
+        );
+    }
+
     walk(&mut result, &mut [&mut transform], &mut ctx);
     let (warnings, _ctx) = finalize_a11y(&mut result, ctx);
     (result, warnings)
@@ -100,6 +123,11 @@ const MAX_WIDGET_ID_LEN: usize = 1024;
 /// - `non_ascii`: contains bytes outside 0x21..=0x7E printable ASCII
 /// - `reserved_char`: contains `/` or `#`
 fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
+    // Invariant: auto-generated IDs (prefixed `auto:`) never contain
+    // `/` or `#`. `NormalizeTransform::enter` only calls this helper
+    // for user-authored IDs; if that ever changes, the reserved-char
+    // checks below would fire on every auto ID in the tree.
+    //
     // Empty IDs are treated the same as auto-generated ones: they
     // represent "not authored" state and skip the full ruleset. The
     // duplicate-detection and reference-resolution passes downstream
@@ -243,6 +271,29 @@ impl TreeTransform for NormalizeTransform<'_> {
         // - length <= 1024 bytes
         if !is_auto {
             validate_widget_id(&node.id, &node.type_name, &mut ctx.warnings);
+            // Explicit empty IDs are treated as "not authored" elsewhere
+            // but still worth flagging as a structured diagnostic: a
+            // widget declared with `.id("")` has no addressable handle
+            // for downstream scope references or test selectors.
+            //
+            // Skip placeholder-internal types (`__widget__`, `__memo__`)
+            // and the `__noop__` test harness wrapper: those carry empty
+            // IDs by construction while the containing widget is still
+            // being configured, and flagging them would produce a false
+            // positive before the owning expander fills the slot in.
+            if node.id.is_empty()
+                && !matches!(
+                    node.type_name.as_str(),
+                    "__widget__" | "__memo__" | "__noop__"
+                )
+            {
+                ctx.warnings.push(
+                    Diagnostic::EmptyId {
+                        type_name: node.type_name.clone(),
+                    }
+                    .to_string(),
+                );
+            }
         }
 
         // Build the scoped ID directly into `ctx.scope`. The shared
@@ -1287,6 +1338,46 @@ mod tests {
         );
         let (_result, warnings) = normalize(&tree);
         assert!(warnings.is_empty(), "got {warnings:?}");
+    }
+
+    #[test]
+    fn empty_id_emits_empty_id_diagnostic() {
+        // Use a container type since interactive widgets require IDs at
+        // the builder layer; the normalize pass still inspects whatever
+        // TreeNode it's handed.
+        let tree = TreeNode {
+            id: String::new(),
+            type_name: "container".to_string(),
+            props: plushie_core::protocol::Props::from(plushie_core::protocol::PropMap::new()),
+            children: vec![],
+        };
+        let (_, warnings) = normalize(&tree);
+        assert!(
+            warnings.iter().any(|w| w.contains("empty_id")),
+            "expected empty_id diagnostic, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn multiple_top_level_windows_emits_diagnostic() {
+        // Tree with two window children at the root triggers the
+        // peer-windows shape diagnostic regardless of nested scopes.
+        let tree = TreeNode {
+            id: "auto:col:1".to_string(),
+            type_name: "column".to_string(),
+            props: plushie_core::protocol::Props::from(plushie_core::protocol::PropMap::new()),
+            children: vec![
+                node("main", "window", vec![]),
+                node("secondary", "window", vec![]),
+            ],
+        };
+        let (_, warnings) = normalize(&tree);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("multiple_top_level_windows")),
+            "expected multiple_top_level_windows diagnostic, got {warnings:?}"
+        );
     }
 
     #[test]

@@ -908,6 +908,31 @@ impl<A: App> TestSession<A> {
         std::mem::take(&mut self.diagnostics)
     }
 
+    /// Accumulated diagnostics parsed back into structured
+    /// [`Diagnostic`](plushie_core::Diagnostic) variants.
+    ///
+    /// Today the runtime still traffics in `Vec<String>` at several
+    /// emit sites; this helper runs each message through
+    /// [`Diagnostic::from_legacy_string`](plushie_core::Diagnostic::from_legacy_string)
+    /// so tests can match on variant shape rather than substring
+    /// match. As emit sites migrate to producing `Diagnostic`
+    /// directly the parser path becomes a no-op.
+    pub fn typed_diagnostics(&self) -> Vec<plushie_core::Diagnostic> {
+        self.diagnostics
+            .iter()
+            .map(|s| plushie_core::Diagnostic::from_legacy_string(s))
+            .collect()
+    }
+
+    /// True when any accumulated diagnostic has the given kind.
+    ///
+    /// Preferred over substring matching on
+    /// [`diagnostics`](Self::diagnostics) when the test only cares
+    /// about "did *any* `duplicate_id` fire", not the full payload.
+    pub fn has_diagnostic(&self, kind: plushie_core::DiagnosticKind) -> bool {
+        self.typed_diagnostics().iter().any(|d| d.kind() == kind)
+    }
+
     // -----------------------------------------------------------------------
     // Assertions
     // -----------------------------------------------------------------------
@@ -1400,6 +1425,12 @@ impl<W: crate::widget::Widget> WidgetTestSession<W> {
             id: None,
             window_id: None,
         }));
+        // Drain any init-phase diagnostics produced before the widget
+        // ID was set. `TestSession::start` runs an initial view with
+        // the default `widget_id = ""`, which can trip the `empty_id`
+        // normalize diagnostic before we got a chance to configure the
+        // harness. Those are harness-internal, not real test failures.
+        let _ = session.drain_diagnostics();
         Self { inner: session }
     }
 
@@ -1413,6 +1444,7 @@ impl<W: crate::widget::Widget> WidgetTestSession<W> {
         for (key, value) in props {
             session.model_mut().props.insert(key, value);
         }
+        let _ = session.drain_diagnostics(); // see note in `start()`
         // Re-render with props.
         session.dispatch(Event::System(crate::event::SystemEvent {
             event_type: crate::event::SystemEventType::AnimationFrame,

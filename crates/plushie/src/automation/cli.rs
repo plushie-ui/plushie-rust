@@ -48,27 +48,30 @@ pub fn script<A: App>(path: &str) -> Result {
 ///
 /// Mirrors [`script`] but forces the `windowed` backend regardless of
 /// the header's `backend:` field, so the caller can visually inspect
-/// the replay. Today the runner drives a [`TestSession`] (no real
-/// renderer) regardless of the header; windowed dispatch is deferred
-/// to a follow-on hat once the runner grows a renderer-backed path.
+/// the replay. The runner locates the renderer binary via the normal
+/// wire-mode discovery chain (`PLUSHIE_BINARY_PATH`, custom build,
+/// downloaded stock binary, `PATH`), spawns it, and sends each
+/// script step's resulting tree so the user sees the app execute the
+/// script live on screen.
+///
+/// `wait` instructions pace the replay in wall-clock time so the
+/// user can follow along.
 ///
 /// # Errors
 ///
-/// Currently returns [`Error::Startup`] with a message explaining
-/// that windowed replay is not yet available. The parse + header
-/// validation still runs first so a malformed script surfaces its
-/// own error before the not-yet-supported notice.
+/// Returns [`Error::InvalidSettings`] when the file cannot be read
+/// or parsed. Propagates renderer-discovery, spawn, handshake, and
+/// framing errors from [`crate::automation::runner_wire::run_windowed`].
+/// Instruction failures surface as [`Error::Startup`] with a one-line
+/// summary.
 pub fn replay<A: App>(path: &str) -> Result {
-    // Parse the file early so genuinely broken scripts still surface
-    // a meaningful error rather than the not-yet-supported notice.
-    let _file = crate::automation::file::parse_file(path)
+    let mut file = crate::automation::file::parse_file(path)
         .map_err(|e| Error::InvalidSettings(format!("{path}: {e}")))?;
-    Err(Error::Startup(format!(
-        "windowed replay is not yet wired through the automation runner; \
-         file at {path} parsed OK but no windowed backend is available. \
-         Use plushie::automation::cli::script for the headless path \
-         until the renderer-backed runner lands."
-    )))
+    // Force the windowed backend regardless of the header; replay's
+    // contract is "visual inspection", so mock / headless headers get
+    // upgraded here. Script-without-upgrade users call `script`.
+    file.header.backend = "windowed".to_string();
+    crate::automation::runner::run_with_backend::<A>(&file)
 }
 
 /// Produce a pretty-JSON snapshot of the app's initial view tree.
@@ -145,14 +148,18 @@ mod tests {
     }
 
     #[test]
-    fn replay_parses_then_refuses() {
-        // Write a valid .plushie file to a tmp path, confirm replay
-        // surfaces the not-yet-supported error (not a parse error).
-        let path = std::env::temp_dir().join("plushie_cli_replay_test.plushie");
-        std::fs::write(&path, "app: Noop\n-----\n").unwrap();
+    fn replay_parse_error_surfaces_before_spawn() {
+        // A script missing the `-----` separator is a parse failure.
+        // Replay should surface InvalidSettings before it ever tries
+        // to spawn a renderer, so the path of an unparseable file is
+        // safe to run without a renderer binary on the test host.
+        let path = std::env::temp_dir().join("plushie_cli_replay_parse_error.plushie");
+        std::fs::write(&path, "app: Noop\nno separator here\n").unwrap();
         let err = replay::<NoopApp>(path.to_str().unwrap()).unwrap_err();
-        let msg = format!("{err}");
-        assert!(msg.contains("windowed replay"), "got: {msg}");
+        assert!(
+            matches!(err, Error::InvalidSettings(_)),
+            "expected InvalidSettings, got: {err}"
+        );
         let _ = std::fs::remove_file(&path);
     }
 }

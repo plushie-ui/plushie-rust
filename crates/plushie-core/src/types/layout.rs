@@ -9,8 +9,11 @@ use crate::PlushieEnum;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 #[plushie_type(name = "direction")]
 pub enum Direction {
+    /// Horizontal.
     Horizontal,
+    /// Vertical.
     Vertical,
+    /// Both.
     Both,
 }
 
@@ -21,7 +24,9 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 #[plushie_type(name = "anchor")]
 pub enum Anchor {
+    /// Start.
     Start,
+    /// End.
     End,
 }
 
@@ -32,9 +37,13 @@ pub enum Anchor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 #[plushie_type(name = "position")]
 pub enum Position {
+    /// Below.
     Below,
+    /// Above.
     Above,
+    /// Left.
     Left,
+    /// Right.
     Right,
 }
 
@@ -64,9 +73,13 @@ pub enum ContentFit {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 #[plushie_type(name = "arrow_mode")]
 pub enum ArrowMode {
+    /// Wrap.
     Wrap,
+    /// Clamp.
     Clamp,
+    /// Linear.
     Linear,
+    /// None.
     None,
 }
 

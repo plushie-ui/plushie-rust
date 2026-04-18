@@ -56,58 +56,101 @@ use crate::protocol::KeyModifiers;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Key {
     // -- Navigation --
+    /// Arrow Up.
     ArrowUp,
+    /// Arrow Down.
     ArrowDown,
+    /// Arrow Left.
     ArrowLeft,
+    /// Arrow Right.
     ArrowRight,
+    /// Home.
     Home,
+    /// End.
     End,
+    /// Page Up.
     PageUp,
+    /// Page Down.
     PageDown,
 
     // -- Editing --
+    /// Enter.
     Enter,
+    /// Tab.
     Tab,
+    /// Space.
     Space,
+    /// Backspace.
     Backspace,
+    /// Delete.
     Delete,
+    /// Insert.
     Insert,
+    /// Escape.
     Escape,
 
     // -- Modifiers (as key events, not as modifiers on combos) --
+    /// Shift.
     Shift,
+    /// Control.
     Control,
+    /// Alt.
     Alt,
+    /// Super.
     Super,
 
     // -- Function keys --
+    /// F1.
     F1,
+    /// F2.
     F2,
+    /// F3.
     F3,
+    /// F4.
     F4,
+    /// F5.
     F5,
+    /// F6.
     F6,
+    /// F7.
     F7,
+    /// F8.
     F8,
+    /// F9.
     F9,
+    /// F10.
     F10,
+    /// F11.
     F11,
+    /// F12.
     F12,
 
     // -- Common extras --
+    /// Caps Lock.
     CapsLock,
+    /// Num Lock.
     NumLock,
+    /// Scroll Lock.
     ScrollLock,
+    /// Print Screen.
     PrintScreen,
+    /// Pause.
     Pause,
+    /// Context Menu.
     ContextMenu,
+    /// Copy.
     Copy,
+    /// Cut.
     Cut,
+    /// Paste.
     Paste,
+    /// Undo.
     Undo,
+    /// Redo.
     Redo,
 
     // -- Single character --
+    /// Char.
     Char(char),
 
     /// A named key not covered by the common variants above.
@@ -283,11 +326,14 @@ impl From<char> for Key {
 /// (no modifiers) or a `(Key, KeyModifiers)` tuple.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyPress {
+    /// Key.
     pub key: Key,
+    /// Active modifier keys.
     pub modifiers: KeyModifiers,
 }
 
 impl KeyPress {
+    /// Construct a new value.
     pub fn new(key: Key, modifiers: KeyModifiers) -> Self {
         Self { key, modifiers }
     }
@@ -412,14 +458,20 @@ impl fmt::Display for KeyPress {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum MouseButton {
     #[default]
+    /// Left.
     Left,
+    /// Right.
     Right,
+    /// Middle.
     Middle,
+    /// Back.
     Back,
+    /// Forward.
     Forward,
 }
 
 impl MouseButton {
+    /// Set or construct `wire_name`.
     pub fn wire_name(&self) -> &'static str {
         match self {
             Self::Left => "left",
@@ -463,12 +515,16 @@ impl fmt::Display for MouseButton {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PointerKind {
     #[default]
+    /// Mouse.
     Mouse,
+    /// Touch.
     Touch,
+    /// Pen.
     Pen,
 }
 
 impl PointerKind {
+    /// Set or construct `wire_name`.
     pub fn wire_name(&self) -> &'static str {
         match self {
             Self::Mouse => "mouse",
@@ -509,26 +565,44 @@ impl fmt::Display for PointerKind {
 /// These map to the actions the renderer's interact handler supports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InteractAction {
+    /// Click.
     Click,
+    /// Type Text.
     TypeText,
+    /// Submit.
     Submit,
+    /// Toggle.
     Toggle,
+    /// Select.
     Select,
+    /// Slide.
     Slide,
+    /// Paste.
     Paste,
+    /// Scroll.
     Scroll,
+    /// Sort.
     Sort,
+    /// Pane Focus Cycle.
     PaneFocusCycle,
+    /// Press.
     Press,
+    /// Release.
     Release,
+    /// Type Key.
     TypeKey,
+    /// Move To.
     MoveTo,
+    /// Canvas Press.
     CanvasPress,
+    /// Canvas Release.
     CanvasRelease,
+    /// Canvas Move.
     CanvasMove,
 }
 
 impl InteractAction {
+    /// Set or construct `wire_name`.
     pub fn wire_name(&self) -> &'static str {
         match self {
             Self::Click => "click",
@@ -551,6 +625,7 @@ impl InteractAction {
         }
     }
 
+    /// Construct from a wire.
     pub fn from_wire(s: &str) -> Option<Self> {
         Some(match normalize(s).as_str() {
             "click" => Self::Click,
@@ -588,22 +663,36 @@ impl fmt::Display for InteractAction {
 /// The kind of platform effect, matching [`EffectRequest`](crate::ops::EffectRequest) variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectKind {
+    /// File Open.
     FileOpen,
+    /// File Open Multiple.
     FileOpenMultiple,
+    /// File Save.
     FileSave,
+    /// Directory Select.
     DirectorySelect,
+    /// Directory Select Multiple.
     DirectorySelectMultiple,
+    /// Clipboard Read.
     ClipboardRead,
+    /// Clipboard Write.
     ClipboardWrite,
+    /// Clipboard Read Html.
     ClipboardReadHtml,
+    /// Clipboard Write Html.
     ClipboardWriteHtml,
+    /// Clipboard Clear.
     ClipboardClear,
+    /// Clipboard Read Primary.
     ClipboardReadPrimary,
+    /// Clipboard Write Primary.
     ClipboardWritePrimary,
+    /// Notification.
     Notification,
 }
 
 impl EffectKind {
+    /// Set or construct `wire_name`.
     pub fn wire_name(&self) -> &'static str {
         match self {
             Self::FileOpen => "file_open",

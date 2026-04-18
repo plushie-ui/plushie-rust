@@ -41,6 +41,7 @@ use crate::protocol::{PropValue, Props};
 /// associated `Props` type on `FromNode` so the expansion pipeline can
 /// extract typed props from the tree without manual deserialization.
 pub trait FromNode: Sized {
+    /// Extract the typed value from a tree node.
     fn from_node(node: &crate::protocol::TreeNode) -> Self;
 }
 

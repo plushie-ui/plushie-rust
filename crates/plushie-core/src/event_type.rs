@@ -11,39 +11,73 @@
 /// conversion.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EventType {
+    /// Click.
     Click,
+    /// Double Click.
     DoubleClick,
+    /// Input.
     Input,
+    /// Submit.
     Submit,
+    /// Paste.
     Paste,
+    /// Toggle.
     Toggle,
+    /// Select.
     Select,
+    /// Slide.
     Slide,
+    /// Slide Release.
     SlideRelease,
+    /// Press.
     Press,
+    /// Release.
     Release,
+    /// Move.
     Move,
+    /// Scroll.
     Scroll,
+    /// Scrolled.
     Scrolled,
+    /// Enter.
     Enter,
+    /// Exit.
     Exit,
+    /// Resize.
     Resize,
+    /// Focused.
     Focused,
+    /// Blurred.
     Blurred,
+    /// Drag.
     Drag,
+    /// Drag End.
     DragEnd,
+    /// Key Press.
     KeyPress,
+    /// Key Release.
     KeyRelease,
+    /// Sort.
     Sort,
+    /// Status.
     Status,
+    /// Option Hovered.
     OptionHovered,
+    /// Pane Focus Cycle.
     PaneFocusCycle,
+    /// Pane Resized.
     PaneResized,
+    /// Pane Dragged.
     PaneDragged,
+    /// Pane Clicked.
     PaneClicked,
+    /// Transition Complete.
     TransitionComplete,
+    /// Open.
     Open,
+    /// Close.
     Close,
+    /// Key Binding.
     KeyBinding,
     /// A custom event family (e.g., "star_rating:select").
     Custom(String),

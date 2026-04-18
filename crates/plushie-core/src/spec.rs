@@ -56,7 +56,9 @@ pub enum PayloadSpec {
     Value(ValueType),
     /// Named fields with types. Some fields may be required.
     Fields {
+        /// Fields.
         fields: Vec<(String, ValueType)>,
+        /// Whether input is required.
         required: Vec<String>,
     },
 }

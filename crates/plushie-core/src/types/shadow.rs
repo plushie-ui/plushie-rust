@@ -27,6 +27,7 @@ pub struct Shadow {
 }
 
 impl Shadow {
+    /// Construct a new value.
     pub fn new() -> Self {
         Self {
             color: Color::black(),
@@ -36,17 +37,20 @@ impl Shadow {
         }
     }
 
+    /// Set or construct `color`.
     pub fn color(mut self, c: impl Into<Color>) -> Self {
         self.color = c.into();
         self
     }
 
+    /// Set or construct `offset`.
     pub fn offset(mut self, x: f32, y: f32) -> Self {
         self.offset_x = x;
         self.offset_y = y;
         self
     }
 
+    /// Set or construct `blur_radius`.
     pub fn blur_radius(mut self, r: f32) -> Self {
         self.blur_radius = r;
         self

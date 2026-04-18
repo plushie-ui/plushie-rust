@@ -11,24 +11,37 @@ use crate::ops::WidgetCommand;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum IncomingMessage {
     /// Replace the entire UI tree with a new snapshot.
-    Snapshot { tree: TreeNode },
+    Snapshot {
+        /// Tree.
+        tree: TreeNode,
+    },
     /// Apply incremental changes to the retained UI tree.
-    Patch { ops: Vec<PatchOp> },
+    Patch {
+        /// Ops.
+        ops: Vec<PatchOp>,
+    },
     /// Request a platform effect (file dialog, clipboard, notification).
     Effect {
+        /// Target widget ID.
         id: String,
+        /// Event kind string used on the wire.
         kind: String,
+        /// Payload.
         payload: Value,
     },
     /// Perform a widget operation (focus, scroll, select, etc.).
     WidgetOp {
+        /// Op.
         op: String,
         #[serde(default)]
+        /// Payload.
         payload: Value,
     },
     /// Subscribe to a runtime event source (keyboard, mouse, window, etc.).
     Subscribe {
+        /// Event kind string used on the wire.
         kind: String,
+        /// Correlation tag used for matching responses.
         tag: String,
         /// Optional window ID to scope this subscription to a specific window.
         /// When set, only events from this window are delivered. When absent,
@@ -43,6 +56,7 @@ pub enum IncomingMessage {
     },
     /// Unsubscribe from a runtime event source.
     Unsubscribe {
+        /// Event kind string used on the wire.
         kind: String,
         /// If present, only remove the subscription with this specific tag.
         /// If absent, remove all subscriptions for the kind (backwards compat).
@@ -54,17 +68,22 @@ pub enum IncomingMessage {
     /// Unified `_op` shape: envelope carries routing (`session`, `op`,
     /// `window_id`); command-specific data is nested under `payload`.
     WindowOp {
+        /// Op.
         op: String,
+        /// Target window ID.
         window_id: String,
         #[serde(default)]
+        /// Payload.
         payload: Value,
     },
     /// Perform a system-wide operation that does not target a specific window.
     ///
     /// Unified `_op` shape: `payload` carries the command-specific data.
     SystemOp {
+        /// Op.
         op: String,
         #[serde(default)]
+        /// Payload.
         payload: Value,
     },
     /// Run a system-wide query that does not target a specific window.
@@ -72,45 +91,70 @@ pub enum IncomingMessage {
     /// Unified `_op` shape: `payload` carries the command-specific data
     /// (e.g. `{"tag": "..."}`).
     SystemQuery {
+        /// Op.
         op: String,
         #[serde(default)]
+        /// Payload.
         payload: Value,
     },
     /// Apply or update renderer settings.
-    Settings { settings: Value },
+    Settings {
+        /// Settings.
+        settings: Value,
+    },
     /// Query the current tree or find a widget.
     Query {
+        /// Target widget ID.
         id: String,
+        /// Target identifier.
         target: String,
         #[serde(default)]
+        /// Selector.
         selector: Value,
     },
     /// Interact with a widget (click, type, etc.)
     Interact {
+        /// Target widget ID.
         id: String,
+        /// Action.
         action: String,
         #[serde(default)]
+        /// Selector.
         selector: Value,
         #[serde(default)]
+        /// Payload.
         payload: Value,
     },
     /// Capture a structural tree hash (hash of JSON tree).
     // Used by the binary crate's headless and test modes. Appears dead
     // from plushie-core's perspective because the usage is in plushie/.
     #[allow(dead_code)]
-    TreeHash { id: String, name: String },
+    /// Tree Hash.
+    TreeHash {
+        /// Target widget ID.
+        id: String,
+        /// Identifier string.
+        name: String,
+    },
     /// Capture a pixel screenshot (GPU-rendered RGBA data).
     #[allow(dead_code)]
     Screenshot {
+        /// Target widget ID.
         id: String,
+        /// Identifier string.
         name: String,
         #[serde(default)]
+        /// Width in pixels.
         width: Option<u32>,
         #[serde(default)]
+        /// Height in pixels.
         height: Option<u32>,
     },
     /// Reset the app state.
-    Reset { id: String },
+    Reset {
+        /// Target widget ID.
+        id: String,
+    },
     /// Image operation (create, update, delete in-memory image handles).
     ///
     /// Unified `_op` shape: `payload` carries op-specific fields.
@@ -124,23 +168,34 @@ pub enum IncomingMessage {
     /// - `list`: `{tag}`.
     /// - `clear`: `{}`.
     ImageOp {
+        /// Op.
         op: String,
         #[serde(default)]
+        /// Payload.
         payload: ImageOpPayload,
     },
     /// A widget-targeted command (focus, scroll, text, native widget, etc).
     /// Bypasses the normal tree update / diff / patch cycle.
     Command {
+        /// Target widget ID.
         id: String,
+        /// Event/command family identifier.
         family: String,
         #[serde(default)]
+        /// Typed payload value.
         value: Value,
     },
     /// A batch of widget-targeted commands processed in one cycle.
-    Commands { commands: Vec<WidgetCommand> },
+    Commands {
+        /// Path command list.
+        commands: Vec<WidgetCommand>,
+    },
     /// Advance the animation clock by one frame (headless/test mode).
     /// Emits an `animation_frame` event if `on_animation_frame` is subscribed.
-    AdvanceFrame { timestamp: u64 },
+    AdvanceFrame {
+        /// Timestamp in milliseconds since the Unix epoch.
+        timestamp: u64,
+    },
     /// Register a stub response for an effect kind. When an effect of
     /// this kind is requested, the renderer returns the stubbed response
     /// immediately without executing the real effect.
@@ -148,9 +203,17 @@ pub enum IncomingMessage {
     /// Used for testing (controlled responses) and scripting (no user
     /// interaction). The response value is returned as-is in an
     /// `effect_response` with status "ok".
-    RegisterEffectStub { kind: String, response: Value },
+    RegisterEffectStub {
+        /// Event kind string used on the wire.
+        kind: String,
+        /// Response.
+        response: Value,
+    },
     /// Remove a previously registered effect stub.
-    UnregisterEffectStub { kind: String },
+    UnregisterEffectStub {
+        /// Event kind string used on the wire.
+        kind: String,
+    },
 }
 
 /// Payload of an [`IncomingMessage::ImageOp`] message.
@@ -161,16 +224,22 @@ pub enum IncomingMessage {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ImageOpPayload {
     #[serde(default)]
+    /// Handle.
     pub handle: String,
     #[serde(default, deserialize_with = "deserialize_binary_field")]
+    /// Raw bytes (pixels, font, etc.).
     pub data: Option<Vec<u8>>,
     #[serde(default, deserialize_with = "deserialize_binary_field")]
+    /// Pixels.
     pub pixels: Option<Vec<u8>>,
     #[serde(default)]
+    /// Width in pixels.
     pub width: Option<u32>,
     #[serde(default)]
+    /// Height in pixels.
     pub height: Option<u32>,
     #[serde(default)]
+    /// Correlation tag used for matching responses.
     pub tag: Option<String>,
 }
 

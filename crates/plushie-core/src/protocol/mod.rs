@@ -24,7 +24,9 @@ pub use types::{PatchOp, TreeNode};
 /// An incoming message paired with its session ID.
 #[derive(Debug)]
 pub struct SessionMessage {
+    /// Session.
     pub session: String,
+    /// Human-readable message.
     pub message: IncomingMessage,
 }
 

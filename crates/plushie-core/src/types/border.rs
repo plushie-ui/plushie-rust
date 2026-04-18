@@ -117,6 +117,7 @@ pub struct Border {
 }
 
 impl Border {
+    /// Construct a new value.
     pub fn new() -> Self {
         Self {
             color: None,
@@ -125,21 +126,25 @@ impl Border {
         }
     }
 
+    /// Set or construct `color`.
     pub fn color(mut self, c: impl Into<Color>) -> Self {
         self.color = Some(c.into());
         self
     }
 
+    /// Set or construct `width`.
     pub fn width(mut self, w: f32) -> Self {
         self.width = w;
         self
     }
 
+    /// Set or construct `radius`.
     pub fn radius(mut self, r: f32) -> Self {
         self.radius = Radius::Uniform(r);
         self
     }
 
+    /// Set or construct `radius_corners`.
     pub fn radius_corners(mut self, tl: f32, tr: f32, br: f32, bl: f32) -> Self {
         self.radius = Radius::PerCorner {
             top_left: tl,

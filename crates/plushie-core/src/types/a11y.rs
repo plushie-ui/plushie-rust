@@ -24,59 +24,106 @@ use super::PlushieType;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
 #[plushie_type(name = "role")]
 pub enum Role {
+    /// Alert.
     Alert,
+    /// Alert Dialog.
     AlertDialog,
+    /// Button.
     Button,
+    /// Canvas.
     Canvas,
     #[plushie(wire = "check_box")]
+    /// Check Box.
     CheckBox,
     #[plushie(wire = "table_cell", aliases = ["cell"])]
+    /// Cell.
     Cell,
+    /// Column Header.
     ColumnHeader,
+    /// Combo Box.
     ComboBox,
+    /// Dialog.
     Dialog,
+    /// Document.
     Document,
     #[plushie(aliases = ["container", "generic"])]
+    /// Generic Container.
     GenericContainer,
+    /// Group.
     Group,
+    /// Heading.
     Heading,
+    /// Image.
     Image,
+    /// Label.
     Label,
+    /// Link.
     Link,
+    /// List.
     List,
+    /// List Item.
     ListItem,
+    /// Menu.
     Menu,
+    /// Menu Bar.
     MenuBar,
+    /// Menu Item.
     MenuItem,
+    /// Meter.
     Meter,
     #[plushie(aliases = ["text_editor"])]
+    /// Multiline Text Input.
     MultilineTextInput,
+    /// Navigation.
     Navigation,
     #[plushie(aliases = ["progress_bar"])]
+    /// Progress Indicator.
     ProgressIndicator,
     #[plushie(aliases = ["radio"])]
+    /// Radio Button.
     RadioButton,
+    /// Radio Group.
     RadioGroup,
+    /// Region.
     Region,
     #[plushie(wire = "table_row", aliases = ["row"])]
+    /// Row.
     Row,
+    /// Scroll Bar.
     ScrollBar,
+    /// Scroll View.
     ScrollView,
+    /// Search.
     Search,
+    /// Separator.
     Separator,
+    /// Slider.
     Slider,
+    /// Static Text.
     StaticText,
+    /// Status.
     Status,
+    /// Switch.
     Switch,
+    /// Tab.
     Tab,
+    /// Tab List.
     TabList,
+    /// Tab Panel.
     TabPanel,
+    /// Table.
     Table,
+    /// Text Input.
     TextInput,
+    /// Toolbar.
     Toolbar,
+    /// Tooltip.
     Tooltip,
+    /// Tree.
     Tree,
+    /// Tree Item.
     TreeItem,
+    /// Window.
     Window,
 }
 
@@ -94,7 +141,9 @@ pub enum Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
 #[plushie_type(name = "live")]
 pub enum Live {
+    /// Polite.
     Polite,
+    /// Assertive.
     Assertive,
 }
 
@@ -106,7 +155,9 @@ pub enum Live {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
 #[plushie_type(name = "orientation")]
 pub enum Orientation {
+    /// Horizontal.
     Horizontal,
+    /// Vertical.
     Vertical,
 }
 
@@ -118,10 +169,15 @@ pub enum Orientation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
 #[plushie_type(name = "has_popup")]
 pub enum HasPopup {
+    /// Listbox.
     Listbox,
+    /// Menu.
     Menu,
+    /// Dialog.
     Dialog,
+    /// Tree.
     Tree,
+    /// Grid.
     Grid,
 }
 
@@ -145,35 +201,59 @@ pub enum HasPopup {
 /// ```
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct A11y {
+    /// Accessibility role.
     pub role: Option<Role>,
+    /// Accessible or visible label.
     pub label: Option<String>,
+    /// Extended description.
     pub description: Option<String>,
     /// Whether the widget is hidden from assistive technology.
     /// `None` means not specified (inherits from base/inference).
     pub hidden: Option<bool>,
+    /// Whether the widget is expanded.
     pub expanded: Option<bool>,
+    /// Whether input is required.
     pub required: Option<bool>,
     /// Heading level (1 through 6, corresponding to h1-h6).
     /// Values outside this range are rejected during wire decode.
     pub level: Option<usize>,
+    /// Live-region politeness.
     pub live: Option<Live>,
+    /// Busy.
     pub busy: Option<bool>,
+    /// Invalid.
     pub invalid: Option<bool>,
+    /// Whether the dialog is modal.
     pub modal: Option<bool>,
+    /// Whether the field is read-only.
     pub read_only: Option<bool>,
+    /// Mnemonic.
     pub mnemonic: Option<char>,
+    /// Toggle state.
     pub toggled: Option<bool>,
+    /// Selection state.
     pub selected: Option<bool>,
+    /// Typed payload value.
     pub value: Option<String>,
+    /// Layout orientation.
     pub orientation: Option<Orientation>,
+    /// Disabled state.
     pub disabled: Option<bool>,
+    /// 1-based index in a set of peers.
     pub position_in_set: Option<usize>,
+    /// Total number of peers.
     pub size_of_set: Option<usize>,
+    /// IDs of labelling widgets.
     pub labelled_by: Option<String>,
+    /// IDs of describing widgets.
     pub described_by: Option<String>,
+    /// Error message.
     pub error_message: Option<String>,
+    /// Currently active descendant ID.
     pub active_descendant: Option<String>,
+    /// Radio group.
     pub radio_group: Option<Vec<String>>,
+    /// Popup kind, if any.
     pub has_popup: Option<HasPopup>,
     /// Elixir-only field: resolved at build time to populate `label`.
     /// Included for wire completeness; the renderer ignores it.
@@ -185,6 +265,7 @@ pub struct A11y {
 // ---------------------------------------------------------------------------
 
 impl A11y {
+    /// Construct a new value.
     pub fn new() -> Self {
         Self::default()
     }
@@ -200,136 +281,163 @@ impl A11y {
         }
     }
 
+    /// Set or construct `role`.
     pub fn role(mut self, role: Role) -> Self {
         self.role = Some(role);
         self
     }
 
+    /// Set or construct `label`.
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
     }
 
+    /// Set or construct `description`.
     pub fn description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
     }
 
+    /// Set or construct `hidden`.
     pub fn hidden(mut self, hidden: bool) -> Self {
         self.hidden = Some(hidden);
         self
     }
 
+    /// Set or construct `expanded`.
     pub fn expanded(mut self, expanded: bool) -> Self {
         self.expanded = Some(expanded);
         self
     }
 
+    /// Set or construct `required`.
     pub fn required(mut self, required: bool) -> Self {
         self.required = Some(required);
         self
     }
 
+    /// Set or construct `level`.
     pub fn level(mut self, level: usize) -> Self {
         self.level = Some(level);
         self
     }
 
+    /// Set or construct `live`.
     pub fn live(mut self, live: Live) -> Self {
         self.live = Some(live);
         self
     }
 
+    /// Set or construct `busy`.
     pub fn busy(mut self, busy: bool) -> Self {
         self.busy = Some(busy);
         self
     }
 
+    /// Set or construct `invalid`.
     pub fn invalid(mut self, invalid: bool) -> Self {
         self.invalid = Some(invalid);
         self
     }
 
+    /// Set or construct `modal`.
     pub fn modal(mut self, modal: bool) -> Self {
         self.modal = Some(modal);
         self
     }
 
+    /// Set or construct `read_only`.
     pub fn read_only(mut self, read_only: bool) -> Self {
         self.read_only = Some(read_only);
         self
     }
 
+    /// Set or construct `mnemonic`.
     pub fn mnemonic(mut self, mnemonic: char) -> Self {
         self.mnemonic = Some(mnemonic);
         self
     }
 
+    /// Set or construct `toggled`.
     pub fn toggled(mut self, toggled: bool) -> Self {
         self.toggled = Some(toggled);
         self
     }
 
+    /// Set or construct `selected`.
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = Some(selected);
         self
     }
 
+    /// Set or construct `value`.
     pub fn value(mut self, value: impl Into<String>) -> Self {
         self.value = Some(value.into());
         self
     }
 
+    /// Set or construct `orientation`.
     pub fn orientation(mut self, orientation: Orientation) -> Self {
         self.orientation = Some(orientation);
         self
     }
 
+    /// Set or construct `disabled`.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = Some(disabled);
         self
     }
 
+    /// Set or construct `position_in_set`.
     pub fn position_in_set(mut self, pos: usize) -> Self {
         self.position_in_set = Some(pos);
         self
     }
 
+    /// Set or construct `size_of_set`.
     pub fn size_of_set(mut self, size: usize) -> Self {
         self.size_of_set = Some(size);
         self
     }
 
+    /// Set or construct `labelled_by`.
     pub fn labelled_by(mut self, id: impl Into<String>) -> Self {
         self.labelled_by = Some(id.into());
         self
     }
 
+    /// Set or construct `described_by`.
     pub fn described_by(mut self, id: impl Into<String>) -> Self {
         self.described_by = Some(id.into());
         self
     }
 
+    /// Set or construct `error_message`.
     pub fn error_message(mut self, id: impl Into<String>) -> Self {
         self.error_message = Some(id.into());
         self
     }
 
+    /// Set or construct `active_descendant`.
     pub fn active_descendant(mut self, id: impl Into<String>) -> Self {
         self.active_descendant = Some(id.into());
         self
     }
 
+    /// Set or construct `radio_group`.
     pub fn radio_group(mut self, ids: Vec<String>) -> Self {
         self.radio_group = Some(ids);
         self
     }
 
+    /// Set or construct `has_popup`.
     pub fn has_popup(mut self, popup: HasPopup) -> Self {
         self.has_popup = Some(popup);
         self
     }
 
+    /// Set or construct `label_from`.
     pub fn label_from(mut self, id: impl Into<String>) -> Self {
         self.label_from = Some(id.into());
         self

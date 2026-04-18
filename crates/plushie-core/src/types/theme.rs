@@ -124,173 +124,225 @@ impl Theme {
     }
 
     // Seed colors
+    /// Override the `background` palette color from a hex string.
     pub fn background(self, hex: &str) -> Self {
         self.color("background", hex)
     }
+    /// Override the `text` palette color from a hex string.
     pub fn text(self, hex: &str) -> Self {
         self.color("text", hex)
     }
+    /// Override the `primary` palette color from a hex string.
     pub fn primary(self, hex: &str) -> Self {
         self.color("primary", hex)
     }
+    /// Override the `success` palette color from a hex string.
     pub fn success(self, hex: &str) -> Self {
         self.color("success", hex)
     }
+    /// Override the `warning` palette color from a hex string.
     pub fn warning(self, hex: &str) -> Self {
         self.color("warning", hex)
     }
+    /// Override the `danger` palette color from a hex string.
     pub fn danger(self, hex: &str) -> Self {
         self.color("danger", hex)
     }
 
     // Primary family shades
+    /// Override the `primary_base` palette color from a hex string.
     pub fn primary_base(self, hex: &str) -> Self {
         self.color("primary_base", hex)
     }
+    /// Override the `primary_weak` palette color from a hex string.
     pub fn primary_weak(self, hex: &str) -> Self {
         self.color("primary_weak", hex)
     }
+    /// Override the `primary_strong` palette color from a hex string.
     pub fn primary_strong(self, hex: &str) -> Self {
         self.color("primary_strong", hex)
     }
+    /// Override the `primary_base_text` palette color from a hex string.
     pub fn primary_base_text(self, hex: &str) -> Self {
         self.color("primary_base_text", hex)
     }
+    /// Override the `primary_weak_text` palette color from a hex string.
     pub fn primary_weak_text(self, hex: &str) -> Self {
         self.color("primary_weak_text", hex)
     }
+    /// Override the `primary_strong_text` palette color from a hex string.
     pub fn primary_strong_text(self, hex: &str) -> Self {
         self.color("primary_strong_text", hex)
     }
 
     // Secondary family shades
+    /// Override the `secondary_base` palette color from a hex string.
     pub fn secondary_base(self, hex: &str) -> Self {
         self.color("secondary_base", hex)
     }
+    /// Override the `secondary_weak` palette color from a hex string.
     pub fn secondary_weak(self, hex: &str) -> Self {
         self.color("secondary_weak", hex)
     }
+    /// Override the `secondary_strong` palette color from a hex string.
     pub fn secondary_strong(self, hex: &str) -> Self {
         self.color("secondary_strong", hex)
     }
+    /// Override the `secondary_base_text` palette color from a hex string.
     pub fn secondary_base_text(self, hex: &str) -> Self {
         self.color("secondary_base_text", hex)
     }
+    /// Override the `secondary_weak_text` palette color from a hex string.
     pub fn secondary_weak_text(self, hex: &str) -> Self {
         self.color("secondary_weak_text", hex)
     }
+    /// Override the `secondary_strong_text` palette color from a hex string.
     pub fn secondary_strong_text(self, hex: &str) -> Self {
         self.color("secondary_strong_text", hex)
     }
 
     // Success family shades
+    /// Override the `success_base` palette color from a hex string.
     pub fn success_base(self, hex: &str) -> Self {
         self.color("success_base", hex)
     }
+    /// Override the `success_weak` palette color from a hex string.
     pub fn success_weak(self, hex: &str) -> Self {
         self.color("success_weak", hex)
     }
+    /// Override the `success_strong` palette color from a hex string.
     pub fn success_strong(self, hex: &str) -> Self {
         self.color("success_strong", hex)
     }
+    /// Override the `success_base_text` palette color from a hex string.
     pub fn success_base_text(self, hex: &str) -> Self {
         self.color("success_base_text", hex)
     }
+    /// Override the `success_weak_text` palette color from a hex string.
     pub fn success_weak_text(self, hex: &str) -> Self {
         self.color("success_weak_text", hex)
     }
+    /// Override the `success_strong_text` palette color from a hex string.
     pub fn success_strong_text(self, hex: &str) -> Self {
         self.color("success_strong_text", hex)
     }
 
     // Warning family shades
+    /// Override the `warning_base` palette color from a hex string.
     pub fn warning_base(self, hex: &str) -> Self {
         self.color("warning_base", hex)
     }
+    /// Override the `warning_weak` palette color from a hex string.
     pub fn warning_weak(self, hex: &str) -> Self {
         self.color("warning_weak", hex)
     }
+    /// Override the `warning_strong` palette color from a hex string.
     pub fn warning_strong(self, hex: &str) -> Self {
         self.color("warning_strong", hex)
     }
+    /// Override the `warning_base_text` palette color from a hex string.
     pub fn warning_base_text(self, hex: &str) -> Self {
         self.color("warning_base_text", hex)
     }
+    /// Override the `warning_weak_text` palette color from a hex string.
     pub fn warning_weak_text(self, hex: &str) -> Self {
         self.color("warning_weak_text", hex)
     }
+    /// Override the `warning_strong_text` palette color from a hex string.
     pub fn warning_strong_text(self, hex: &str) -> Self {
         self.color("warning_strong_text", hex)
     }
 
     // Danger family shades
+    /// Override the `danger_base` palette color from a hex string.
     pub fn danger_base(self, hex: &str) -> Self {
         self.color("danger_base", hex)
     }
+    /// Override the `danger_weak` palette color from a hex string.
     pub fn danger_weak(self, hex: &str) -> Self {
         self.color("danger_weak", hex)
     }
+    /// Override the `danger_strong` palette color from a hex string.
     pub fn danger_strong(self, hex: &str) -> Self {
         self.color("danger_strong", hex)
     }
+    /// Override the `danger_base_text` palette color from a hex string.
     pub fn danger_base_text(self, hex: &str) -> Self {
         self.color("danger_base_text", hex)
     }
+    /// Override the `danger_weak_text` palette color from a hex string.
     pub fn danger_weak_text(self, hex: &str) -> Self {
         self.color("danger_weak_text", hex)
     }
+    /// Override the `danger_strong_text` palette color from a hex string.
     pub fn danger_strong_text(self, hex: &str) -> Self {
         self.color("danger_strong_text", hex)
     }
 
     // Background level shades
+    /// Override the `background_base` palette color from a hex string.
     pub fn background_base(self, hex: &str) -> Self {
         self.color("background_base", hex)
     }
+    /// Override the `background_weakest` palette color from a hex string.
     pub fn background_weakest(self, hex: &str) -> Self {
         self.color("background_weakest", hex)
     }
+    /// Override the `background_weaker` palette color from a hex string.
     pub fn background_weaker(self, hex: &str) -> Self {
         self.color("background_weaker", hex)
     }
+    /// Override the `background_weak` palette color from a hex string.
     pub fn background_weak(self, hex: &str) -> Self {
         self.color("background_weak", hex)
     }
+    /// Override the `background_neutral` palette color from a hex string.
     pub fn background_neutral(self, hex: &str) -> Self {
         self.color("background_neutral", hex)
     }
+    /// Override the `background_strong` palette color from a hex string.
     pub fn background_strong(self, hex: &str) -> Self {
         self.color("background_strong", hex)
     }
+    /// Override the `background_stronger` palette color from a hex string.
     pub fn background_stronger(self, hex: &str) -> Self {
         self.color("background_stronger", hex)
     }
+    /// Override the `background_strongest` palette color from a hex string.
     pub fn background_strongest(self, hex: &str) -> Self {
         self.color("background_strongest", hex)
     }
 
     // Background text overrides
+    /// Override the `background_base_text` palette color from a hex string.
     pub fn background_base_text(self, hex: &str) -> Self {
         self.color("background_base_text", hex)
     }
+    /// Override the `background_weakest_text` palette color from a hex string.
     pub fn background_weakest_text(self, hex: &str) -> Self {
         self.color("background_weakest_text", hex)
     }
+    /// Override the `background_weaker_text` palette color from a hex string.
     pub fn background_weaker_text(self, hex: &str) -> Self {
         self.color("background_weaker_text", hex)
     }
+    /// Override the `background_weak_text` palette color from a hex string.
     pub fn background_weak_text(self, hex: &str) -> Self {
         self.color("background_weak_text", hex)
     }
+    /// Override the `background_neutral_text` palette color from a hex string.
     pub fn background_neutral_text(self, hex: &str) -> Self {
         self.color("background_neutral_text", hex)
     }
+    /// Override the `background_strong_text` palette color from a hex string.
     pub fn background_strong_text(self, hex: &str) -> Self {
         self.color("background_strong_text", hex)
     }
+    /// Override the `background_stronger_text` palette color from a hex string.
     pub fn background_stronger_text(self, hex: &str) -> Self {
         self.color("background_stronger_text", hex)
     }
+    /// Override the `background_strongest_text` palette color from a hex string.
     pub fn background_strongest_text(self, hex: &str) -> Self {
         self.color("background_strongest_text", hex)
     }

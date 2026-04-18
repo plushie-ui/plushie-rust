@@ -44,6 +44,7 @@ pub struct Gradient {
 }
 
 impl Gradient {
+    /// Set or construct `linear`.
     pub fn linear(start: (f32, f32), end: (f32, f32), stops: Vec<(f32, Color)>) -> Self {
         Self {
             start,

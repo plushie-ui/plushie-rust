@@ -15,57 +15,88 @@ use crate::types::PlushieType;
 /// `EaseInOut*` does both.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Easing {
+    /// Linear.
     Linear,
 
     // Sine
+    /// Ease In.
     EaseIn,
+    /// Ease Out.
     EaseOut,
     #[default]
+    /// Ease In Out.
     EaseInOut,
 
     // Quad
+    /// Ease In Quad.
     EaseInQuad,
+    /// Ease Out Quad.
     EaseOutQuad,
+    /// Ease In Out Quad.
     EaseInOutQuad,
 
     // Cubic
+    /// Ease In Cubic.
     EaseInCubic,
+    /// Ease Out Cubic.
     EaseOutCubic,
+    /// Ease In Out Cubic.
     EaseInOutCubic,
 
     // Quart
+    /// Ease In Quart.
     EaseInQuart,
+    /// Ease Out Quart.
     EaseOutQuart,
+    /// Ease In Out Quart.
     EaseInOutQuart,
 
     // Quint
+    /// Ease In Quint.
     EaseInQuint,
+    /// Ease Out Quint.
     EaseOutQuint,
+    /// Ease In Out Quint.
     EaseInOutQuint,
 
     // Expo
+    /// Ease In Expo.
     EaseInExpo,
+    /// Ease Out Expo.
     EaseOutExpo,
+    /// Ease In Out Expo.
     EaseInOutExpo,
 
     // Circ
+    /// Ease In Circ.
     EaseInCirc,
+    /// Ease Out Circ.
     EaseOutCirc,
+    /// Ease In Out Circ.
     EaseInOutCirc,
 
     // Back
+    /// Ease In Back.
     EaseInBack,
+    /// Ease Out Back.
     EaseOutBack,
+    /// Ease In Out Back.
     EaseInOutBack,
 
     // Elastic
+    /// Ease In Elastic.
     EaseInElastic,
+    /// Ease Out Elastic.
     EaseOutElastic,
+    /// Ease In Out Elastic.
     EaseInOutElastic,
 
     // Bounce
+    /// Ease In Bounce.
     EaseInBounce,
+    /// Ease Out Bounce.
     EaseOutBounce,
+    /// Ease In Out Bounce.
     EaseInOutBounce,
 
     /// Custom cubic bezier curve defined by two control points.

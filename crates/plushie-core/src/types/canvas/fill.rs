@@ -10,7 +10,9 @@ use super::super::{Color, Gradient, PlushieType};
 /// Canvas fill: solid color or gradient.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CanvasFill {
+    /// Color.
     Color(Color),
+    /// Gradient.
     Gradient(Gradient),
 }
 
@@ -44,7 +46,9 @@ impl PlushieType for CanvasFill {
 #[derive(Debug, Clone, Copy, PartialEq, PlushieEnum)]
 #[plushie_type(name = "fill_rule")]
 pub enum FillRule {
+    /// Non Zero.
     NonZero,
+    /// Even Odd.
     EvenOdd,
 }
 

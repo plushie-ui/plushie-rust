@@ -80,30 +80,37 @@ impl<T: PlushieType> Transition<T> {
         self.to = v.into();
         self
     }
+    /// Set or construct `easing`.
     pub fn easing(mut self, e: Easing) -> Self {
         self.easing = e;
         self
     }
+    /// Set or construct `delay`.
     pub fn delay(mut self, ms: u64) -> Self {
         self.delay = ms;
         self
     }
+    /// Set or construct `from`.
     pub fn from(mut self, v: impl Into<T>) -> Self {
         self.from = Some(v.into());
         self
     }
+    /// Set or construct `repeat`.
     pub fn repeat(mut self, n: u32) -> Self {
         self.repeat = Some(Repeat::Times(n));
         self
     }
+    /// Set or construct `repeat_forever`.
     pub fn repeat_forever(mut self) -> Self {
         self.repeat = Some(Repeat::Forever);
         self
     }
+    /// Set or construct `auto_reverse`.
     pub fn auto_reverse(mut self, v: bool) -> Self {
         self.auto_reverse = v;
         self
     }
+    /// Set or construct `on_complete`.
     pub fn on_complete(mut self, tag: &str) -> Self {
         self.on_complete = Some(tag.into());
         self
@@ -196,7 +203,9 @@ impl<T: PlushieType> PlushieType for Transition<T> {
 /// How many times to repeat an animation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Repeat {
+    /// Times.
     Times(u32),
+    /// Forever.
     Forever,
 }
 
@@ -253,26 +262,32 @@ impl<T: PlushieType> Spring<T> {
         self.to = v.into();
         self
     }
+    /// Set or construct `stiffness`.
     pub fn stiffness(mut self, s: f64) -> Self {
         self.stiffness = s;
         self
     }
+    /// Set or construct `damping`.
     pub fn damping(mut self, d: f64) -> Self {
         self.damping = d;
         self
     }
+    /// Set or construct `mass`.
     pub fn mass(mut self, m: f64) -> Self {
         self.mass = m;
         self
     }
+    /// Set or construct `velocity`.
     pub fn velocity(mut self, v: f64) -> Self {
         self.velocity = v;
         self
     }
+    /// Set or construct `from`.
     pub fn from(mut self, v: impl Into<T>) -> Self {
         self.from = Some(v.into());
         self
     }
+    /// Set or construct `on_complete`.
     pub fn on_complete(mut self, tag: &str) -> Self {
         self.on_complete = Some(tag.into());
         self
@@ -375,7 +390,9 @@ pub struct Sequence<T: PlushieType = PropValue> {
 /// A single step in a sequence.
 #[derive(Debug, Clone)]
 pub enum AnimationStep<T: PlushieType = PropValue> {
+    /// Transition.
     Transition(Transition<T>),
+    /// Spring.
     Spring(Spring<T>),
 }
 
@@ -403,6 +420,7 @@ impl<T: PlushieType> PlushieType for AnimationStep<T> {
 }
 
 impl<T: PlushieType> Sequence<T> {
+    /// Construct a new value.
     pub fn new(steps: Vec<AnimationStep<T>>) -> Self {
         Self {
             steps,
@@ -410,6 +428,7 @@ impl<T: PlushieType> Sequence<T> {
         }
     }
 
+    /// Set or construct `on_complete`.
     pub fn on_complete(mut self, tag: &str) -> Self {
         self.on_complete = Some(tag.into());
         self

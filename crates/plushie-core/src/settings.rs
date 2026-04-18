@@ -91,7 +91,12 @@ pub enum ExitReason {
     /// Renderer crashed. `message` carries the I/O error or panic
     /// description; `code` is the subprocess exit code if we were
     /// able to reap it.
-    Crash { message: String, code: Option<i32> },
+    Crash {
+        /// Human-readable message.
+        message: String,
+        /// Error code.
+        code: Option<i32>,
+    },
     /// Lost connection to the renderer (pipe closed cleanly without
     /// a full message).
     ConnectionLost,
@@ -102,7 +107,10 @@ pub enum ExitReason {
     /// Auto-restart gave up after exhausting
     /// [`RestartPolicy::max_restarts`]. `last_reason` is the reason
     /// for the final restart attempt.
-    MaxRestartsReached { last_reason: Box<ExitReason> },
+    MaxRestartsReached {
+        /// Last reason.
+        last_reason: Box<ExitReason>,
+    },
 }
 
 impl ExitReason {

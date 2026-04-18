@@ -17,7 +17,9 @@ use serde_json::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowMode {
+    /// Windowed.
     Windowed,
+    /// Fullscreen.
     Fullscreen,
 }
 
@@ -34,8 +36,11 @@ impl fmt::Display for WindowMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowLevel {
+    /// Normal.
     Normal,
+    /// Always On Top.
     AlwaysOnTop,
+    /// Always On Bottom.
     AlwaysOnBottom,
 }
 
@@ -53,8 +58,11 @@ impl fmt::Display for WindowLevel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationUrgency {
+    /// Low.
     Low,
+    /// Normal.
     Normal,
+    /// Critical.
     Critical,
 }
 
@@ -86,8 +94,11 @@ pub enum RendererOp {
     /// widget operations. The `family` string identifies the
     /// operation; the `value` carries typed payload data.
     Command {
+        /// Target widget ID.
         id: String,
+        /// Event/command family identifier.
         family: String,
+        /// Typed payload value.
         value: Value,
     },
     /// Send multiple widget commands in a batch.
@@ -103,10 +114,16 @@ pub enum RendererOp {
     /// subtree rooted at that widget rather than walking the full
     /// tree. Use for modal focus traps, menus, and other scoped
     /// keyboard-navigation containers.
-    FocusNextWithin { scope: String },
+    FocusNextWithin {
+        /// Scope widget ID that bounds the operation.
+        scope: String,
+    },
     /// Move keyboard focus to the previous focusable widget within
     /// the given scope.
-    FocusPreviousWithin { scope: String },
+    FocusPreviousWithin {
+        /// Scope widget ID that bounds the operation.
+        scope: String,
+    },
 
     // -- Window operations --
     /// Perform a window operation (close, resize, move, etc.).
@@ -123,7 +140,9 @@ pub enum RendererOp {
     // -- Platform effects --
     /// Request a platform effect (file dialog, clipboard, notification).
     Effect {
+        /// Correlation tag used for matching responses.
         tag: String,
+        /// Effect request payload.
         request: EffectRequest,
         /// Optional per-effect timeout override. When `None`, the runner
         /// uses `effect_tracker::default_timeout` based on the effect kind.
@@ -143,7 +162,9 @@ pub enum RendererOp {
     /// status messages and toast feedback; assertive is reserved
     /// for urgent context that must reach the user immediately.
     Announce {
+        /// Text payload.
         text: String,
+        /// Screen-reader politeness (polite vs assertive).
         politeness: crate::types::a11y::Live,
     },
     /// Load a font from raw byte data.
@@ -152,21 +173,39 @@ pub enum RendererOp {
     // -- Subscriptions --
     /// Subscribe to a renderer event source.
     Subscribe {
+        /// Event kind string used on the wire.
         kind: String,
+        /// Correlation tag used for matching responses.
         tag: String,
+        /// Optional max delivery rate (events per second).
         max_rate: Option<u32>,
+        /// Target window ID.
         window_id: Option<String>,
     },
     /// Unsubscribe from a renderer event source.
-    Unsubscribe { kind: String, tag: String },
+    Unsubscribe {
+        /// Event kind string used on the wire.
+        kind: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
 
     // -- Testing / debugging --
     /// Request a hash of the current widget tree.
-    TreeHash { tag: String },
+    TreeHash {
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
     /// Query which widget currently has keyboard focus.
-    FindFocused { tag: String },
+    FindFocused {
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
     /// Advance the animation frame to the given timestamp.
-    AdvanceFrame { timestamp: u64 },
+    AdvanceFrame {
+        /// Timestamp in milliseconds since the Unix epoch.
+        timestamp: u64,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -181,18 +220,43 @@ pub enum WindowOp {
     Close(String),
     /// Resize a window to the given logical dimensions.
     Resize {
+        /// Target window ID.
         window_id: String,
+        /// Width in pixels.
         width: f32,
+        /// Height in pixels.
         height: f32,
     },
     /// Move a window to the given logical position.
-    Move { window_id: String, x: f32, y: f32 },
+    Move {
+        /// Target window ID.
+        window_id: String,
+        /// X coordinate.
+        x: f32,
+        /// Y coordinate.
+        y: f32,
+    },
     /// Set or unset the maximized state.
-    Maximize { window_id: String, maximized: bool },
+    Maximize {
+        /// Target window ID.
+        window_id: String,
+        /// Whether the window is maximized.
+        maximized: bool,
+    },
     /// Set or unset the minimized state.
-    Minimize { window_id: String, minimized: bool },
+    Minimize {
+        /// Target window ID.
+        window_id: String,
+        /// Whether the window is minimized.
+        minimized: bool,
+    },
     /// Set the window display mode.
-    SetMode { window_id: String, mode: WindowMode },
+    SetMode {
+        /// Target window ID.
+        window_id: String,
+        /// Mode selector.
+        mode: WindowMode,
+    },
     /// Toggle between maximized and restored states.
     ToggleMaximize(String),
     /// Toggle window decorations (title bar, borders).
@@ -201,35 +265,57 @@ pub enum WindowOp {
     FocusWindow(String),
     /// Set the window stacking level.
     SetLevel {
+        /// Target window ID.
         window_id: String,
+        /// Level selector.
         level: WindowLevel,
     },
     /// Begin an interactive window drag.
     DragWindow(String),
     /// Begin an interactive window resize from the given edge/direction.
     DragResize {
+        /// Target window ID.
         window_id: String,
+        /// Direction of the operation.
         direction: String,
     },
     /// Request user attention (taskbar flash or similar).
     RequestAttention {
+        /// Target window ID.
         window_id: String,
+        /// Notification urgency level.
         urgency: Option<String>,
     },
     /// Take a screenshot of a window.
-    Screenshot { window_id: String, tag: String },
+    Screenshot {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
     /// Set whether the window is user-resizable.
-    SetResizable { window_id: String, resizable: bool },
+    SetResizable {
+        /// Target window ID.
+        window_id: String,
+        /// Whether the window is resizable.
+        resizable: bool,
+    },
     /// Set the minimum window size.
     SetMinSize {
+        /// Target window ID.
         window_id: String,
+        /// Width in pixels.
         width: f32,
+        /// Height in pixels.
         height: f32,
     },
     /// Set the maximum window size.
     SetMaxSize {
+        /// Target window ID.
         window_id: String,
+        /// Width in pixels.
         width: f32,
+        /// Height in pixels.
         height: f32,
     },
     /// Allow mouse events to pass through the window.
@@ -240,15 +326,22 @@ pub enum WindowOp {
     ShowSystemMenu(String),
     /// Set the window icon from raw RGBA pixel data.
     SetIcon {
+        /// Target window ID.
         window_id: String,
+        /// Raw bytes (pixels, font, etc.).
         data: Vec<u8>,
+        /// Width in pixels.
         width: u32,
+        /// Height in pixels.
         height: u32,
     },
     /// Set window resize increment constraints.
     SetResizeIncrements {
+        /// Target window ID.
         window_id: String,
+        /// Width in pixels.
         width: f32,
+        /// Height in pixels.
         height: f32,
     },
 }
@@ -257,14 +350,62 @@ pub enum WindowOp {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum WindowQuery {
-    GetSize { window_id: String, tag: String },
-    GetPosition { window_id: String, tag: String },
-    IsMaximized { window_id: String, tag: String },
-    IsMinimized { window_id: String, tag: String },
-    GetMode { window_id: String, tag: String },
-    GetScaleFactor { window_id: String, tag: String },
-    MonitorSize { window_id: String, tag: String },
-    RawId { window_id: String, tag: String },
+    /// Get Size.
+    GetSize {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
+    /// Get Position.
+    GetPosition {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
+    /// Is Maximized.
+    IsMaximized {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
+    /// Is Minimized.
+    IsMinimized {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
+    /// Get Mode.
+    GetMode {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
+    /// Get Scale Factor.
+    GetScaleFactor {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
+    /// Monitor Size.
+    MonitorSize {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
+    /// Raw Id.
+    RawId {
+        /// Target window ID.
+        window_id: String,
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -283,9 +424,15 @@ pub enum SystemOp {
 #[non_exhaustive]
 pub enum SystemQuery {
     /// Query the current OS theme (light/dark).
-    GetTheme { tag: String },
+    GetTheme {
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
     /// Query system information (OS, renderer version, etc.).
-    GetInfo { tag: String },
+    GetInfo {
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -295,24 +442,42 @@ pub enum SystemQuery {
 /// A platform effect request.
 #[derive(Debug)]
 pub enum EffectRequest {
+    /// File Open.
     FileOpen(FileDialogOpts),
+    /// File Open Multiple.
     FileOpenMultiple(FileDialogOpts),
+    /// File Save.
     FileSave(FileDialogOpts),
+    /// Directory Select.
     DirectorySelect(FileDialogOpts),
+    /// Directory Select Multiple.
     DirectorySelectMultiple(FileDialogOpts),
+    /// Clipboard Read.
     ClipboardRead,
+    /// Clipboard Write.
     ClipboardWrite(String),
+    /// Clipboard Read Html.
     ClipboardReadHtml,
+    /// Clipboard Write Html.
     ClipboardWriteHtml {
+        /// HTML payload.
         html: String,
+        /// Plain-text fallback for HTML clipboard writes.
         alt_text: Option<String>,
     },
+    /// Clipboard Clear.
     ClipboardClear,
+    /// Clipboard Read Primary.
     ClipboardReadPrimary,
+    /// Clipboard Write Primary.
     ClipboardWritePrimary(String),
+    /// Notification.
     Notification {
+        /// Human-readable title.
         title: String,
+        /// Human-readable body text.
         body: String,
+        /// Per-operation options.
         opts: NotificationOpts,
     },
 }
@@ -352,6 +517,7 @@ pub struct FileDialogOpts {
 }
 
 impl FileDialogOpts {
+    /// Construct a new value.
     pub fn new() -> Self {
         Self::default()
     }
@@ -398,6 +564,7 @@ pub struct NotificationOpts {
 }
 
 impl NotificationOpts {
+    /// Construct a new value.
     pub fn new() -> Self {
         Self::default()
     }
@@ -436,27 +603,48 @@ impl NotificationOpts {
 #[non_exhaustive]
 pub enum ImageOp {
     /// Create an image from encoded bytes (PNG, JPEG, etc.).
-    Create { handle: String, data: Vec<u8> },
+    Create {
+        /// Handle.
+        handle: String,
+        /// Raw bytes (pixels, font, etc.).
+        data: Vec<u8>,
+    },
     /// Create an image from raw RGBA pixel data.
     CreateRaw {
+        /// Handle.
         handle: String,
+        /// Width in pixels.
         width: u32,
+        /// Height in pixels.
         height: u32,
+        /// Pixels.
         pixels: Vec<u8>,
     },
     /// Replace an existing image with new encoded bytes.
-    Update { handle: String, data: Vec<u8> },
+    Update {
+        /// Handle.
+        handle: String,
+        /// Raw bytes (pixels, font, etc.).
+        data: Vec<u8>,
+    },
     /// Replace an existing image with new raw RGBA pixel data.
     UpdateRaw {
+        /// Handle.
         handle: String,
+        /// Width in pixels.
         width: u32,
+        /// Height in pixels.
         height: u32,
+        /// Pixels.
         pixels: Vec<u8>,
     },
     /// Delete an image by handle.
     Delete(String),
     /// List all loaded image handles.
-    List { tag: String },
+    List {
+        /// Correlation tag used for matching responses.
+        tag: String,
+    },
     /// Delete all loaded images.
     Clear,
 }

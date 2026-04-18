@@ -26,6 +26,7 @@ pub struct ValueRange {
 }
 
 impl ValueRange {
+    /// Construct a new value.
     pub fn new(min: f32, max: f32) -> Self {
         Self { min, max }
     }

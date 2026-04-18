@@ -6,14 +6,23 @@ use crate::PlushieEnum;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 #[plushie_type(name = "input_purpose")]
 pub enum InputPurpose {
+    /// Normal.
     Normal,
+    /// Secure.
     Secure,
+    /// Terminal.
     Terminal,
+    /// Number.
     Number,
+    /// Decimal.
     Decimal,
+    /// Phone.
     Phone,
+    /// Email.
     Email,
+    /// Url.
     Url,
+    /// Search.
     Search,
 }
 
@@ -34,8 +43,12 @@ pub enum FilterMethod {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PlushieEnum)]
 #[plushie_type(name = "error_correction")]
 pub enum ErrorCorrection {
+    /// Low.
     Low,
+    /// Medium.
     Medium,
+    /// Quartile.
     Quartile,
+    /// High.
     High,
 }

@@ -18,13 +18,21 @@ use super::transform::{Transform, decode_transforms};
 #[derive(Debug, Clone, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum CanvasShape {
+    /// Rect.
     Rect(RectShape),
+    /// Circle.
     Circle(CircleShape),
+    /// Line.
     Line(LineShape),
+    /// Path.
     Path(PathShape),
+    /// Text.
     Text(TextShape),
+    /// Image.
     Image(ImageShape),
+    /// Svg.
     Svg(SvgShape),
+    /// Group.
     Group(GroupShape),
 }
 
@@ -50,22 +58,34 @@ impl CanvasShape {
 // ---------------------------------------------------------------------------
 // RectShape
 // ---------------------------------------------------------------------------
+/// Canvas rect shape descriptor.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RectShape {
+    /// Target widget ID.
     pub id: Option<String>,
+    /// X coordinate.
     pub x: f32,
+    /// Y coordinate.
     pub y: f32,
+    /// W.
     pub w: f32,
+    /// H.
     pub h: f32,
+    /// Fill.
     pub fill: Option<CanvasFill>,
+    /// Stroke.
     pub stroke: Option<Stroke>,
+    /// Alpha multiplier (0..=1).
     pub opacity: Option<f32>,
+    /// Fill rule.
     pub fill_rule: Option<FillRule>,
+    /// Corner or drop radius.
     pub radius: Option<Radius>,
 }
 
 impl RectShape {
+    /// Construct from a node.
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
@@ -86,20 +106,30 @@ impl RectShape {
 // ---------------------------------------------------------------------------
 // CircleShape
 // ---------------------------------------------------------------------------
+/// Canvas circle shape descriptor.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CircleShape {
+    /// Target widget ID.
     pub id: Option<String>,
+    /// X coordinate.
     pub x: f32,
+    /// Y coordinate.
     pub y: f32,
+    /// R.
     pub r: f32,
+    /// Fill.
     pub fill: Option<CanvasFill>,
+    /// Stroke.
     pub stroke: Option<Stroke>,
+    /// Alpha multiplier (0..=1).
     pub opacity: Option<f32>,
+    /// Fill rule.
     pub fill_rule: Option<FillRule>,
 }
 
 impl CircleShape {
+    /// Construct from a node.
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
@@ -118,19 +148,28 @@ impl CircleShape {
 // ---------------------------------------------------------------------------
 // LineShape
 // ---------------------------------------------------------------------------
+/// Canvas line shape descriptor.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LineShape {
+    /// Target widget ID.
     pub id: Option<String>,
+    /// X1.
     pub x1: f32,
+    /// Y1.
     pub y1: f32,
+    /// X2.
     pub x2: f32,
+    /// Y2.
     pub y2: f32,
+    /// Stroke.
     pub stroke: Option<Stroke>,
+    /// Alpha multiplier (0..=1).
     pub opacity: Option<f32>,
 }
 
 impl LineShape {
+    /// Construct from a node.
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
@@ -152,15 +191,22 @@ impl LineShape {
 /// Canvas arbitrary path built from drawing commands.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PathShape {
+    /// Target widget ID.
     pub id: Option<String>,
+    /// Commands.
     pub commands: Vec<PathCommand>,
+    /// Fill.
     pub fill: Option<CanvasFill>,
+    /// Stroke.
     pub stroke: Option<Stroke>,
+    /// Alpha multiplier (0..=1).
     pub opacity: Option<f32>,
+    /// Fill rule.
     pub fill_rule: Option<FillRule>,
 }
 
 impl PathShape {
+    /// Construct from a node.
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         let commands = p
@@ -181,22 +227,34 @@ impl PathShape {
 // ---------------------------------------------------------------------------
 // TextShape
 // ---------------------------------------------------------------------------
+/// Canvas text shape descriptor.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextShape {
+    /// Target widget ID.
     pub id: Option<String>,
+    /// X coordinate.
     pub x: f32,
+    /// Y coordinate.
     pub y: f32,
+    /// Content.
     pub content: String,
+    /// Fill.
     pub fill: Option<CanvasFill>,
+    /// Size in pixels.
     pub size: Option<f32>,
+    /// Font specifier.
     pub font: Option<String>,
+    /// Horizontal alignment.
     pub align_x: Option<String>,
+    /// Vertical alignment.
     pub align_y: Option<String>,
+    /// Alpha multiplier (0..=1).
     pub opacity: Option<f32>,
 }
 
 impl TextShape {
+    /// Construct from a node.
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
@@ -217,21 +275,30 @@ impl TextShape {
 // ---------------------------------------------------------------------------
 // ImageShape
 // ---------------------------------------------------------------------------
+/// Canvas image shape descriptor.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageShape {
+    /// Target widget ID.
     pub id: Option<String>,
+    /// Source identifier.
     pub source: String,
+    /// X coordinate.
     pub x: f32,
+    /// Y coordinate.
     pub y: f32,
+    /// W.
     pub w: f32,
+    /// H.
     pub h: f32,
     /// Rotation angle. Wire format is degrees.
     pub rotation: Option<Angle>,
+    /// Alpha multiplier (0..=1).
     pub opacity: Option<f32>,
 }
 
 impl ImageShape {
+    /// Construct from a node.
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
@@ -250,18 +317,26 @@ impl ImageShape {
 // ---------------------------------------------------------------------------
 // SvgShape
 // ---------------------------------------------------------------------------
+/// Canvas svg shape descriptor.
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SvgShape {
+    /// Target widget ID.
     pub id: Option<String>,
+    /// Source identifier.
     pub source: String,
+    /// X coordinate.
     pub x: f32,
+    /// Y coordinate.
     pub y: f32,
+    /// W.
     pub w: f32,
+    /// H.
     pub h: f32,
 }
 
 impl SvgShape {
+    /// Construct from a node.
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
@@ -286,30 +361,49 @@ impl SvgShape {
 /// etc.) distinguishes them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupShape {
+    /// Target widget ID.
     pub id: Option<String>,
+    /// Child nodes.
     pub children: Vec<CanvasShape>,
+    /// Transforms.
     pub transforms: Vec<Transform>,
+    /// Clip region.
     pub clip: Option<ClipRect>,
     // Interactive fields
+    /// Click handler hook.
     pub on_click: Option<bool>,
+    /// On hover.
     pub on_hover: Option<bool>,
+    /// Draggable.
     pub draggable: Option<bool>,
+    /// Drag axis.
     pub drag_axis: Option<DragAxis>,
+    /// Drag bounds.
     pub drag_bounds: Option<DragBounds>,
+    /// Cursor.
     pub cursor: Option<String>,
+    /// Hit rect.
     pub hit_rect: Option<HitRect>,
+    /// Tooltip.
     pub tooltip: Option<String>,
+    /// Hover style.
     pub hover_style: Option<ShapeStyle>,
+    /// Pressed style.
     pub pressed_style: Option<ShapeStyle>,
+    /// Focus style.
     pub focus_style: Option<ShapeStyle>,
+    /// Show focus ring.
     pub show_focus_ring: Option<bool>,
+    /// Focus ring radius.
     pub focus_ring_radius: Option<f32>,
+    /// Whether this item accepts keyboard focus.
     pub focusable: Option<bool>,
     /// Accessibility annotations for interactive canvas shapes.
     pub a11y: Option<super::super::A11y>,
 }
 
 impl GroupShape {
+    /// Construct from a node.
     pub fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
 

@@ -54,62 +54,81 @@ impl PlushieType for Style {
 /// ```
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StyleMap {
+    /// Base.
     pub base: Option<String>,
+    /// Background color.
     pub background: Option<Background>,
+    /// Text color.
     pub text_color: Option<Color>,
+    /// Border descriptor.
     pub border: Option<Border>,
+    /// Shadow descriptor.
     pub shadow: Option<Shadow>,
+    /// Hovered state.
     pub hovered: Option<Box<StyleMap>>,
+    /// Pressed state.
     pub pressed: Option<Box<StyleMap>>,
+    /// Disabled state.
     pub disabled: Option<Box<StyleMap>>,
+    /// Focused state.
     pub focused: Option<Box<StyleMap>>,
 }
 
 impl StyleMap {
+    /// Construct a new value.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Set or construct `base`.
     pub fn base(mut self, preset: &str) -> Self {
         self.base = Some(preset.to_string());
         self
     }
 
+    /// Set or construct `background`.
     pub fn background(mut self, bg: impl Into<Background>) -> Self {
         self.background = Some(bg.into());
         self
     }
 
+    /// Set or construct `text_color`.
     pub fn text_color(mut self, c: impl Into<Color>) -> Self {
         self.text_color = Some(c.into());
         self
     }
 
+    /// Set or construct `border`.
     pub fn border(mut self, b: Border) -> Self {
         self.border = Some(b);
         self
     }
 
+    /// Set or construct `shadow`.
     pub fn shadow(mut self, s: Shadow) -> Self {
         self.shadow = Some(s);
         self
     }
 
+    /// Set or construct `hovered`.
     pub fn hovered(mut self, f: impl FnOnce(StyleMap) -> StyleMap) -> Self {
         self.hovered = Some(Box::new(f(StyleMap::new())));
         self
     }
 
+    /// Set or construct `pressed`.
     pub fn pressed(mut self, f: impl FnOnce(StyleMap) -> StyleMap) -> Self {
         self.pressed = Some(Box::new(f(StyleMap::new())));
         self
     }
 
+    /// Set or construct `disabled`.
     pub fn disabled(mut self, f: impl FnOnce(StyleMap) -> StyleMap) -> Self {
         self.disabled = Some(Box::new(f(StyleMap::new())));
         self
     }
 
+    /// Set or construct `focused`.
     pub fn focused(mut self, f: impl FnOnce(StyleMap) -> StyleMap) -> Self {
         self.focused = Some(Box::new(f(StyleMap::new())));
         self
@@ -117,21 +136,27 @@ impl StyleMap {
 }
 
 impl Style {
+    /// Set or construct `primary`.
     pub fn primary() -> Self {
         Self::Preset("primary".into())
     }
+    /// Set or construct `secondary`.
     pub fn secondary() -> Self {
         Self::Preset("secondary".into())
     }
+    /// Set or construct `success`.
     pub fn success() -> Self {
         Self::Preset("success".into())
     }
+    /// Set or construct `danger`.
     pub fn danger() -> Self {
         Self::Preset("danger".into())
     }
+    /// Set or construct `warning`.
     pub fn warning() -> Self {
         Self::Preset("warning".into())
     }
+    /// Set or construct `text`.
     pub fn text() -> Self {
         Self::Preset("text".into())
     }

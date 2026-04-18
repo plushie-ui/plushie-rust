@@ -6,8 +6,11 @@ use crate::PlushieEnum;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 #[plushie_type(name = "horizontal_alignment")]
 pub enum HorizontalAlignment {
+    /// Left.
     Left,
+    /// Center.
     Center,
+    /// Right.
     Right,
 }
 
@@ -15,7 +18,10 @@ pub enum HorizontalAlignment {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PlushieEnum)]
 #[plushie_type(name = "vertical_alignment")]
 pub enum VerticalAlignment {
+    /// Top.
     Top,
+    /// Center.
     Center,
+    /// Bottom.
     Bottom,
 }

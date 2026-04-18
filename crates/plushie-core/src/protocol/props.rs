@@ -35,17 +35,26 @@ use serde_json::Value;
 /// Primitive values are stored inline (no boxing).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropValue {
+    /// Null.
     Null,
+    /// Bool.
     Bool(bool),
+    /// F64.
     F64(f64),
+    /// I64.
     I64(i64),
+    /// U64.
     U64(u64),
+    /// Str.
     Str(String),
+    /// Array.
     Array(Vec<PropValue>),
+    /// Object.
     Object(PropMap),
 }
 
 impl PropValue {
+    /// Borrow the value as a str.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Self::Str(s) => Some(s),
@@ -53,6 +62,7 @@ impl PropValue {
         }
     }
 
+    /// Borrow the value as a f64.
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             Self::F64(v) => Some(*v),
@@ -62,6 +72,7 @@ impl PropValue {
         }
     }
 
+    /// Borrow the value as a bool.
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Self::Bool(v) => Some(*v),
@@ -69,6 +80,7 @@ impl PropValue {
         }
     }
 
+    /// Borrow the value as a i64.
     pub fn as_i64(&self) -> Option<i64> {
         match self {
             Self::I64(v) => Some(*v),
@@ -78,6 +90,7 @@ impl PropValue {
         }
     }
 
+    /// Borrow the value as a u64.
     pub fn as_u64(&self) -> Option<u64> {
         match self {
             Self::U64(v) => Some(*v),
@@ -87,6 +100,7 @@ impl PropValue {
         }
     }
 
+    /// Borrow the value as a array.
     pub fn as_array(&self) -> Option<&[PropValue]> {
         match self {
             Self::Array(a) => Some(a),
@@ -94,6 +108,7 @@ impl PropValue {
         }
     }
 
+    /// Borrow the value as a object.
     pub fn as_object(&self) -> Option<&PropMap> {
         match self {
             Self::Object(m) => Some(m),
@@ -101,6 +116,7 @@ impl PropValue {
         }
     }
 
+    /// Returns true when the null condition holds.
     pub fn is_null(&self) -> bool {
         matches!(self, Self::Null)
     }
@@ -243,10 +259,12 @@ impl PartialEq for PropMap {
 impl Eq for PropMap {}
 
 impl PropMap {
+    /// Construct a new value.
     pub fn new() -> Self {
         Self(Vec::new())
     }
 
+    /// Return a new value with the capacity set.
     pub fn with_capacity(cap: usize) -> Self {
         Self(Vec::with_capacity(cap))
     }
@@ -278,13 +296,16 @@ impl PropMap {
         Some(self.0.remove(idx).1)
     }
 
+    /// Set or construct `contains_key`.
     pub fn contains_key(&self, key: &str) -> bool {
         self.0.iter().any(|(k, _)| k == key)
     }
 
+    /// Returns true when the empty condition holds.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+    /// Set or construct `len`.
     pub fn len(&self) -> usize {
         self.0.len()
     }

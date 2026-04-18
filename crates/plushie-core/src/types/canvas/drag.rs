@@ -69,8 +69,11 @@ impl PlushieType for DragBounds {
 #[derive(Debug, Clone, Copy, PartialEq, PlushieEnum)]
 #[plushie_type(name = "drag_axis")]
 pub enum DragAxis {
+    /// Both.
     Both,
+    /// X.
     X,
+    /// Y.
     Y,
 }
 

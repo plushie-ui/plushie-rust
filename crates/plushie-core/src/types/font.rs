@@ -103,6 +103,7 @@ pub struct Font {
 }
 
 impl Font {
+    /// Construct a new value.
     pub fn new() -> Self {
         Self {
             family: None,
@@ -112,21 +113,25 @@ impl Font {
         }
     }
 
+    /// Set or construct `family`.
     pub fn family(mut self, f: &str) -> Self {
         self.family = Some(f.to_string());
         self
     }
 
+    /// Set or construct `weight`.
     pub fn weight(mut self, w: FontWeight) -> Self {
         self.weight = Some(w);
         self
     }
 
+    /// Set or construct `style`.
     pub fn style(mut self, s: FontStyle) -> Self {
         self.style = Some(s);
         self
     }
 
+    /// Set or construct `stretch`.
     pub fn stretch(mut self, s: FontStretch) -> Self {
         self.stretch = Some(s);
         self

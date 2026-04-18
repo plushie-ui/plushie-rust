@@ -147,14 +147,19 @@ impl OutgoingEvent {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct KeyModifiers {
     #[serde(default)]
+    /// Whether Shift is held.
     pub shift: bool,
     #[serde(default)]
+    /// Whether Control is held.
     pub ctrl: bool,
     #[serde(default)]
+    /// Whether Alt is held.
     pub alt: bool,
     #[serde(default)]
+    /// Whether the Super/Command key is held.
     pub logo: bool,
     #[serde(default)]
+    /// Whether the Command key is held (macOS).
     pub command: bool,
 }
 
@@ -214,10 +219,12 @@ impl OutgoingEvent {
         Self::generic(family, id, value)
     }
 
+    /// Set or construct `click`.
     pub fn click(id: String) -> Self {
         Self::bare("click", id)
     }
 
+    /// Set or construct `input`.
     pub fn input(id: String, value: String) -> Self {
         Self {
             value: Some(Value::String(value)),
@@ -225,6 +232,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `submit`.
     pub fn submit(id: String, value: String) -> Self {
         Self {
             value: Some(Value::String(value)),
@@ -232,6 +240,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `toggle`.
     pub fn toggle(id: String, checked: bool) -> Self {
         Self {
             value: Some(Value::Bool(checked)),
@@ -239,6 +248,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `slide`.
     pub fn slide(id: String, value: f64) -> Self {
         Self {
             value: Some(serde_json::json!(sanitize_f64(value))),
@@ -247,6 +257,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `slide_release`.
     pub fn slide_release(id: String, value: f64) -> Self {
         Self {
             value: Some(serde_json::json!(sanitize_f64(value))),
@@ -254,6 +265,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `select`.
     pub fn select(id: String, value: String) -> Self {
         Self {
             value: Some(Value::String(value)),
@@ -268,6 +280,7 @@ impl OutgoingEvent {
     // (KeyEventData) are defined in plushie-widget-sdk, not here.
     // -----------------------------------------------------------------------
 
+    /// Set or construct `modifiers_changed`.
     pub fn modifiers_changed(tag: String, modifiers: KeyModifiers) -> Self {
         Self {
             modifiers: Some(modifiers),
@@ -280,6 +293,7 @@ impl OutgoingEvent {
     // Mouse events
     // -----------------------------------------------------------------------
 
+    /// Set or construct `cursor_moved`.
     pub fn cursor_moved(tag: String, x: f32, y: f32) -> Self {
         Self {
             value: Some(serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y)})),
@@ -288,14 +302,17 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `cursor_entered`.
     pub fn cursor_entered(tag: String) -> Self {
         Self::tagged("cursor_entered", tag)
     }
 
+    /// Set or construct `cursor_left`.
     pub fn cursor_left(tag: String) -> Self {
         Self::tagged("cursor_left", tag)
     }
 
+    /// Set or construct `button_pressed`.
     pub fn button_pressed(tag: String, button: String) -> Self {
         Self {
             value: Some(Value::String(button)),
@@ -303,6 +320,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `button_released`.
     pub fn button_released(tag: String, button: String) -> Self {
         Self {
             value: Some(Value::String(button)),
@@ -310,6 +328,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `wheel_scrolled`.
     pub fn wheel_scrolled(tag: String, delta_x: f32, delta_y: f32, unit: &str) -> Self {
         Self {
             value: Some(serde_json::json!({
@@ -340,10 +359,12 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `finger_pressed`.
     pub fn finger_pressed(tag: String, finger_id: u64, x: f32, y: f32) -> Self {
         Self::touch_event("finger_pressed", tag, finger_id, x, y)
     }
 
+    /// Set or construct `finger_moved`.
     pub fn finger_moved(tag: String, finger_id: u64, x: f32, y: f32) -> Self {
         Self {
             coalesce: Some(CoalesceHint::Replace),
@@ -351,10 +372,12 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `finger_lifted`.
     pub fn finger_lifted(tag: String, finger_id: u64, x: f32, y: f32) -> Self {
         Self::touch_event("finger_lifted", tag, finger_id, x, y)
     }
 
+    /// Set or construct `finger_lost`.
     pub fn finger_lost(tag: String, finger_id: u64, x: f32, y: f32) -> Self {
         Self::touch_event("finger_lost", tag, finger_id, x, y)
     }
@@ -363,10 +386,12 @@ impl OutgoingEvent {
     // IME events
     // -----------------------------------------------------------------------
 
+    /// Set or construct `ime_opened`.
     pub fn ime_opened(tag: String) -> Self {
         Self::tagged("ime_opened", tag)
     }
 
+    /// Set or construct `ime_preedit`.
     pub fn ime_preedit(tag: String, text: String, cursor: Option<std::ops::Range<usize>>) -> Self {
         let cursor_val = cursor
             .map(|r| serde_json::json!({"start": r.start, "end": r.end}))
@@ -377,6 +402,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `ime_commit`.
     pub fn ime_commit(tag: String, text: String) -> Self {
         Self {
             value: Some(serde_json::json!({"text": text})),
@@ -384,6 +410,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `ime_closed`.
     pub fn ime_closed(tag: String) -> Self {
         Self::tagged("ime_closed", tag)
     }
@@ -392,6 +419,7 @@ impl OutgoingEvent {
     // Window lifecycle events
     // -----------------------------------------------------------------------
 
+    /// Set or construct `window_opened`.
     pub fn window_opened(
         tag: String,
         window_id: String,
@@ -422,14 +450,17 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `window_closed`.
     pub fn window_closed(tag: String, window_id: String) -> Self {
         Self::window_event("window_closed", tag, window_id)
     }
 
+    /// Set or construct `window_close_requested`.
     pub fn window_close_requested(tag: String, window_id: String) -> Self {
         Self::window_event("window_close_requested", tag, window_id)
     }
 
+    /// Set or construct `window_moved`.
     pub fn window_moved(tag: String, window_id: String, x: f32, y: f32) -> Self {
         Self {
             value: Some(serde_json::json!({
@@ -441,6 +472,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `window_resized`.
     pub fn window_resized(tag: String, window_id: String, width: f32, height: f32) -> Self {
         Self {
             value: Some(serde_json::json!({
@@ -452,14 +484,17 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `window_focused`.
     pub fn window_focused(tag: String, window_id: String) -> Self {
         Self::window_event("window_focused", tag, window_id)
     }
 
+    /// Set or construct `window_unfocused`.
     pub fn window_unfocused(tag: String, window_id: String) -> Self {
         Self::window_event("window_unfocused", tag, window_id)
     }
 
+    /// Set or construct `window_rescaled`.
     pub fn window_rescaled(tag: String, window_id: String, scale_factor: f32) -> Self {
         Self {
             value: Some(serde_json::json!({
@@ -470,6 +505,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `file_hovered`.
     pub fn file_hovered(tag: String, window_id: String, path: String) -> Self {
         Self {
             value: Some(serde_json::json!({
@@ -480,6 +516,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `file_dropped`.
     pub fn file_dropped(tag: String, window_id: String, path: String) -> Self {
         Self {
             value: Some(serde_json::json!({
@@ -490,6 +527,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `files_hovered_left`.
     pub fn files_hovered_left(tag: String, window_id: String) -> Self {
         Self::window_event("files_hovered_left", tag, window_id)
     }
@@ -498,6 +536,7 @@ impl OutgoingEvent {
     // Animation / theme / system events
     // -----------------------------------------------------------------------
 
+    /// Set or construct `animation_frame`.
     pub fn animation_frame(tag: String, timestamp_millis: u128) -> Self {
         Self {
             value: Some(serde_json::json!({"timestamp": timestamp_millis})),
@@ -506,6 +545,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `theme_changed`.
     pub fn theme_changed(tag: String, mode: String) -> Self {
         Self {
             value: Some(Value::String(mode)),
@@ -541,6 +581,7 @@ impl OutgoingEvent {
     // PaneGrid events
     // -----------------------------------------------------------------------
 
+    /// Set or construct `pane_resized`.
     pub fn pane_resized(id: String, split: String, ratio: f32) -> Self {
         Self {
             value: Some(serde_json::json!({"split": split, "ratio": sanitize_f32(ratio)})),
@@ -549,6 +590,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `pane_dragged`.
     pub fn pane_dragged(
         id: String,
         kind: &str,
@@ -573,6 +615,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `pane_clicked`.
     pub fn pane_clicked(id: String, pane: String) -> Self {
         Self {
             value: Some(serde_json::json!({"pane": pane})),
@@ -580,6 +623,7 @@ impl OutgoingEvent {
         }
     }
 
+    /// Set or construct `pane_focus_cycle`.
     pub fn pane_focus_cycle(id: String, pane: String) -> Self {
         Self {
             value: Some(serde_json::json!({"pane": pane})),
@@ -591,6 +635,7 @@ impl OutgoingEvent {
     // TextInput paste event
     // -----------------------------------------------------------------------
 
+    /// Set or construct `paste`.
     pub fn paste(id: String, text: String) -> Self {
         Self {
             value: Some(Value::String(text)),
@@ -666,6 +711,7 @@ impl OutgoingEvent {
     // ComboBox option hovered event
     // -----------------------------------------------------------------------
 
+    /// Set or construct `option_hovered`.
     pub fn option_hovered(id: String, value: String) -> Self {
         Self {
             value: Some(Value::String(value)),
@@ -678,6 +724,7 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     #[allow(clippy::too_many_arguments)]
+    /// Set or construct `scroll`.
     pub fn scroll(
         id: String,
         abs_x: f32,
@@ -902,13 +949,19 @@ fn sanitize_f64(v: f64) -> f64 {
 #[derive(Debug, Serialize)]
 pub struct EffectResponse {
     #[serde(rename = "type")]
+    /// Message type.
     pub message_type: &'static str,
+    /// Session.
     pub session: String,
+    /// Target widget ID.
     pub id: String,
+    /// Status.
     pub status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Operation result payload.
     pub result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Error payload.
     pub error: Option<String>,
 }
 
@@ -980,12 +1033,16 @@ impl EffectResponse {
 #[derive(Debug, Serialize)]
 pub struct EffectStubAck {
     #[serde(rename = "type")]
+    /// Message type.
     pub message_type: &'static str,
+    /// Session.
     pub session: String,
+    /// Event kind string used on the wire.
     pub kind: String,
 }
 
 impl EffectStubAck {
+    /// Set or construct `registered`.
     pub fn registered(kind: String) -> Self {
         Self {
             message_type: "effect_stub_register_ack",
@@ -994,6 +1051,7 @@ impl EffectStubAck {
         }
     }
 
+    /// Set or construct `unregistered`.
     pub fn unregistered(kind: String) -> Self {
         Self {
             message_type: "effect_stub_unregister_ack",
@@ -1002,6 +1060,7 @@ impl EffectStubAck {
         }
     }
 
+    /// Return a new value with the session set.
     pub fn with_session(mut self, session: impl Into<String>) -> Self {
         self.session = session.into();
         self
@@ -1012,14 +1071,20 @@ impl EffectStubAck {
 #[derive(Debug, Serialize)]
 pub struct QueryResponse {
     #[serde(rename = "type")]
+    /// Message type.
     pub message_type: &'static str,
+    /// Session.
     pub session: String,
+    /// Target widget ID.
     pub id: String,
+    /// Target identifier.
     pub target: String,
+    /// Raw bytes (pixels, font, etc.).
     pub data: Value,
 }
 
 impl QueryResponse {
+    /// Construct a new value.
     pub fn new(id: String, target: String, data: Value) -> Self {
         Self {
             message_type: "query_response",
@@ -1041,13 +1106,18 @@ impl QueryResponse {
 #[derive(Debug, Serialize)]
 pub struct InteractResponse {
     #[serde(rename = "type")]
+    /// Message type.
     pub message_type: &'static str,
+    /// Session.
     pub session: String,
+    /// Target widget ID.
     pub id: String,
+    /// Events.
     pub events: Vec<OutgoingEvent>,
 }
 
 impl InteractResponse {
+    /// Construct a new value.
     pub fn new(id: String, events: Vec<OutgoingEvent>) -> Self {
         Self {
             message_type: "interact_response",
@@ -1076,15 +1146,21 @@ impl InteractResponse {
 #[allow(dead_code)]
 pub struct TreeHashResponse {
     #[serde(rename = "type")]
+    /// Message type.
     pub message_type: &'static str,
+    /// Session.
     pub session: String,
+    /// Target widget ID.
     pub id: String,
+    /// Identifier string.
     pub name: String,
+    /// Hash.
     pub hash: String,
 }
 
 #[allow(dead_code)]
 impl TreeHashResponse {
+    /// Construct a new value.
     pub fn new(id: String, name: String, hash: String) -> Self {
         Self {
             message_type: "tree_hash_response",
@@ -1106,13 +1182,18 @@ impl TreeHashResponse {
 #[derive(Debug, Serialize)]
 pub struct ResetResponse {
     #[serde(rename = "type")]
+    /// Message type.
     pub message_type: &'static str,
+    /// Session.
     pub session: String,
+    /// Target widget ID.
     pub id: String,
+    /// Status.
     pub status: &'static str,
 }
 
 impl ResetResponse {
+    /// Set or construct `ok`.
     pub fn ok(id: String) -> Self {
         Self {
             message_type: "reset_response",

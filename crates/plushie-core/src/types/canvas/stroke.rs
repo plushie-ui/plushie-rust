@@ -32,8 +32,11 @@ pub struct Stroke {
 #[derive(Debug, Clone, Copy, PartialEq, PlushieEnum)]
 #[plushie_type(name = "line_cap")]
 pub enum LineCap {
+    /// Butt.
     Butt,
+    /// Round.
     Round,
+    /// Square.
     Square,
 }
 
@@ -41,8 +44,11 @@ pub enum LineCap {
 #[derive(Debug, Clone, Copy, PartialEq, PlushieEnum)]
 #[plushie_type(name = "line_join")]
 pub enum LineJoin {
+    /// Miter.
     Miter,
+    /// Round.
     Round,
+    /// Bevel.
     Bevel,
 }
 

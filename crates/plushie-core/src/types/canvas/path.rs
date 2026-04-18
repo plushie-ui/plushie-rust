@@ -11,60 +11,104 @@ use crate::types::{Angle, PlushieType, border::Radius};
 /// transmitted in degrees (matching the cross-SDK convention).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PathCommand {
+    /// Move To.
     MoveTo {
+        /// X coordinate.
         x: f32,
+        /// Y coordinate.
         y: f32,
     },
+    /// Line To.
     LineTo {
+        /// X coordinate.
         x: f32,
+        /// Y coordinate.
         y: f32,
     },
+    /// Bezier To.
     BezierTo {
+        /// Cp1x.
         cp1x: f32,
+        /// Cp1y.
         cp1y: f32,
+        /// Cp2x.
         cp2x: f32,
+        /// Cp2y.
         cp2y: f32,
+        /// X coordinate.
         x: f32,
+        /// Y coordinate.
         y: f32,
     },
+    /// Quadratic To.
     QuadraticTo {
+        /// Cpx.
         cpx: f32,
+        /// Cpy.
         cpy: f32,
+        /// X coordinate.
         x: f32,
+        /// Y coordinate.
         y: f32,
     },
+    /// Arc.
     Arc {
+        /// Center X coordinate.
         cx: f32,
+        /// Center Y coordinate.
         cy: f32,
+        /// Corner or drop radius.
         radius: f32,
+        /// Starting angle.
         start_angle: Angle,
+        /// Ending angle.
         end_angle: Angle,
     },
+    /// Arc To.
     ArcTo {
+        /// X1.
         x1: f32,
+        /// Y1.
         y1: f32,
+        /// X2.
         x2: f32,
+        /// Y2.
         y2: f32,
+        /// Corner or drop radius.
         radius: f32,
     },
+    /// Ellipse.
     Ellipse {
+        /// Center X coordinate.
         cx: f32,
+        /// Center Y coordinate.
         cy: f32,
+        /// X radius.
         rx: f32,
+        /// Y radius.
         ry: f32,
+        /// Rotation angle.
         rotation: Angle,
+        /// Starting angle.
         start_angle: Angle,
+        /// Ending angle.
         end_angle: Angle,
     },
+    /// Rounded Rect.
     RoundedRect {
+        /// X coordinate.
         x: f32,
+        /// Y coordinate.
         y: f32,
+        /// W.
         w: f32,
+        /// H.
         h: f32,
         /// Corner radius. Accepts a scalar `f32` (uniform) or a
         /// [`Radius::PerCorner`] with per-corner values.
         radius: Radius,
     },
+    /// Close.
     Close,
 }
 

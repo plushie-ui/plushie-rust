@@ -52,7 +52,9 @@ pub enum Selector {
     /// qualified id `"main#form/save"`. When `window_id` is set, the
     /// search is restricted to that window's subtree.
     Id {
+        /// Target widget ID.
         widget_id: String,
+        /// Target window ID.
         window_id: Option<String>,
     },
     /// Match a widget by its visible text content.

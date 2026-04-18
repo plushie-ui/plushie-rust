@@ -47,6 +47,7 @@ rmpv = { version = "1", features = ["with-serde"] }
 
 thiserror = "2"
 parking_lot = "0.12"
+strum = { version = "0.26", features = ["derive"] }
 # Pin usvg explicitly so RustSec advisories against the SVG parser
 # surface at the workspace dep resolution layer. iced's svg pipeline
 # pulls usvg in transitively; this pin keeps the version stable across

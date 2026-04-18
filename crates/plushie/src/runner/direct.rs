@@ -45,6 +45,7 @@ struct DirectApp<A: App> {
     current_tree: Option<TreeNode>,
     window_iced_ids: HashMap<String, plushie_widget_sdk::iced::window::Id>,
     widget_store: WidgetStateStore,
+    memo_cache: crate::runtime::MemoCache,
     /// Handles for running async tasks, keyed by tag for cancellation.
     running_tasks: HashMap<String, plushie_widget_sdk::iced::task::Handle>,
     /// Subscription lifecycle manager.
@@ -85,6 +86,7 @@ impl<A: App> DirectApp<A> {
             current_tree: None,
             window_iced_ids: HashMap::new(),
             widget_store: WidgetStateStore::new(),
+            memo_cache: crate::runtime::MemoCache::new(),
             running_tasks: HashMap::new(),
             sub_manager: SubscriptionManager::new(),
             active_timers: HashMap::new(),
@@ -335,6 +337,7 @@ impl<A: App> DirectApp<A> {
             &mut self.view_errors,
             &self.model,
             &mut self.widget_store,
+            &mut self.memo_cache,
             &fallback,
         );
         let mut tree = match outcome {

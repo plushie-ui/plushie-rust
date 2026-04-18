@@ -79,9 +79,12 @@ pub fn run_guarded_view<A: App>(
     state: &mut ViewErrors,
     model: &A::Model,
     widget_store: &mut WidgetStateStore,
+    memo_cache: &mut crate::runtime::MemoCache,
     last_good: &TreeNode,
 ) -> ViewOutcome {
-    let result = catch_unwind(AssertUnwindSafe(|| prepare_tree::<A>(model, widget_store)));
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        prepare_tree::<A>(model, widget_store, memo_cache)
+    }));
     match result {
         Ok((tree, warnings)) => {
             state.consecutive = 0;

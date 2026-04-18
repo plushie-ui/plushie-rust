@@ -110,7 +110,7 @@ pub(crate) fn finalize_a11y(tree: &mut TreeNode, mut ctx: WalkCtx) -> (Vec<Strin
 /// node's contribution; `exit` truncates back to the pre-enter length.
 /// Normalize-specific state (duplicate-ID set, depth counter) stays
 /// inside the transform so `WalkCtx` can remain scope-only.
-pub(crate) struct NormalizeTransform {
+pub(crate) struct NormalizeTransform<'a> {
     seen_ids: HashSet<String>,
     /// Length to truncate `ctx.scope` to on `exit` for each node on
     /// the stack. Mirrors the recursion frames.
@@ -121,20 +121,46 @@ pub(crate) struct NormalizeTransform {
     /// Mirrored via `skip_children` (children are never truncated
     /// destructively; the walker just doesn't recurse into them).
     truncate_children: Vec<bool>,
+    /// Per-node memo state: if the node was a memo hit we suppress
+    /// descent and skip writing back to the cache; if it was a miss
+    /// we stash the (scoped_id, deps_hash) so `exit` can store the
+    /// freshly-normalized children. `None` for non-memo nodes.
+    memo_stack: Vec<Option<MemoFrame>>,
+    /// Optional memo cache. `None` disables memoization entirely.
+    memo_cache: Option<&'a mut super::memo_cache::MemoCache>,
 }
 
-impl NormalizeTransform {
+/// Per-memo-node state pushed onto `memo_stack`. On cache hit, the
+/// `was_hit` flag keeps `exit` from re-storing the (unchanged)
+/// subtree; on miss, `deps_hash` is stored alongside the scoped id
+/// so the new normalized children can be cached.
+struct MemoFrame {
+    scoped_id: String,
+    deps_hash: u64,
+    was_hit: bool,
+}
+
+impl<'a> NormalizeTransform<'a> {
+    #[cfg(any(test, feature = "wire"))]
     pub(crate) fn new() -> Self {
+        Self::with_memo_cache(None)
+    }
+
+    pub(crate) fn with_memo_cache(
+        memo_cache: Option<&'a mut super::memo_cache::MemoCache>,
+    ) -> Self {
         Self {
             seen_ids: HashSet::new(),
             scope_stack: Vec::new(),
             depth: 0,
             truncate_children: Vec::new(),
+            memo_stack: Vec::new(),
+            memo_cache,
         }
     }
 }
 
-impl TreeTransform for NormalizeTransform {
+impl TreeTransform for NormalizeTransform<'_> {
     fn enter(&mut self, node: &mut TreeNode, ctx: &mut WalkCtx) {
         // Defence-in-depth against runaway recursion. The walker is
         // recursive itself, so halting here matters. We still run
@@ -154,6 +180,7 @@ impl TreeTransform for NormalizeTransform {
             node.children.clear();
             self.scope_stack.push(ctx.scope.len());
             self.truncate_children.push(true);
+            self.memo_stack.push(None);
             self.depth += 1;
             return;
         }
@@ -226,12 +253,26 @@ impl TreeTransform for NormalizeTransform {
         }
 
         node.id = scoped_id;
+
+        // Memoization: if this is a __memo__ node and the deps hash
+        // matches the cached entry for this scoped id, swap in the
+        // cached normalized children and skip descent entirely. On a
+        // miss, remember enough state to cache the result on exit.
+        let memo_frame = self.consult_memo(node);
+        let truncate = memo_frame.as_ref().is_some_and(|f| f.was_hit);
+
         self.scope_stack.push(prev_scope_len);
-        self.truncate_children.push(false);
+        self.truncate_children.push(truncate);
+        self.memo_stack.push(memo_frame);
         self.depth += 1;
     }
 
-    fn exit(&mut self, _node: &mut TreeNode, ctx: &mut WalkCtx) {
+    fn exit(&mut self, node: &mut TreeNode, ctx: &mut WalkCtx) {
+        // Pop memo frame first so we know whether to cache on the way
+        // out; then restore scope.
+        if let Some(Some(frame)) = self.memo_stack.pop() {
+            self.finish_memo(node, frame);
+        }
         if let Some(prev_len) = self.scope_stack.pop() {
             ctx.scope.truncate(prev_len);
         }
@@ -241,6 +282,55 @@ impl TreeTransform for NormalizeTransform {
 
     fn skip_children(&self, _node: &TreeNode, _ctx: &WalkCtx) -> bool {
         self.truncate_children.last().copied().unwrap_or(false)
+    }
+}
+
+impl NormalizeTransform<'_> {
+    /// Pre-descend memo lookup. Mutates `node.children` in place when
+    /// a cache hit installs the previously-normalized subtree. The
+    /// returned frame tells `exit` whether to cache the freshly-
+    /// walked children.
+    fn consult_memo(&mut self, node: &mut TreeNode) -> Option<MemoFrame> {
+        if node.type_name != "__memo__" {
+            return None;
+        }
+        let cache = self.memo_cache.as_deref_mut()?;
+        // Accept both Typed and Wire props: `get_value` normalises to
+        // serde_json::Value so the memo marker works regardless of
+        // how the caller built the view tree.
+        let deps_hash = node
+            .props
+            .get_value("__memo_deps__")
+            .and_then(|v| v.as_u64())?;
+
+        cache.mark_live(&node.id);
+
+        if let Some(cached) = cache.get(&node.id, deps_hash) {
+            node.children = cached.to_vec();
+            return Some(MemoFrame {
+                scoped_id: node.id.clone(),
+                deps_hash,
+                was_hit: true,
+            });
+        }
+
+        Some(MemoFrame {
+            scoped_id: node.id.clone(),
+            deps_hash,
+            was_hit: false,
+        })
+    }
+
+    /// Post-descend memo cache write. On a miss, stash the freshly-
+    /// normalized children. On a hit we have nothing to do - the
+    /// cached entry is already what's in `node.children`.
+    fn finish_memo(&mut self, node: &TreeNode, frame: MemoFrame) {
+        if frame.was_hit {
+            return;
+        }
+        if let Some(cache) = self.memo_cache.as_deref_mut() {
+            cache.insert(frame.scoped_id, frame.deps_hash, node.children.clone());
+        }
     }
 }
 
@@ -615,6 +705,125 @@ fn widget_type_to_role(widget_type: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Normalize a tree through both the scope-rewrite transform and
+    /// the memo cache, so tests can assert memo-hit behaviour.
+    fn normalize_with_memo(
+        tree: &TreeNode,
+        cache: &mut super::super::memo_cache::MemoCache,
+    ) -> (TreeNode, Vec<String>) {
+        cache.begin_cycle();
+        let mut result = tree.clone();
+        let mut transform = NormalizeTransform::with_memo_cache(Some(cache));
+        let mut ctx = WalkCtx::default();
+        walk(&mut result, &mut [&mut transform], &mut ctx);
+        drop(transform);
+        cache.finish_cycle();
+        let (warnings, _ctx) = finalize_a11y(&mut result, ctx);
+        (result, warnings)
+    }
+
+    fn memo_node(key: &str, deps_hash: u64, inner: TreeNode) -> TreeNode {
+        let mut props = plushie_core::protocol::PropMap::new();
+        props.insert("__memo_deps__", deps_hash);
+        TreeNode {
+            id: format!("memo:{key}"),
+            type_name: "__memo__".to_string(),
+            props: plushie_core::protocol::Props::Typed(props),
+            children: vec![inner],
+        }
+    }
+
+    #[test]
+    fn memo_hit_reuses_cached_subtree() {
+        use super::super::memo_cache::MemoCache;
+        let mut cache = MemoCache::new();
+
+        // First render: miss, populates the cache.
+        let tree1 = node(
+            "root",
+            "column",
+            vec![memo_node(
+                "hdr",
+                42,
+                node("inner", "text", vec![node("leaf", "text", vec![])]),
+            )],
+        );
+        let (out1, _warn1) = normalize_with_memo(&tree1, &mut cache);
+        let memo1 = &out1.children[0];
+        // memo id got scope-prefixed into root's scope.
+        assert_eq!(memo1.id, "root/memo:hdr");
+        assert_eq!(memo1.children[0].id, "root/memo:hdr/inner");
+        assert_eq!(memo1.children[0].children[0].id, "root/memo:hdr/inner/leaf");
+
+        // Second render: same deps hash, different inner contents.
+        // The hit should restore the cached inner, ignoring the
+        // freshly-authored tree.
+        let tree2 = node(
+            "root",
+            "column",
+            vec![memo_node(
+                "hdr",
+                42,
+                node("different", "text", vec![node("leaf2", "text", vec![])]),
+            )],
+        );
+        let (out2, _warn2) = normalize_with_memo(&tree2, &mut cache);
+        let memo2 = &out2.children[0];
+        assert_eq!(memo2.id, "root/memo:hdr");
+        // Cache hit restored the earlier "inner" subtree.
+        assert_eq!(memo2.children[0].id, "root/memo:hdr/inner");
+    }
+
+    #[test]
+    fn memo_miss_on_deps_change_renormalizes() {
+        use super::super::memo_cache::MemoCache;
+        let mut cache = MemoCache::new();
+
+        let tree1 = node(
+            "root",
+            "column",
+            vec![memo_node("hdr", 1, node("inner_a", "text", vec![]))],
+        );
+        let (_out1, _w1) = normalize_with_memo(&tree1, &mut cache);
+
+        // Deps change: the freshly-authored subtree should appear,
+        // not the cached one.
+        let tree2 = node(
+            "root",
+            "column",
+            vec![memo_node("hdr", 2, node("inner_b", "text", vec![]))],
+        );
+        let (out2, _w2) = normalize_with_memo(&tree2, &mut cache);
+        assert_eq!(out2.children[0].children[0].id, "root/memo:hdr/inner_b");
+    }
+
+    #[test]
+    fn nested_memos_each_memoize_independently() {
+        use super::super::memo_cache::MemoCache;
+        let mut cache = MemoCache::new();
+
+        let inner_memo = memo_node("inner", 10, node("leaf", "text", vec![]));
+        let outer_memo = memo_node("outer", 20, inner_memo);
+        let tree1 = node("root", "column", vec![outer_memo]);
+        let (out1, _w1) = normalize_with_memo(&tree1, &mut cache);
+        let outer1 = &out1.children[0];
+        assert_eq!(outer1.id, "root/memo:outer");
+        let inner1 = &outer1.children[0];
+        assert_eq!(inner1.id, "root/memo:outer/memo:inner");
+        assert_eq!(inner1.children[0].id, "root/memo:outer/memo:inner/leaf");
+
+        // Second render: both hit.
+        let inner_memo2 = memo_node("inner", 10, node("other_leaf", "text", vec![]));
+        let outer_memo2 = memo_node("outer", 20, inner_memo2);
+        let tree2 = node("root", "column", vec![outer_memo2]);
+        let (out2, _w2) = normalize_with_memo(&tree2, &mut cache);
+        let outer2 = &out2.children[0];
+        let inner2 = &outer2.children[0];
+        // The cached outer returns the cached inner subtree with
+        // `leaf`, not `other_leaf`.
+        assert_eq!(inner2.children[0].id, "root/memo:outer/memo:inner/leaf");
+    }
 
     fn node(id: &str, type_name: &str, children: Vec<TreeNode>) -> TreeNode {
         TreeNode {

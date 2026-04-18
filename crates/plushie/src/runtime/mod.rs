@@ -10,10 +10,13 @@ use plushie_core::tree_walk::{WalkCtx, walk};
 use crate::App;
 use crate::widget::{ExpandWidgetsTransform, WidgetStateStore, register_expanders};
 
+pub(crate) mod memo_cache;
 pub mod normalize;
 pub mod subscriptions;
 pub mod tree_diff;
 pub mod view_errors;
+
+pub(crate) use memo_cache::MemoCache;
 
 /// Build, expand, and normalize a view tree from the current model.
 ///
@@ -33,6 +36,7 @@ pub mod view_errors;
 pub fn prepare_tree<A: App>(
     model: &A::Model,
     widget_store: &mut WidgetStateStore,
+    memo_cache: &mut MemoCache,
 ) -> (TreeNode, Vec<String>) {
     let mut registrar = crate::widget::WidgetRegistrar::new();
     let mut tree = A::view(model, &mut registrar);
@@ -41,10 +45,15 @@ pub fn prepare_tree<A: App>(
     // walking so the expand transform has up-to-date state.
     register_expanders(widget_store, registrar);
 
+    memo_cache.begin_cycle();
     let mut expand = ExpandWidgetsTransform::new(widget_store);
-    let mut normalize_pass = normalize::NormalizeTransform::new();
+    let mut normalize_pass = normalize::NormalizeTransform::with_memo_cache(Some(memo_cache));
     let mut ctx = WalkCtx::default();
     walk(&mut tree, &mut [&mut expand, &mut normalize_pass], &mut ctx);
+    // Dropping `normalize_pass` releases the &mut borrow on the
+    // memo cache so we can prune it below.
+    drop(normalize_pass);
+    memo_cache.finish_cycle();
 
     // Post-expansion a11y rewrite + missing-name checks. These stay
     // in a separate traversal because they need the full set of

@@ -759,6 +759,32 @@ beyond `title` and `body`:
 | `urgency` | string | `"low"`, `"normal"` (default), or `"critical"` |
 | `sound` | string | Sound theme name (e.g. `"message-new-instant"`) |
 
+**Security notes for effects.**
+
+- **File dialog results (`file_open`, `file_open_multiple`, `file_save`,
+  `directory_select`, `directory_select_multiple`):** the returned path
+  reflects the user's selection at the moment the dialog resolved. File
+  metadata can change between the dialog returning and the host acting
+  on the path (TOCTOU: time-of-check to time-of-use). Hosts that read,
+  write, or execute based on a returned path should re-verify the file
+  state (existence, type, permissions, symlink target) after opening
+  rather than trusting the path alone.
+- **`clipboard_write_html`:** the HTML string is written to the OS
+  clipboard verbatim. No sanitisation is applied. Apps that accept
+  user-supplied HTML and paste it to the clipboard must sanitise before
+  calling this effect; the receiving application decides how to render
+  the payload and may execute embedded scripts or load external
+  resources depending on the target. `alt_text` is stored as the
+  plain-text fallback for clipboards that refuse HTML.
+- **`notification`:** `title`, `body`, `icon`, and `sound` are forwarded
+  as-is to the platform notification daemon (DBus org.freedesktop on
+  Linux, Windows Toast, macOS User Notifications). Specific daemons
+  interpret the fields differently; older freedesktop daemons historically
+  interpret markup in `body`, icon strings starting with `/` are treated
+  as file paths, and sound names are resolved against the active
+  sound theme. Hosts that surface untrusted strings in these fields
+  should sanitise before calling this effect.
+
 ### ImageOp
 
 Manage in-memory image handles for use by image widgets.

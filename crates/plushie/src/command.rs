@@ -877,8 +877,19 @@ impl Command {
     }
 
     // -- Effects --
+    //
+    // File-dialog paths have a TOCTOU (time-of-check, time-of-use)
+    // boundary: the returned path reflects the user's selection at
+    // the moment the dialog closed, not the filesystem state at the
+    // moment the host reads or writes through it. Hosts that open,
+    // execute, or otherwise trust a dialog-returned path should
+    // re-verify existence, type, symlink target, and permissions
+    // before acting on it.
 
     /// Open a file-open dialog.
+    ///
+    /// See the module header for the TOCTOU note that applies to
+    /// every file-dialog result.
     pub fn file_open(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
@@ -915,6 +926,9 @@ impl Command {
     }
 
     /// Open a file-save dialog.
+    ///
+    /// Subject to the same TOCTOU boundary as `file_open`: re-verify
+    /// the chosen path before writing.
     pub fn file_save(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
@@ -933,6 +947,8 @@ impl Command {
     }
 
     /// Open a single-directory selection dialog.
+    ///
+    /// Subject to the same TOCTOU boundary as `file_open`.
     pub fn directory_select(tag: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
@@ -996,6 +1012,14 @@ impl Command {
     }
 
     /// Write HTML content to the system clipboard.
+    ///
+    /// The HTML is written verbatim; the renderer does not
+    /// sanitise it. Callers that accept user-supplied HTML and
+    /// forward it to this effect must sanitise before calling.
+    /// Receiving applications decide how to render the payload and
+    /// may execute embedded scripts or load external resources.
+    /// `alt_text` is stored as the plain-text fallback for
+    /// clipboards that refuse HTML.
     pub fn clipboard_write_html(tag: &str, html: &str, alt_text: Option<&str>) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),
@@ -1035,6 +1059,15 @@ impl Command {
     }
 
     /// Show a desktop notification.
+    ///
+    /// `title`, `body`, `icon`, and `sound` are forwarded to the
+    /// platform notification daemon verbatim. Different daemons
+    /// interpret the fields differently; some historical
+    /// freedesktop daemons interpret markup in `body`, icon names
+    /// starting with `/` are treated as file paths, and sound
+    /// names are resolved against the active sound theme. Callers
+    /// that surface untrusted strings in these fields should
+    /// sanitise before calling this effect.
     pub fn notification(tag: &str, title: &str, body: &str) -> Self {
         Self::Renderer(RendererOp::Effect {
             tag: tag.to_string(),

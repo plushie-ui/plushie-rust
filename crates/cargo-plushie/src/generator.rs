@@ -198,30 +198,13 @@ fn render_cargo_toml(config: &WorkspaceConfig<'_>) -> String {
 
     if let Some(source) = &config.source_path {
         out.push('\n');
-        out.push_str("[patch.crates-io]\n");
-        let sdk_abs = source.join("crates/plushie-widget-sdk");
-        let ren_abs = source.join("crates/plushie-renderer");
-        out.push_str(&format!(
-            "plushie-widget-sdk = {{ path = {:?} }}\n",
-            sdk_abs.display().to_string()
-        ));
-        out.push_str(&format!(
-            "plushie-renderer = {{ path = {:?} }}\n",
-            ren_abs.display().to_string()
-        ));
-        // Forward any additional [patch.crates-io] entries declared at
-        // the plushie-rust workspace root so the generated workspace
-        // shares the same overrides (mirrors Elixir's
-        // renderer_patch_entries/1).
-        for (name, path) in forwarded_patches(source).unwrap_or_default() {
-            if name == "plushie-widget-sdk" || name == "plushie-renderer" {
-                continue;
-            }
-            out.push_str(&format!(
-                "{name} = {{ path = {:?} }}\n",
-                path.display().to_string()
-            ));
-        }
+        // Emit patches for every plushie-rust crate plus any
+        // forwarded non-plushie patches (plushie-iced overrides, etc.)
+        // declared at the source workspace root. The scratch
+        // `.cargo/config.toml` written by `patch_config` uses the same
+        // entries so both files stay in sync.
+        let entries = crate::patch_config::all_patches(source);
+        out.push_str(&crate::patch_config::render_patch_block(&entries));
     }
 
     out
@@ -240,60 +223,6 @@ fn render_main_rs(config: &WorkspaceConfig<'_>) -> String {
     }
     body.push_str(";\n    plushie_renderer::run(builder)\n}\n");
     body
-}
-
-/// Parse `[patch.crates-io]` entries from the plushie-rust source tree.
-///
-/// Reads both `<source>/Cargo.toml` (the committed workspace manifest)
-/// and `<source>/.cargo/config.toml` (a gitignored local-dev overrides
-/// file, e.g. redirecting `plushie-iced-*` crates to a sibling
-/// checkout). Entries from the committed manifest come first; any
-/// additional names found in the local config are appended. A name
-/// declared in both files keeps the first occurrence (Cargo.toml).
-///
-/// Returns `(name, resolved_path)` pairs for every entry whose `path`
-/// resolves to an existing directory relative to `source_path`.
-///
-/// The caller is expected to drop forwarding entries for
-/// `plushie-widget-sdk` and `plushie-renderer`, which the generator
-/// always emits explicitly.
-fn forwarded_patches(source_path: &Path) -> Option<Vec<(String, PathBuf)>> {
-    let mut out: Vec<(String, PathBuf)> = Vec::new();
-    let sources = [
-        source_path.join("Cargo.toml"),
-        source_path.join(".cargo/config.toml"),
-    ];
-    for manifest in &sources {
-        let Ok(contents) = std::fs::read_to_string(manifest) else {
-            continue;
-        };
-        let Ok(parsed) = contents.parse::<toml_edit::DocumentMut>() else {
-            continue;
-        };
-        let Some(patch) = parsed.get("patch").and_then(|p| p.get("crates-io")) else {
-            continue;
-        };
-        let Some(table) = patch.as_table() else {
-            continue;
-        };
-        for (name, item) in table.iter() {
-            if out.iter().any(|(existing, _)| existing == name) {
-                continue;
-            }
-            let entry = item.as_inline_table().map(|t| t.clone().into_table());
-            let Some(entry) = entry else {
-                continue;
-            };
-            let Some(path_value) = entry.get("path").and_then(|v| v.as_str()) else {
-                continue;
-            };
-            let resolved = source_path.join(path_value);
-            if resolved.is_dir() {
-                out.push((name.to_string(), resolved));
-            }
-        }
-    }
-    if out.is_empty() { None } else { Some(out) }
 }
 
 #[cfg(test)]
@@ -411,56 +340,6 @@ mod tests {
         assert!(cargo.contains("[patch.crates-io]"));
         assert!(cargo.contains("crates/plushie-widget-sdk"));
         assert!(cargo.contains("crates/plushie-renderer"));
-    }
-
-    #[test]
-    fn forwarded_patches_merges_cargo_toml_and_cargo_config() {
-        let src = tempdir().unwrap();
-        let src_root = src.path();
-
-        // Create sibling checkout dirs that the patches will resolve to.
-        std::fs::create_dir_all(src_root.join("crates/plushie-widget-sdk")).unwrap();
-        std::fs::create_dir_all(src_root.join("crates/plushie-renderer")).unwrap();
-        std::fs::create_dir_all(src_root.join("vendor/some-lib")).unwrap();
-        std::fs::create_dir_all(src_root.join("../plushie-iced-sibling")).unwrap();
-
-        // Main Cargo.toml declares one forwarded patch.
-        let cargo_toml = r#"
-[workspace]
-members = []
-
-[patch.crates-io]
-some-lib = { path = "vendor/some-lib" }
-plushie-widget-sdk = { path = "crates/plushie-widget-sdk" }
-"#;
-        std::fs::write(src_root.join("Cargo.toml"), cargo_toml).unwrap();
-
-        // .cargo/config.toml declares an additional local-only patch.
-        std::fs::create_dir_all(src_root.join(".cargo")).unwrap();
-        let config_toml = r#"
-[patch.crates-io]
-plushie-iced = { path = "../plushie-iced-sibling" }
-# Declared in both files: Cargo.toml wins.
-some-lib = { path = "vendor/some-lib" }
-"#;
-        std::fs::write(src_root.join(".cargo/config.toml"), config_toml).unwrap();
-
-        let patches = forwarded_patches(src_root).expect("patches parsed");
-        let names: Vec<&str> = patches.iter().map(|(n, _)| n.as_str()).collect();
-
-        assert!(names.contains(&"some-lib"), "Cargo.toml entry present");
-        assert!(
-            names.contains(&"plushie-widget-sdk"),
-            "Cargo.toml entry present"
-        );
-        assert!(
-            names.contains(&"plushie-iced"),
-            ".cargo/config.toml entry merged in"
-        );
-
-        // No duplicates from the overlap.
-        let some_lib_count = names.iter().filter(|n| **n == "some-lib").count();
-        assert_eq!(some_lib_count, 1, "duplicate entries dropped");
     }
 
     #[test]

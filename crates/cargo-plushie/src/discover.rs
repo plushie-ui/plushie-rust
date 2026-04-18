@@ -25,8 +25,16 @@ use std::path::{Path, PathBuf};
 /// [`Error::InvalidWidgetMetadata`] when a declared table is missing
 /// required keys (`type_name`, `constructor`).
 pub fn discover_widgets(manifest_dir: &Path) -> Result<Vec<WidgetMetadata>> {
+    // CWD must be the manifest directory so cargo's config walk picks
+    // up any `<manifest_dir>/.cargo/config.toml` [patch.crates-io]
+    // overrides that `cargo plushie build` dropped for host-SDK spec
+    // manifests. Without this, cargo walks config.toml up from the
+    // cargo-plushie binary's CWD (the app crate) and misses the
+    // scratch config entirely, which breaks `cargo metadata`
+    // resolution of unpublished workspace deps.
     let metadata = cargo_metadata::MetadataCommand::new()
         .manifest_path(manifest_dir.join("Cargo.toml"))
+        .current_dir(manifest_dir)
         .exec()
         .map_err(|e| Error::CargoMetadata(e.to_string()))?;
 

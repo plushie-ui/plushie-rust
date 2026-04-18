@@ -111,5 +111,6 @@ pub mod discover;
 pub mod doctor;
 pub mod download;
 pub mod generator;
+pub mod patch_config;
 pub mod platform;
 pub mod scaffold;

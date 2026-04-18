@@ -353,10 +353,13 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     let output_dir = target.join("plushie-renderer");
     std::fs::create_dir_all(&output_dir)?;
 
-    let discovered = discover::discover_widgets(&manifest_dir)?;
-
-    // Resolve app package metadata (name + version + optional
-    // [package.metadata.plushie] overrides) from the caller's manifest.
+    // Resolve app package metadata first (name + version + optional
+    // [package.metadata.plushie] overrides) using `--no-deps` so we
+    // don't need the full dep graph to resolve cleanly. Host SDKs
+    // generate "spec" manifests whose widget crates depend on
+    // unpublished plushie-rust versions; the full-graph discovery call
+    // below fails on those until we drop a `.cargo/config.toml` with
+    // patch overrides alongside the spec manifest.
     let metadata = cargo_metadata::MetadataCommand::new()
         .manifest_path(manifest_dir.join("Cargo.toml"))
         .no_deps()
@@ -396,12 +399,6 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
                 .collect()
         })
         .unwrap_or_default();
-    let widgets = if native_widgets_override.is_empty() {
-        discovered
-    } else {
-        filter_native_widgets(&app_pkg, &discovered, &native_widgets_override)?
-    };
-    discover::check_all_collisions(&widgets, BUILTIN_TYPE_NAMES)?;
 
     // PLUSHIE_RUST_SOURCE_PATH env wins over any per-package override; both
     // resolve to the absolute path to the plushie-rust checkout root.
@@ -421,6 +418,25 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
             None
         })
     });
+
+    // When the caller points at a local plushie-rust checkout, drop a
+    // `.cargo/config.toml` alongside the manifest so subsequent cargo
+    // invocations (starting with `discover_widgets` below) can resolve
+    // unpublished workspace deps via `[patch.crates-io]` redirects.
+    // Cargo's config walk starts from the current working directory,
+    // so `discover_widgets` runs `cargo metadata` with
+    // `current_dir(manifest_dir)` to pick this file up.
+    if let Some(source) = &source_path {
+        cargo_plushie::patch_config::write_scratch_cargo_config(&manifest_dir, source)?;
+    }
+
+    let discovered = discover::discover_widgets(&manifest_dir)?;
+    let widgets = if native_widgets_override.is_empty() {
+        discovered
+    } else {
+        filter_native_widgets(&app_pkg, &discovered, &native_widgets_override)?
+    };
+    discover::check_all_collisions(&widgets, BUILTIN_TYPE_NAMES)?;
 
     // cargo_metadata doesn't surface `[workspace.package].version`
     // separately; the app package version already resolves to it when

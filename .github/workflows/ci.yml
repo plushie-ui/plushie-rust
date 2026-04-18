@@ -77,8 +77,20 @@ jobs:
       # paths (process spawning, stdio framing, socket semantics) and
       # have historically broken on Windows without warning; the macOS
       # run guards against the reverse. Clippy and fmt stay Linux-only.
+      #
+      # The set mirrors `just test-wire` so CI and preflight catch
+      # regressions in the same places. `wire_connect` is cfg-gated to
+      # Unix at the crate level (it uses Unix-domain sockets), so the
+      # Windows job compiles it to an empty binary and runs zero tests
+      # from it without failing.
       - name: Smoke - session multiplexing
         run: cargo nextest run -p plushie-renderer --test session_multiplexing --profile ci
 
       - name: Smoke - wire mode
         run: cargo nextest run -p plushie --features wire --test wire_mode --profile ci
+
+      - name: Smoke - wire connect
+        run: cargo nextest run -p plushie --features wire --test wire_connect --profile ci
+
+      - name: Smoke - automation replay windowed
+        run: cargo nextest run -p plushie --features wire --test automation_replay_windowed --profile ci

@@ -41,6 +41,10 @@ jobs:
             os: windows-latest
             binary: plushie-renderer.exe
             asset: plushie-renderer-windows-x86_64.exe
+          - target: aarch64-pc-windows-msvc
+            os: windows-11-arm
+            binary: plushie-renderer.exe
+            asset: plushie-renderer-windows-aarch64.exe
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master

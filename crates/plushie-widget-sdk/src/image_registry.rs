@@ -127,6 +127,19 @@ impl ImageRegistry {
     }
 
     /// Store an image from encoded bytes (PNG, JPEG, etc.).
+    ///
+    /// Bounds-checking only sees the encoded byte stream at insert
+    /// time, not the decoded dimensions. `MAX_PIXEL_BYTES` caps the
+    /// encoded buffer, `MAX_TOTAL_BYTES` caps aggregate registry use,
+    /// and `MAX_DIMENSION` applies to raw RGBA input only (see
+    /// [`create_from_rgba`](Self::create_from_rgba)). A legitimate-
+    /// looking encoded image that decodes to e.g. 100k x 100k pixels
+    /// can still blow through the per-image pixel budget during
+    /// decode. The trade-off is deliberate: pre-decoding every
+    /// encoded image just to bounds-check it would double the work,
+    /// and iced's decoder does its own validation when the image is
+    /// rasterised. Hosts that take image bytes from untrusted sources
+    /// should pre-decode and re-encode at known dimensions.
     pub fn create_from_bytes(&mut self, name: &str, data: Vec<u8>) -> Result<(), String> {
         if data.len() > Self::MAX_PIXEL_BYTES {
             let msg = format!(

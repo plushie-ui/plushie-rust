@@ -27,7 +27,7 @@ pub struct WorkspaceConfig<'a> {
     /// Workspace version string (written into the generated
     /// Cargo.toml's `[package].version`).
     pub workspace_version: &'a str,
-    /// Optional `PLUSHIE_SOURCE_PATH` pointing at a local
+    /// Optional `PLUSHIE_RUST_SOURCE_PATH` pointing at a local
     /// plushie-rust checkout; when set, the generated Cargo.toml
     /// emits `[patch.crates-io]` forwarding entries for the
     /// plushie crates (and any patches declared at the source

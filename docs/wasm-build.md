@@ -22,7 +22,7 @@ cargo plushie build --wasm --wasm-dir dist  # custom output directory
 
 `cargo plushie build --wasm` wraps `wasm-pack` with the flags plushie
 expects (`--target web`), resolves the `plushie-renderer-wasm` source
-path from `PLUSHIE_SOURCE_PATH` or `[package.metadata.plushie].source_path`,
+path from `PLUSHIE_RUST_SOURCE_PATH` or `[package.metadata.plushie].source_path`,
 and places the bundle under `target/plushie/pkg/` by default. See
 [docs/build-tool.md](build-tool.md#cargo-plushie-build) for the full
 flag reference.

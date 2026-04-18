@@ -90,11 +90,11 @@ fn validate_kebab_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Resolve an optional `PLUSHIE_SOURCE_PATH` override to an absolute
+/// Resolve an optional `PLUSHIE_RUST_SOURCE_PATH` override to an absolute
 /// plushie-rust checkout. Returns `None` if the env var is unset or
 /// the path does not exist.
 fn source_path_override() -> Option<PathBuf> {
-    let path = std::env::var_os("PLUSHIE_SOURCE_PATH")?;
+    let path = std::env::var_os("PLUSHIE_RUST_SOURCE_PATH")?;
     let buf = PathBuf::from(path);
     std::fs::canonicalize(&buf).ok()
 }
@@ -168,7 +168,7 @@ pub fn scaffold_widget(opts: &NewWidgetOpts<'_>) -> Result<ScaffoldResult> {
     Ok(ScaffoldResult { crate_root })
 }
 
-/// When `PLUSHIE_SOURCE_PATH` is set and a sibling `plushie-iced`
+/// When `PLUSHIE_RUST_SOURCE_PATH` is set and a sibling `plushie-iced`
 /// checkout exists, scaffold a `.cargo/config.toml` that forwards the
 /// `paths = [".../plushie-iced"]` override so the scaffolded crate
 /// can compile against the fork the same way the source workspace
@@ -188,7 +188,7 @@ fn maybe_write_iced_paths_override(target: &Path) -> Result<()> {
     let cargo_dir = target.join(".cargo");
     std::fs::create_dir_all(&cargo_dir)?;
     let body = format!(
-        "# Forwards the PLUSHIE_SOURCE_PATH workspace's plushie-iced\n\
+        "# Forwards the PLUSHIE_RUST_SOURCE_PATH workspace's plushie-iced\n\
          # override so the scaffold compiles against the fork locally.\n\
          # Delete this file before publishing to crates.io.\n\
          paths = [{path:?}]\n",
@@ -200,7 +200,7 @@ fn maybe_write_iced_paths_override(target: &Path) -> Result<()> {
 
 /// Render the widget crate's `Cargo.toml`.
 ///
-/// When `PLUSHIE_SOURCE_PATH` is set the scaffold emits path
+/// When `PLUSHIE_RUST_SOURCE_PATH` is set the scaffold emits path
 /// dependencies pointing at the local checkout so the generated
 /// crate compiles against workspace crates that haven't been
 /// published yet. Without the env var, the scaffold targets

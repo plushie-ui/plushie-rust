@@ -103,5 +103,5 @@ fn write_if_changed_preserves_mtime_on_noop_regenerate() {
 // End-to-end smoke test (scaffold app + widget, run `cargo plushie
 // build`, launch the resulting binary and assert its `--version`) is
 // tracked separately. It requires cargo on PATH, a live
-// plushie-widget-sdk checkout on PLUSHIE_SOURCE_PATH, and several
+// plushie-widget-sdk checkout on PLUSHIE_RUST_SOURCE_PATH, and several
 // minutes of wall time, so it doesn't fit in this test module.

@@ -11,12 +11,12 @@
 //!
 //! This test is `#[ignore]` by default: it shells out to `cargo` in a
 //! tempdir and compiles a fresh renderer, which takes minutes on a
-//! cold target cache. It is also gated on `PLUSHIE_SOURCE_PATH`
+//! cold target cache. It is also gated on `PLUSHIE_RUST_SOURCE_PATH`
 //! pointing at the plushie-rust checkout so the scaffolder emits
 //! path deps instead of hitting crates.io. Run explicitly with:
 //!
 //! ```sh
-//! PLUSHIE_SOURCE_PATH=$(pwd) cargo test -p cargo-plushie --test end_to_end -- --ignored
+//! PLUSHIE_RUST_SOURCE_PATH=$(pwd) cargo test -p cargo-plushie --test end_to_end -- --ignored
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -44,7 +44,7 @@ fn run_plushie(bin: &Path, cwd: &Path, args: &[&str], source_path: &std::ffi::Os
     let output = Command::new(bin)
         .current_dir(cwd)
         .args(args)
-        .env("PLUSHIE_SOURCE_PATH", source_path)
+        .env("PLUSHIE_RUST_SOURCE_PATH", source_path)
         .output()
         .unwrap_or_else(|e| panic!("spawn cargo-plushie {args:?}: {e}"));
     if !output.status.success() {
@@ -60,9 +60,9 @@ fn run_plushie(bin: &Path, cwd: &Path, args: &[&str], source_path: &std::ffi::Os
 #[test]
 #[ignore = "slow: compiles a full renderer binary; run with --ignored"]
 fn scaffold_init_and_build_produces_versioned_binary() {
-    let Some(source_path) = std::env::var_os("PLUSHIE_SOURCE_PATH") else {
+    let Some(source_path) = std::env::var_os("PLUSHIE_RUST_SOURCE_PATH") else {
         eprintln!(
-            "skipping: PLUSHIE_SOURCE_PATH is not set. Point it at a plushie-rust \
+            "skipping: PLUSHIE_RUST_SOURCE_PATH is not set. Point it at a plushie-rust \
              checkout so the scaffolder emits path deps."
         );
         return;
@@ -111,7 +111,7 @@ fn scaffold_init_and_build_produces_versioned_binary() {
     std::fs::write(&app_cargo, contents).expect("write app Cargo.toml");
 
     // Step 3: build the custom renderer. The scaffolder picked up
-    // PLUSHIE_SOURCE_PATH during new-widget/init, so the generated
+    // PLUSHIE_RUST_SOURCE_PATH during new-widget/init, so the generated
     // workspace already resolves against the local plushie-rust
     // checkout instead of crates.io.
     run_plushie(&bin, &app_dir, &["plushie", "build"], &source_path);

@@ -375,7 +375,7 @@ Key points:
 
 Before publishing, delete any development aids that reference a
 local plushie-rust checkout: the scaffolder emits a `.cargo/config.toml`
-with a `paths = [...]` override when `PLUSHIE_SOURCE_PATH` is set,
+with a `paths = [...]` override when `PLUSHIE_RUST_SOURCE_PATH` is set,
 and that file should not ship to crates.io.
 
 ## Scaffolding
@@ -390,7 +390,7 @@ shot. The scaffolder:
   table and an `impl` feature flag.
 - Writes `src/lib.rs` with a `widget!` invocation, a factory type,
   and a `todo!()` placeholder in the `render` body.
-- When `PLUSHIE_SOURCE_PATH` is set, rewrites dependencies to point
+- When `PLUSHIE_RUST_SOURCE_PATH` is set, rewrites dependencies to point
   at the local plushie-rust checkout and emits a
   `.cargo/config.toml` forwarding the `plushie-iced` override. The
   same mechanism the workspace uses when developing plushie-rust

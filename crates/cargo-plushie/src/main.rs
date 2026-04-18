@@ -403,9 +403,9 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     };
     discover::check_all_collisions(&widgets, BUILTIN_TYPE_NAMES)?;
 
-    // PLUSHIE_SOURCE_PATH env wins over any per-package override; both
+    // PLUSHIE_RUST_SOURCE_PATH env wins over any per-package override; both
     // resolve to the absolute path to the plushie-rust checkout root.
-    let source_path_env = std::env::var_os("PLUSHIE_SOURCE_PATH").map(PathBuf::from);
+    let source_path_env = std::env::var_os("PLUSHIE_RUST_SOURCE_PATH").map(PathBuf::from);
     let source_path_meta = app_pkg
         .metadata
         .get("plushie")
@@ -470,7 +470,7 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
 /// Unlike the native build, WASM needs a plushie-rust checkout on
 /// disk so wasm-pack has a crate to compile: there is no registry
 /// path that publishes a pre-wasm'd bundle. The source path comes
-/// from `PLUSHIE_SOURCE_PATH`, the app's `[package.metadata.plushie]
+/// from `PLUSHIE_RUST_SOURCE_PATH`, the app's `[package.metadata.plushie]
 /// source_path` key, or a workspace sibling (`..`), in that order.
 fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
     // Verify wasm-pack up front with a clear message; the command
@@ -536,17 +536,21 @@ fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
 ///
 /// Priority:
 ///
-/// 1. `PLUSHIE_SOURCE_PATH` env var (pointing at a plushie-rust
+/// 1. `PLUSHIE_RUST_SOURCE_PATH` env var (pointing at a plushie-rust
 ///    checkout root).
 /// 2. `[package.metadata.plushie].source_path` on the caller's
 ///    manifest.
 /// 3. A sibling workspace at `..` (the convention for developing
 ///    multiple plushie-* repos in parallel).
 fn resolve_wasm_source(manifest_dir: &Path) -> Result<PathBuf> {
-    if let Some(env) = std::env::var_os("PLUSHIE_SOURCE_PATH") {
+    if let Some(env) = std::env::var_os("PLUSHIE_RUST_SOURCE_PATH") {
         let path = PathBuf::from(env);
-        return std::fs::canonicalize(&path)
-            .with_context(|| format!("PLUSHIE_SOURCE_PATH `{}` does not exist", path.display()));
+        return std::fs::canonicalize(&path).with_context(|| {
+            format!(
+                "PLUSHIE_RUST_SOURCE_PATH `{}` does not exist",
+                path.display()
+            )
+        });
     }
 
     let metadata = cargo_metadata::MetadataCommand::new()
@@ -578,7 +582,7 @@ fn resolve_wasm_source(manifest_dir: &Path) -> Result<PathBuf> {
         return Ok(std::fs::canonicalize(&sibling).unwrap_or(sibling));
     }
     Err(anyhow::anyhow!(
-        "unable to locate plushie-renderer-wasm source. Set PLUSHIE_SOURCE_PATH \
+        "unable to locate plushie-renderer-wasm source. Set PLUSHIE_RUST_SOURCE_PATH \
          or add `[package.metadata.plushie].source_path = \"...\"` to the app manifest."
     ))
 }

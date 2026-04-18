@@ -98,7 +98,7 @@ pub fn run_doctor(opts: &DoctorOpts<'_>) -> Result<DoctorReport> {
     // -- Environment --
     for var in [
         "PLUSHIE_BINARY_PATH",
-        "PLUSHIE_SOURCE_PATH",
+        "PLUSHIE_RUST_SOURCE_PATH",
         "PLUSHIE_MODE",
         "PLUSHIE_SOCKET",
     ] {

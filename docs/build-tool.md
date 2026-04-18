@@ -234,7 +234,7 @@ cargo plushie new-widget <name> [--path <path>]
 4. Writes `Cargo.toml` and `src/lib.rs` using the `widget!` macro,
    with an `impl` feature that gates the iced-based renderer code.
    Default features keep the crate iced-free.
-5. When `PLUSHIE_SOURCE_PATH` is set, rewrites dependencies to path
+5. When `PLUSHIE_RUST_SOURCE_PATH` is set, rewrites dependencies to path
    deps against the local checkout and emits a `.cargo/config.toml`
    forwarding the `plushie-iced` override so the scaffold compiles
    against the fork the same way the source workspace does.
@@ -279,7 +279,7 @@ Scaffolds a Cargo crate with:
 - `scripts/smoke.plushie` sample automation script.
 - `[package.metadata.plushie]` marker in `Cargo.toml`.
 
-When `PLUSHIE_SOURCE_PATH` is set, dependencies are rewritten to path
+When `PLUSHIE_RUST_SOURCE_PATH` is set, dependencies are rewritten to path
 deps and a `.cargo/config.toml` forwards the `plushie-iced` override,
 matching the behavior of `new-widget`.
 
@@ -315,7 +315,7 @@ severity marker:
 - `rustc` toolchain version (fails if below the supported minimum).
 - `cargo-plushie` version (matches the tool's own build).
 - `host` (OS and architecture).
-- `PLUSHIE_BINARY_PATH`, `PLUSHIE_SOURCE_PATH`, `PLUSHIE_MODE`,
+- `PLUSHIE_BINARY_PATH`, `PLUSHIE_RUST_SOURCE_PATH`, `PLUSHIE_MODE`,
   `PLUSHIE_SOCKET` environment variable values.
 - `renderer`: the discovered renderer path (see
   [Binary discovery](#binary-discovery)).
@@ -364,7 +364,7 @@ app = true                            # marker for dev tooling
   to a plushie-rust checkout. Used in two places: rewriting
   dependencies in the generated renderer workspace to path deps, and
   locating `plushie-renderer-wasm` for `--wasm` builds. The
-  `PLUSHIE_SOURCE_PATH` env var wins over this key.
+  `PLUSHIE_RUST_SOURCE_PATH` env var wins over this key.
 - `native_widgets` (array of strings, optional): explicit allowlist
   of widget crates to compile into the renderer. When set, only the
   listed crates are registered; auto-discovery is skipped. Each name
@@ -484,7 +484,7 @@ direct and wire mode at startup. The precedence is:
 | Variable              | Purpose                                                       | Precedence notes                              |
 |-----------------------|---------------------------------------------------------------|-----------------------------------------------|
 | `PLUSHIE_BINARY_PATH` | Absolute path to a renderer binary. Explicit intent.          | Highest in binary discovery; explicit failure if unreadable. |
-| `PLUSHIE_SOURCE_PATH` | Absolute path to a plushie-rust checkout.                      | Used by `build --wasm`, generated renderer workspace, and scaffolders. Overrides `source_path` metadata. |
+| `PLUSHIE_RUST_SOURCE_PATH` | Absolute path to a plushie-rust checkout.                      | Used by `build --wasm`, generated renderer workspace, and scaffolders. Overrides `source_path` metadata. |
 | `PLUSHIE_MODE`        | `direct` or `wire`.                                            | Precedence step 3. Superseded by `PLUSHIE_SOCKET` and `PLUSHIE_BINARY_PATH`. |
 | `PLUSHIE_SOCKET`      | Path or host:port of an existing renderer listening socket.    | Precedence step 1, highest. Triggers wire-connect mode. |
 | `PLUSHIE_TOKEN`       | Auth token presented during socket handshake.                  | Falls back to stdin JSON negotiation when unset. |
@@ -586,7 +586,7 @@ away from a diagnosis. Start there.
   from scratch. The handshake rejects mismatched protocol versions.
 
 - **`--wasm` fails with "unable to locate plushie-renderer-wasm
-  source".** Set `PLUSHIE_SOURCE_PATH` to a plushie-rust checkout,
+  source".** Set `PLUSHIE_RUST_SOURCE_PATH` to a plushie-rust checkout,
   or add `source_path` under `[package.metadata.plushie]`. WASM
   builds have no registry path today; the source crate must be on
   disk.

@@ -1,6 +1,17 @@
 # plushie-rust
 
+[![CI](https://github.com/plushie-ui/plushie-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/plushie-ui/plushie-rust/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/plushie.svg)](https://crates.io/crates/plushie)
+[![docs.rs](https://docs.rs/plushie/badge.svg)](https://docs.rs/plushie)
+[![MSRV](https://img.shields.io/badge/MSRV-1.92-blue.svg)](rust-toolchain.toml)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+
 Rust workspace for [Plushie](https://github.com/plushie-ui). **Pre-1.0**
+
+**Versioning policy.** Pre-1.0, breaking changes may land in any minor
+bump (`0.X.0`). Patch releases (`0.X.Y`) stay backwards-compatible.
+Every release notes explicit breakages under a "Breaking changes"
+heading in `CHANGELOG.md`.
 
 Build native desktop apps in Rust with the Elm architecture, or use
 the standalone renderer binary to power GUI frameworks in any language.

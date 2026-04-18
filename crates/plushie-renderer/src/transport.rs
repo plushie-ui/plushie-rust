@@ -224,7 +224,7 @@ fn create_listener(addr: &ListenAddr) -> io::Result<(Listener, String, Option<St
             #[cfg(unix)]
             {
                 let path = auto_socket_path();
-                let listener = bind_unix(&path)?;
+                let listener = bind_unix(&path, BindMode::Auto)?;
                 Ok((Listener::Unix(listener), path.clone(), Some(path)))
             }
             #[cfg(not(unix))]
@@ -238,7 +238,7 @@ fn create_listener(addr: &ListenAddr) -> io::Result<(Listener, String, Option<St
         ListenAddr::Unix(path) => {
             #[cfg(unix)]
             {
-                let listener = bind_unix(path)?;
+                let listener = bind_unix(path, BindMode::UserSpecified)?;
                 Ok((Listener::Unix(listener), path.clone(), Some(path.clone())))
             }
             #[cfg(not(unix))]
@@ -256,20 +256,87 @@ fn create_listener(addr: &ListenAddr) -> io::Result<(Listener, String, Option<St
     }
 }
 
+/// Whether a Unix socket path was chosen automatically by the
+/// renderer or supplied by the user. The two cases differ on whether
+/// we create (and lock down) the parent directory ourselves.
 #[cfg(unix)]
-fn bind_unix(path: &str) -> io::Result<std::os::unix::net::UnixListener> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BindMode {
+    /// Socket path constructed by [`auto_socket_path`]. The parent
+    /// directory was created by the renderer and is ours to chmod 0o700.
+    Auto,
+    /// Socket path came from `--listen <path>`. We respect the user's
+    /// directory choice; the parent's permissions stay untouched. A
+    /// world-writable parent earns a warning but not a refusal.
+    UserSpecified,
+}
+
+#[cfg(unix)]
+fn bind_unix(path: &str, mode: BindMode) -> io::Result<std::os::unix::net::UnixListener> {
+    use std::os::unix::fs::PermissionsExt;
+
     let _ = std::fs::remove_file(path);
+
     if let Some(parent) = std::path::Path::new(path).parent() {
-        std::fs::create_dir_all(parent)?;
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+        match mode {
+            BindMode::Auto => {
+                // Auto-chosen directory: create it (if needed) and
+                // lock it down to user-only so only we can reach the
+                // socket below.
+                std::fs::create_dir_all(parent)?;
+                let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+            }
+            BindMode::UserSpecified => {
+                // User chose this path. Don't override their directory
+                // permissions. Surface a warning when the parent looks
+                // reachable by other users so they can pick a safer
+                // location.
+                if let Ok(meta) = std::fs::metadata(parent) {
+                    let mode_bits = meta.permissions().mode();
+                    if mode_bits & 0o002 != 0 {
+                        log::warn!(
+                            "[code=listen_socket_parent_world_writable] \
+                             parent directory {p:?} of listen socket {path:?} \
+                             is world-writable (mode=0o{mode_bits:o}); \
+                             other local users may symlink or replace files in it",
+                            p = parent,
+                        );
+                    }
+                }
+            }
+        }
     }
-    std::os::unix::net::UnixListener::bind(path)
+
+    let listener = std::os::unix::net::UnixListener::bind(path)?;
+    // The socket file is always ours; lock it to user-only so other
+    // local users can't connect even if the parent directory is loose.
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    Ok(listener)
+}
+
+/// Pick a directory for the auto-generated socket. Preference order:
+/// - `$XDG_RUNTIME_DIR` (systemd-managed user runtime dir, 0700)
+/// - `$TMPDIR` (macOS per-user, Linux temp override)
+/// - `/tmp` fallback
+#[cfg(unix)]
+fn auto_socket_base() -> String {
+    if let Ok(p) = std::env::var("XDG_RUNTIME_DIR")
+        && !p.is_empty()
+    {
+        return p;
+    }
+    if let Ok(p) = std::env::var("TMPDIR")
+        && !p.is_empty()
+    {
+        return p;
+    }
+    "/tmp".to_string()
 }
 
 #[cfg(unix)]
 fn auto_socket_path() -> String {
-    let dir = format!("/tmp/plushie-{}", random_hex(8));
+    let base = auto_socket_base();
+    let dir = format!("{base}/plushie-{}", random_hex(8));
     format!("{dir}/plushie.sock")
 }
 

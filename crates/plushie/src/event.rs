@@ -831,6 +831,15 @@ pub enum EffectResult {
     Shutdown,
     /// Unknown or untyped result (fallback for forward compatibility).
     Other(Value),
+    /// The tracker no longer has an entry for this effect's wire ID.
+    ///
+    /// Occurs when an effect response arrives after the renderer was
+    /// restarted (and the tracker's in-flight state was flushed), or
+    /// for any other path where the typed `tag` -> `wire_id` mapping
+    /// was lost. Distinguished from [`Self::Other`] so apps can tell
+    /// "a legitimate typed result for an unknown kind" apart from
+    /// "the tracker has no memory of this effect at all".
+    Orphaned(Value),
 }
 
 impl EffectResult {

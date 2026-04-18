@@ -115,6 +115,12 @@ pub struct TestSession<A: App> {
     pending_async: Vec<(String, crate::command::AsyncTaskFn)>,
     /// Stream tasks queued the same way; drained together.
     pending_streams: Vec<(String, crate::command::StreamTaskFn)>,
+    /// Non-effect renderer operations the app issued via
+    /// [`Command::Renderer`] since session start (or the last
+    /// [`drain_issued_ops`](Self::drain_issued_ops) call). Focus,
+    /// scroll, window ops, system queries, etc. land here so tests
+    /// can assert on behaviour a dispatch was supposed to trigger.
+    issued_ops: Vec<crate::command::RendererOp>,
 }
 
 impl<A: App> TestSession<A> {
@@ -140,6 +146,7 @@ impl<A: App> TestSession<A> {
             last_sub_ops: Vec::new(),
             pending_async: Vec::new(),
             pending_streams: Vec::new(),
+            issued_ops: Vec::new(),
         };
         session.execute_command(init_cmd);
         session.run_pending_async();
@@ -507,6 +514,32 @@ impl<A: App> TestSession<A> {
             runtime::prepare_tree::<A>(&self.model, &mut self.widget_store, &mut self.memo_cache);
         self.tree = tree;
         self.diagnostics.extend(warnings);
+
+        // Refresh subscriptions: the model may have flipped a flag
+        // that gates a subscription start/stop, and tests that want
+        // to assert on the ops this produced can read
+        // [`last_subscription_ops`](Self::last_subscription_ops).
+        let subs = A::subscribe(&self.model);
+        let ops = self.sub_manager.sync(subs);
+        if !ops.is_empty() {
+            self.last_sub_ops = ops;
+        }
+    }
+
+    /// Rebuild the view tree from the current model without
+    /// dispatching an event.
+    ///
+    /// Useful when a test mutates the model through
+    /// [`model_mut`](Self::model_mut) and needs the tree to reflect
+    /// the change before the next interaction or assertion runs.
+    /// Equivalent in effect to the legacy
+    /// `dispatch(AnimationFrame)` trick used by
+    /// [`WidgetTestSession::start`] but names the intent.
+    pub fn rerender(&mut self) {
+        let (tree, warnings) =
+            runtime::prepare_tree::<A>(&self.model, &mut self.widget_store, &mut self.memo_cache);
+        self.tree = tree;
+        self.diagnostics.extend(warnings);
     }
 
     // -----------------------------------------------------------------------
@@ -548,13 +581,13 @@ impl<A: App> TestSession<A> {
                 self.pending_async.retain(|(t, _)| t != &tag);
                 self.pending_streams.retain(|(t, _)| t != &tag);
             }
-            Command::Renderer(ref op) => {
+            Command::Renderer(op) => {
                 // Check for effect requests with stubs.
                 if let crate::command::RendererOp::Effect {
                     ref tag,
                     ref request,
                     ..
-                } = *op
+                } = op
                 {
                     let kind = request.kind();
                     if let Some(result) = self.effect_stubs.get(kind).cloned() {
@@ -567,8 +600,11 @@ impl<A: App> TestSession<A> {
                         return;
                     }
                 }
-                // Other renderer ops are not executed in test mode.
-                log::trace!("TestSession: ignoring renderer op: {op:?}");
+                // Other renderer ops are not executed in test mode but
+                // are recorded so tests can assert which side effects
+                // the app requested.
+                log::trace!("TestSession: recording renderer op: {op:?}");
+                self.issued_ops.push(op);
             }
         }
     }
@@ -642,6 +678,17 @@ impl<A: App> TestSession<A> {
     ///
     /// Calls `App::init()` again, discarding the current model,
     /// widget state, async results, and effect stubs.
+    ///
+    /// Diagnostics are replaced by whatever the fresh init render
+    /// produces: any stale warnings from the previous run are
+    /// dropped, but new init-phase warnings are immediately
+    /// visible through [`diagnostics`](Self::diagnostics). Call
+    /// [`drain_diagnostics`](Self::drain_diagnostics) after reset
+    /// if the test wants a clean slate.
+    ///
+    /// `issued_ops` is cleared the same way: previous-run renderer
+    /// ops go away but any ops the init command issues this cycle
+    /// land in the freshly-empty buffer.
     pub fn reset(&mut self) {
         let (model, init_cmd) = A::init();
         self.model = model;
@@ -653,6 +700,7 @@ impl<A: App> TestSession<A> {
         self.last_sub_ops.clear();
         self.pending_async.clear();
         self.pending_streams.clear();
+        self.issued_ops.clear();
         let (tree, warnings) =
             runtime::prepare_tree::<A>(&self.model, &mut self.widget_store, &mut self.memo_cache);
         self.tree = tree;
@@ -933,6 +981,25 @@ impl<A: App> TestSession<A> {
         self.typed_diagnostics().iter().any(|d| d.kind() == kind)
     }
 
+    /// Renderer ops the app has issued through `Command::Renderer`
+    /// since session start (or the last
+    /// [`drain_issued_ops`](Self::drain_issued_ops) call).
+    ///
+    /// Lets tests assert "did the update try to close a window?"
+    /// without needing a real renderer. Effect ops resolved through
+    /// a registered stub are consumed before recording; everything
+    /// else is kept verbatim.
+    pub fn issued_ops(&self) -> &[crate::command::RendererOp] {
+        &self.issued_ops
+    }
+
+    /// Take ownership of all recorded renderer ops, clearing the
+    /// buffer. Pairs with [`issued_ops`](Self::issued_ops) for tests
+    /// that drive multiple phases and want to isolate per-phase ops.
+    pub fn drain_issued_ops(&mut self) -> Vec<crate::command::RendererOp> {
+        std::mem::take(&mut self.issued_ops)
+    }
+
     // -----------------------------------------------------------------------
     // Assertions
     // -----------------------------------------------------------------------
@@ -1173,6 +1240,13 @@ impl<A: App> Drop for TestSession<A> {
 /// Golden files are stored as `{dir}/{name}.hash` containing
 /// the decimal u64 hash value.
 ///
+/// `golden_dir` is resolved relative to `CARGO_MANIFEST_DIR` (the
+/// crate root at compile time), not the test's runtime cwd. That
+/// keeps multi-crate workspace layouts sane: `tests/golden` always
+/// refers to the same on-disk location regardless of whether
+/// `cargo test` is invoked from the workspace root or a subcrate.
+/// An absolute path is used verbatim.
+///
 /// ```ignore
 /// let session = TestSession::<Counter>::start();
 /// session.click("inc");
@@ -1186,14 +1260,21 @@ impl<A: App> Drop for TestSession<A> {
 /// hash does not match the stored value.
 pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir: &str) {
     let hash = session.tree_hash();
-    let path = format!("{golden_dir}/{name}.hash");
+    let golden_path = std::path::Path::new(golden_dir);
+    let resolved_dir = if golden_path.is_absolute() {
+        golden_path.to_path_buf()
+    } else {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(golden_path)
+    };
+    let path = format!("{}/{name}.hash", resolved_dir.display());
+    let golden_dir = resolved_dir.display().to_string();
 
     let update = std::env::var("PLUSHIE_UPDATE_SNAPSHOTS")
         .map(|v| v == "1")
         .unwrap_or(false);
 
     if update || !std::path::Path::new(&path).exists() {
-        std::fs::create_dir_all(golden_dir).ok();
+        std::fs::create_dir_all(&golden_dir).ok();
         std::fs::write(&path, hash.to_string()).unwrap_or_else(|e| {
             panic!("failed to write golden file {path}: {e}");
         });
@@ -1417,14 +1498,10 @@ impl<W: crate::widget::Widget> WidgetTestSession<W> {
     pub fn start(id: &str) -> Self {
         let mut session = TestSession::<WidgetHarness<W>>::start();
         session.model_mut().widget_id = id.to_string();
-        // Re-render to actually show the widget.
-        session.dispatch(Event::System(crate::event::SystemEvent {
-            event_type: crate::event::SystemEventType::AnimationFrame,
-            tag: None,
-            value: None,
-            id: None,
-            window_id: None,
-        }));
+        // Re-render to actually show the widget now that the ID is
+        // set. Previously this went through a synthetic AnimationFrame
+        // dispatch; `rerender` names the intent.
+        session.rerender();
         // Drain any init-phase diagnostics produced before the widget
         // ID was set. `TestSession::start` runs an initial view with
         // the default `widget_id = ""`, which can trip the `empty_id`
@@ -1445,7 +1522,10 @@ impl<W: crate::widget::Widget> WidgetTestSession<W> {
             session.model_mut().props.insert(key, value);
         }
         let _ = session.drain_diagnostics(); // see note in `start()`
-        // Re-render with props.
+        session.rerender();
+        // Also dispatch an AnimationFrame so time-based transitions
+        // get a chance to settle before the test observes the first
+        // frame. Preserved for historical parity with `start`.
         session.dispatch(Event::System(crate::event::SystemEvent {
             event_type: crate::event::SystemEventType::AnimationFrame,
             tag: None,

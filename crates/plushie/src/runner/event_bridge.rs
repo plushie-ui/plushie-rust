@@ -216,13 +216,14 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
 ///
 /// Fallback path when a response has no matching tracker entry
 /// (e.g. stale response after a renderer restart). Without the
-/// tracker's kind context, "ok" results use the untyped `Other`
-/// variant.
+/// tracker's kind context, "ok" results land as
+/// [`EffectResult::Orphaned`] so apps can distinguish them from a
+/// legitimate typed `Other` result delivered through the tracker.
 pub(crate) fn effect_response_to_sdk(response: EffectResponse) -> Event {
     // Without tracker context (no kind available), we fall back to
     // untyped variants.
     let result = match response.status {
-        "ok" => EffectResult::Other(response.result.unwrap_or(Value::Null)),
+        "ok" => EffectResult::Orphaned(response.result.unwrap_or(Value::Null)),
         "cancelled" => EffectResult::Cancelled,
         "unsupported" => EffectResult::Unsupported,
         _ => {
@@ -483,10 +484,10 @@ mod tests {
         match sdk {
             Event::Effect(e) => {
                 assert_eq!(e.tag, "save_file");
-                // Without tracker context, ok results use Other.
+                // Without tracker context, ok results use Orphaned.
                 match e.result {
-                    EffectResult::Other(v) => assert_eq!(v["path"], "/tmp/file.txt"),
-                    _ => panic!("expected Other result, got {:?}", e.result),
+                    EffectResult::Orphaned(v) => assert_eq!(v["path"], "/tmp/file.txt"),
+                    _ => panic!("expected Orphaned result, got {:?}", e.result),
                 }
             }
             _ => panic!("expected Effect event"),

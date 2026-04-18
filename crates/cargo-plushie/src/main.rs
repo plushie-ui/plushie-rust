@@ -288,6 +288,57 @@ fn target_dir(manifest_dir: &std::path::Path) -> PathBuf {
         .unwrap_or_else(|| manifest_dir.join("target"))
 }
 
+/// Narrow `discovered` to the crates named in the app's explicit
+/// `[package.metadata.plushie].native_widgets` allowlist.
+///
+/// Returns an error if any named crate is not a direct dep of the app
+/// or is not declared as a plushie widget (no
+/// `[package.metadata.plushie.widget]` table). The latter surfaces
+/// either because the crate predates the metadata convention or
+/// because the user typo'd a name; either way, failing loud is
+/// friendlier than silently omitting the widget from the build.
+fn filter_native_widgets(
+    app_pkg: &cargo_metadata::Package,
+    discovered: &[cargo_plushie::WidgetMetadata],
+    allowlist: &[String],
+) -> Result<Vec<cargo_plushie::WidgetMetadata>> {
+    use std::collections::HashSet;
+
+    let direct_deps: HashSet<&str> = app_pkg
+        .dependencies
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    let discovered_by_name: std::collections::HashMap<&str, &cargo_plushie::WidgetMetadata> =
+        discovered.iter().map(|w| (w.crate_name.as_str(), w)).collect();
+
+    let mut out = Vec::with_capacity(allowlist.len());
+    for name in allowlist {
+        if !direct_deps.contains(name.as_str()) {
+            return Err(anyhow::anyhow!(
+                "[package.metadata.plushie].native_widgets lists `{name}`, but `{name}` \
+                 is not a direct dependency of `{app}`. Add it to [dependencies] or remove \
+                 it from the allowlist.",
+                app = app_pkg.name,
+            ));
+        }
+        match discovered_by_name.get(name.as_str()) {
+            Some(widget) => out.push((*widget).clone()),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "[package.metadata.plushie].native_widgets lists `{name}`, but that \
+                     crate does not declare `[package.metadata.plushie.widget]`. Either \
+                     remove it from the allowlist or add the widget metadata table to \
+                     the crate's Cargo.toml."
+                ));
+            }
+        }
+    }
+    // Deterministic order for reproducible output, same as discover_widgets.
+    out.sort_by(|a, b| a.crate_name.cmp(&b.crate_name));
+    Ok(out)
+}
+
 fn cmd_build(args: &BuildArgs) -> Result<()> {
     let manifest_dir = resolve_manifest_dir(args.manifest_path.as_ref())?;
 
@@ -299,8 +350,7 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     let output_dir = target.join("plushie-renderer");
     std::fs::create_dir_all(&output_dir)?;
 
-    let widgets = discover::discover_widgets(&manifest_dir)?;
-    discover::check_all_collisions(&widgets, BUILTIN_TYPE_NAMES)?;
+    let discovered = discover::discover_widgets(&manifest_dir)?;
 
     // Resolve app package metadata (name + version + optional
     // [package.metadata.plushie] overrides) from the caller's manifest.
@@ -326,6 +376,29 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
         .and_then(|v| v.get("binary_name"))
         .and_then(|v| v.as_str())
         .map(str::to_string);
+
+    // Optional explicit allowlist of widget crates to register. When
+    // set (non-empty), we filter discovery down to the named crates
+    // and validate that each one is a direct dep of the app crate
+    // declaring a `[package.metadata.plushie.widget]` table. When
+    // unset, full auto-discovery stands.
+    let native_widgets_override: Vec<String> = app_pkg
+        .metadata
+        .get("plushie")
+        .and_then(|v| v.get("native_widgets"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let widgets = if native_widgets_override.is_empty() {
+        discovered
+    } else {
+        filter_native_widgets(&app_pkg, &discovered, &native_widgets_override)?
+    };
+    discover::check_all_collisions(&widgets, BUILTIN_TYPE_NAMES)?;
 
     // PLUSHIE_SOURCE_PATH env wins over any per-package override; both
     // resolve to the absolute path to the plushie-rust checkout root.
@@ -584,19 +657,82 @@ fn cmd_run(args: &RunArgs) -> Result<()> {
     };
     cmd_build(&build)?;
 
+    // Pin PLUSHIE_BINARY_PATH to the binary we just built for the
+    // profile the user asked for. Without this, the SDK's wire-mode
+    // discovery probes `release/` before `debug/` regardless of which
+    // profile `cargo run` is using, so a stale `release/` binary plus
+    // `cargo plushie run` (debug) would silently launch the release
+    // renderer. Passing the exact path removes the ambiguity.
+    //
+    // We only set the env var when the path actually exists; a caller
+    // with `CARGO_TARGET_DIR` set at an unusual location ends up with
+    // the binary elsewhere, and PLUSHIE_BINARY_PATH is fail-fast when
+    // the target doesn't exist. Falling back to the SDK's discovery
+    // chain keeps the command usable in that case.
+    let pinned = resolve_built_binary(&manifest_dir, args)?;
+    let pinned = pinned.is_file().then_some(pinned);
+
     // Step 2: hand off to either cargo-watch (preferred when installed;
     // it handles restart-on-change cleanly) or a single cargo run.
     if args.watch && cargo_watch_available() {
-        run_with_cargo_watch(&manifest_dir, args)
+        run_with_cargo_watch(&manifest_dir, args, pinned.as_deref())
     } else if args.watch {
         eprintln!(
             "plushie: `cargo-watch` not found; install with `cargo install cargo-watch` \
              for --watch, falling back to single `cargo run`"
         );
-        run_cargo_run(&manifest_dir, args)
+        run_cargo_run(&manifest_dir, args, pinned.as_deref())
     } else {
-        run_cargo_run(&manifest_dir, args)
+        run_cargo_run(&manifest_dir, args, pinned.as_deref())
     }
+}
+
+/// Resolve the freshly-built renderer's binary path for the profile
+/// specified on `cargo plushie run`.
+///
+/// Uses the same logic `cmd_build` uses to derive the binary name so
+/// the two stay in sync. The path is not required to exist up front
+/// (a cross-compile skip or a custom `target-dir` layout could leave
+/// it elsewhere); falling back to the SDK's discovery chain is safe
+/// behavior when the pinned path is missing.
+fn resolve_built_binary(manifest_dir: &Path, args: &RunArgs) -> Result<PathBuf> {
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .manifest_path(manifest_dir.join("Cargo.toml"))
+        .no_deps()
+        .exec()
+        .with_context(|| "cargo metadata (no-deps) failed")?;
+    let root_id = metadata
+        .resolve
+        .as_ref()
+        .and_then(|r| r.root.as_ref())
+        .cloned();
+    let app_pkg = match root_id {
+        Some(id) => metadata.packages.iter().find(|p| p.id == id).cloned(),
+        None => metadata.packages.first().cloned(),
+    };
+    let app_pkg = app_pkg.ok_or_else(|| anyhow::anyhow!("no root package in cargo metadata"))?;
+
+    let binary_name_override = app_pkg
+        .metadata
+        .get("plushie")
+        .and_then(|v| v.get("binary_name"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let bin_name = binary_name_override
+        .unwrap_or_else(|| format!("{}-renderer", app_pkg.name.replace('_', "-")));
+
+    let profile_dir = if args.release { "release" } else { "debug" };
+    let target = target_dir(manifest_dir);
+    let binary = target
+        .join("plushie-renderer/target")
+        .join(profile_dir)
+        .join(if cfg!(windows) {
+            format!("{bin_name}.exe")
+        } else {
+            bin_name
+        });
+    Ok(binary)
 }
 
 /// Check whether `cargo-watch` (invoked via `cargo watch`) is
@@ -614,12 +750,19 @@ fn cargo_watch_available() -> bool {
 }
 
 /// Single-shot `cargo run` against the app crate.
-fn run_cargo_run(manifest_dir: &std::path::Path, args: &RunArgs) -> Result<()> {
+fn run_cargo_run(
+    manifest_dir: &std::path::Path,
+    args: &RunArgs,
+    pinned: Option<&Path>,
+) -> Result<()> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut cmd = std::process::Command::new(cargo);
     cmd.current_dir(manifest_dir).arg("run");
     if args.release {
         cmd.arg("--release");
+    }
+    if let Some(path) = pinned {
+        cmd.env("PLUSHIE_BINARY_PATH", path);
     }
     let status = cmd.status().with_context(|| "failed to run cargo run")?;
     if !status.success() {
@@ -635,7 +778,11 @@ fn run_cargo_run(manifest_dir: &std::path::Path, args: &RunArgs) -> Result<()> {
 /// keeps the renderer binary in sync with any app-side widget changes
 /// that slip into the app crate itself, then restarts the app so
 /// `PLUSHIE_BINARY_PATH` discovery picks up the fresh binary.
-fn run_with_cargo_watch(manifest_dir: &std::path::Path, args: &RunArgs) -> Result<()> {
+fn run_with_cargo_watch(
+    manifest_dir: &std::path::Path,
+    args: &RunArgs,
+    pinned: Option<&Path>,
+) -> Result<()> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     // `cargo watch -w src -s '<cmd>'` reruns <cmd> on src/ changes.
     // We chain `cargo plushie build` before each `cargo run` so widget
@@ -645,6 +792,9 @@ fn run_with_cargo_watch(manifest_dir: &std::path::Path, args: &RunArgs) -> Resul
     let mut cmd = std::process::Command::new(cargo);
     cmd.current_dir(manifest_dir)
         .args(["watch", "-w", "src", "-s", &shell_cmd]);
+    if let Some(path) = pinned {
+        cmd.env("PLUSHIE_BINARY_PATH", path);
+    }
     let status = cmd.status().with_context(|| "failed to run cargo watch")?;
     if !status.success() {
         return Err(cargo_plushie::Error::CargoBuildFailed(status).into());

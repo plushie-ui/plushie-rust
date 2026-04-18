@@ -365,10 +365,14 @@ app = true                            # marker for dev tooling
   dependencies in the generated renderer workspace to path deps, and
   locating `plushie-renderer-wasm` for `--wasm` builds. The
   `PLUSHIE_SOURCE_PATH` env var wins over this key.
-- `native_widgets` (array of strings, optional): explicit allowlist.
-  The default behavior is full cargo-metadata discovery; this field
-  is present so a future release can narrow discovery to a
-  declarative list without breaking existing projects.
+- `native_widgets` (array of strings, optional): explicit allowlist
+  of widget crates to compile into the renderer. When set, only the
+  listed crates are registered; auto-discovery is skipped. Each name
+  must be a direct dependency of the app crate and must declare a
+  `[package.metadata.plushie.widget]` table; misspellings and
+  non-plushie crates surface as a hard error rather than a silent
+  omission. Leave this field unset (or empty) to use the default
+  full auto-discovery.
 - `app` (bool, optional): marker indicating this crate is a plushie
   app. Scaffolders set it so future workspace-wide tooling can find
   app crates without guessing.

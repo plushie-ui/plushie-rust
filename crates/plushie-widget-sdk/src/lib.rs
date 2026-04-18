@@ -115,8 +115,13 @@ pub use iced;
 ///
 /// Both `iced::Renderer` (tiny-skia, used by headless and windowed modes) and
 /// `()` (null renderer, used by mock mode) satisfy these bounds.
+///
+/// This trait is sealed: only `iced::Renderer` and `()` implement it,
+/// and new super-trait bounds can be added without breaking external
+/// code (external crates cannot implement `PlushieRenderer`).
 pub trait PlushieRenderer:
-    iced::advanced::Renderer
+    sealed::Sealed
+    + iced::advanced::Renderer
     + iced::advanced::text::Renderer<Font = iced::Font>
     + iced::advanced::image::Renderer<Handle = iced::advanced::image::Handle>
     + iced::advanced::svg::Renderer
@@ -128,6 +133,14 @@ pub trait PlushieRenderer:
 
 impl PlushieRenderer for () {}
 impl PlushieRenderer for iced::Renderer {}
+
+mod sealed {
+    /// Sealing trait for [`super::PlushieRenderer`]. Not part of the
+    /// public API; keeps `PlushieRenderer` closed to external impls.
+    pub trait Sealed {}
+    impl Sealed for () {}
+    impl Sealed for super::iced::Renderer {}
+}
 
 /// Convenience alias for the `Element` type returned by
 /// [`PlushieWidget::render`](registry::PlushieWidget::render).

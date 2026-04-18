@@ -515,9 +515,7 @@ impl Core {
                     .get("default_text_size")
                     .and_then(|v| v.as_f64())
                     .map(crate::prop_helpers::f64_to_f32);
-                self.default_font = settings.get("default_font").map(|v| {
-                    resolve_font_with_fallback(v, /* known_loaded = */ &[])
-                });
+                self.default_font = settings.get("default_font").map(resolve_font_with_fallback);
                 // Per-session validate_props override. If the host
                 // sends the field, store it locally; it takes
                 // precedence over the process-global OnceLock so
@@ -624,12 +622,12 @@ impl Core {
 /// walking the optional fallback chain. Emits a
 /// `font_family_not_found` diagnostic on each unresolved family.
 ///
-/// `known_loaded` is the list of font family names the renderer has
-/// loaded at runtime (via `fonts: [...]` or `Command::load_font`);
-/// currently empty because the engine does not yet track loaded
-/// font family names. The fallback chain still shortcuts known
-/// built-ins (currently just `monospace`).
-fn resolve_font_with_fallback(v: &Value, known_loaded: &[&str]) -> Font {
+/// The resolver currently only shortcuts the `monospace` built-in;
+/// runtime-loaded families cannot be matched by name here because
+/// the engine consumes font bytes without parsing family metadata
+/// out of them. See the "font-family attribution across the engine"
+/// backlog entry for the tracking problem.
+fn resolve_font_with_fallback(v: &Value) -> Font {
     let primary = v.get("family").and_then(|f| f.as_str());
     let fallback_iter = v.get("fallback").and_then(|a| a.as_array());
     let mut chain: Vec<&str> = Vec::new();
@@ -646,13 +644,6 @@ fn resolve_font_with_fallback(v: &Value, known_loaded: &[&str]) -> Font {
     for name in &chain {
         if matches!(*name, "monospace") {
             return Font::MONOSPACE;
-        }
-        if known_loaded.iter().any(|loaded| loaded == name) {
-            // Placeholder: iced's font resolution by family name is
-            // not yet threaded through here. Fall back to the
-            // default but note the hit.
-            log::debug!("font family `{name}` resolved (loaded at runtime)");
-            return Font::DEFAULT;
         }
         let diag = plushie_core::Diagnostic::FontFamilyNotFound {
             family: (*name).to_string(),

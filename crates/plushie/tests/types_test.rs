@@ -1,5 +1,6 @@
 //! Tests for property types: Color, Length, Padding, Style, etc.
 
+use plushie::derive_support::PlushieType;
 use plushie::types::*;
 use plushie_core::protocol::PropValue;
 

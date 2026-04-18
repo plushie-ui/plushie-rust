@@ -20,6 +20,7 @@
 use super::{PropMap, PropValue};
 
 use crate::View;
+use crate::derive_support::PlushieType;
 use crate::types::*;
 pub use plushie_core::types::canvas::PathCommand;
 

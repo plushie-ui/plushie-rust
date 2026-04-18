@@ -34,6 +34,7 @@ pub use table::*;
 pub(crate) use plushie_core::protocol::{PropMap, PropValue};
 
 use crate::View;
+use crate::derive_support::PlushieType;
 use crate::types::*;
 
 // ---------------------------------------------------------------------------

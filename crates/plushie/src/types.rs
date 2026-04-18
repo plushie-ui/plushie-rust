@@ -36,7 +36,6 @@ pub use plushie_core::types::{
     FontStretch,
     FontStyle,
     FontWeight,
-    FromNode,
     Gradient,
     GradientStop,
     HasPopup,
@@ -50,8 +49,6 @@ pub use plushie_core::types::{
     Live,
     Orientation,
     Padding,
-    // Core traits
-    PlushieType,
     Position,
     Radius,
     Role,
@@ -67,13 +64,15 @@ pub use plushie_core::types::{
     // Value
     ValueRange,
     VerticalAlignment,
-    WidgetEventEncode,
     // Text layout
     Wrapping,
 };
 
-// Re-export WidgetCommandEncode from spec module (parallel to WidgetEventEncode)
-pub use plushie_core::spec::WidgetCommandEncode;
+// Note: the derive-macro helper traits (`FromNode`, `PlushieType`,
+// `WidgetEventEncode`, `WidgetCommandEncode`) are reached via
+// [`crate::derive_support`] rather than `plushie::types`, keeping the
+// app-developer namespace focused on palette, layout, geometry, and
+// typography types.
 
 // -------------------------------------------------------------------------
 // Re-exports from plushie-core (canvas)

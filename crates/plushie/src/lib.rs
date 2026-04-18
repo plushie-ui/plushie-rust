@@ -65,6 +65,7 @@
 pub mod animation;
 pub mod automation;
 pub mod command;
+pub mod derive_support;
 mod error;
 pub mod event;
 pub mod prelude;

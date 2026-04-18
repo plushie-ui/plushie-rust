@@ -75,6 +75,14 @@ pub use crate::subscription::Subscription;
 pub use crate::ui::*;
 
 // Property types
+/// Trait for widget prop structs extractable from a `TreeNode`.
+pub use crate::derive_support::FromNode;
+/// Trait for plushie-typed values (wire encode/decode).
+pub use crate::derive_support::PlushieType;
+/// Encoder trait for widget command enums.
+pub use crate::derive_support::WidgetCommandEncode;
+/// Encoder trait for widget event enums.
+pub use crate::derive_support::WidgetEventEncode;
 /// Accessibility metadata.
 pub use crate::types::A11y;
 /// Alignment (start/center/end).
@@ -115,8 +123,6 @@ pub use crate::types::FilterMethod;
 pub use crate::types::Font;
 /// Font stretch variant.
 pub use crate::types::FontStretch;
-/// Trait for widget prop structs extractable from a `TreeNode`.
-pub use crate::types::FromNode;
 /// Gradient descriptor.
 pub use crate::types::Gradient;
 /// Horizontal alignment variant.
@@ -137,8 +143,6 @@ pub use crate::types::LineHeight;
 pub use crate::types::LineJoin;
 /// Inner padding.
 pub use crate::types::Padding;
-/// Trait for plushie-typed values (wire encode/decode).
-pub use crate::types::PlushieType;
 /// Position point.
 pub use crate::types::Position;
 /// Corner radius (uniform or per-corner).
@@ -157,10 +161,6 @@ pub use crate::types::StyleMap;
 pub use crate::types::Theme;
 /// Passthrough prop type that keeps untyped JSON.
 pub use crate::types::UntypedProps;
-/// Encoder trait for widget command enums.
-pub use crate::types::WidgetCommandEncode;
-/// Encoder trait for widget event enums.
-pub use crate::types::WidgetEventEncode;
 /// Window stacking level.
 pub use crate::types::WindowLevel;
 /// Text-wrap policy.

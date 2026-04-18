@@ -17,6 +17,7 @@
 
 use super::PropMap;
 use crate::View;
+use crate::derive_support::PlushieType;
 use crate::types::*;
 
 // ---------------------------------------------------------------------------

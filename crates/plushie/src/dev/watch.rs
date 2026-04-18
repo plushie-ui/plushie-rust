@@ -246,7 +246,9 @@ fn is_rust_source_path(path: &Path) -> bool {
 
 /// Run `cargo plushie build` once, streaming stdout/stderr to the
 /// caller's terminal and updating the overlay handle (if any) with
-/// the result.
+/// the result. On success, publishes a [`ControlSignal::SwapRenderer`]
+/// so the wire runner respawns the subprocess against the fresh
+/// binary.
 fn run_build(opts: &WatchOpts) {
     if let Some(h) = &opts.overlay {
         h.publish(Status::Rebuilding, "");
@@ -293,6 +295,7 @@ fn run_build(opts: &WatchOpts) {
         if let Some(h) = &opts.overlay {
             h.publish(Status::Success, combined);
         }
+        crate::dev::send_control_signal(crate::dev::ControlSignal::SwapRenderer);
     } else {
         log::warn!("plushie dev: rebuild failed (status {:?})", output.status);
         if let Some(h) = &opts.overlay {

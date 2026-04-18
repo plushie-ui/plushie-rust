@@ -330,12 +330,21 @@ fn run_wire_inner<A: App>(
     let mut restart_count: u32 = 0;
     let mut pending_init: Option<Command> = Some(init_cmd);
 
+    // Binary path can be swapped between iterations when a dev-mode
+    // hot-reload finishes and rediscovery picks a fresh custom build.
+    // Seed it with the caller's value; RendererSwap branches rewrite
+    // `binary_owned` and the next iteration uses it.
+    #[cfg_attr(not(feature = "dev"), allow(unused_mut, unused_assignments))]
+    let mut binary_owned: Option<String> = None;
+
     loop {
+        let active_binary: &str = binary_owned.as_deref().unwrap_or(binary_path);
+
         // Bring up (or respawn) the renderer and establish the
         // reader thread. On respawn we resend settings + snapshot +
         // subscription state so the renderer catches up.
-        let mut bridge = Bridge::spawn(binary_path)
-            .map_err(|e| crate::Error::spawn(binary_path.to_string(), e))?;
+        let mut bridge = Bridge::spawn(active_binary)
+            .map_err(|e| crate::Error::spawn(active_binary.to_string(), e))?;
 
         bridge.send_settings(&settings)?;
 
@@ -492,6 +501,33 @@ fn run_wire_inner<A: App>(
             return Ok(());
         }
 
+        // Dev-mode hot-reload: skip backoff, reset restart count
+        // (a clean swap shouldn't eat into the crash budget),
+        // rediscover the binary so the fresh build is picked up,
+        // then loop around. The Bridge drop at the bottom of this
+        // iteration tears down the old subprocess; the next
+        // iteration spawns its replacement.
+        if matches!(reason, ExitReason::RendererSwap) {
+            restart_count = 0;
+            #[cfg(feature = "dev")]
+            {
+                match crate::runner::wire_discovery::discover_renderer() {
+                    Ok(fresh) => {
+                        log::info!("plushie wire: swap-discovered renderer at {fresh}");
+                        binary_owned = Some(fresh);
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "plushie wire: swap-rediscovery failed ({e}); \
+                             reusing current binary path"
+                        );
+                    }
+                }
+            }
+            drop(bridge);
+            continue;
+        }
+
         // Restart policy: if we're out of attempts, fire a final
         // hook call and return the typed error.
         if restart_count >= policy.max_restarts {
@@ -565,8 +601,55 @@ fn run_session<A: App>(
     base_settings: &Value,
     heartbeat_interval: Option<std::time::Duration>,
 ) -> ExitReason {
+    // Dev-mode needs to wake up periodically to check for swap
+    // signals even when the heartbeat is disabled or set to a long
+    // interval. The poll window picks the shorter of the two.
+    #[cfg(feature = "dev")]
+    let poll_interval = heartbeat_interval
+        .unwrap_or(std::time::Duration::from_millis(250))
+        .min(std::time::Duration::from_millis(250));
+    #[cfg(not(feature = "dev"))]
+    let poll_interval_opt = heartbeat_interval;
+    #[cfg(feature = "dev")]
+    let mut since_last_msg = std::time::Instant::now();
+
     loop {
-        let incoming = bridge.recv_timeout(heartbeat_interval);
+        // Dev-mode swap signal takes priority: a successful rebuild
+        // means the current renderer binary is stale. Return a
+        // RendererSwap reason so the outer loop respawns without
+        // counting against the restart policy. Compiled out when the
+        // `dev` feature is absent.
+        #[cfg(feature = "dev")]
+        {
+            if handle_dev_control_signals() {
+                return ExitReason::RendererSwap;
+            }
+        }
+
+        #[cfg(feature = "dev")]
+        let incoming = bridge.recv_timeout(Some(poll_interval));
+        #[cfg(not(feature = "dev"))]
+        let incoming = bridge.recv_timeout(poll_interval_opt);
+
+        // Map a short dev-mode poll Timeout into either "keep going"
+        // (heartbeat hasn't elapsed yet, or is disabled) or a real
+        // HeartbeatTimeout.
+        #[cfg(feature = "dev")]
+        let incoming = match (&incoming, heartbeat_interval) {
+            (super::bridge::Incoming::Timeout, Some(hb)) => {
+                if since_last_msg.elapsed() >= hb {
+                    incoming
+                } else {
+                    continue;
+                }
+            }
+            (super::bridge::Incoming::Timeout, None) => continue,
+            _ => {
+                since_last_msg = std::time::Instant::now();
+                incoming
+            }
+        };
+
         match incoming {
             super::bridge::Incoming::Message(raw) => {
                 let events = wire_to_sdk_events(&raw, effect_tracker, async_mgr);
@@ -755,6 +838,26 @@ fn dispatch_window_sync_op(
 /// without sending a proper shutdown marker; everything else is
 /// treated as a crash. Reaps the child (non-blocking) to capture the
 /// exit code for `Crash`.
+/// Drain the dev-mode control-signal queue. Returns true when a
+/// [`crate::dev::ControlSignal::SwapRenderer`] is pending so the
+/// session loop can return a [`ExitReason::RendererSwap`]. Any other
+/// signal variants are logged and discarded (reserved for future
+/// use).
+#[cfg(all(feature = "wire", feature = "dev"))]
+fn handle_dev_control_signals() -> bool {
+    let signals = crate::dev::drain_control_signals();
+    let mut swap = false;
+    for signal in signals {
+        match signal {
+            crate::dev::ControlSignal::SwapRenderer => {
+                log::info!("plushie wire: dev-mode swap requested; restarting renderer");
+                swap = true;
+            }
+        }
+    }
+    swap
+}
+
 #[cfg(feature = "wire")]
 fn classify_exit(bridge: &mut Bridge, err: &io::Error) -> ExitReason {
     match err.kind() {

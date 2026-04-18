@@ -111,6 +111,11 @@ pub enum ExitReason {
         /// Last reason.
         last_reason: Box<ExitReason>,
     },
+    /// Dev-mode hot-reload requested a renderer swap after a
+    /// successful widget-crate rebuild. Treated like a clean exit
+    /// for restart-policy purposes: doesn't count against
+    /// `max_restarts`, no backoff, just respawn.
+    RendererSwap,
 }
 
 impl ExitReason {
@@ -122,6 +127,7 @@ impl ExitReason {
             Self::Shutdown => "shutdown",
             Self::HeartbeatTimeout => "heartbeat_timeout",
             Self::MaxRestartsReached { .. } => "max_restarts_reached",
+            Self::RendererSwap => "renderer_swap",
         }
     }
 }

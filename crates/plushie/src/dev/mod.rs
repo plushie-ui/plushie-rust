@@ -44,7 +44,51 @@ mod watch;
 pub use overlay::{DevOverlayHandle, RebuildingOverlay, Status};
 pub use watch::{WatchOpts, watch_renderer, watch_renderer_with_opts};
 
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+
+/// Control signal sent from dev-mode components to the wire runner's
+/// event loop.
+///
+/// Currently carries a single variant; the enum shape leaves room
+/// for future out-of-band commands (pause, unpause, log-level bump)
+/// without reshaping the API.
+#[derive(Debug, Clone)]
+pub enum ControlSignal {
+    /// Widget-crate rebuild finished; wire runner should gracefully
+    /// terminate the current renderer subprocess and spawn a fresh
+    /// one. Preserves the Model, subscriptions, and pending effects.
+    SwapRenderer,
+}
+
+/// Process-global queue of pending control signals. The wire runner
+/// drains this via `drain_control_signals` once per event-loop
+/// iteration.
+static CONTROL_QUEUE: OnceLock<Mutex<Vec<ControlSignal>>> = OnceLock::new();
+
+fn control_queue() -> &'static Mutex<Vec<ControlSignal>> {
+    CONTROL_QUEUE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Publish a control signal.
+///
+/// Callable from any thread. Delivery latency is bounded by the
+/// wire runner's heartbeat interval, or the next inbound renderer
+/// message in the common case.
+pub fn send_control_signal(signal: ControlSignal) {
+    if let Ok(mut guard) = control_queue().lock() {
+        guard.push(signal);
+    }
+}
+
+/// Drain the control-signal queue. Exposed for the wire runner; not
+/// intended for app code.
+#[doc(hidden)]
+pub fn drain_control_signals() -> Vec<ControlSignal> {
+    match control_queue().lock() {
+        Ok(mut guard) => std::mem::take(&mut *guard),
+        Err(_) => Vec::new(),
+    }
+}
 
 /// Process-global dev-overlay handle. Registered once (ideally before
 /// `plushie::run` starts) so the runtime's tree walker can read the
@@ -73,4 +117,23 @@ pub fn register_overlay(handle: DevOverlayHandle) {
 /// production builds don't compile this path at all.
 pub(crate) fn current_overlay_snapshot() -> Option<RebuildingOverlay> {
     GLOBAL_OVERLAY.get().and_then(|h| h.snapshot())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_and_drain_control_signal_roundtrips() {
+        // Control-signal queue is process-global; in a single-thread
+        // test we can publish and drain without racing other tests.
+        // Start from a clean slate.
+        let _ = drain_control_signals();
+        send_control_signal(ControlSignal::SwapRenderer);
+        let signals = drain_control_signals();
+        assert_eq!(signals.len(), 1);
+        assert!(matches!(signals[0], ControlSignal::SwapRenderer));
+        // Drain again - should be empty.
+        assert!(drain_control_signals().is_empty());
+    }
 }

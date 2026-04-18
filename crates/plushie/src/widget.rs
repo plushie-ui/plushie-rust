@@ -174,7 +174,12 @@ pub trait Widget: Send + Sync + 'static {
 #[non_exhaustive]
 pub enum EventResult {
     /// Emit a transformed event to the parent.
-    Emit { family: String, value: Value },
+    Emit {
+        /// Event family (e.g. `"star_rating:select"`).
+        family: String,
+        /// Event payload delivered to the parent.
+        value: Value,
+    },
     /// Event handled and suppressed.
     Consumed,
     /// Event not handled, pass to parent unchanged.
@@ -406,6 +411,7 @@ pub struct WidgetRegistrar {
 }
 
 impl WidgetRegistrar {
+    /// Create an empty registrar.
     pub fn new() -> Self {
         Self::default()
     }

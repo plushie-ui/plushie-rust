@@ -46,37 +46,57 @@ impl Default for Header {
 /// pipeline.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
+    /// Click the widget identified by the selector.
     Click(Selector),
+    /// Type a string into the targeted text input.
     TypeText(Selector, String),
+    /// Press and release the named key (chord syntax accepted).
     TypeKey(String),
+    /// Press and hold the named key.
     Press(String),
+    /// Release a held key.
     Release(String),
+    /// Toggle a boolean widget. `None` flips; `Some(b)` sets to `b`.
     Toggle(Selector, Option<bool>),
+    /// Select the named value on a picklist or radio group.
     Select(Selector, String),
+    /// Move a slider to the given numeric value.
     Slide(Selector, f64),
+    /// Move the pointer to absolute coordinates.
     MoveTo(f32, f32),
+    /// Move the pointer over the widget identified by the selector.
     MoveToSelector(Selector),
+    /// Scroll by `(dx, dy)` on the targeted widget.
     Scroll(Selector, f32, f32),
+    /// Sleep for the given number of milliseconds.
     Wait(u64),
 
     // Assertions
+    /// Assert a condition described by a free-form expression string.
     Expect(String),
+    /// Assert the widget's visible text equals the given value.
     AssertText(Selector, String),
+    /// Assert that a matching widget exists in the tree.
     AssertExists(Selector),
+    /// Assert that no matching widget exists in the tree.
     AssertNotExists(Selector),
     /// Assert that the `{:?}` string of the model contains the
     /// given substring. Parity with Elixir's `assert_model`.
     AssertModel(String),
 
     // Capture
+    /// Capture a screenshot and write it to the given path.
     Screenshot(String),
+    /// Record the current tree hash under the given tag.
     TreeHash(String),
 }
 
 /// A parsed `.plushie` file.
 #[derive(Debug, Clone)]
 pub struct PlushieFile {
+    /// Parsed header section.
     pub header: Header,
+    /// Instructions paired with their source line numbers.
     pub instructions: Vec<(usize, Instruction)>,
 }
 

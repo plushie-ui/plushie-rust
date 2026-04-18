@@ -35,62 +35,77 @@ pub fn text(content: &str) -> TextBuilder {
 }
 
 impl TextBuilder {
+    /// Override the auto-generated node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Set the font size in pixels.
     pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "size", s.into().wire_encode());
         self
     }
+    /// Set the text color.
     pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "color", c.into().wire_encode());
         self
     }
+    /// Set the font family and weight.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
+    /// Set the horizontal alignment within the text bounding box.
     pub fn align_x(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
+    /// Set the vertical alignment within the text bounding box.
     pub fn align_y(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_y", super::valign_to_value(a));
         self
     }
+    /// Set the line-wrap strategy for long content.
     pub fn wrapping(mut self, w: Wrapping) -> Self {
         super::set_prop(&mut self.props, "wrapping", w.wire_encode());
         self
     }
+    /// Set the text shaping strategy (basic or advanced).
     pub fn shaping(mut self, s: Shaping) -> Self {
         super::set_prop(&mut self.props, "shaping", s.wire_encode());
         self
     }
+    /// Set the line height (absolute pixels or a multiplier of the font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Configure the trailing ellipsis for truncated text.
     pub fn ellipsis(mut self, e: Ellipsis) -> Self {
         super::set_prop(&mut self.props, "ellipsis", e.wire_encode());
         self
     }
+    /// Apply a named or custom style to the text.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -133,50 +148,62 @@ pub fn rich_text_id(id: &str) -> RichTextBuilder {
 }
 
 impl RichTextBuilder {
+    /// Override the node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Set the ordered list of styled spans that make up the text.
     pub fn spans(mut self, spans: Vec<PropValue>) -> Self {
         super::set_prop(&mut self.props, "spans", PropValue::Array(spans));
         self
     }
+    /// Default font size for spans that don't override it (pixels).
     pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "size", s.into().wire_encode());
         self
     }
+    /// Default font for spans that don't override it.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Default text color for spans that don't override it.
     pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "color", c.into().wire_encode());
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
+    /// Set the line height (absolute pixels or a multiplier of the font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Set the line-wrap strategy for long content.
     pub fn wrapping(mut self, w: Wrapping) -> Self {
         super::set_prop(&mut self.props, "wrapping", w.wire_encode());
         self
     }
+    /// Configure the trailing ellipsis for truncated text.
     pub fn ellipsis(mut self, e: Ellipsis) -> Self {
         super::set_prop(&mut self.props, "ellipsis", e.wire_encode());
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -209,22 +236,27 @@ pub fn space() -> SpaceBuilder {
 }
 
 impl SpaceBuilder {
+    /// Override the auto-generated node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -257,30 +289,37 @@ pub fn rule() -> RuleBuilder {
 }
 
 impl RuleBuilder {
+    /// Override the auto-generated node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Set the rule width in pixels (for vertical rules) or as a length.
     pub fn width(mut self, w: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "width", w.into().wire_encode());
         self
     }
+    /// Set the rule height in pixels (for horizontal rules) or as a length.
     pub fn height(mut self, h: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "height", h.into().wire_encode());
         self
     }
+    /// Set the rule direction (horizontal or vertical).
     pub fn direction(mut self, d: Direction) -> Self {
         super::set_prop(&mut self.props, "direction", d.wire_encode());
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -327,14 +366,17 @@ pub fn progress_bar(range: (f32, f32), value: f32) -> ProgressBarBuilder {
 }
 
 impl ProgressBarBuilder {
+    /// Override the auto-generated node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
@@ -349,14 +391,17 @@ impl ProgressBarBuilder {
         super::set_prop(&mut self.props, "label", l);
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -395,22 +440,27 @@ pub fn image(source: &str) -> ImageBuilder {
 }
 
 impl ImageBuilder {
+    /// Override the auto-generated node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
+    /// Control how the image scales to fit its bounds.
     pub fn content_fit(mut self, fit: ContentFit) -> Self {
         super::set_prop(&mut self.props, "content_fit", fit.wire_encode());
         self
     }
+    /// Select the pixel interpolation method (nearest, linear).
     pub fn filter_method(mut self, method: FilterMethod) -> Self {
         super::set_prop(&mut self.props, "filter_method", method.wire_encode());
         self
@@ -427,6 +477,7 @@ impl ImageBuilder {
         super::set_prop(&mut self.props, "rotation", angle.into().wire_encode());
         self
     }
+    /// Alpha multiplier in the range `0.0..=1.0`.
     pub fn opacity(mut self, o: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "opacity", o.into().wire_encode());
         self
@@ -456,6 +507,7 @@ impl ImageBuilder {
         super::set_prop(&mut self.props, "crop", PropValue::Object(crop));
         self
     }
+    /// Short accessible description (alt text). Flows into the a11y label.
     pub fn alt(mut self, alt: &str) -> Self {
         super::set_prop(&mut self.props, "alt", alt);
         self
@@ -470,10 +522,12 @@ impl ImageBuilder {
         super::set_prop(&mut self.props, "decorative", v);
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -512,22 +566,27 @@ pub fn svg(source: &str) -> SvgBuilder {
 }
 
 impl SvgBuilder {
+    /// Override the auto-generated node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
+    /// Tint color. Replaces the SVG's painted color with this value.
     pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "color", c.into().wire_encode());
         self
     }
+    /// Control how the SVG scales to fit its bounds.
     pub fn content_fit(mut self, fit: ContentFit) -> Self {
         super::set_prop(&mut self.props, "content_fit", fit.wire_encode());
         self
@@ -544,10 +603,12 @@ impl SvgBuilder {
         super::set_prop(&mut self.props, "rotation", angle.into().wire_encode());
         self
     }
+    /// Alpha multiplier in the range `0.0..=1.0`.
     pub fn opacity(mut self, o: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "opacity", o.into().wire_encode());
         self
     }
+    /// Short accessible description (alt text). Flows into the a11y label.
     pub fn alt(mut self, alt: &str) -> Self {
         super::set_prop(&mut self.props, "alt", alt);
         self
@@ -562,10 +623,12 @@ impl SvgBuilder {
         super::set_prop(&mut self.props, "decorative", v);
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -604,50 +667,62 @@ pub fn markdown(content: &str) -> MarkdownBuilder {
 }
 
 impl MarkdownBuilder {
+    /// Override the auto-generated node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Body text size in pixels.
     pub fn text_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "text_size", s.into().wire_encode());
         self
     }
+    /// Size in pixels for `#` headings.
     pub fn h1_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "h1_size", s.into().wire_encode());
         self
     }
+    /// Size in pixels for `##` headings.
     pub fn h2_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "h2_size", s.into().wire_encode());
         self
     }
+    /// Size in pixels for `###` and deeper headings.
     pub fn h3_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "h3_size", s.into().wire_encode());
         self
     }
+    /// Size in pixels for inline and fenced code.
     pub fn code_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "code_size", s.into().wire_encode());
         self
     }
+    /// Vertical spacing between blocks, in pixels.
     pub fn spacing(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", s.into().wire_encode());
         self
     }
+    /// Color applied to hyperlink runs.
     pub fn link_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "link_color", c.into().wire_encode());
         self
     }
+    /// Syntax-highlight theme name for fenced code blocks.
     pub fn code_theme(mut self, theme: &str) -> Self {
         super::set_prop(&mut self.props, "code_theme", theme);
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -686,26 +761,32 @@ pub fn qr_code(data: &str) -> QrCodeBuilder {
 }
 
 impl QrCodeBuilder {
+    /// Override the auto-generated node ID.
     pub fn id(mut self, id: &str) -> Self {
         self.id = id.to_string();
         self
     }
+    /// Side length of an individual QR module (cell) in pixels.
     pub fn cell_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "cell_size", s.into().wire_encode());
         self
     }
+    /// Total rendered side length in pixels.
     pub fn total_size(mut self, s: f32) -> Self {
         super::set_prop(&mut self.props, "total_size", s);
         self
     }
+    /// Set the QR error-correction level.
     pub fn error_correction(mut self, level: ErrorCorrection) -> Self {
         super::set_prop(&mut self.props, "error_correction", level.wire_encode());
         self
     }
+    /// Color of the filled cells (typically the dark color).
     pub fn cell_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "cell_color", c.into().wire_encode());
         self
     }
+    /// Background color (typically the light color).
     pub fn background(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "background", c.into().wire_encode());
         self
@@ -720,10 +801,12 @@ impl QrCodeBuilder {
         super::set_prop(&mut self.props, "description", desc);
         self
     }
+    /// Maximum events per second emitted by this widget (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self

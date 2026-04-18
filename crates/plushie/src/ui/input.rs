@@ -34,18 +34,22 @@ pub fn text_input(id: &str, value: &str) -> TextInputBuilder {
 }
 
 impl TextInputBuilder {
+    /// Set the placeholder text shown when empty.
     pub fn placeholder(mut self, p: &str) -> Self {
         super::set_prop(&mut self.props, "placeholder", p);
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the font size in pixels.
     pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "size", s.into().wire_encode());
         self
     }
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -54,54 +58,67 @@ impl TextInputBuilder {
         );
         self
     }
+    /// Set the font family and weight.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Line height (pixels or multiplier of font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Handler for submit events.
     pub fn on_submit(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "on_submit", enabled);
         self
     }
+    /// Mask input as a password field.
     pub fn secure(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "secure", enabled);
         self
     }
+    /// Set the horizontal alignment.
     pub fn align_x(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
+    /// Set the window icon from a file path.
     pub fn icon(mut self, icon: PropValue) -> Self {
         super::set_prop(&mut self.props, "icon", icon);
         self
     }
+    /// Handler for paste events.
     pub fn on_paste(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "on_paste", enabled);
         self
     }
+    /// Configure `input_purpose`.
     pub fn input_purpose(mut self, purpose: InputPurpose) -> Self {
         super::set_prop(&mut self.props, "input_purpose", purpose.wire_encode());
         self
     }
+    /// Configure `placeholder_color`.
     pub fn placeholder_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "placeholder_color", c.into().wire_encode());
         self
     }
+    /// Configure `selection_color`.
     pub fn selection_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "selection_color", c.into().wire_encode());
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -139,14 +156,17 @@ pub fn text_editor(id: &str, content: &str) -> TextEditorBuilder {
 }
 
 impl TextEditorBuilder {
+    /// Set the placeholder text shown when empty.
     pub fn placeholder(mut self, p: &str) -> Self {
         super::set_prop(&mut self.props, "placeholder", p);
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
@@ -161,6 +181,7 @@ impl TextEditorBuilder {
         super::set_prop(&mut self.props, "max_height", h.into().wire_encode());
         self
     }
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -169,18 +190,22 @@ impl TextEditorBuilder {
         );
         self
     }
+    /// Set the font family and weight.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Set the font size in pixels.
     pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "size", s.into().wire_encode());
         self
     }
+    /// Line height (pixels or multiplier of font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Line-wrap strategy for long content.
     pub fn wrapping(mut self, w: Wrapping) -> Self {
         super::set_prop(&mut self.props, "wrapping", w.wire_encode());
         self
@@ -190,10 +215,12 @@ impl TextEditorBuilder {
         super::set_prop(&mut self.props, "input_purpose", purpose.wire_encode());
         self
     }
+    /// Configure `highlight_syntax`.
     pub fn highlight_syntax(mut self, lang: &str) -> Self {
         super::set_prop(&mut self.props, "highlight_syntax", lang);
         self
     }
+    /// Configure `highlight_theme`.
     pub fn highlight_theme(mut self, theme: &str) -> Self {
         super::set_prop(&mut self.props, "highlight_theme", theme);
         self
@@ -213,18 +240,22 @@ impl TextEditorBuilder {
         super::set_prop(&mut self.props, "selection_color", c.into().wire_encode());
         self
     }
+    /// Handler for paste events.
     pub fn on_paste(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "on_paste", enabled);
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -262,58 +293,72 @@ pub fn checkbox(id: &str, checked: bool) -> CheckboxBuilder {
 }
 
 impl CheckboxBuilder {
+    /// Set the accessible or displayed label.
     pub fn label(mut self, l: &str) -> Self {
         super::set_prop(&mut self.props, "label", l);
         self
     }
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", s.into().wire_encode());
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the font size in pixels.
     pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "size", s.into().wire_encode());
         self
     }
+    /// Body text size in pixels.
     pub fn text_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "text_size", s.into().wire_encode());
         self
     }
+    /// Set the font family and weight.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Set the window icon from a file path.
     pub fn icon(mut self, icon: PropValue) -> Self {
         super::set_prop(&mut self.props, "icon", icon);
         self
     }
+    /// Line height (pixels or multiplier of font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Text shaping strategy (basic or advanced).
     pub fn shaping(mut self, s: Shaping) -> Self {
         super::set_prop(&mut self.props, "shaping", s.wire_encode());
         self
     }
+    /// Line-wrap strategy for long content.
     pub fn wrapping(mut self, w: Wrapping) -> Self {
         super::set_prop(&mut self.props, "wrapping", w.wire_encode());
         self
     }
+    /// Disable this widget.
     pub fn disabled(mut self, d: bool) -> Self {
         super::set_prop(&mut self.props, "disabled", d);
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -351,58 +396,72 @@ pub fn toggler(id: &str, is_toggled: bool) -> TogglerBuilder {
 }
 
 impl TogglerBuilder {
+    /// Set the accessible or displayed label.
     pub fn label(mut self, l: &str) -> Self {
         super::set_prop(&mut self.props, "label", l);
         self
     }
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", s.into().wire_encode());
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the font size in pixels.
     pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "size", s.into().wire_encode());
         self
     }
+    /// Body text size in pixels.
     pub fn text_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "text_size", s.into().wire_encode());
         self
     }
+    /// Set the font family and weight.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Line height (pixels or multiplier of font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Text shaping strategy (basic or advanced).
     pub fn shaping(mut self, s: Shaping) -> Self {
         super::set_prop(&mut self.props, "shaping", s.wire_encode());
         self
     }
+    /// Line-wrap strategy for long content.
     pub fn wrapping(mut self, w: Wrapping) -> Self {
         super::set_prop(&mut self.props, "wrapping", w.wire_encode());
         self
     }
+    /// Configure `text_alignment`.
     pub fn text_alignment(mut self, a: HorizontalAlignment) -> Self {
         super::set_prop(&mut self.props, "text_alignment", a.wire_encode());
         self
     }
+    /// Disable this widget.
     pub fn disabled(mut self, d: bool) -> Self {
         super::set_prop(&mut self.props, "disabled", d);
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -448,54 +507,67 @@ pub fn radio(id: &str, value: &str, selected: Option<&str>) -> RadioBuilder {
 }
 
 impl RadioBuilder {
+    /// Set the accessible or displayed label.
     pub fn label(mut self, l: &str) -> Self {
         super::set_prop(&mut self.props, "label", l);
         self
     }
+    /// Configure `group`.
     pub fn group(mut self, g: &str) -> Self {
         super::set_prop(&mut self.props, "group", g);
         self
     }
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", s.into().wire_encode());
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the font size in pixels.
     pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "size", s.into().wire_encode());
         self
     }
+    /// Body text size in pixels.
     pub fn text_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "text_size", s.into().wire_encode());
         self
     }
+    /// Set the font family and weight.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Line height (pixels or multiplier of font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Text shaping strategy (basic or advanced).
     pub fn shaping(mut self, s: Shaping) -> Self {
         super::set_prop(&mut self.props, "shaping", s.wire_encode());
         self
     }
+    /// Line-wrap strategy for long content.
     pub fn wrapping(mut self, w: Wrapping) -> Self {
         super::set_prop(&mut self.props, "wrapping", w.wire_encode());
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -541,54 +613,67 @@ pub fn slider(id: &str, range: (f32, f32), value: f32) -> SliderBuilder {
 }
 
 impl SliderBuilder {
+    /// Set the value adjustment step.
     pub fn step(mut self, s: f32) -> Self {
         super::set_prop(&mut self.props, "step", s);
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: f32) -> Self {
         super::set_prop(&mut self.props, "height", PropValue::F64(h as f64));
         self
     }
+    /// Configure `default`.
     pub fn default(mut self, d: f32) -> Self {
         super::set_prop(&mut self.props, "default", d);
         self
     }
+    /// Configure `shift_step`.
     pub fn shift_step(mut self, s: f32) -> Self {
         super::set_prop(&mut self.props, "shift_step", s);
         self
     }
+    /// Configure `circular_handle`.
     pub fn circular_handle(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "circular_handle", enabled);
         self
     }
+    /// Configure `handle_radius`.
     pub fn handle_radius(mut self, r: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "handle_radius", r.into().wire_encode());
         self
     }
+    /// Configure `rail_color`.
     pub fn rail_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "rail_color", c.into().wire_encode());
         self
     }
+    /// Configure `rail_width`.
     pub fn rail_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "rail_width", w.into().wire_encode());
         self
     }
+    /// Set the accessible or displayed label.
     pub fn label(mut self, l: &str) -> Self {
         super::set_prop(&mut self.props, "label", l);
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -634,46 +719,57 @@ pub fn vertical_slider(id: &str, range: (f32, f32), value: f32) -> VerticalSlide
 }
 
 impl VerticalSliderBuilder {
+    /// Set the value adjustment step.
     pub fn step(mut self, s: f32) -> Self {
         super::set_prop(&mut self.props, "step", s);
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: f32) -> Self {
         super::set_prop(&mut self.props, "width", PropValue::F64(w as f64));
         self
     }
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
+    /// Configure `default`.
     pub fn default(mut self, d: f32) -> Self {
         super::set_prop(&mut self.props, "default", d);
         self
     }
+    /// Configure `shift_step`.
     pub fn shift_step(mut self, s: f32) -> Self {
         super::set_prop(&mut self.props, "shift_step", s);
         self
     }
+    /// Configure `rail_color`.
     pub fn rail_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "rail_color", c.into().wire_encode());
         self
     }
+    /// Configure `rail_width`.
     pub fn rail_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "rail_width", w.into().wire_encode());
         self
     }
+    /// Set the accessible or displayed label.
     pub fn label(mut self, l: &str) -> Self {
         super::set_prop(&mut self.props, "label", l);
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -721,14 +817,17 @@ pub fn pick_list(id: &str, options: &[&str], selected: Option<&str>) -> PickList
 }
 
 impl PickListBuilder {
+    /// Set the placeholder text shown when empty.
     pub fn placeholder(mut self, p: &str) -> Self {
         super::set_prop(&mut self.props, "placeholder", p);
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -737,34 +836,42 @@ impl PickListBuilder {
         );
         self
     }
+    /// Body text size in pixels.
     pub fn text_size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "text_size", s.into().wire_encode());
         self
     }
+    /// Set the font family and weight.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Line height (pixels or multiplier of font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Configure `menu_height`.
     pub fn menu_height(mut self, h: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "menu_height", h.into().wire_encode());
         self
     }
+    /// Text shaping strategy (basic or advanced).
     pub fn shaping(mut self, s: Shaping) -> Self {
         super::set_prop(&mut self.props, "shaping", s.wire_encode());
         self
     }
+    /// Configure `handle`.
     pub fn handle(mut self, h: PropValue) -> Self {
         super::set_prop(&mut self.props, "handle", h);
         self
     }
+    /// Configure trailing ellipsis for truncated text.
     pub fn ellipsis(mut self, e: Ellipsis) -> Self {
         super::set_prop(&mut self.props, "ellipsis", e.wire_encode());
         self
     }
+    /// Configure `menu_style`.
     pub fn menu_style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -773,22 +880,27 @@ impl PickListBuilder {
         );
         self
     }
+    /// Handler for open events.
     pub fn on_open(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "on_open", enabled);
         self
     }
+    /// Handler for close events.
     pub fn on_close(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "on_close", enabled);
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -832,14 +944,17 @@ pub fn combo_box(id: &str, options: &[&str], value: &str) -> ComboBoxBuilder {
 }
 
 impl ComboBoxBuilder {
+    /// Set the placeholder text shown when empty.
     pub fn placeholder(mut self, p: &str) -> Self {
         super::set_prop(&mut self.props, "placeholder", p);
         self
     }
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -848,46 +963,57 @@ impl ComboBoxBuilder {
         );
         self
     }
+    /// Set the font size in pixels.
     pub fn size(mut self, s: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "size", s.into().wire_encode());
         self
     }
+    /// Set the font family and weight.
     pub fn font(mut self, f: Font) -> Self {
         super::set_prop(&mut self.props, "font", f.wire_encode());
         self
     }
+    /// Line height (pixels or multiplier of font size).
     pub fn line_height(mut self, lh: impl Into<Animatable<LineHeight>>) -> Self {
         super::set_prop(&mut self.props, "line_height", lh.into().wire_encode());
         self
     }
+    /// Configure `menu_height`.
     pub fn menu_height(mut self, h: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "menu_height", h.into().wire_encode());
         self
     }
+    /// Set the window icon from a file path.
     pub fn icon(mut self, icon: PropValue) -> Self {
         super::set_prop(&mut self.props, "icon", icon);
         self
     }
+    /// Handler for option-hovered events.
     pub fn on_option_hovered(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "on_option_hovered", enabled);
         self
     }
+    /// Handler for open events.
     pub fn on_open(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "on_open", enabled);
         self
     }
+    /// Handler for close events.
     pub fn on_close(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "on_close", enabled);
         self
     }
+    /// Text shaping strategy (basic or advanced).
     pub fn shaping(mut self, s: Shaping) -> Self {
         super::set_prop(&mut self.props, "shaping", s.wire_encode());
         self
     }
+    /// Configure trailing ellipsis for truncated text.
     pub fn ellipsis(mut self, e: Ellipsis) -> Self {
         super::set_prop(&mut self.props, "ellipsis", e.wire_encode());
         self
     }
+    /// Configure `menu_style`.
     pub fn menu_style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -896,14 +1022,17 @@ impl ComboBoxBuilder {
         );
         self
     }
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self

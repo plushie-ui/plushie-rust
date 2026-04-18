@@ -11,7 +11,9 @@
 /// Sort direction for multi-field sorting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortDir {
+    /// Ascending order (smallest first).
     Asc,
+    /// Descending order (largest first).
     Desc,
 }
 

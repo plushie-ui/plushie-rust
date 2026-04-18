@@ -9,7 +9,9 @@ use std::collections::HashMap;
 /// A single entry in the navigation stack.
 #[derive(Debug, Clone)]
 pub struct RouteEntry {
+    /// Path string identifying the route (e.g. `"/notes/42"`).
     pub path: String,
+    /// Arbitrary JSON parameters associated with the entry.
     pub params: HashMap<String, serde_json::Value>,
 }
 

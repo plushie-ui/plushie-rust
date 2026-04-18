@@ -24,6 +24,7 @@ pub struct RunResult {
 }
 
 impl RunResult {
+    /// Returns true when every instruction in the run passed.
     pub fn is_ok(&self) -> bool {
         self.failures.is_empty()
     }

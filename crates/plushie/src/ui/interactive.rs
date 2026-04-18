@@ -40,27 +40,32 @@ pub fn button(id: &str, label: &str) -> ButtonBuilder {
 }
 
 impl ButtonBuilder {
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         let s = s.into();
         super::set_prop(&mut self.props, "style", super::style_to_value(&s));
         self
     }
 
+    /// Disable this widget.
     pub fn disabled(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "disabled", v);
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -70,16 +75,19 @@ impl ButtonBuilder {
         self
     }
 
+    /// Clip content that overflows the container.
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -116,41 +124,49 @@ pub fn pointer_area(id: &str) -> PointerAreaBuilder {
 }
 
 impl PointerAreaBuilder {
+    /// Handler for press events.
     pub fn on_press(mut self, tag: &str) -> Self {
         super::set_prop(&mut self.props, "on_press", tag);
         self
     }
 
+    /// Handler for release events.
     pub fn on_release(mut self, tag: &str) -> Self {
         super::set_prop(&mut self.props, "on_release", tag);
         self
     }
 
+    /// Handler when the pointer enters.
     pub fn on_enter(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "on_enter", v);
         self
     }
 
+    /// Handler when the pointer leaves.
     pub fn on_exit(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "on_exit", v);
         self
     }
 
+    /// Handler for pointer-move events.
     pub fn on_move(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "on_move", v);
         self
     }
 
+    /// Handler for scroll events.
     pub fn on_scroll(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "on_scroll", v);
         self
     }
 
+    /// Handler for middle-press events.
     pub fn on_middle_press(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "on_middle_press", v);
         self
     }
 
+    /// Handler for right-press events.
     pub fn on_right_press(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "on_right_press", v);
         self
@@ -180,11 +196,13 @@ impl PointerAreaBuilder {
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -246,11 +264,13 @@ impl SensorBuilder {
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -295,11 +315,13 @@ pub fn tooltip(id: &str, tip: &str) -> TooltipBuilder {
 }
 
 impl TooltipBuilder {
+    /// Set the window's screen position (pixels).
     pub fn position(mut self, pos: Position) -> Self {
         super::set_prop(&mut self.props, "position", pos.wire_encode());
         self
     }
 
+    /// Gap between children, in pixels.
     pub fn gap(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "gap", v.into().wire_encode());
         self
@@ -323,17 +345,20 @@ impl TooltipBuilder {
         self
     }
 
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         let s = s.into();
         super::set_prop(&mut self.props, "style", super::style_to_value(&s));
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -376,17 +401,20 @@ pub fn themer(id: &str) -> ThemerBuilder {
 }
 
 impl ThemerBuilder {
+    /// Set the window theme.
     pub fn theme(mut self, theme: impl Into<Theme>) -> Self {
         let theme: Theme = theme.into();
         super::set_prop(&mut self.props, "theme", theme.wire_encode());
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -430,21 +458,25 @@ pub fn overlay(id: &str) -> OverlayBuilder {
 }
 
 impl OverlayBuilder {
+    /// Set the window's screen position (pixels).
     pub fn position(mut self, pos: Position) -> Self {
         super::set_prop(&mut self.props, "position", pos.wire_encode());
         self
     }
 
+    /// Set the alignment.
     pub fn align(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align", super::cross_align_to_value(a));
         self
     }
 
+    /// Auto-flip when overflowing the viewport.
     pub fn flip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "flip", v);
         self
     }
 
+    /// Gap between children, in pixels.
     pub fn gap(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "gap", v.into().wire_encode());
         self
@@ -462,26 +494,31 @@ impl OverlayBuilder {
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
+    /// Append a child.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
     }
 
+    /// Replace the child list.
     pub fn children<I, V>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = V>,

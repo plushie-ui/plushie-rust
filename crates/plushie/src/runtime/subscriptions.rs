@@ -19,20 +19,34 @@ pub struct SubscriptionManager {
 pub enum SubOp {
     /// Tell the renderer to start receiving this event kind.
     Subscribe {
+        /// Wire event-kind string (e.g. `"key_press"`).
         kind: String,
+        /// Subscription tag supplied by the app.
         tag: String,
+        /// Optional maximum delivery rate (events per second).
         max_rate: Option<u32>,
+        /// Optional window filter; `None` means all windows.
         window_id: Option<String>,
     },
     /// Tell the renderer to stop receiving this event kind.
-    Unsubscribe { kind: String, tag: String },
+    Unsubscribe {
+        /// Wire event-kind string matching the prior subscribe.
+        kind: String,
+        /// Subscription tag matching the prior subscribe.
+        tag: String,
+    },
     /// Start an SDK-side timer (SubscriptionKind::Every).
     StartTimer {
+        /// Timer tag used to correlate ticks with the originating subscription.
         tag: String,
+        /// Interval between ticks.
         interval: std::time::Duration,
     },
     /// Stop an SDK-side timer.
-    StopTimer { tag: String },
+    StopTimer {
+        /// Timer tag to stop.
+        tag: String,
+    },
 }
 
 impl Default for SubscriptionManager {
@@ -42,6 +56,7 @@ impl Default for SubscriptionManager {
 }
 
 impl SubscriptionManager {
+    /// Create a new manager with no active subscriptions.
     pub fn new() -> Self {
         Self { active: Vec::new() }
     }

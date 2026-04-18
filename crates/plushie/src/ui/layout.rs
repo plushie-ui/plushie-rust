@@ -45,21 +45,25 @@ pub fn window(id: &str) -> WindowBuilder {
 }
 
 impl WindowBuilder {
+    /// Set the window title.
     pub fn title(mut self, title: &str) -> Self {
         super::set_prop(&mut self.props, "title", title);
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Set the window's screen position (pixels).
     pub fn position(mut self, x: f32, y: f32) -> Self {
         super::set_prop(
             &mut self.props,
@@ -69,6 +73,7 @@ impl WindowBuilder {
         self
     }
 
+    /// Set the minimum window size (pixels).
     pub fn min_size(mut self, w: f32, h: f32) -> Self {
         super::set_prop(
             &mut self.props,
@@ -78,6 +83,7 @@ impl WindowBuilder {
         self
     }
 
+    /// Set the maximum window size (pixels).
     pub fn max_size(mut self, w: f32, h: f32) -> Self {
         super::set_prop(
             &mut self.props,
@@ -87,42 +93,50 @@ impl WindowBuilder {
         self
     }
 
+    /// Set the window theme.
     pub fn theme(mut self, theme: impl Into<Theme>) -> Self {
         let theme: Theme = theme.into();
         super::set_prop(&mut self.props, "theme", theme.wire_encode());
         self
     }
 
+    /// Override the window DPI scale factor.
     pub fn scale_factor(mut self, factor: f64) -> Self {
         super::set_prop(&mut self.props, "scale_factor", factor);
         self
     }
 
+    /// Start the window maximized.
     pub fn maximized(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "maximized", v);
         self
     }
 
+    /// Start the window fullscreen.
     pub fn fullscreen(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "fullscreen", v);
         self
     }
 
+    /// Control window visibility.
     pub fn visible(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "visible", v);
         self
     }
 
+    /// Allow the window to be resized by the user.
     pub fn resizable(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "resizable", v);
         self
     }
 
+    /// Show or hide native window decorations.
     pub fn decorations(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "decorations", v);
         self
     }
 
+    /// Enable a transparent window background.
     pub fn transparent(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "transparent", v);
         self
@@ -168,21 +182,25 @@ impl WindowBuilder {
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
+    /// Append a child.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
     }
 
+    /// Replace the child list.
     pub fn children<I, V>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = V>,
@@ -227,11 +245,13 @@ impl ColumnBuilder {
         self
     }
 
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -241,51 +261,61 @@ impl ColumnBuilder {
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Maximum allowed width, in pixels.
     pub fn max_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "max_width", w.into().wire_encode());
         self
     }
 
+    /// Set the horizontal alignment.
     pub fn align_x(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
 
+    /// Clip content that overflows the container.
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
         self
     }
 
+    /// Enable line wrapping.
     pub fn wrap(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "wrap", enabled);
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
+    /// Append a child.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
     }
 
+    /// Replace the child list.
     pub fn children<I, V>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = V>,
@@ -330,11 +360,13 @@ impl RowBuilder {
         self
     }
 
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -344,56 +376,67 @@ impl RowBuilder {
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Maximum allowed width, in pixels.
     pub fn max_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "max_width", w.into().wire_encode());
         self
     }
 
+    /// Set the horizontal alignment.
     pub fn align_x(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
 
+    /// Set the vertical alignment.
     pub fn align_y(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_y", super::valign_to_value(a));
         self
     }
 
+    /// Clip content that overflows the container.
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
         self
     }
 
+    /// Enable line wrapping.
     pub fn wrap(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "wrap", enabled);
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
+    /// Append a child.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
     }
 
+    /// Replace the child list.
     pub fn children<I, V>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = V>,
@@ -438,6 +481,7 @@ impl ContainerBuilder {
         self
     }
 
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -447,77 +491,92 @@ impl ContainerBuilder {
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Maximum allowed width, in pixels.
     pub fn max_width(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "max_width", v.into().wire_encode());
         self
     }
 
+    /// Maximum allowed height, in pixels.
     pub fn max_height(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "max_height", v.into().wire_encode());
         self
     }
 
+    /// Set the horizontal alignment.
     pub fn align_x(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
 
+    /// Set the vertical alignment.
     pub fn align_y(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_y", super::valign_to_value(a));
         self
     }
 
+    /// Clip content that overflows the container.
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
         self
     }
 
+    /// Set the background color.
     pub fn background(mut self, bg: impl Into<Animatable<Background>>) -> Self {
         super::set_prop(&mut self.props, "background", bg.into().wire_encode());
         self
     }
 
+    /// Set the color.
     pub fn color(mut self, c: impl Into<Animatable<Color>>) -> Self {
         super::set_prop(&mut self.props, "color", c.into().wire_encode());
         self
     }
 
+    /// Set the border.
     pub fn border(mut self, b: Border) -> Self {
         super::set_prop(&mut self.props, "border", b.wire_encode());
         self
     }
 
+    /// Configure the drop shadow.
     pub fn shadow(mut self, s: Shadow) -> Self {
         super::set_prop(&mut self.props, "shadow", s.wire_encode());
         self
     }
 
+    /// Configure `center`.
     pub fn center(mut self, enabled: bool) -> Self {
         super::set_prop(&mut self.props, "center", enabled);
         self
     }
 
+    /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         let s = s.into();
         super::set_prop(&mut self.props, "style", super::style_to_value(&s));
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -568,36 +627,43 @@ impl StackBuilder {
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Clip content that overflows the container.
     pub fn clip(mut self, v: bool) -> Self {
         super::set_prop(&mut self.props, "clip", v);
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
+    /// Append a child.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
     }
 
+    /// Replace the child list.
     pub fn children<I, V>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = V>,
@@ -648,16 +714,19 @@ impl GridBuilder {
         self
     }
 
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: f32) -> Self {
         super::set_prop(&mut self.props, "width", PropValue::F64(w as f64));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: f32) -> Self {
         super::set_prop(&mut self.props, "height", PropValue::F64(h as f64));
         self
@@ -690,21 +759,25 @@ impl GridBuilder {
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
+    /// Append a child.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
     }
 
+    /// Replace the child list.
     pub fn children<I, V>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = V>,
@@ -749,31 +822,37 @@ impl PinBuilder {
         self
     }
 
+    /// Configure `x`.
     pub fn x(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "x", v.into().wire_encode());
         self
     }
 
+    /// Configure `y`.
     pub fn y(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "y", v.into().wire_encode());
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -824,11 +903,13 @@ impl KeyedColumnBuilder {
         self
     }
 
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
+    /// Set the inner padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(
             &mut self.props,
@@ -838,41 +919,49 @@ impl KeyedColumnBuilder {
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Set the horizontal alignment.
     pub fn align_x(mut self, a: Align) -> Self {
         super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
         self
     }
 
+    /// Maximum allowed width, in pixels.
     pub fn max_width(mut self, w: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "max_width", w.into().wire_encode());
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
+    /// Append a child.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
     }
 
+    /// Replace the child list.
     pub fn children<I, V>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = V>,
@@ -933,26 +1022,31 @@ impl FloatingBuilder {
         self
     }
 
+    /// Set the scale factor.
     pub fn scale(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "scale", v.into().wire_encode());
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -1000,21 +1094,25 @@ impl ResponsiveBuilder {
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -1062,41 +1160,49 @@ impl ScrollableBuilder {
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
+    /// Set the primary axis direction.
     pub fn direction(mut self, dir: Direction) -> Self {
         super::set_prop(&mut self.props, "direction", dir.wire_encode());
         self
     }
 
+    /// Configure `scrollbar_width`.
     pub fn scrollbar_width(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "scrollbar_width", v.into().wire_encode());
         self
     }
 
+    /// Configure `scrollbar_margin`.
     pub fn scrollbar_margin(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "scrollbar_margin", v.into().wire_encode());
         self
     }
 
+    /// Configure `scroller_width`.
     pub fn scroller_width(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "scroller_width", v.into().wire_encode());
         self
     }
 
+    /// Position anchor relative to the target.
     pub fn anchor(mut self, a: Anchor) -> Self {
         super::set_prop(&mut self.props, "anchor", a.wire_encode());
         self
@@ -1126,11 +1232,13 @@ impl ScrollableBuilder {
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
@@ -1174,21 +1282,25 @@ pub fn pane_grid(id: &str) -> PaneGridBuilder {
 }
 
 impl PaneGridBuilder {
+    /// Set the spacing between children, in pixels.
     pub fn spacing(mut self, v: impl Into<Animatable<f32>>) -> Self {
         super::set_prop(&mut self.props, "spacing", v.into().wire_encode());
         self
     }
 
+    /// Set the preferred width.
     pub fn width(mut self, w: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "width", super::length_to_value(w.into()));
         self
     }
 
+    /// Set the preferred height.
     pub fn height(mut self, h: impl Into<Length>) -> Self {
         super::set_prop(&mut self.props, "height", super::length_to_value(h.into()));
         self
     }
 
+    /// Configure `split_axis`.
     pub fn split_axis(mut self, axis: &str) -> Self {
         super::set_prop(&mut self.props, "split_axis", axis);
         self
@@ -1228,21 +1340,25 @@ impl PaneGridBuilder {
         self
     }
 
+    /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
 
+    /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
         self
     }
 
+    /// Append a child.
     pub fn child(mut self, child: impl Into<View>) -> Self {
         self.children.push(child.into());
         self
     }
 
+    /// Replace the child list.
     pub fn children<I, V>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = V>,

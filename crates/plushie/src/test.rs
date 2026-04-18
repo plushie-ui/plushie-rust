@@ -57,7 +57,9 @@ use crate::widget::{EventResult, Interception, WidgetStateStore};
 /// Sort direction hint used by [`TestSession::sort`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortDir {
+    /// Ascending order.
     Asc,
+    /// Descending order.
     Desc,
 }
 

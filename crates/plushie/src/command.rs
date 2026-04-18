@@ -145,15 +145,33 @@ pub enum Command {
     // -- SDK-local (never sent to renderer) --
     /// Run an async task. Result delivered as
     /// [`AsyncEvent`](crate::event::AsyncEvent).
-    Async { tag: String, task: AsyncTaskFn },
+    Async {
+        /// Tag correlating the delivered result with this command.
+        tag: String,
+        /// Boxed future factory that produces the task output.
+        task: AsyncTaskFn,
+    },
     /// Run a streaming async task. Intermediate emits deliver as
     /// [`StreamEvent`](crate::event::StreamEvent); the final result
     /// delivers as [`AsyncEvent`](crate::event::AsyncEvent).
-    Stream { tag: String, task: StreamTaskFn },
+    Stream {
+        /// Tag correlating stream emits and the final result.
+        tag: String,
+        /// Boxed stream factory.
+        task: StreamTaskFn,
+    },
     /// Cancel a running async task or stream by tag.
-    Cancel { tag: String },
+    Cancel {
+        /// Tag of the task or stream to cancel.
+        tag: String,
+    },
     /// Deliver an event after a delay.
-    SendAfter { delay: Duration, event: Box<Event> },
+    SendAfter {
+        /// Delay before the event is dispatched.
+        delay: Duration,
+        /// Event to dispatch.
+        event: Box<Event>,
+    },
 
     // -- Renderer operations (typed, zero-overhead in direct mode) --
     /// An operation for the renderer to execute.

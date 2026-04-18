@@ -225,10 +225,14 @@ enum TweenMode {
 /// ```
 #[derive(Debug, Clone)]
 pub struct Tween {
+    /// Starting value of the tween.
     pub from: f64,
+    /// Target value at the end of the tween.
     pub to: f64,
     mode: TweenMode,
+    /// Optional loop policy.
     pub repeat: Option<Repeat>,
+    /// When true, each loop iteration reverses direction (ping-pong).
     pub auto_reverse: bool,
     started_at: Option<u64>,
     last_timestamp: Option<u64>,

@@ -242,16 +242,27 @@ fn parse_modifiers(obj: Option<&serde_json::Map<String, Value>>) -> KeyModifiers
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Event {
+    /// Widget-originated event (click, input, change, etc.).
     Widget(WidgetEvent),
+    /// Keyboard press or release.
     Key(KeyEvent),
+    /// Window lifecycle event (resize, move, close request, focus).
     Window(WindowEvent),
+    /// Timer tick from a `Subscription::every` subscription.
     Timer(TimerEvent),
+    /// Result from a `Command::async_task` future.
     Async(AsyncEvent),
+    /// Item emitted by a `Subscription::stream`.
     Stream(StreamEvent),
+    /// Platform-effect result (file dialog, clipboard, notification).
     Effect(EffectEvent),
+    /// System-level event (theme change, etc.).
     System(SystemEvent),
+    /// Error emitted by a failed command.
     CommandError(CommandError),
+    /// Modifier-state change (Shift/Ctrl/Alt/Super).
     Modifiers(ModifiersEvent),
+    /// Input-method editor (IME) composition event.
     Ime(ImeEvent),
 }
 
@@ -473,40 +484,75 @@ impl WidgetEvent {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum WidgetMatch<'a> {
+    /// Primary-button click on the identified widget.
     Click(&'a str),
+    /// Primary-button double click.
     DoubleClick(&'a str, PointerPress),
+    /// Text input change (full current value).
     Input(&'a str, &'a str),
+    /// Submit (Enter pressed on text input).
     Submit(&'a str, &'a str),
+    /// Two-state toggle (checkbox, switch) change.
     Toggle(&'a str, bool),
+    /// Single-select choice (pick list, radio) change.
     Select(&'a str, &'a str),
+    /// Slider drag (continuous value).
     Slide(&'a str, f64),
+    /// Slider drag released (committed value).
     SlideRelease(&'a str, f64),
+    /// Paste into a text-bearing widget.
     Paste(&'a str, &'a str),
+    /// Pointer press on the widget.
     Press(&'a str, PointerPress),
+    /// Pointer release on the widget.
     Release(&'a str, PointerRelease),
+    /// Pointer movement over the widget.
     Move(&'a str, PointerMove),
+    /// Pointer scroll on the widget.
     Scroll(&'a str, PointerScroll),
+    /// Scrollable content position changed.
     Scrolled(&'a str, ScrollPosition),
+    /// Pointer entered the widget bounds.
     Enter(&'a str),
+    /// Pointer left the widget bounds.
     Exit(&'a str),
+    /// Drag in progress.
     Drag(&'a str, PointerDrag),
+    /// Drag finished.
     DragEnd(&'a str, PointerDrag),
+    /// Widget gained keyboard focus.
     Focused(&'a str),
+    /// Widget lost keyboard focus.
     Blurred(&'a str),
+    /// Widget resized (for widgets that report dimensions).
     Resize(&'a str, ResizeDimensions),
+    /// Key pressed while this widget had focus.
     KeyPress(&'a str, KeyData),
+    /// Key released while this widget had focus.
     KeyRelease(&'a str, KeyData),
+    /// Sort request from a sortable widget (typically a table).
     Sort(&'a str, &'a str),
+    /// Status change carrying a widget-specific payload.
     Status(&'a str, &'a Value),
+    /// Option hovered (pick lists, menus).
     OptionHovered(&'a str, &'a Value),
+    /// Widget opened (accordion, menu, overlay).
     Open(&'a str),
+    /// Widget closed.
     Close(&'a str),
+    /// Keyboard shortcut binding triggered.
     KeyBinding(&'a str, &'a Value),
+    /// Animation or transition finished.
     TransitionComplete(&'a str),
+    /// Pane grid pane resize.
     PaneResized(&'a str, &'a Value),
+    /// Pane grid pane drag.
     PaneDragged(&'a str, &'a Value),
+    /// Pane grid pane click.
     PaneClicked(&'a str, &'a Value),
+    /// Pane grid focus cycled to the pane's region.
     PaneFocusCycle(&'a str),
+    /// Timer tick (from `Subscription::every`).
     Timer(&'a str),
     /// Custom widget event. `family` is the full family string
     /// (e.g., "star_rating:select"). Match with:
@@ -514,8 +560,11 @@ pub enum WidgetMatch<'a> {
     /// Some(Custom { family: "star_rating:select", value, .. }) => { ... }
     /// ```
     Custom {
+        /// Widget node ID that emitted the event.
         id: &'a str,
+        /// Full event family string (e.g. `"star_rating:select"`).
         family: &'a str,
+        /// Raw payload JSON for the custom event.
         value: &'a Value,
     },
 }
@@ -532,10 +581,13 @@ pub fn family_to_event_type(family: &str) -> EventType {
 // KeyEvent
 // ---------------------------------------------------------------------------
 
+/// Key event phase reported by [`KeyEvent::event_type`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum KeyEventType {
+    /// Key was pressed down.
     Press,
+    /// Key was released.
     Release,
 }
 
@@ -569,21 +621,28 @@ pub struct KeyEvent {
 }
 
 impl KeyEvent {
+    /// Returns true if this event represents a key press.
     pub fn is_press(&self) -> bool {
         self.event_type == KeyEventType::Press
     }
+    /// Returns true if this event represents a key release.
     pub fn is_release(&self) -> bool {
         self.event_type == KeyEventType::Release
     }
 }
 
+/// Physical location of a key on the keyboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum KeyLocation {
+    /// Default location (not left/right/numpad specific).
     #[default]
     Standard,
+    /// Left side (e.g. Left Shift, Left Ctrl).
     Left,
+    /// Right side (e.g. Right Shift, Right Ctrl).
     Right,
+    /// Numeric keypad.
     Numpad,
 }
 
@@ -614,19 +673,31 @@ pub struct WindowEvent {
     pub scale_factor: Option<f32>,
 }
 
+/// Kind of window lifecycle event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WindowEventType {
+    /// Window was just created.
     Opened,
+    /// Window has been closed.
     Closed,
+    /// User requested to close the window (not yet closed).
     CloseRequested,
+    /// Window moved on the screen.
     Moved,
+    /// Window resized.
     Resized,
+    /// Window gained keyboard focus.
     Focused,
+    /// Window lost keyboard focus.
     Unfocused,
+    /// DPI scale factor changed.
     Rescaled,
+    /// A file is being hovered over the window (pre-drop).
     FileHovered,
+    /// A file was dropped on the window.
     FileDropped,
+    /// A hovered file was removed without dropping.
     FilesHoveredLeft,
 }
 
@@ -637,7 +708,9 @@ pub enum WindowEventType {
 /// A timer tick from a [`Subscription::every`](crate::Subscription) subscription.
 #[derive(Debug, Clone)]
 pub struct TimerEvent {
+    /// Subscription tag that identifies which timer fired.
     pub tag: String,
+    /// Milliseconds since the Unix epoch at the time of the tick.
     pub timestamp: u64,
 }
 
@@ -648,7 +721,9 @@ pub struct TimerEvent {
 /// The result of an async task started with [`Command::async_task`](crate::Command).
 #[derive(Debug, Clone)]
 pub struct AsyncEvent {
+    /// Task tag used to correlate the result with the originating command.
     pub tag: String,
+    /// Success or error payload emitted by the task.
     pub result: Result<Value, Value>,
 }
 
@@ -659,7 +734,9 @@ pub struct AsyncEvent {
 /// An intermediate value from a streaming task.
 #[derive(Debug, Clone)]
 pub struct StreamEvent {
+    /// Stream tag used to correlate the value with the originating subscription.
     pub tag: String,
+    /// Emitted payload.
     pub value: Value,
 }
 
@@ -670,7 +747,9 @@ pub struct StreamEvent {
 /// The result of a platform effect (file dialog, clipboard, etc.).
 #[derive(Debug, Clone)]
 pub struct EffectEvent {
+    /// Effect tag used to correlate the result with the originating command.
     pub tag: String,
+    /// Structured outcome of the effect.
     pub result: EffectResult,
 }
 
@@ -684,19 +763,40 @@ pub struct EffectEvent {
 #[non_exhaustive]
 pub enum EffectResult {
     /// A file was selected by the user.
-    FileOpened { path: String },
+    FileOpened {
+        /// Absolute path of the selected file.
+        path: String,
+    },
     /// Multiple files were selected.
-    FilesOpened { paths: Vec<String> },
+    FilesOpened {
+        /// Absolute paths of all selected files.
+        paths: Vec<String>,
+    },
     /// A file save path was chosen.
-    FileSaved { path: String },
+    FileSaved {
+        /// Absolute path chosen by the user.
+        path: String,
+    },
     /// A directory was selected.
-    DirectorySelected { path: String },
+    DirectorySelected {
+        /// Absolute path of the selected directory.
+        path: String,
+    },
     /// Multiple directories were selected.
-    DirectoriesSelected { paths: Vec<String> },
+    DirectoriesSelected {
+        /// Absolute paths of all selected directories.
+        paths: Vec<String>,
+    },
     /// Clipboard text was read.
-    ClipboardText { text: String },
+    ClipboardText {
+        /// Clipboard contents as a UTF-8 string.
+        text: String,
+    },
     /// Clipboard HTML was read.
-    ClipboardHtml { html: String },
+    ClipboardHtml {
+        /// Clipboard contents as an HTML string.
+        html: String,
+    },
     /// Clipboard write succeeded.
     ClipboardWritten,
     /// Clipboard was cleared.
@@ -840,27 +940,45 @@ impl EffectResult {
 /// A system-level event (theme change, window query result, etc.).
 #[derive(Debug, Clone)]
 pub struct SystemEvent {
+    /// Kind of system event that occurred.
     pub event_type: SystemEventType,
+    /// Correlation tag for query responses.
     pub tag: Option<String>,
+    /// Event-specific payload (e.g. the queried value).
     pub value: Option<Value>,
+    /// Node ID associated with the event, if any.
     pub id: Option<String>,
+    /// Window ID associated with the event, if any.
     pub window_id: Option<String>,
 }
 
+/// Kind of [`SystemEvent`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SystemEventType {
+    /// Response to a system-info query (OS, versions, feature flags).
     SystemInfo,
+    /// Active OS theme reported by the platform.
     SystemTheme,
+    /// Per-frame tick (used for animations).
     AnimationFrame,
+    /// Active plushie theme changed.
     ThemeChanged,
+    /// The renderer closed its last window.
     AllWindowsClosed,
+    /// Response to an image-list query.
     ImageList,
+    /// Response to a tree-hash query.
     TreeHash,
+    /// Response to a find-focused-widget query.
     FindFocused,
+    /// Screen-reader announcement delivered.
     Announce,
+    /// Diagnostic emitted by the renderer (validation, warning).
     Diagnostic,
+    /// Renderer failed to recover from an error.
     RecoveryFailed,
+    /// Generic renderer-side error.
     Error,
 }
 
@@ -921,12 +1039,17 @@ pub struct ImeEvent {
     pub window_id: Option<String>,
 }
 
+/// Phase of an IME composition event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ImeEventType {
+    /// IME session opened on a widget.
     Opened,
+    /// Preedit (in-progress composition) text update.
     Preedit,
+    /// Committed (finalized) text from the IME.
     Commit,
+    /// IME session closed.
     Closed,
 }
 

@@ -28,20 +28,38 @@ use serde_json::Value;
 pub enum PatchOp {
     /// Replace an entire subtree at the given path.
     #[serde(rename = "replace_node")]
-    ReplaceNode { path: Vec<usize>, node: Value },
+    ReplaceNode {
+        /// Child-index path from the root to the node being replaced.
+        path: Vec<usize>,
+        /// Serialized replacement subtree.
+        node: Value,
+    },
     /// Update specific props on a node at the given path.
     #[serde(rename = "update_props")]
-    UpdateProps { path: Vec<usize>, props: Value },
+    UpdateProps {
+        /// Child-index path from the root to the node being updated.
+        path: Vec<usize>,
+        /// Object of prop keys and their new values.
+        props: Value,
+    },
     /// Insert a child at the given index.
     #[serde(rename = "insert_child")]
     InsertChild {
+        /// Child-index path to the parent.
         path: Vec<usize>,
+        /// Zero-based index where the new child is inserted.
         index: usize,
+        /// Serialized child subtree.
         node: Value,
     },
     /// Remove a child at the given index.
     #[serde(rename = "remove_child")]
-    RemoveChild { path: Vec<usize>, index: usize },
+    RemoveChild {
+        /// Child-index path to the parent.
+        path: Vec<usize>,
+        /// Zero-based index of the child to remove.
+        index: usize,
+    },
 }
 
 fn node_to_value(node: &TreeNode) -> Value {

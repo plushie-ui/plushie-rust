@@ -60,6 +60,7 @@
 //! renderer path via [`run_with_renderer`] to force a specific wire
 //! binary.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![deny(missing_docs)]
 
 pub mod animation;
 pub mod automation;

@@ -25,7 +25,9 @@ pub enum Error {
     /// Failed to spawn the renderer subprocess (wire mode).
     #[error("failed to spawn renderer binary `{binary}`: {source}")]
     Spawn {
+        /// Path the SDK attempted to spawn.
         binary: String,
+        /// Underlying spawn failure from the OS.
         #[source]
         source: std::io::Error,
     },
@@ -33,7 +35,12 @@ pub enum Error {
     /// Renderer reported a different protocol version than this SDK
     /// was built against.
     #[error("protocol version mismatch: expected {expected}, got {got:?}")]
-    ProtocolVersionMismatch { expected: u32, got: Option<u32> },
+    ProtocolVersionMismatch {
+        /// Protocol version this SDK was built for.
+        expected: u32,
+        /// Protocol version the renderer advertised (if any).
+        got: Option<u32>,
+    },
 
     /// Failed to decode a wire message.
     #[error("wire decode error: {0}")]
@@ -80,7 +87,10 @@ pub enum Error {
         "renderer binary not found (looked at PLUSHIE_BINARY_PATH and searched PATH for \
          `plushie-renderer`): {hint}"
     )]
-    BinaryNotFound { hint: String },
+    BinaryNotFound {
+        /// Human-readable hint describing the search order and remediation.
+        hint: String,
+    },
 }
 
 impl Error {

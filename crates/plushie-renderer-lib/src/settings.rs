@@ -116,11 +116,22 @@ pub fn decode_font_data(value: &Value) -> Option<Vec<u8>> {
 /// Returns a `Vec` of decoded font byte buffers, ready to be passed
 /// to `iced::font::load`. Called during startup after the Settings
 /// message is parsed, before the iced daemon launches.
+///
+/// The returned list respects
+/// [`crate::constants::MAX_LOADED_FONTS`]: any inputs beyond the
+/// remaining font-slot budget are dropped and a `font_cap_exceeded`
+/// warning is logged with the excess count. Each font that makes it
+/// through increments the shared
+/// [`crate::constants::LOADED_FONT_COUNT`] atomic so later calls
+/// (both dynamic `load_font` ops and subsequent `parse_inline_fonts`
+/// passes) share the budget.
 pub fn parse_inline_fonts(settings: &Value) -> Vec<Vec<u8>> {
+    use std::sync::atomic::Ordering;
+
     let Some(fonts) = settings.get("fonts").and_then(|v| v.as_array()) else {
         return Vec::new();
     };
-    let mut result = Vec::new();
+    let mut decoded = Vec::new();
     for font_val in fonts {
         if let Some(obj) = font_val.as_object()
             && let Some(data_val) = obj.get("data")
@@ -131,7 +142,7 @@ pub fn parse_inline_fonts(settings: &Value) -> Vec<Vec<u8>> {
                 }
                 Some(bytes) => {
                     log::info!("loaded inline font ({} bytes)", bytes.len());
-                    result.push(bytes);
+                    decoded.push(bytes);
                 }
                 None => {
                     log::warn!("fonts: failed to decode inline font data");
@@ -140,5 +151,107 @@ pub fn parse_inline_fonts(settings: &Value) -> Vec<Vec<u8>> {
         }
         // Plain strings are file paths, handled by platform-specific code
     }
-    result
+
+    // Enforce the process-wide cap. Reserving budget atomically via
+    // fetch_add race-loop ensures concurrent callers (unlikely at
+    // startup but possible in multi-session setups) don't oversubscribe.
+    let requested = decoded.len() as u32;
+    if requested == 0 {
+        return decoded;
+    }
+    let max = crate::constants::MAX_LOADED_FONTS;
+    let counter = &crate::constants::LOADED_FONT_COUNT;
+    let mut current = counter.load(Ordering::Relaxed);
+    let granted = loop {
+        let budget = max.saturating_sub(current);
+        let grant = requested.min(budget);
+        if grant == 0 {
+            break 0;
+        }
+        match counter.compare_exchange(
+            current,
+            current + grant,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break grant,
+            Err(actual) => current = actual,
+        }
+    };
+    if granted < requested {
+        let dropped = requested - granted;
+        log::warn!(
+            "[code=font_cap_exceeded] inline fonts exceed the \
+             {max} font cap; dropping {dropped} entries \
+             (granted {granted} of {requested})"
+        );
+        decoded.truncate(granted as usize);
+    }
+    decoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
+
+    /// Serialise tests that mutate the shared font counter. Without
+    /// this they race when cargo test runs them in parallel.
+    static FONT_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Reset the shared font counter so ordering between tests in
+    /// this module doesn't matter. Each test saturates the counter
+    /// independently.
+    fn reset_font_counter() {
+        crate::constants::LOADED_FONT_COUNT.store(0, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn inline_fonts_under_cap_pass_through() {
+        let _guard = FONT_TEST_LOCK.lock().unwrap();
+        reset_font_counter();
+        // Build 3 tiny inline fonts. Each is just a non-empty blob;
+        // parse_inline_fonts doesn't validate the format.
+        let b64 = base64::engine::general_purpose::STANDARD.encode(b"font-bytes");
+        let settings = serde_json::json!({
+            "fonts": [
+                {"data": b64.clone()},
+                {"data": b64.clone()},
+                {"data": b64},
+            ]
+        });
+        let out = parse_inline_fonts(&settings);
+        assert_eq!(out.len(), 3);
+        assert_eq!(
+            crate::constants::LOADED_FONT_COUNT.load(Ordering::Relaxed),
+            3
+        );
+    }
+
+    #[test]
+    fn inline_fonts_past_cap_are_dropped_with_diagnostic() {
+        let _guard = FONT_TEST_LOCK.lock().unwrap();
+        reset_font_counter();
+        // Pre-saturate the counter to MAX_LOADED_FONTS - 2 so only
+        // 2 fonts fit.
+        let max = crate::constants::MAX_LOADED_FONTS;
+        crate::constants::LOADED_FONT_COUNT.store(max - 2, Ordering::Relaxed);
+
+        let b64 = base64::engine::general_purpose::STANDARD.encode(b"font-bytes");
+        let mut fonts = Vec::new();
+        for _ in 0..10 {
+            fonts.push(serde_json::json!({"data": b64.clone()}));
+        }
+        let settings = serde_json::json!({"fonts": fonts});
+
+        let out = parse_inline_fonts(&settings);
+        assert_eq!(out.len(), 2, "only 2 slots remained under the cap");
+        assert_eq!(
+            crate::constants::LOADED_FONT_COUNT.load(Ordering::Relaxed),
+            max
+        );
+    }
+
+    use base64::Engine;
 }

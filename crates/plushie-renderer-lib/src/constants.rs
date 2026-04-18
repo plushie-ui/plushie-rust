@@ -45,3 +45,15 @@ pub const DEFAULT_THEME: iced::Theme = iced::Theme::Dark;
 /// Font files are typically under 1 MB; large CJK fonts top out around
 /// 15-17 MB. Anything beyond this limit is rejected as likely not a font.
 pub const MAX_FONT_BYTES: usize = 16 * 1024 * 1024;
+
+/// Maximum number of fonts that can be loaded across a process
+/// lifetime. Each `load_font` call (and each startup-inline font)
+/// permanently leaks font bytes into iced's global font system (no
+/// unload API), so the cap is the single gate against unbounded
+/// memory growth from a misbehaving host.
+pub const MAX_LOADED_FONTS: u32 = 256;
+
+/// Process-wide counter of fonts loaded into the global font system.
+/// Shared between the dynamic `load_font` widget op and the startup
+/// inline-font path so both participate in the same cap.
+pub static LOADED_FONT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);

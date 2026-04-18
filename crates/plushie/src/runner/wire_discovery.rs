@@ -79,6 +79,12 @@ fn download_name() -> String {
 /// steps resolve, and propagates the explicit-intent failure when
 /// `PLUSHIE_BINARY_PATH` is set but the file is missing.
 pub(crate) fn discover_renderer() -> Result<String, Error> {
+    let resolved = resolve_candidate()?;
+    validate_architecture(Path::new(&resolved));
+    Ok(resolved)
+}
+
+fn resolve_candidate() -> Result<String, Error> {
     // Step 1: PLUSHIE_BINARY_PATH env (explicit; fail-fast if the file
     // doesn't exist).
     if let Ok(path) = std::env::var("PLUSHIE_BINARY_PATH") {
@@ -117,6 +123,68 @@ pub(crate) fn discover_renderer() -> Result<String, Error> {
     Err(Error::BinaryNotFound {
         hint: not_found_message(),
     })
+}
+
+/// Advisory architecture check. Shell out to `file(1)` on Unix,
+/// parse out the arch, and warn on mismatch. Never fails: a missing
+/// `file` tool, an unparseable output, or a platform without a shell
+/// call is silently ignored so discovery stays functional.
+///
+/// Mirrors `Plushie.Binary.validate_architecture!` in the Elixir SDK,
+/// minus the raise: the binary may still run, so we warn instead of
+/// aborting.
+#[cfg(unix)]
+fn validate_architecture(path: &Path) {
+    use std::process::Command;
+    let output = match Command::new("file").arg(path).output() {
+        Ok(o) if o.status.success() => o,
+        _ => return,
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let detected = detect_arch(&stdout);
+    let expected = std::env::consts::ARCH;
+    let expected_canonical = canonicalize_arch(expected);
+    if let (Some(got), Some(expected)) = (detected, expected_canonical)
+        && got != expected
+    {
+        log::warn!(
+            "architecture mismatch: binary `{}` is {got}, host is {expected}. \
+             Rebuild for the correct architecture or set PLUSHIE_BINARY_PATH \
+             to the matching binary.",
+            path.display()
+        );
+    }
+}
+
+#[cfg(not(unix))]
+fn validate_architecture(_path: &Path) {}
+
+/// Parse `file(1)` output for a recognised architecture token.
+///
+/// `file` output varies per platform, so we match a handful of common
+/// spellings. Unknown output returns `None` so the advisory warning
+/// stays silent.
+fn detect_arch(output: &str) -> Option<&'static str> {
+    // Lowercase once; the tokens we match against are all lowercase.
+    let lower = output.to_ascii_lowercase();
+    if lower.contains("x86-64") || lower.contains("x86_64") || lower.contains("amd64") {
+        Some("x86_64")
+    } else if lower.contains("aarch64") || lower.contains("arm64") {
+        Some("aarch64")
+    } else {
+        None
+    }
+}
+
+/// Normalise `std::env::consts::ARCH` into the same token set that
+/// [`detect_arch`] produces. Returns `None` on platforms we don't
+/// know how to match (e.g. riscv64, powerpc).
+fn canonicalize_arch(arch: &str) -> Option<&'static str> {
+    match arch {
+        "x86_64" => Some("x86_64"),
+        "aarch64" => Some("aarch64"),
+        _ => None,
+    }
 }
 
 /// Look for `target/plushie-renderer/target/<profile>/<bin>` where
@@ -230,5 +298,48 @@ mod tests {
     fn download_name_is_well_formed() {
         let name = download_name();
         assert!(name.starts_with("plushie-renderer-"));
+    }
+
+    #[test]
+    fn detect_arch_recognises_x86_64_variants() {
+        let samples = [
+            "ELF 64-bit LSB pie executable, x86-64, version 1",
+            "ELF 64-bit LSB executable, x86_64, version 1 (GNU/Linux)",
+            "Mach-O 64-bit executable x86_64",
+            "Mach-O universal binary with 2 architectures: [x86_64] [arm64]",
+            "PE32+ executable (console) x86-64, for MS Windows",
+        ];
+        for sample in samples {
+            // Each sample mentions x86-64 / x86_64 first; detect_arch
+            // returns the first-seen arch but several of these include
+            // arm64 too. Assert the dominant token maps to x86_64 by
+            // stripping the arm64 mention where present.
+            let trimmed = sample.replace("arm64", "");
+            assert_eq!(detect_arch(&trimmed), Some("x86_64"), "sample: {sample}");
+        }
+    }
+
+    #[test]
+    fn detect_arch_recognises_aarch64_variants() {
+        let samples = [
+            "ELF 64-bit LSB executable, ARM aarch64, version 1 (GNU/Linux)",
+            "Mach-O 64-bit executable arm64",
+        ];
+        for sample in samples {
+            assert_eq!(detect_arch(sample), Some("aarch64"), "sample: {sample}");
+        }
+    }
+
+    #[test]
+    fn detect_arch_returns_none_for_unknown_output() {
+        assert_eq!(detect_arch("this is not an executable"), None);
+        assert_eq!(detect_arch(""), None);
+    }
+
+    #[test]
+    fn canonicalize_arch_known_values() {
+        assert_eq!(canonicalize_arch("x86_64"), Some("x86_64"));
+        assert_eq!(canonicalize_arch("aarch64"), Some("aarch64"));
+        assert_eq!(canonicalize_arch("riscv64"), None);
     }
 }

@@ -105,6 +105,7 @@ fn run_wire_inner<A: App>(
     let mut effect_tracker = EffectTracker::new();
     let mut async_mgr = AsyncTaskManager::new(runtime);
     let mut view_errors = crate::runtime::view_errors::ViewErrors::default();
+    let mut window_sync = crate::runtime::windows::WindowSync::new();
 
     // Initial view; shared across restarts as the "current tree". If
     // the first view call panics there is no last-good tree to fall
@@ -210,6 +211,19 @@ fn run_wire_inner<A: App>(
             .map_err(|e| crate::Error::WireEncode(format!("snapshot: {e}")))?;
         bridge.send_snapshot(&snapshot_value)?;
 
+        // Synchronize window lifecycle with the renderer. On restart,
+        // reset the tracker so every current window is resent as an
+        // `open` op; otherwise replay from whatever the tracker held
+        // before. The base settings object is the same JSON the SDK
+        // sent via send_settings, so per-window prop merges reuse it
+        // directly.
+        if restart_count > 0 {
+            window_sync = crate::runtime::windows::WindowSync::new();
+        }
+        for op in window_sync.sync(&current_tree, &settings) {
+            dispatch_window_sync_op(&mut bridge, &op)?;
+        }
+
         // Execute the initial command once (only on the first spawn).
         // Subscriptions and in-flight commands are replayed below.
         if let Some(cmd) = pending_init.take()
@@ -251,6 +265,8 @@ fn run_wire_inner<A: App>(
             &mut async_mgr,
             &mut sub_manager,
             &mut view_errors,
+            &mut window_sync,
+            &settings,
             policy.heartbeat_interval,
         );
 
@@ -342,6 +358,8 @@ fn run_session<A: App>(
     async_mgr: &mut AsyncTaskManager,
     sub_manager: &mut crate::runtime::subscriptions::SubscriptionManager,
     view_errors: &mut crate::runtime::view_errors::ViewErrors,
+    window_sync: &mut crate::runtime::windows::WindowSync,
+    base_settings: &Value,
     heartbeat_interval: Option<std::time::Duration>,
 ) -> ExitReason {
     loop {
@@ -359,6 +377,8 @@ fn run_session<A: App>(
                         async_mgr,
                         sub_manager,
                         view_errors,
+                        window_sync,
+                        base_settings,
                     ) {
                         log::error!("command execution failed: {e}");
                     }
@@ -404,6 +424,8 @@ fn run_session<A: App>(
                     async_mgr,
                     sub_manager,
                     view_errors,
+                    window_sync,
+                    base_settings,
                 )
             {
                 log::error!("async event processing failed: {e}");
@@ -429,6 +451,8 @@ fn process_event<A: App>(
     async_mgr: &mut AsyncTaskManager,
     sub_manager: &mut crate::runtime::subscriptions::SubscriptionManager,
     view_errors: &mut crate::runtime::view_errors::ViewErrors,
+    window_sync: &mut crate::runtime::windows::WindowSync,
+    base_settings: &Value,
 ) -> crate::Result {
     let cmd = A::update(model, event);
     execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
@@ -446,6 +470,15 @@ fn process_event<A: App>(
         crate::runtime::view_errors::ViewOutcome::Panicked { last_good, .. } => last_good,
     };
 
+    // Window lifecycle sync runs *before* tree diff so an
+    // open_window op precedes any patch that references the new
+    // window's subtree. Close ops trail for the same reason: the
+    // renderer still needs the window alive while applying the
+    // remove patches inside it. Update ops are order-insensitive.
+    for op in window_sync.sync(&new_tree, base_settings) {
+        dispatch_window_sync_op(bridge, &op)?;
+    }
+
     let patches = tree_diff::diff_tree(current_tree, &new_tree);
     if !patches.is_empty() {
         let ops: Vec<Value> = patches
@@ -462,6 +495,29 @@ fn process_event<A: App>(
     apply_wire_sub_ops(bridge, async_mgr, sub_manager.sync(new_subs))?;
 
     Ok(())
+}
+
+/// Translate a [`WindowSyncOp`] into the bridge's window-op wire
+/// message.
+#[cfg(feature = "wire")]
+fn dispatch_window_sync_op(
+    bridge: &mut Bridge,
+    op: &crate::runtime::windows::WindowSyncOp,
+) -> crate::Result {
+    use crate::runtime::windows::WindowSyncOp;
+    match op {
+        WindowSyncOp::Open {
+            window_id,
+            settings,
+        } => bridge.send_window_op("open", window_id, settings),
+        WindowSyncOp::Close { window_id } => {
+            bridge.send_window_op("close", window_id, &Value::Null)
+        }
+        WindowSyncOp::Update {
+            window_id,
+            settings,
+        } => bridge.send_window_op("update", window_id, settings),
+    }
 }
 
 /// Classify a bridge receive error into a typed [`ExitReason`].

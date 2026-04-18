@@ -36,7 +36,6 @@ use super::queue_sink::{QueueSink, SinkEvent};
 // ---------------------------------------------------------------------------
 
 /// Internal state for the direct mode iced daemon.
-#[allow(dead_code)] // window_iced_ids reserved for multi-window support
 struct DirectApp<A: App> {
     model: A::Model,
     /// Renderer-lib App that handles commands, effects, and state.
@@ -44,7 +43,13 @@ struct DirectApp<A: App> {
     /// Queue for events emitted by the renderer and SDK-local commands.
     event_queue: Arc<Mutex<Vec<SinkEvent>>>,
     current_tree: Option<TreeNode>,
-    window_iced_ids: HashMap<String, plushie_widget_sdk::iced::window::Id>,
+    /// Window-lifecycle diff tracker. Drives window ops through the
+    /// renderer-lib so multi-window apps work in direct mode too.
+    ///
+    /// The renderer-lib owns the authoritative SDK-id -> iced::window::Id
+    /// mapping in `self.renderer.windows`; this tracker only remembers
+    /// what was emitted last so we can diff it against the next tree.
+    window_sync: crate::runtime::windows::WindowSync,
     widget_store: WidgetStateStore,
     memo_cache: crate::runtime::MemoCache,
     /// Handles for running async tasks, keyed by tag for cancellation.
@@ -85,7 +90,7 @@ impl<A: App> DirectApp<A> {
             renderer,
             event_queue,
             current_tree: None,
-            window_iced_ids: HashMap::new(),
+            window_sync: crate::runtime::windows::WindowSync::new(),
             widget_store: WidgetStateStore::new(),
             memo_cache: crate::runtime::MemoCache::new(),
             running_tasks: HashMap::new(),
@@ -100,8 +105,20 @@ impl<A: App> DirectApp<A> {
 
         app.refresh_view();
 
+        // Initial window sync: if the view declares windows on frame
+        // zero, those open requests need to land before the iced
+        // daemon resolves its first title/theme callback. Iced's
+        // daemon model gives us a default window it opens on startup
+        // though, so the Elixir-style pure lifecycle port handles the
+        // second-and-subsequent windows cleanly while the first one
+        // is pre-created by iced. On the very first sync the tracker
+        // is empty, so the ops list includes Open for every window
+        // declared in the tree.
+        let base_settings = build_direct_base_settings::<A>();
+        let win_task = app.sync_windows(&base_settings);
+
         // Establish initial subscriptions from A::subscribe().
-        let mut init_tasks = Vec::new();
+        let mut init_tasks = vec![win_task];
         let initial_subs = A::subscribe(&app.model);
         for op in app.sub_manager.sync(initial_subs) {
             init_tasks.push(app.apply_sub_op(op));
@@ -153,30 +170,52 @@ impl<A: App> DirectApp<A> {
         }
     }
 
-    fn title_for_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> String {
-        if let Some(tree) = &self.current_tree {
-            if tree.type_name == "window"
-                && let Some(title) = tree.props.get("title").and_then(|v| v.as_str())
-            {
-                return title.to_string();
-            }
-            for child in &tree.children {
-                if child.type_name == "window"
-                    && let Some(title) = child.props.get("title").and_then(|v| v.as_str())
-                {
-                    return title.to_string();
-                }
-            }
-        }
-        "Plushie".to_string()
+    fn title_for_window(&self, window_id: plushie_widget_sdk::iced::window::Id) -> String {
+        self.window_node_for(window_id)
+            .and_then(|node| node.props.get_str("title").map(str::to_string))
+            .unwrap_or_else(|| "Plushie".to_string())
     }
 
-    fn theme_for_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> Theme {
+    fn theme_for_window(&self, window_id: plushie_widget_sdk::iced::window::Id) -> Theme {
+        // Per-window theme override lands here when the `theme` prop
+        // on the window node resolves to a renderer-recognised theme
+        // string. Unrecognised or absent: fall back to the global
+        // renderer theme so app-level `Settings::theme` still wins.
+        if let Some(node) = self.window_node_for(window_id)
+            && let Some(theme_val) = node.props.get_value("theme")
+        {
+            let resolved = plushie_widget_sdk::theming::resolve_theme(&theme_val);
+            return resolved;
+        }
         self.renderer.theme.clone()
     }
 
-    fn scale_factor_for_window(&self, _window_id: plushie_widget_sdk::iced::window::Id) -> f32 {
+    fn scale_factor_for_window(&self, window_id: plushie_widget_sdk::iced::window::Id) -> f32 {
+        if let Some(node) = self.window_node_for(window_id)
+            && let Some(sf) = node
+                .props
+                .get_value("scale_factor")
+                .and_then(|v| v.as_f64())
+        {
+            return plushie_renderer_lib::app::validate_scale_factor(sf as f32);
+        }
         self.renderer.scale_factor
+    }
+
+    /// Locate the tree node representing a specific iced window.
+    ///
+    /// Resolves the iced handle back to the SDK-level window name via
+    /// the renderer-lib's authoritative window map, then walks the
+    /// current tree for a matching `window` node. Returns `None` when
+    /// the mapping or the node is absent (first frame, or window not
+    /// yet registered).
+    fn window_node_for(
+        &self,
+        window_id: plushie_widget_sdk::iced::window::Id,
+    ) -> Option<&TreeNode> {
+        let tree = self.current_tree.as_ref()?;
+        let sdk_id = self.renderer.windows.get_window_id(&window_id)?;
+        find_window_node(tree, sdk_id)
     }
 
     /// Drain the event queue, run widget interception, deliver events
@@ -225,6 +264,12 @@ impl<A: App> DirectApp<A> {
         // not after each individual event.
         if delivered {
             self.refresh_view();
+
+            // Window lifecycle sync runs after refresh_view so
+            // added/removed windows land on the iced daemon.
+            let base_settings = build_direct_base_settings::<A>();
+            let win_task = self.sync_windows(&base_settings);
+            tasks.push(win_task);
 
             // Sync subscriptions after the model has changed.
             let new_subs = A::subscribe(&self.model);
@@ -322,6 +367,46 @@ impl<A: App> DirectApp<A> {
             // Fire-and-forget: commands from Shutdown are discarded
             // since iced::exit is about to tear the loop down.
             let _ = A::update(&mut self.model, event);
+        }
+    }
+
+    /// Diff the current tree against the last-known set of windows
+    /// and dispatch any open / close / update ops through the
+    /// renderer-lib. Returns a batched iced Task carrying whatever
+    /// the renderer handlers produced (open creates a task that
+    /// transitions to Message::WindowOpened on completion).
+    fn sync_windows(&mut self, base_settings: &serde_json::Value) -> Task<Message> {
+        let Some(tree) = self.current_tree.as_ref() else {
+            return Task::none();
+        };
+        let ops = self.window_sync.sync(tree, base_settings);
+        let mut tasks = Vec::new();
+        for op in ops {
+            use crate::runtime::windows::WindowSyncOp;
+            let task = match op {
+                WindowSyncOp::Open {
+                    window_id,
+                    settings,
+                } => self
+                    .renderer
+                    .handle_window_op("open", &window_id, &settings),
+                WindowSyncOp::Close { window_id } => {
+                    self.renderer
+                        .handle_window_op("close", &window_id, &serde_json::Value::Null)
+                }
+                WindowSyncOp::Update {
+                    window_id,
+                    settings,
+                } => self
+                    .renderer
+                    .handle_window_op("update", &window_id, &settings),
+            };
+            tasks.push(task);
+        }
+        if tasks.is_empty() {
+            Task::none()
+        } else {
+            Task::batch(tasks)
         }
     }
 
@@ -638,6 +723,36 @@ pub fn run<A: App>() -> crate::Result {
     .scale_factor(DirectApp::<A>::scale_factor_for_window)
     .run()
     .map_err(|e| crate::Error::Iced(e.to_string()))
+}
+
+/// Locate a `window` node in the tree by its SDK window ID.
+fn find_window_node<'a>(tree: &'a TreeNode, window_id: &str) -> Option<&'a TreeNode> {
+    if tree.type_name == "window" && tree.id == window_id {
+        return Some(tree);
+    }
+    for child in &tree.children {
+        if let Some(n) = find_window_node(child, window_id) {
+            return Some(n);
+        }
+    }
+    None
+}
+
+/// Build the base window-settings object handed to `WindowSync` in
+/// direct mode. Mirrors the per-window props that `apply_settings`
+/// applied globally so a tree node without its own overrides
+/// inherits the host's defaults.
+fn build_direct_base_settings<A: App>() -> serde_json::Value {
+    let settings = A::settings();
+    let mut obj = serde_json::Map::new();
+    if let Some(sf) = settings.scale_factor {
+        obj.insert("scale_factor".into(), serde_json::json!(sf));
+    }
+    if let Some(theme) = settings.theme {
+        use plushie_core::types::PlushieType;
+        obj.insert("theme".into(), serde_json::Value::from(theme.wire_encode()));
+    }
+    serde_json::Value::Object(obj)
 }
 
 /// Minimal empty tree used as a first-frame fallback if A::view()

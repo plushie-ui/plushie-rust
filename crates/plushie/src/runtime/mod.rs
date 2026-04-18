@@ -15,6 +15,7 @@ pub mod normalize;
 pub mod subscriptions;
 pub mod tree_diff;
 pub mod view_errors;
+pub mod windows;
 
 pub(crate) use memo_cache::MemoCache;
 

@@ -37,8 +37,6 @@ pub(crate) struct MarkdownWidget {
 }
 
 impl MarkdownWidget {
-    const MAX_CONTENT: usize = 1_048_576; // 1 MB
-
     pub(crate) fn new() -> Self {
         Self {
             items: std::collections::HashMap::new(),
@@ -56,20 +54,12 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
 
         let key = (window_id.to_string(), node.id.clone());
         let mp = MarkdownProps::from_node(node);
-        let mut content_str = mp.content.unwrap_or_default();
-        if content_str.len() > Self::MAX_CONTENT {
-            log::warn!(
-                "[id={}] markdown content ({} bytes) exceeds limit ({} bytes), truncating",
-                node.id,
-                content_str.len(),
-                Self::MAX_CONTENT,
-            );
-            let mut end = Self::MAX_CONTENT;
-            while !content_str.is_char_boundary(end) && end > 0 {
-                end -= 1;
-            }
-            content_str.truncate(end);
-        }
+        let content_str = crate::shared_state::enforce_content_cap(
+            &node.id,
+            "content",
+            mp.content.unwrap_or_default(),
+            crate::shared_state::MAX_MARKDOWN_BYTES,
+        );
         let code_theme_str = mp.code_theme.unwrap_or_default();
         let hash = hash_str(&format!("{content_str}\0{code_theme_str}"));
 

@@ -27,6 +27,40 @@ pub use plushie_core::tree_walk::MAX_TREE_DEPTH;
 /// match [`MAX_TREE_DEPTH`] for consistency.
 const MAX_HASH_DEPTH: usize = 256;
 
+/// Maximum value size for `text_input.value` in bytes. Text shaping
+/// cost scales with string length; an unbounded value (up to the 64
+/// MiB wire cap) freezes cosmic-text on every frame.
+pub const MAX_TEXT_INPUT_BYTES: usize = 64 * 1024;
+
+/// Maximum content size for `text_editor.content` in bytes.
+pub const MAX_TEXT_EDITOR_BYTES: usize = 1024 * 1024;
+
+/// Maximum content size for `markdown.content` in bytes.
+pub const MAX_MARKDOWN_BYTES: usize = 2 * 1024 * 1024;
+
+/// Truncate a string to at most `cap` bytes on a UTF-8 char boundary
+/// and emit a `content_length_exceeded` warning with structured
+/// context. Returns the owned truncated string when truncation
+/// happened, or the input unchanged otherwise.
+///
+/// Used by widget `prepare()` hooks to bound expensive-to-shape text
+/// before it reaches the render path.
+pub fn enforce_content_cap(widget_id: &str, field: &str, raw: String, cap: usize) -> String {
+    if raw.len() <= cap {
+        return raw;
+    }
+    let actual = raw.len();
+    let mut end = cap;
+    while end > 0 && !raw.is_char_boundary(end) {
+        end -= 1;
+    }
+    log::warn!(
+        "[code=content_length_exceeded][id={widget_id}] {field} is {actual} bytes, \
+         exceeds cap {cap}; truncating to {end} bytes"
+    );
+    raw[..end].to_owned()
+}
+
 // ---------------------------------------------------------------------------
 // Widget caches
 // ---------------------------------------------------------------------------

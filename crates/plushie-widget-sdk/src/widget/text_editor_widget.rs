@@ -185,8 +185,6 @@ pub(crate) struct TextEditorWidget<R: PlushieRenderer> {
 }
 
 impl<R: PlushieRenderer> TextEditorWidget<R> {
-    const MAX_CONTENT: usize = 10_485_760; // 10 MB
-
     pub(crate) fn new() -> Self {
         Self {
             contents: std::collections::HashMap::new(),
@@ -205,20 +203,13 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
 
         let key = (window_id.to_string(), node.id.clone());
         let props = &node.props;
-        let mut content_str = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
-        if content_str.len() > Self::MAX_CONTENT {
-            log::warn!(
-                "[id={}] text_editor content ({} bytes) exceeds limit ({} bytes), truncating",
-                node.id,
-                content_str.len(),
-                Self::MAX_CONTENT,
-            );
-            let mut end = Self::MAX_CONTENT;
-            while !content_str.is_char_boundary(end) && end > 0 {
-                end -= 1;
-            }
-            content_str.truncate(end);
-        }
+        let raw = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
+        let content_str = crate::shared_state::enforce_content_cap(
+            &node.id,
+            "content",
+            raw,
+            crate::shared_state::MAX_TEXT_EDITOR_BYTES,
+        );
         let prop_hash = hash_str(&content_str);
         let prev_hash = self.content_hashes.get(&key).copied();
         if prev_hash != Some(prop_hash) {

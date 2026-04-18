@@ -84,7 +84,12 @@ fn render_text_input<'a, R: PlushieRenderer>(
     let tp = TextInputProps::from_node(node);
     let props = &node.props;
 
-    let value = tp.value.unwrap_or_default();
+    let value = crate::shared_state::enforce_content_cap(
+        &node.id,
+        "value",
+        tp.value.unwrap_or_default(),
+        crate::shared_state::MAX_TEXT_INPUT_BYTES,
+    );
     let placeholder = tp.placeholder.unwrap_or_default();
     let width = tp
         .width

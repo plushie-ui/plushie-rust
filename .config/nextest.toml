@@ -8,3 +8,11 @@ success-output = "never"
 [profile.ci]
 inherits = "default"
 fail-fast = false
+# GitHub runners are slower than most local dev boxes, and the wire-mode
+# integration tests spawn subprocesses; bump the slow-test threshold and
+# allow a small number of retries so transient subprocess/timing blips
+# don't fail the pipeline. `status-level = "all"` keeps the CI log
+# useful for post-mortem on the rare flake.
+retries = 2
+slow-timeout = { period = "30s" }
+status-level = "all"

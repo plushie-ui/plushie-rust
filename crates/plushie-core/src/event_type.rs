@@ -3,173 +3,143 @@
 //! [`EventType`] is the canonical mapping from wire family strings
 //! to typed event kinds. Shared between the SDK (event parsing) and
 //! renderer (event construction).
+//!
+//! The variant list and the variant <-> family-string mapping are
+//! expressed once via the [`event_types!`] macro; adding a variant
+//! means adding one line, and the enum definition, `from_family`,
+//! and `as_family` stay in lock-step.
 
-/// The kind of widget interaction that occurred.
+/// Declare the full set of built-in event types in one place.
 ///
-/// Each variant corresponds to a wire protocol event family string.
-/// Use [`EventType::from_family`] for the canonical string-to-enum
-/// conversion.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum EventType {
-    /// Click.
-    Click,
-    /// Double Click.
-    DoubleClick,
-    /// Input.
-    Input,
-    /// Submit.
-    Submit,
-    /// Paste.
-    Paste,
-    /// Toggle.
-    Toggle,
-    /// Select.
-    Select,
-    /// Slide.
-    Slide,
-    /// Slide Release.
-    SlideRelease,
-    /// Press.
-    Press,
-    /// Release.
-    Release,
-    /// Move.
-    Move,
-    /// Scroll.
-    Scroll,
-    /// Scrolled.
-    Scrolled,
-    /// Enter.
-    Enter,
-    /// Exit.
-    Exit,
-    /// Resize.
-    Resize,
-    /// Focused.
-    Focused,
-    /// Blurred.
-    Blurred,
-    /// Drag.
-    Drag,
-    /// Drag End.
-    DragEnd,
-    /// Key Press.
-    KeyPress,
-    /// Key Release.
-    KeyRelease,
-    /// Sort.
-    Sort,
-    /// Status.
-    Status,
-    /// Option Hovered.
-    OptionHovered,
-    /// Pane Focus Cycle.
-    PaneFocusCycle,
-    /// Pane Resized.
-    PaneResized,
-    /// Pane Dragged.
-    PaneDragged,
-    /// Pane Clicked.
-    PaneClicked,
-    /// Transition Complete.
-    TransitionComplete,
-    /// Open.
-    Open,
-    /// Close.
-    Close,
-    /// Key Binding.
-    KeyBinding,
-    /// A custom event family (e.g., "star_rating:select").
-    Custom(String),
+/// Each entry is `Variant <=> "family_string"`. The macro expands to
+/// the [`EventType`] enum definition plus the bidirectional
+/// `from_family` / `as_family` mappings so drift between the three is
+/// impossible.
+macro_rules! event_types {
+    ( $( $( #[$attr:meta] )* $variant:ident <=> $family:literal ),* $(,)? ) => {
+        /// The kind of widget interaction that occurred.
+        ///
+        /// Each variant corresponds to a wire protocol event family
+        /// string. Use [`EventType::from_family`] for the canonical
+        /// string-to-enum conversion.
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        pub enum EventType {
+            $(
+                $( #[$attr] )*
+                $variant,
+            )*
+            /// A custom event family (e.g. `"star_rating:select"`) that
+            /// does not match any built-in variant.
+            Custom(String),
+        }
+
+        impl EventType {
+            /// Convert a wire protocol family string to an EventType.
+            ///
+            /// This is the single source of truth for the family-to-type
+            /// mapping. All event parsing paths (direct mode, wire mode,
+            /// event bridge) should call this instead of duplicating the
+            /// match.
+            pub fn from_family(family: &str) -> Self {
+                match family {
+                    $( $family => Self::$variant, )*
+                    _ => Self::Custom(family.to_string()),
+                }
+            }
+
+            /// The wire protocol family string for this event type.
+            pub fn as_family(&self) -> &str {
+                match self {
+                    $( Self::$variant => $family, )*
+                    Self::Custom(family) => family,
+                }
+            }
+
+            /// Every built-in variant, useful for exhaustive tests and
+            /// documentation.
+            ///
+            /// Excludes [`Custom`](Self::Custom) by design: custom
+            /// families are open-ended and not part of the fixed set.
+            pub fn builtin() -> &'static [EventType] {
+                static VARIANTS: std::sync::OnceLock<Vec<EventType>> =
+                    std::sync::OnceLock::new();
+                VARIANTS
+                    .get_or_init(|| vec![ $( EventType::$variant, )* ])
+                    .as_slice()
+            }
+        }
+    };
 }
 
-impl EventType {
-    /// Convert a wire protocol family string to an EventType.
-    ///
-    /// This is the single source of truth for the family-to-type
-    /// mapping. All event parsing paths (direct mode, wire mode,
-    /// event bridge) should call this instead of duplicating the
-    /// match.
-    pub fn from_family(family: &str) -> Self {
-        match family {
-            "click" => Self::Click,
-            "double_click" => Self::DoubleClick,
-            "input" => Self::Input,
-            "submit" => Self::Submit,
-            "toggle" => Self::Toggle,
-            "select" => Self::Select,
-            "slide" => Self::Slide,
-            "slide_release" => Self::SlideRelease,
-            "paste" => Self::Paste,
-            "press" => Self::Press,
-            "release" => Self::Release,
-            "move" => Self::Move,
-            "scroll" => Self::Scroll,
-            "scrolled" => Self::Scrolled,
-            "enter" => Self::Enter,
-            "exit" => Self::Exit,
-            "resize" => Self::Resize,
-            "focused" => Self::Focused,
-            "blurred" => Self::Blurred,
-            "drag" => Self::Drag,
-            "drag_end" => Self::DragEnd,
-            "sort" => Self::Sort,
-            "status" => Self::Status,
-            "transition_complete" => Self::TransitionComplete,
-            "open" => Self::Open,
-            "close" => Self::Close,
-            "option_hovered" => Self::OptionHovered,
-            "key_binding" => Self::KeyBinding,
-            "key_press" => Self::KeyPress,
-            "key_release" => Self::KeyRelease,
-            "pane_focus_cycle" => Self::PaneFocusCycle,
-            "pane_resized" => Self::PaneResized,
-            "pane_dragged" => Self::PaneDragged,
-            "pane_clicked" => Self::PaneClicked,
-            _ => Self::Custom(family.to_string()),
-        }
-    }
-
-    /// The wire protocol family string for this event type.
-    pub fn as_family(&self) -> &str {
-        match self {
-            Self::Click => "click",
-            Self::DoubleClick => "double_click",
-            Self::Input => "input",
-            Self::Submit => "submit",
-            Self::Toggle => "toggle",
-            Self::Select => "select",
-            Self::Slide => "slide",
-            Self::SlideRelease => "slide_release",
-            Self::Paste => "paste",
-            Self::Press => "press",
-            Self::Release => "release",
-            Self::Move => "move",
-            Self::Scroll => "scroll",
-            Self::Scrolled => "scrolled",
-            Self::Enter => "enter",
-            Self::Exit => "exit",
-            Self::Resize => "resize",
-            Self::Focused => "focused",
-            Self::Blurred => "blurred",
-            Self::Drag => "drag",
-            Self::DragEnd => "drag_end",
-            Self::Sort => "sort",
-            Self::Status => "status",
-            Self::TransitionComplete => "transition_complete",
-            Self::Open => "open",
-            Self::Close => "close",
-            Self::OptionHovered => "option_hovered",
-            Self::KeyBinding => "key_binding",
-            Self::KeyPress => "key_press",
-            Self::KeyRelease => "key_release",
-            Self::PaneFocusCycle => "pane_focus_cycle",
-            Self::PaneResized => "pane_resized",
-            Self::PaneDragged => "pane_dragged",
-            Self::PaneClicked => "pane_clicked",
-            Self::Custom(family) => family,
-        }
-    }
+event_types! {
+    /// Pointer click on a focusable widget.
+    Click <=> "click",
+    /// Rapid pointer press sequence interpreted as a double click.
+    DoubleClick <=> "double_click",
+    /// Text input changed.
+    Input <=> "input",
+    /// Input submitted (Enter key or equivalent).
+    Submit <=> "submit",
+    /// Paste into an input from the system clipboard.
+    Paste <=> "paste",
+    /// Boolean widget flipped on or off.
+    Toggle <=> "toggle",
+    /// Selection chosen from a list of options.
+    Select <=> "select",
+    /// Slider value changed while dragging.
+    Slide <=> "slide",
+    /// Slider drag released.
+    SlideRelease <=> "slide_release",
+    /// Pointer pressed (mouse button down, finger down, etc.).
+    Press <=> "press",
+    /// Pointer released.
+    Release <=> "release",
+    /// Pointer moved without a button transition.
+    Move <=> "move",
+    /// Scroll gesture delta.
+    Scroll <=> "scroll",
+    /// Scroll position changed (scrollable widgets).
+    Scrolled <=> "scrolled",
+    /// Pointer entered a hit region.
+    Enter <=> "enter",
+    /// Pointer exited a hit region.
+    Exit <=> "exit",
+    /// Widget or container resized.
+    Resize <=> "resize",
+    /// Widget gained keyboard focus.
+    Focused <=> "focused",
+    /// Widget lost keyboard focus.
+    Blurred <=> "blurred",
+    /// Drag gesture in progress.
+    Drag <=> "drag",
+    /// Drag gesture ended.
+    DragEnd <=> "drag_end",
+    /// Keyboard key pressed.
+    KeyPress <=> "key_press",
+    /// Keyboard key released.
+    KeyRelease <=> "key_release",
+    /// Column sort changed.
+    Sort <=> "sort",
+    /// Arbitrary status update.
+    Status <=> "status",
+    /// Dropdown option hovered.
+    OptionHovered <=> "option_hovered",
+    /// Pane grid focus cycled to the next pane.
+    PaneFocusCycle <=> "pane_focus_cycle",
+    /// Pane grid split resized.
+    PaneResized <=> "pane_resized",
+    /// Pane grid pane dragged.
+    PaneDragged <=> "pane_dragged",
+    /// Pane grid pane clicked.
+    PaneClicked <=> "pane_clicked",
+    /// Declarative animation transition reached its end.
+    TransitionComplete <=> "transition_complete",
+    /// Opening / expansion event (overlays, menus, disclosure widgets).
+    Open <=> "open",
+    /// Closing / collapse event.
+    Close <=> "close",
+    /// Keyboard binding fired.
+    KeyBinding <=> "key_binding",
 }
 
 impl std::fmt::Display for EventType {
@@ -202,16 +172,32 @@ mod tests {
     }
 
     #[test]
-    fn as_family_round_trips() {
-        let types = [
-            EventType::Click,
-            EventType::Toggle,
-            EventType::KeyPress,
-            EventType::DragEnd,
-            EventType::Custom("my:event".into()),
-        ];
-        for t in &types {
-            assert_eq!(EventType::from_family(t.as_family()), *t);
+    fn every_builtin_round_trips() {
+        for variant in EventType::builtin() {
+            let family = variant.as_family();
+            assert_eq!(
+                EventType::from_family(family),
+                *variant,
+                "round-trip failed for family {family:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn custom_variant_round_trips() {
+        let custom = EventType::Custom("my:event".into());
+        assert_eq!(EventType::from_family(custom.as_family()), custom);
+    }
+
+    #[test]
+    fn builtin_family_strings_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for variant in EventType::builtin() {
+            let family = variant.as_family();
+            assert!(
+                seen.insert(family),
+                "duplicate family string {family:?} across built-in variants"
+            );
         }
     }
 }

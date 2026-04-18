@@ -278,6 +278,10 @@ fn run_session_single<A: App>(
         &mut window_sync,
         &settings,
         policy.heartbeat_interval,
+        // Connect mode: the renderer lives in a separate process we
+        // didn't spawn. A hot-reload swap signal has no meaningful
+        // action here, so the session loop drains and ignores it.
+        false,
     );
 
     log::warn!("plushie wire: renderer exited ({})", reason.label());
@@ -480,6 +484,9 @@ fn run_wire_inner<A: App>(
             &mut window_sync,
             &settings,
             policy.heartbeat_interval,
+            // Spawn mode: we own the renderer subprocess and can
+            // respawn it, so dev-mode swap signals are actionable.
+            true,
         );
 
         log::warn!(
@@ -587,6 +594,15 @@ fn flush_effects_on_shutdown<A: App>(model: &mut A::Model, effect_tracker: &mut 
 /// Run one session against an already-spawned renderer. Returns the
 /// classified [`ExitReason`] when the session ends (renderer
 /// disconnect, crash, heartbeat timeout, or explicit shutdown).
+///
+/// `manages_renderer_lifecycle` controls whether the dev-mode swap
+/// signal is honored. Spawn-mode callers (`run_wire_inner`) own the
+/// renderer subprocess and can respawn it, so they pass `true` and
+/// get back `ExitReason::RendererSwap`. Connect-mode callers
+/// (`run_session_single`) are attached to an external renderer they
+/// did not spawn; they pass `false` and the signal is drained and
+/// ignored so a hot-reload rebuild in a parallel dev session does
+/// not tear down the connected session.
 #[allow(clippy::too_many_arguments)]
 #[cfg(feature = "wire")]
 fn run_session<A: App>(
@@ -600,6 +616,7 @@ fn run_session<A: App>(
     window_sync: &mut crate::runtime::windows::WindowSync,
     base_settings: &Value,
     heartbeat_interval: Option<std::time::Duration>,
+    manages_renderer_lifecycle: bool,
 ) -> ExitReason {
     // Dev-mode needs to wake up periodically to check for swap
     // signals even when the heartbeat is disabled or set to a long
@@ -614,17 +631,22 @@ fn run_session<A: App>(
     let mut since_last_msg = std::time::Instant::now();
 
     loop {
-        // Dev-mode swap signal takes priority: a successful rebuild
-        // means the current renderer binary is stale. Return a
-        // RendererSwap reason so the outer loop respawns without
-        // counting against the restart policy. Compiled out when the
-        // `dev` feature is absent.
+        // Dev-mode swap signal takes priority when this session owns
+        // the renderer subprocess: a successful rebuild means the
+        // current binary is stale, so we return RendererSwap and let
+        // the outer loop respawn without counting against the restart
+        // policy. In connect mode we drain the queue but discard the
+        // signal so a parallel dev session's rebuild doesn't tear
+        // down the connected session. Compiled out when the `dev`
+        // feature is absent.
         #[cfg(feature = "dev")]
         {
-            if handle_dev_control_signals() {
+            if handle_dev_control_signals() && manages_renderer_lifecycle {
                 return ExitReason::RendererSwap;
             }
         }
+        #[cfg(not(feature = "dev"))]
+        let _ = manages_renderer_lifecycle;
 
         #[cfg(feature = "dev")]
         let incoming = bridge.recv_timeout(Some(poll_interval));

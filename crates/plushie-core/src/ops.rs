@@ -673,7 +673,8 @@ pub struct WidgetCommand {
 
 impl WidgetCommand {
     /// Build a typed widget command. The family name and wire value
-    /// are derived from the typed command via [`WidgetCommandEncode`].
+    /// are derived from the typed command via
+    /// [`WidgetCommandEncode`](crate::WidgetCommandEncode).
     pub fn new<C: crate::WidgetCommandEncode>(id: &str, cmd: C) -> Self {
         let (family, value) = cmd.to_wire();
         Self {

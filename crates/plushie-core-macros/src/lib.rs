@@ -16,8 +16,8 @@
 //!   for simple stateless widgets.
 //!
 //! - [`widget!`]: Function-like macro for declaring a custom widget in a
-//!   single invocation. Generates the struct, builder, [`View`]
-//!   conversion, and a build-time metadata const.
+//!   single invocation. Generates the struct, builder, `From<_> for
+//!   TreeNode` conversion, and a build-time metadata const.
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
@@ -282,7 +282,7 @@ fn pascal_to_snake(s: &str) -> String {
 
 /// Typed event declarations for composite widgets.
 ///
-/// Generates a [`WidgetEventEncode`] implementation that converts
+/// Generates a `WidgetEventEncode` implementation that converts
 /// each variant to a `(family, PropValue)` pair for wire transport.
 /// Variant names become snake_case family strings.
 ///
@@ -293,7 +293,7 @@ fn pascal_to_snake(s: &str) -> String {
 /// - **Named fields**: `Change { x: f32, y: f32 }` produces
 ///   `("change", PropValue::Object({x: ..., y: ...}))`
 ///
-/// Field types must implement [`PlushieType`] (all primitives do).
+/// Field types must implement `PlushieType` (all primitives do).
 ///
 /// # Example
 ///
@@ -422,7 +422,7 @@ fn derive_widget_event_impl(input: &DeriveInput) -> syn::Result<proc_macro2::Tok
 
 /// Typed command declarations for widget operations.
 ///
-/// Generates a [`WidgetCommandEncode`] implementation that converts
+/// Generates a `WidgetCommandEncode` implementation that converts
 /// each variant to an `(op, PropValue)` pair for wire transport.
 /// Variant names become snake_case operation strings.
 ///

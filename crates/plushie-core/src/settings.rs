@@ -33,7 +33,8 @@ pub struct Settings {
     pub widget_config: HashMap<String, Value>,
 }
 
-/// Per-window defaults. Returned from [`App::window_config`](crate::App::window_config).
+/// Per-window defaults. Returned from the SDK's `App::window_config`
+/// (defined in the `plushie` crate, not here).
 #[derive(Debug, Clone, Default)]
 pub struct WindowConfig {
     /// Window title bar text.

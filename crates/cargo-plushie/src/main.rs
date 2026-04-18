@@ -92,8 +92,9 @@ enum PlushieSubcommand {
     Build(BuildArgs),
     /// Download a precompiled stock renderer binary.
     Download(DownloadArgs),
-    /// Build the custom renderer and run the app binary with
-    /// `PLUSHIE_BINARY_PATH` pre-wired so wire mode finds it.
+    /// Build the custom renderer and then run the app binary. The
+    /// SDK's wire discovery picks the freshly built renderer up from
+    /// `target/plushie-renderer/` without any extra wiring.
     Run(RunArgs),
     /// Scaffold a new native widget crate with the conventional
     /// `[package.metadata.plushie.widget]` layout.

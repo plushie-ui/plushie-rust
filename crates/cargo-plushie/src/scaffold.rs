@@ -129,7 +129,8 @@ pub struct ScaffoldResult {
 ///
 /// # Errors
 ///
-/// - `name` must be kebab-case (see [`validate_kebab_name`]).
+/// - `name` must be kebab-case (ASCII letters, digits, and `-`; must
+///   start with a letter; no consecutive or trailing `-`).
 /// - `name` must not shadow a built-in widget type name.
 /// - The destination must not already exist.
 pub fn scaffold_widget(opts: &NewWidgetOpts<'_>) -> Result<ScaffoldResult> {
@@ -271,7 +272,8 @@ use plushie_core::widget;
 widget! {{
     /// {struct_name} widget builder. Used in `App::view` to declare
     /// a {type_name} node in the view tree.
-    #[widget(type_name = "{type_name}", constructor = "{struct_name}Factory::new()")]
+    #[widget(type_name = "{type_name}",
+             constructor = "{type_name}::factory::{factory_name}::new()")]
     pub struct {struct_name} {{
         /// Current value; clamped to `[0.0, max]` at render time.
         pub value: f32,
@@ -330,7 +332,8 @@ pub mod factory {{
 ///
 /// # Errors
 ///
-/// - `name` must be kebab-case (see [`validate_kebab_name`]).
+/// - `name` must be kebab-case (ASCII letters, digits, and `-`; must
+///   start with a letter; no consecutive or trailing `-`).
 /// - The destination must not already exist.
 pub fn scaffold_app(opts: &InitOpts<'_>) -> Result<ScaffoldResult> {
     validate_kebab_name(opts.name)?;

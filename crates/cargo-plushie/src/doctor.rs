@@ -26,9 +26,9 @@ pub struct DoctorOpts<'a> {
     pub min_rustc_version: &'a str,
 }
 
-/// Diagnostic outcome. [`critical`] is the gate on exit code: any
-/// critical finding makes `cargo plushie doctor` exit non-zero so CI
-/// setups can treat it as a hard failure.
+/// Diagnostic outcome. The `critical` field is the gate on exit code:
+/// any critical finding makes `cargo plushie doctor` exit non-zero so
+/// CI setups can treat it as a hard failure.
 #[derive(Debug, Default)]
 pub struct DoctorReport {
     /// Ordered list of (label, value, severity) rows.
@@ -165,7 +165,10 @@ pub fn write_report<W: Write>(report: &DoctorReport, writer: &mut W) -> std::io:
             "  [{symbol:^4}] {label}{pad}  {first}",
             label = row.label
         )?;
-        let indent = " ".repeat(8 + max_label + 2);
+        // Prefix width: 2 leading spaces + `[XXXX]` (6) + ` ` (1) +
+        // padded label + `  ` (2) = 11 + max_label. Continuation
+        // lines align under the first line's value column.
+        let indent = " ".repeat(11 + max_label);
         for line in lines {
             writeln!(writer, "{indent}{line}")?;
         }

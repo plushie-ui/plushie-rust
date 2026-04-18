@@ -1,6 +1,6 @@
 //! Typed outgoing wire protocol messages (SDK -> renderer).
 //!
-//! Mirrors [`IncomingMessage`] on the renderer side, providing
+//! Mirrors `IncomingMessage` on the renderer side, providing
 //! compile-time safety for message construction. Uses serde tagged
 //! enum serialization to produce the same JSON/MessagePack format
 //! the renderer expects.

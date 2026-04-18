@@ -370,13 +370,15 @@ impl EventEmitter {
 
     /// Flush all pending events (internal).
     fn flush_all(&mut self) {
-        let keys: Vec<CoalesceKey> = self.pending.keys().cloned().collect();
+        // `drain()` moves ownership of each `(key, PendingEvent)` pair
+        // out of the map without cloning keys - key clones would copy
+        // two Strings per entry under `CoalesceKey::Widget`, which for
+        // a busy app adds up on every FlushCoalesce tick.
+        let drained: Vec<_> = self.pending.drain().collect();
         let now = Instant::now();
-        for key in keys {
-            if let Some(pending) = self.pending.remove(&key) {
-                self.last_emits.insert(key, now);
-                let _ = self.do_emit(pending.into_event());
-            }
+        for (key, pending) in drained {
+            self.last_emits.insert(key, now);
+            let _ = self.do_emit(pending.into_event());
         }
     }
 

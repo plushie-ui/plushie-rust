@@ -169,20 +169,28 @@ impl Codec {
                 let rmpv_val: rmpv::Value = rmpv::decode::read_value(&mut &bytes[..])
                     .map_err(|e| format!("msgpack decode (rmpv): {e}"))?;
                 let json_val = rmpv_to_json(rmpv_val);
-                serde_json::from_value(json_val.clone()).map_err(|e| {
-                    let msg = format!("msgpack decode (tag dispatch): {e}");
-                    #[cfg(debug_assertions)]
-                    let msg = {
-                        let dump = json_val.to_string();
+                // Fast path: consume `json_val` directly on success so
+                // the happy path pays no clone cost. Only materialise
+                // the debug dump (and the clone needed to do so) when
+                // deserialisation fails in a debug build.
+                #[cfg(debug_assertions)]
+                {
+                    let json_for_err = json_val.clone();
+                    serde_json::from_value(json_val).map_err(|e| {
+                        let dump = json_for_err.to_string();
                         let truncated = if dump.len() > 512 {
                             format!("{}...", &dump[..512])
                         } else {
                             dump
                         };
-                        format!("{msg} | json: {truncated}")
-                    };
-                    msg
-                })
+                        format!("msgpack decode (tag dispatch): {e} | json: {truncated}")
+                    })
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    serde_json::from_value(json_val)
+                        .map_err(|e| format!("msgpack decode (tag dispatch): {e}"))
+                }
             }
         }
     }

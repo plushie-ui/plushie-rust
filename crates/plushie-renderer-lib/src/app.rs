@@ -175,17 +175,26 @@ impl App {
         let entries = self
             .core
             .matching_entries_with_catchall(key, SUB_EVENT, window_id);
-        if entries.is_empty() {
-            return Task::none();
-        }
-        let tasks: Vec<_> = entries
-            .into_iter()
-            .map(|entry| {
+        // Fast paths for the common 0- and 1-entry cases avoid
+        // allocating a `Vec` and a `Task::batch` per event.
+        match entries.len() {
+            0 => Task::none(),
+            1 => {
+                let entry = &entries[0];
                 self.emitter
                     .emit_direct(event_fn(entry.tag.clone()).with_captured(captured))
-            })
-            .collect();
-        Task::batch(tasks)
+            }
+            _ => {
+                let tasks: Vec<_> = entries
+                    .into_iter()
+                    .map(|entry| {
+                        self.emitter
+                            .emit_direct(event_fn(entry.tag.clone()).with_captured(captured))
+                    })
+                    .collect();
+                Task::batch(tasks)
+            }
+        }
     }
 
     pub fn lookup_widget_event_rate(&self, widget_id: &str) -> Option<u32> {
@@ -219,18 +228,29 @@ impl App {
         let entries = self
             .core
             .matching_entries_with_catchall(key, SUB_EVENT, window_id);
-        if entries.is_empty() {
-            return Task::none();
-        }
-        let tasks: Vec<_> = entries
-            .into_iter()
-            .map(|entry| {
+        // Fast paths for the common 0- and 1-entry cases avoid
+        // allocating a `Vec` and a `Task::batch` per high-frequency
+        // event (cursor move, scroll, etc.).
+        match entries.len() {
+            0 => Task::none(),
+            1 => {
+                let entry = &entries[0];
                 let event = event_fn(entry.tag.clone()).with_captured(captured);
                 self.emitter
                     .coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
-            })
-            .collect();
-        Task::batch(tasks)
+            }
+            _ => {
+                let tasks: Vec<_> = entries
+                    .into_iter()
+                    .map(|entry| {
+                        let event = event_fn(entry.tag.clone()).with_captured(captured);
+                        self.emitter
+                            .coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
+                    })
+                    .collect();
+                Task::batch(tasks)
+            }
+        }
     }
 
     /// Route a [`Message`] to every widget with an active subscription

@@ -98,8 +98,12 @@ pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedS
         None => return,
     };
 
+    // Hash the map directly rather than wrapping it in a fresh
+    // `Value::Object` and cloning the whole map. Mirrors the Object
+    // branch of `hash_json_value` so the resulting hash is stable
+    // across refactors of that helper.
     let mut hasher = DefaultHasher::new();
-    hash_json_value(&serde_json::Value::Object(style_val.clone()), &mut hasher);
+    hash_json_map(style_val, &mut hasher);
     let hash = hasher.finish();
 
     if let Some((cached_hash, _)) = caches.style_overrides.get(&node.id)
@@ -112,6 +116,17 @@ pub(crate) fn ensure_style_overrides_cache(node: &TreeNode, caches: &mut SharedS
     caches
         .style_overrides
         .insert(node.id.clone(), (hash, overrides));
+}
+
+/// Hash a `serde_json::Map` with the same byte sequence the
+/// `Value::Object` branch of [`hash_json_value`] would produce.
+fn hash_json_map(map: &serde_json::Map<String, serde_json::Value>, h: &mut impl std::hash::Hasher) {
+    5u8.hash(h);
+    map.len().hash(h);
+    for (k, v) in map {
+        k.hash(h);
+        hash_json_value(v, h);
+    }
 }
 
 /// Look up cached `StyleOverrides` for a node. Returns `None` if the

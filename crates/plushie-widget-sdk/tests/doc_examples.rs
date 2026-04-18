@@ -17,6 +17,12 @@ use serde_json::json;
 // forms conflict with the column!/row! macros under glob import.
 use plushie_widget_sdk::iced::widget::{column, row};
 
+// Iced primitives for the render-boundary. The prelude re-exports the
+// plushie-core domain equivalents (`Color`, `Length`, `Padding`, `Font`,
+// `Theme`); the iced versions are needed when constructing iced
+// `Element<'_, Message, IcedTheme, R>` types and reading palette colors.
+use plushie_widget_sdk::iced::{Color as IcedColor, Theme as IcedTheme};
+
 // ============================================================================
 // Gauge example (PlushieWidget)
 // ============================================================================
@@ -32,7 +38,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocGauge {
         &'a self,
         node: &'a TreeNode,
         _ctx: &RenderCtx<'a, R>,
-    ) -> Element<'a, Message, Theme, R> {
+    ) -> Element<'a, Message, IcedTheme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let label = node.prop_str("label").unwrap_or_default();
 
@@ -55,7 +61,7 @@ fn doc_gauge_renders() {
     let test = TestEnv::default();
     let ctx = test.render_ctx();
     let gauge = DocGauge;
-    let _element: Element<'_, Message, Theme, iced::Renderer> = gauge.render(&node, &ctx);
+    let _element: Element<'_, Message, IcedTheme, iced::Renderer> = gauge.render(&node, &ctx);
 }
 
 #[test]
@@ -64,7 +70,7 @@ fn doc_gauge_no_props() {
     let test = TestEnv::default();
     let ctx = test.render_ctx();
     let gauge = DocGauge;
-    let _element: Element<'_, Message, Theme, iced::Renderer> = gauge.render(&node, &ctx);
+    let _element: Element<'_, Message, IcedTheme, iced::Renderer> = gauge.render(&node, &ctx);
 }
 
 // ============================================================================
@@ -84,18 +90,17 @@ fn doc_prop_parsing() {
     // Free function style
     let _value: Option<f32> = prop_f32(&props, "value");
     let _label: Option<String> = prop_str(&props, "label");
-    let _color: Option<Color> =
-        plushie_core::types::Color::extract(&props, "color").map(|c| iced_convert::color(&c));
+    let _color: Option<IcedColor> =
+        Color::extract(&props, "color").map(|c| iced_convert::color(&c));
     let _show_label: bool = prop_bool_default(&props, "show_label", true);
-    let _width: Option<plushie_core::types::Length> =
-        plushie_core::types::Length::extract(&props, "width");
+    let _width: Option<Length> = Length::extract(&props, "width");
 
     // TreeNode shorthand style
     let node = node_with_props("n1", "test", props.to_value());
     let _value: Option<f32> = node.prop_f32("value");
     let _label: Option<&str> = node.prop_str("label");
-    let _color: Option<Color> =
-        plushie_core::types::Color::extract(&node.props, "color").map(|c| iced_convert::color(&c));
+    let _color: Option<IcedColor> =
+        Color::extract(&node.props, "color").map(|c| iced_convert::color(&c));
 }
 
 // ============================================================================
@@ -127,9 +132,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocContainer {
         &'a self,
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
-    ) -> Element<'a, Message, Theme, R> {
+    ) -> Element<'a, Message, IcedTheme, R> {
         let header = text(node.prop_str("title").unwrap_or_default());
-        let children: Vec<Element<'a, Message, Theme, R>> = ctx.render_children(node);
+        let children: Vec<Element<'a, Message, IcedTheme, R>> = ctx.render_children(node);
         let mut col = column![header].spacing(8);
         for child in children {
             col = col.push(child);
@@ -153,7 +158,7 @@ fn doc_container_renders() {
     let test = TestEnv::default();
     let ctx = test.render_ctx();
     let widget = DocContainer;
-    let _element: Element<'_, Message, Theme, iced::Renderer> = widget.render(&node, &ctx);
+    let _element: Element<'_, Message, IcedTheme, iced::Renderer> = widget.render(&node, &ctx);
 }
 
 // ============================================================================
@@ -195,14 +200,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocRating {
         &'a self,
         node: &'a TreeNode,
         ctx: &RenderCtx<'a, R>,
-    ) -> Element<'a, Message, Theme, R> {
+    ) -> Element<'a, Message, IcedTheme, R> {
         let value = node.prop_f32("value").unwrap_or(0.0) as usize;
         let max = prop_u32(&node.props, "max").unwrap_or(5) as usize;
         let size = node.prop_f32("size").unwrap_or(24.0);
-        let color = plushie_core::types::Color::extract(&node.props, "color")
+        let color = Color::extract(&node.props, "color")
             .map(|c| iced_convert::color(&c))
             .unwrap_or(ctx.theme.palette().primary.base.color);
-        let disabled_color = Color {
+        let disabled_color = IcedColor {
             a: color.a * 0.3,
             ..color
         };
@@ -248,7 +253,7 @@ fn doc_rating_renders() {
     let test = TestEnv::default();
     let ctx = test.render_ctx();
     let widget = DocRating;
-    let _element: Element<'_, Message, Theme, iced::Renderer> = widget.render(&node, &ctx);
+    let _element: Element<'_, Message, IcedTheme, iced::Renderer> = widget.render(&node, &ctx);
 }
 
 #[test]
@@ -257,7 +262,7 @@ fn doc_rating_no_props() {
     let test = TestEnv::default();
     let ctx = test.render_ctx();
     let widget = DocRating;
-    let _element: Element<'_, Message, Theme, iced::Renderer> = widget.render(&node, &ctx);
+    let _element: Element<'_, Message, IcedTheme, iced::Renderer> = widget.render(&node, &ctx);
 }
 
 // ============================================================================

@@ -103,31 +103,40 @@ pub use crate::widget::helpers::parse_style_overrides;
 /// Build [`StyleOverrides`] from a parsed [`StyleMapFields`].
 pub use crate::widget::helpers::style_overrides_from_style_map;
 
-// -- Commonly needed iced types --
+// -- Plushie-core primitive domain types --
+//
+// These are the canonical wire-aware types used in widget props and
+// view trees. Widget authors build UI logic against these. At the
+// render boundary, convert to iced types via `iced_convert::*`.
+/// Plushie-core `Color` domain type (wire-aware).
+pub use plushie_core::types::Color;
+/// Plushie-core `Font` domain type (wire-aware).
+pub use plushie_core::types::Font;
+/// Plushie-core `Length` domain type (wire-aware).
+pub use plushie_core::types::Length;
+/// Plushie-core `Padding` domain type (wire-aware).
+pub use plushie_core::types::Padding;
+/// Plushie-core `Theme` domain type (wire-aware).
+pub use plushie_core::types::Theme;
+
+// -- Commonly needed iced rendering types --
+//
+// These are iced-only; plushie-core has no equivalents. Reach into
+// `plushie_widget_sdk::iced::*` for anything else iced-specific.
 //
 // Note: `column` and `row` are deliberately excluded. They conflict
 // with the `column!` and `row!` macros when glob-imported. Widget
 // authors should use the macros directly (available via
 // `plushie_widget_sdk::iced`) or import explicitly:
 //   use plushie_widget_sdk::iced::widget::{column, row};
-/// Iced `Color` type.
-pub use crate::iced::Color;
 /// Iced `Element` type.
 pub use crate::iced::Element;
-/// Iced `Font` type.
-pub use crate::iced::Font;
-/// Iced `Length` type.
-pub use crate::iced::Length;
-/// Iced `Padding` type.
-pub use crate::iced::Padding;
 /// Iced `Pixels` newtype (distinguishes logical vs physical lengths).
 pub use crate::iced::Pixels;
 /// Iced `Point` type.
 pub use crate::iced::Point;
 /// Iced `Size` type.
 pub use crate::iced::Size;
-/// Iced `Theme` type.
-pub use crate::iced::Theme;
 /// Iced alignment helpers module.
 pub use crate::iced::alignment;
 /// Iced `button` widget constructor.

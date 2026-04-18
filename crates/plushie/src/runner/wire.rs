@@ -132,6 +132,22 @@ fn run_wire_inner<A: App>(
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
         );
+        // Surface renderer-vs-SDK version skew early. A mismatch is
+        // not fatal (wire-protocol compatibility is PROTOCOL_VERSION,
+        // not CARGO_PKG_VERSION), but divergence here often signals a
+        // stale installed renderer binary. The hint text names the
+        // exact install command.
+        if let Some(remote) = hello.get("version").and_then(|v| v.as_str())
+            && remote != crate::RENDERER_VERSION
+        {
+            log::warn!(
+                "renderer version skew: SDK built against {expected}, \
+                 renderer reports {got}; run `cargo install plushie-renderer --version {expected}` \
+                 if this is unexpected",
+                expected = crate::RENDERER_VERSION,
+                got = remote,
+            );
+        }
 
         bridge.start_reader()?;
 
@@ -1195,16 +1211,11 @@ fn base64_encode(data: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(data)
 }
 
-/// Wire protocol version. Sent in the settings message and
-/// verified by the renderer during handshake.
-#[cfg(feature = "wire")]
-pub const PROTOCOL_VERSION: u32 = 1;
-
 /// Build settings JSON from the App trait for the wire protocol.
 fn build_settings<A: App>() -> Value {
     let settings = A::settings();
     let mut json = serde_json::json!({
-        "protocol_version": PROTOCOL_VERSION,
+        "protocol_version": plushie_core::protocol::PROTOCOL_VERSION,
     });
 
     if let Some(ref font) = settings.default_font {

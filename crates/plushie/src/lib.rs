@@ -104,6 +104,27 @@ pub use plushie_widget_sdk as widget_sdk;
 // Re-export the derive macros for widget authoring.
 pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent, WidgetProps};
 
+/// Version string of the renderer this SDK was built against.
+///
+/// Matches `plushie-renderer-lib`'s `CARGO_PKG_VERSION` at build
+/// time. Wire mode compares the string against the renderer's
+/// advertised version in the `hello` message; a mismatch does not
+/// abort the handshake (the wire-protocol version is separate), but
+/// it does get logged so version skew surfaces early.
+///
+/// Host SDKs in other languages keep their own synced per-SDK
+/// `BINARY_VERSION` files. The Rust SDK uses this constant instead.
+#[cfg(feature = "direct")]
+pub const RENDERER_VERSION: &str = plushie_renderer_lib::RENDERER_VERSION;
+
+/// Version string of the renderer this SDK was built against.
+///
+/// Wire-only builds don't depend on `plushie-renderer-lib`, so the
+/// value comes straight from `CARGO_PKG_VERSION`, which the workspace
+/// keeps in lock-step with the renderer crate at release time.
+#[cfg(all(feature = "wire", not(feature = "direct")))]
+pub const RENDERER_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // ---------------------------------------------------------------------------
 // App trait
 // ---------------------------------------------------------------------------

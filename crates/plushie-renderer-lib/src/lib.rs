@@ -8,6 +8,16 @@
 //! traits and cfg-gated dependencies. The `plushie` binary crate and
 //! `plushie-web` WASM crate each provide their own implementations.
 
+/// Renderer crate version string.
+///
+/// Emitted by the renderer in the `hello` handshake message and
+/// cross-referenced by host SDKs (and `plushie::run_with_renderer`) to
+/// detect version skew between the SDK and an installed renderer
+/// binary. A mismatch is not fatal by itself (wire protocol
+/// compatibility is governed by `plushie_core::protocol::PROTOCOL_VERSION`),
+/// but host SDKs use this to surface a clear upgrade hint.
+pub const RENDERER_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod app;
 pub mod apply;
 pub mod constants;

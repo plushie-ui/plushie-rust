@@ -119,6 +119,10 @@ pub use plushie_core::types::Font;
 pub use plushie_core::types::Length;
 /// Plushie-core `Padding` domain type (wire-aware).
 pub use plushie_core::types::Padding;
+/// Trait providing `T::extract(&props, key)` for every wire-aware
+/// domain type. Needed in scope so calls like `Color::extract(...)`
+/// and `Length::extract(...)` resolve.
+pub use plushie_core::types::PlushieType;
 /// Plushie-core `Theme` domain type (wire-aware).
 pub use plushie_core::types::Theme;
 

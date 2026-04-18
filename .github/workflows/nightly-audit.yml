@@ -1,9 +1,10 @@
 name: Nightly audit
 
-# Run cargo audit on a nightly schedule to surface RustSec advisories
-# against the workspace dep graph. Intentionally not wired into the
-# main CI pipeline or preflight: advisories are informational, not
-# blocking, and the full audit adds meaningful wall time.
+# Run cargo audit and cargo deny on a nightly schedule to surface
+# RustSec advisories and license / supply-chain drift against the
+# workspace dep graph. Intentionally not wired into the main CI
+# pipeline or preflight: both are informational, not blocking, and
+# add meaningful wall time.
 
 on:
   schedule:
@@ -30,3 +31,19 @@ jobs:
 
       - name: Run cargo audit
         run: cargo audit --deny warnings
+
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.92.0"
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Run cargo deny
+        run: cargo deny check

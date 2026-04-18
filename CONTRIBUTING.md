@@ -76,6 +76,10 @@ additional steps for adding a widget to the iced set.
 
 ## Release Process
 
+See [docs/versioning.md](docs/versioning.md) for the full policy
+(what `PLUSHIE_RUST_VERSION` means, how SDK versions relate, and
+the protocol-compatibility rule).
+
 1. Update `CHANGELOG.md`: rename `[Unreleased]` to `[x.y.z] - YYYY-MM-DD`.
    List breaking changes first if it's a minor/major bump.
 2. Bump `[workspace.package].version` in the root `Cargo.toml`.

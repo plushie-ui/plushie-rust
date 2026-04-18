@@ -192,6 +192,8 @@ libraries can detect incompatibilities.
 - [Build tool](docs/build-tool.md) - `cargo plushie` reference,
   binary discovery, and the dev loop
 - [WASM build](docs/wasm-build.md) - building for WebAssembly
+- [Versioning policy](docs/versioning.md) - how plushie-rust
+  versions relate to host SDK versions and the wire protocol
 
 ## License
 

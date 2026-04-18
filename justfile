@@ -44,6 +44,7 @@ test-examples:
 test-wire:
     cargo test -p plushie --features wire --test wire_mode
     cargo test -p plushie --features wire --test wire_connect
+    cargo test -p plushie --features wire --test automation_replay_windowed
 
 test-cargo:
     cargo test --workspace

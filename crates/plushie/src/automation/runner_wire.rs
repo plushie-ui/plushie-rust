@@ -68,16 +68,30 @@ const FINAL_FLUSH_PAUSE: Duration = Duration::from_millis(100);
 /// - [`Error::Startup`] summarising failing instructions, if any.
 pub fn run_windowed<A: App>(file: &PlushieFile) -> PlushieResult {
     let binary = wire_discovery::discover_renderer()?;
+    run_windowed_with_renderer::<A>(&binary, file)
+}
+
+/// Drive a windowed script against an explicit renderer binary.
+///
+/// Same behaviour as [`run_windowed`] except the renderer path is
+/// supplied directly, bypassing the discovery chain. Useful for
+/// integration tests that want to wrap a custom launcher and for
+/// apps that ship a bespoke renderer alongside their release.
+///
+/// # Errors
+///
+/// Same surface as [`run_windowed`].
+pub fn run_windowed_with_renderer<A: App>(binary: &str, file: &PlushieFile) -> PlushieResult {
     log::info!("automation windowed: using renderer at {binary}");
 
-    let mut bridge = Bridge::spawn(&binary).map_err(|e| Error::spawn(binary.clone(), e))?;
+    let mut bridge = Bridge::spawn(binary).map_err(|e| Error::spawn(binary.to_string(), e))?;
 
     // Settings exchange and hello. The handshake shape mirrors
     // `run_session_single` in runner/wire.rs; we keep it inline here
     // because automation has no App MVU loop to bootstrap, no
     // subscription manager, and no effect tracker. A shared helper
     // would need awkward feature gates for every extra concern.
-    let settings = build_automation_settings::<A>(&file.header);
+    let settings = build_automation_settings::<A>();
     bridge.send_settings(&settings)?;
 
     let hello = bridge
@@ -195,16 +209,10 @@ fn send_current_tree<A: App>(bridge: &mut Bridge, session: &TestSession<A>) -> P
     Ok(())
 }
 
-fn build_automation_settings<A: App>(
-    header: &crate::automation::file::Header,
-) -> serde_json::Value {
+fn build_automation_settings<A: App>() -> serde_json::Value {
     let app_settings = A::settings();
     let mut json = serde_json::json!({
         "protocol_version": plushie_core::protocol::PROTOCOL_VERSION,
-        "viewport": {
-            "width": header.viewport.0,
-            "height": header.viewport.1,
-        },
     });
 
     if let Some(ref font) = app_settings.default_font {

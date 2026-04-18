@@ -48,12 +48,17 @@ pub const MAX_RMPV_DEPTH: usize = 128;
 /// check is enough to defeat forged-count-plus-forged-depth attacks
 /// in combination with the depth cap.
 ///
+/// This pre-scan defends against deeply nested or forged-count
+/// msgpack. A scan that runs past the end of an incomplete length
+/// marker (e.g. a `bin8` byte with no size byte following) breaks out
+/// of the loop and returns Ok; rmpv's downstream parser will surface
+/// the malformed-stream error in that case.
+///
 /// # Errors
 ///
 /// Returns a human-readable reason string when the payload nests
-/// deeper than `max_depth`, declares a container size larger than
-/// the remaining bytes can hold, or is malformed (truncated or
-/// contains an unrecognised format marker).
+/// deeper than `max_depth` or declares a container size larger than
+/// the remaining bytes can hold.
 pub fn check_msgpack_depth(bytes: &[u8], max_depth: usize) -> Result<(), String> {
     let len = bytes.len();
     let mut pos: usize = 0;

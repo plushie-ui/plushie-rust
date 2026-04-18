@@ -284,7 +284,7 @@ pub enum WindowOp {
         /// Target window ID.
         window_id: String,
         /// Notification urgency level.
-        urgency: Option<String>,
+        urgency: Option<NotificationUrgency>,
     },
     /// Take a screenshot of a window.
     Screenshot {

@@ -605,10 +605,10 @@ impl Command {
     }
 
     /// Request user attention (taskbar flash or similar).
-    pub fn request_attention(id: &str, urgency: Option<&str>) -> Self {
+    pub fn request_attention(id: &str, urgency: Option<NotificationUrgency>) -> Self {
         Self::Renderer(RendererOp::Window(WindowOp::RequestAttention {
             window_id: id.to_string(),
-            urgency: urgency.map(|s| s.to_string()),
+            urgency,
         }))
     }
 

@@ -10,9 +10,9 @@ use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
+use plushie_core::types::HorizontalAlignment;
 use plushie_core::types::a11y::Role;
 use plushie_core::types::{self as core_types, PlushieType, SortOrder};
-use plushie_core::types::{Color as CoreColor, HorizontalAlignment};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,7 +83,6 @@ fn parse_columns(props: &plushie_core::protocol::Props) -> Vec<TableColumn> {
 // Table props
 // ---------------------------------------------------------------------------
 
-#[allow(dead_code)] // separator_color will be used for iced table Style theming
 struct TableProps {
     header: bool,
     width: Length,
@@ -94,7 +93,6 @@ struct TableProps {
     header_text_size: Option<f32>,
     row_text_size: Option<f32>,
     separator: f32,
-    separator_color: Option<CoreColor>,
 }
 
 impl TableProps {
@@ -116,7 +114,6 @@ impl TableProps {
             header_text_size: f32::extract(p, "header_text_size"),
             row_text_size: f32::extract(p, "row_text_size"),
             separator: f32::extract(p, "separator").unwrap_or(1.0),
-            separator_color: CoreColor::extract(p, "separator_color"),
         }
     }
 }

@@ -647,7 +647,6 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("cell_spacing", Number),
             ("row_spacing", Number),
             ("separator_thickness", Number),
-            ("separator_color", Color),
         ],
         "pane_grid" => &[
             ("panes", Any),

@@ -288,12 +288,6 @@ impl TableBuilder {
         self
     }
 
-    /// Divider line color.
-    pub fn separator_color(mut self, c: impl Into<Animatable<Color>>) -> Self {
-        super::set_prop(&mut self.props, "separator_color", c.into().wire_encode());
-        self
-    }
-
     /// Cell internal padding.
     pub fn padding(mut self, p: impl Into<Padding>) -> Self {
         super::set_prop(

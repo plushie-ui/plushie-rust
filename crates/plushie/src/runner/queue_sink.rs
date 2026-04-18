@@ -13,7 +13,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 #[cfg(feature = "direct")]
-use plushie_widget_sdk::protocol::{EffectResponse, OutgoingEvent};
+use plushie_core::protocol::{EffectResponse, OutgoingEvent};
 
 // Re-export SinkEvent from event_bridge (where it's defined).
 pub(crate) use super::event_bridge::SinkEvent;

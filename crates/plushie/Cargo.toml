@@ -13,7 +13,7 @@ categories = ["gui", "rendering"]
 
 [features]
 default = ["direct"]
-direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "dep:parking_lot", "plushie-widget-sdk/tokio"]
+direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "dep:parking_lot", "dep:plushie-widget-sdk", "plushie-widget-sdk?/tokio"]
 wire = ["dep:rmp-serde", "dep:base64"]
 
 [package.metadata.docs.rs]
@@ -23,7 +23,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 plushie-core = { workspace = true }
 plushie-core-macros = { workspace = true }
-plushie-widget-sdk = { workspace = true }
+plushie-widget-sdk = { workspace = true, optional = true }
 plushie-renderer-lib = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

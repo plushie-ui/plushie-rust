@@ -101,6 +101,11 @@ pub mod widget;
 pub use error::Error;
 
 // Re-export the widget SDK for widget authors who also use the app SDK.
+//
+// Widget authorship requires direct-mode rendering (or a custom
+// renderer binary built against plushie-widget-sdk). Wire-only builds
+// omit the alias; the renderer subprocess provides widget impls.
+#[cfg(feature = "direct")]
 pub use plushie_widget_sdk as widget_sdk;
 
 // Re-export the derive macros for widget authoring.

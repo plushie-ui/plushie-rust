@@ -92,6 +92,9 @@ enum PlushieSubcommand {
     Build(BuildArgs),
     /// Download a precompiled stock renderer binary.
     Download(DownloadArgs),
+    /// Build the custom renderer and run the app binary with
+    /// `PLUSHIE_BINARY_PATH` pre-wired so wire mode finds it.
+    Run(RunArgs),
 }
 
 #[derive(Args, Debug)]
@@ -117,6 +120,21 @@ struct DownloadArgs {
     manifest_path: Option<PathBuf>,
 }
 
+#[derive(Args, Debug)]
+struct RunArgs {
+    /// Watch the app's src/ for changes and restart on edit.
+    /// Delegates to `cargo-watch` if it's installed, otherwise
+    /// falls back to a single `cargo run` invocation.
+    #[arg(long)]
+    watch: bool,
+    /// Build with the `release` Cargo profile.
+    #[arg(long)]
+    release: bool,
+    /// Path to the app crate manifest (defaults to `./Cargo.toml`).
+    #[arg(long)]
+    manifest_path: Option<PathBuf>,
+}
+
 fn main() -> Result<()> {
     // The first argv element after the binary name is the subcommand
     // shape Cargo hands us (`plushie`). Accept both shapes: when run
@@ -131,6 +149,7 @@ fn main() -> Result<()> {
     match args.command {
         PlushieSubcommand::Build(b) => cmd_build(&b),
         PlushieSubcommand::Download(d) => cmd_download(&d),
+        PlushieSubcommand::Run(r) => cmd_run(&r),
     }
 }
 
@@ -307,5 +326,85 @@ fn cmd_download(args: &DownloadArgs) -> Result<()> {
         "plushie: installed renderer at {}",
         dl_target.binary_path.display()
     );
+    Ok(())
+}
+
+fn cmd_run(args: &RunArgs) -> Result<()> {
+    let manifest_dir = resolve_manifest_dir(args.manifest_path.as_ref())?;
+
+    // Step 1: build the custom renderer. Reuse the full build flow so
+    // widget discovery + collision checks happen in one place.
+    let build = BuildArgs {
+        release: args.release,
+        verbose: false,
+        manifest_path: args.manifest_path.clone(),
+    };
+    cmd_build(&build)?;
+
+    // Step 2: hand off to either cargo-watch (preferred when installed;
+    // it handles restart-on-change cleanly) or a single cargo run.
+    if args.watch && cargo_watch_available() {
+        run_with_cargo_watch(&manifest_dir, args)
+    } else if args.watch {
+        eprintln!(
+            "plushie: `cargo-watch` not found; install with `cargo install cargo-watch` \
+             for --watch, falling back to single `cargo run`"
+        );
+        run_cargo_run(&manifest_dir, args)
+    } else {
+        run_cargo_run(&manifest_dir, args)
+    }
+}
+
+/// Check whether `cargo-watch` (invoked via `cargo watch`) is
+/// installed. A missing binary maps to `status != 0` from
+/// `cargo --list`; we do a simple `cargo watch --version` probe.
+fn cargo_watch_available() -> bool {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    std::process::Command::new(cargo)
+        .args(["watch", "--version"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Single-shot `cargo run` against the app crate.
+fn run_cargo_run(manifest_dir: &std::path::Path, args: &RunArgs) -> Result<()> {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut cmd = std::process::Command::new(cargo);
+    cmd.current_dir(manifest_dir).arg("run");
+    if args.release {
+        cmd.arg("--release");
+    }
+    let status = cmd.status().with_context(|| "failed to run cargo run")?;
+    if !status.success() {
+        return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
+    }
+    Ok(())
+}
+
+/// Loop-forever `cargo watch` invocation that rebuilds the renderer
+/// workspace and re-runs the app on app-src change.
+///
+/// The watch command chain (`-s 'cargo plushie build && cargo run'`)
+/// keeps the renderer binary in sync with any app-side widget changes
+/// that slip into the app crate itself, then restarts the app so
+/// `PLUSHIE_BINARY_PATH` discovery picks up the fresh binary.
+fn run_with_cargo_watch(manifest_dir: &std::path::Path, args: &RunArgs) -> Result<()> {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    // `cargo watch -w src -s '<cmd>'` reruns <cmd> on src/ changes.
+    // We chain `cargo plushie build` before each `cargo run` so widget
+    // rebuilds happen in-band.
+    let profile = if args.release { " --release" } else { "" };
+    let shell_cmd = format!("cargo plushie build{profile} && cargo run{profile}");
+    let mut cmd = std::process::Command::new(cargo);
+    cmd.current_dir(manifest_dir)
+        .args(["watch", "-w", "src", "-s", &shell_cmd]);
+    let status = cmd.status().with_context(|| "failed to run cargo watch")?;
+    if !status.success() {
+        return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
+    }
     Ok(())
 }

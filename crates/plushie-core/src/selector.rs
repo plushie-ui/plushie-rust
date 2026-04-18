@@ -295,6 +295,14 @@ fn search_all<'a>(
 /// a node with id `"main#todo-1/done"`). This lets callers use
 /// bare names, partial scoped paths, or fully qualified ids
 /// interchangeably.
+///
+/// The walk is depth-first, pre-order, and returns the first node
+/// that matches. With an unqualified target like `"save"`, a tree
+/// containing both `main#save` and `main#form/checkout/save` will
+/// match whichever appears first in DFS order, which is `main#save`
+/// for the usual top-down layout. Callers that need a specific one
+/// should pass a more qualified path (e.g. `form/checkout/save`) or
+/// scope the search to a window.
 fn find_by_id<'a>(
     node: &'a TreeNode,
     target_id: &str,

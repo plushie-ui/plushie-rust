@@ -36,7 +36,7 @@ use serde_json::Value;
 /// ```
 /// use plushie_core::animation::{Transition, Easing};
 ///
-/// let t = Transition::new(500, 24.0_f32)
+/// let t: Transition<f32> = Transition::new(500, 24.0_f32)
 ///     .easing(Easing::EaseOutCubic)
 ///     .delay(100);
 /// ```
@@ -222,8 +222,8 @@ pub enum Repeat {
 /// ```
 /// use plushie_core::animation::Spring;
 ///
-/// let s = Spring::new(1.05_f32).stiffness(200.0).damping(20.0);
-/// let bouncy = Spring::bouncy(1.05_f32);
+/// let s: Spring<f32> = Spring::new(1.05_f32).stiffness(200.0).damping(20.0);
+/// let bouncy: Spring<f32> = Spring::bouncy(1.05_f32);
 /// ```
 #[derive(Debug, Clone)]
 pub struct Spring<T: PlushieType = PropValue> {

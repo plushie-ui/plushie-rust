@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/cargo-plushie",
     "crates/plushie",
     "crates/plushie-core",
     "crates/plushie-core-macros",

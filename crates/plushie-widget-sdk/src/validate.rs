@@ -63,6 +63,131 @@ fn prop_type_matches(val: &Value, expected: PropType) -> bool {
     }
 }
 
+/// Numeric range constraint applied to a prop value. `None` on either
+/// end means unbounded in that direction.
+#[derive(Debug, Clone, Copy, Default)]
+struct NumericRange {
+    min: Option<f64>,
+    max: Option<f64>,
+}
+
+impl NumericRange {
+    const fn min(min: f64) -> Self {
+        Self {
+            min: Some(min),
+            max: None,
+        }
+    }
+
+    const fn min_max(min: f64, max: f64) -> Self {
+        Self {
+            min: Some(min),
+            max: Some(max),
+        }
+    }
+
+    /// Legitimate negative values (shadow offsets, translate offsets)
+    /// bypass the >= 0 check for Length props that generally should
+    /// be non-negative.
+    const fn any() -> Self {
+        Self {
+            min: None,
+            max: None,
+        }
+    }
+}
+
+/// Per-widget range constraints. Keyed by (type_name, prop_name).
+///
+/// Only props whose out-of-range values cause real problems downstream
+/// are listed. Props with clear semantics around negatives (shadow
+/// offsets, translate offsets) are deliberately excluded.
+fn range_for(type_name: &str, prop_name: &str) -> Option<NumericRange> {
+    // Window dimensions: clamp to a reasonable pixel range. Values
+    // wildly outside this range tend to crash native window managers
+    // or produce garbage output.
+    const WINDOW_DIMS: &[&str] = &[
+        "width",
+        "height",
+        "max_width",
+        "max_height",
+        "min_width",
+        "min_height",
+    ];
+    if type_name == "window" && WINDOW_DIMS.contains(&prop_name) {
+        return Some(NumericRange::min_max(0.0, 32767.0));
+    }
+
+    // Fonts: >= 0 and a sanity cap well above any real use.
+    if prop_name == "font_size" || prop_name == "text_size" {
+        return Some(NumericRange::min_max(0.0, 1024.0));
+    }
+
+    // Common layout props that should never be negative.
+    match prop_name {
+        "spacing" | "size" | "width_fraction" | "line_height" | "scale" | "opacity"
+        | "scale_factor" => Some(NumericRange::min(0.0)),
+        _ => None,
+    }
+}
+
+/// Check a numeric prop value against its declared range. Returns a
+/// warning string when out of range and the clamped value that should
+/// replace the raw one. Caller decides whether to apply the clamp.
+fn check_numeric_range(
+    node_id: &str,
+    type_name: &str,
+    prop_name: &str,
+    val: &Value,
+    range: NumericRange,
+) -> Option<(String, f64)> {
+    let raw = val.as_f64()?;
+    if !raw.is_finite() {
+        // Non-finite values should have been filtered upstream. Treat
+        // them as out-of-range and clamp to zero.
+        let clamped = 0.0;
+        return Some((
+            format!(
+                "prop_range_exceeded: widget \"{node_id}\" ({type_name}) prop \
+                 \"{prop_name}\" value {raw} is not finite, clamped to \
+                 {clamped}"
+            ),
+            clamped,
+        ));
+    }
+    let mut clamped = raw;
+    if let Some(min) = range.min
+        && raw < min
+    {
+        clamped = min;
+    }
+    if let Some(max) = range.max
+        && raw > max
+    {
+        clamped = max;
+    }
+    if clamped != raw {
+        Some((
+            format!(
+                "prop_range_exceeded: widget \"{node_id}\" ({type_name}) prop \
+                 \"{prop_name}\" value {raw} out of range, clamped to \
+                 {clamped}"
+            ),
+            clamped,
+        ))
+    } else {
+        None
+    }
+}
+
+#[allow(dead_code)] // consumed by tests and future enforcement layers
+pub(crate) fn numeric_range_for_prop(
+    type_name: &str,
+    prop_name: &str,
+) -> Option<(Option<f64>, Option<f64>)> {
+    range_for(type_name, prop_name).map(|r| (r.min, r.max))
+}
+
 /// Widget type names covered by the built-in validation schema.
 ///
 /// Exposed for drift detection: CI tests can cross-check this list
@@ -600,6 +725,14 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
                         node.id, node.type_name, key, val, expected_type
                     ));
                 }
+                // Range check only applies to numeric values; string
+                // lengths are validated elsewhere.
+                if let Some(range) = range_for(&node.type_name, key)
+                    && let Some((msg, _clamped)) =
+                        check_numeric_range(&node.id, &node.type_name, key, val, range)
+                {
+                    warnings.push(msg);
+                }
             }
             None => {
                 warnings.push(format!(
@@ -609,6 +742,10 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             }
         }
     }
+
+    // NumericRange is intentionally opaque outside this module; nudge
+    // the linter to keep the unused-but-reachable variant allowed.
+    let _ = NumericRange::any();
 
     warnings
 }
@@ -690,6 +827,49 @@ mod tests {
         let warnings = collect_prop_warnings(&node);
         assert!(!warnings.is_empty());
         assert!(warnings[0].contains("unexpected prop 'bogus'"));
+    }
+
+    #[test]
+    fn negative_spacing_emits_range_warning() {
+        let node = make_node("column", json!({"spacing": -5}));
+        let warnings = collect_prop_warnings(&node);
+        assert!(
+            warnings.iter().any(|w| w.contains("prop_range_exceeded")),
+            "expected range warning, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn oversize_font_emits_range_warning() {
+        let node = make_node("text", json!({"size": 5000}));
+        // "size" is Number for text; range check fires.
+        let warnings = collect_prop_warnings(&node);
+        // size has a lower bound only; 5000 is fine. Use text_size
+        // via a widget that accepts it.
+        assert!(
+            !warnings.iter().any(|w| w.contains("prop_range_exceeded")),
+            "size has no upper bound; got {warnings:?}"
+        );
+        let node = make_node("checkbox", json!({"text_size": 5000}));
+        let warnings = collect_prop_warnings(&node);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("prop_range_exceeded") && w.contains("text_size")),
+            "expected text_size range warning, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn window_huge_dimensions_emit_range_warning() {
+        let node = make_node("window", json!({"width": 50_000, "title": "x"}));
+        let warnings = collect_prop_warnings(&node);
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("prop_range_exceeded") && w.contains("width")),
+            "expected window width range warning, got {warnings:?}"
+        );
     }
 
     #[test]

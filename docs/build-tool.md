@@ -393,10 +393,10 @@ constructor = "my_gauge::factory::MyGaugeFactory::new()"
 - `constructor` (string, required): a Rust expression that produces
   an instance of the widget's renderer-side factory. The generator
   injects this into the generated `main.rs` as
-  `.widget(<constructor>)`. The expression must parse as a Rust path
-  call with no arguments (validated up front so a malformed
-  constructor fails fast and cannot inject arbitrary tokens into the
-  generated file).
+  `.widget(<constructor>)`. Use a simple path call with no arguments
+  (for example `my_gauge::factory::MyGaugeFactory::new()`). Malformed
+  expressions surface as compile errors when the generated workspace
+  builds; the build-tool currently does not pre-validate the shape.
 
 ## Binary discovery
 

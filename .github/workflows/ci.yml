@@ -10,8 +10,8 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  ci:
-    name: CI
+  linux:
+    name: Linux (full)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,10 +44,41 @@ jobs:
       - name: Check release build
         run: cargo check --workspace --release
 
-      - name: Check Windows cross-compilation
-        run: |
-          rustup target add x86_64-pc-windows-msvc
-          cargo check --target x86_64-pc-windows-msvc --release -p plushie-renderer
+      - name: Feature permutation - wire only
+        run: cargo check -p plushie --no-default-features --features wire --all-targets
+
+      - name: Feature permutation - direct only
+        run: cargo check -p plushie --no-default-features --features direct --all-targets
 
       - name: Check WASM
         run: cargo check --target wasm32-unknown-unknown -p plushie-core -p plushie-widget-sdk -p plushie-renderer-lib -p plushie-renderer-wasm
+
+  cross-os:
+    name: ${{ matrix.os }} (smoke)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.92.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+      - uses: taiki-e/install-action@nextest
+
+      - name: Check
+        run: cargo check --workspace --all-targets
+
+      # Subprocess integration tests. These are the platform-sensitive
+      # paths (process spawning, stdio framing, socket semantics) and
+      # have historically broken on Windows without warning; the macOS
+      # run guards against the reverse. Clippy and fmt stay Linux-only.
+      - name: Smoke - session multiplexing
+        run: cargo nextest run -p plushie-renderer --test session_multiplexing --profile ci
+
+      - name: Smoke - wire mode
+        run: cargo nextest run -p plushie --features wire --test wire_mode --profile ci

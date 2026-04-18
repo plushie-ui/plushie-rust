@@ -29,13 +29,13 @@ pub use crate::registry::InitCtx;
 pub use crate::registry::PlushieWidget;
 /// Object-safe render slice used by the widget dispatcher.
 pub use crate::registry::PlushieWidgetRender;
-/// Context passed to `PlushieWidget::subscribe`.
+/// Context passed to `PlushieWidget::subscriptions`.
 pub use crate::registry::SubscribeCtx;
 /// Registry of widget implementations keyed by type name.
 pub use crate::registry::WidgetRegistry;
 /// Grouping trait for a reusable bundle of widgets.
 pub use crate::registry::WidgetSet;
-/// Declared widget subscription returned from `subscribe`.
+/// Declared widget subscription returned from `subscriptions`.
 pub use crate::registry::WidgetSubscription;
 
 // -- Derive macros for widget props, events, and commands --

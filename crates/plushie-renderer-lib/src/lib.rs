@@ -5,8 +5,9 @@
 //! outgoing events. It compiles to both native and wasm32 targets.
 //!
 //! Platform-specific behavior (I/O, effects, sleep) is injected via
-//! traits and cfg-gated dependencies. The `plushie` binary crate and
-//! `plushie-web` WASM crate each provide their own implementations.
+//! traits and cfg-gated dependencies. The `plushie-renderer` binary
+//! and `plushie-renderer-wasm` WASM crate each provide their own
+//! implementations.
 
 /// Renderer crate version string.
 ///

@@ -1400,9 +1400,9 @@ fn run_multiplexed<R: PlushieRenderer>(
 
     // Writer -> reader signal channel. Used by session threads to
     // inform the reader when they close so the reader can proactively
-    // clean up its dispatch map (avoiding F-04's "host sees errors on
-    // unrelated follow-ups"), and to unblock the Reset / closing_sessions
-    // lifecycle (F-02).
+    // clean up its dispatch map (so a dying session does not produce
+    // errors on unrelated follow-up messages), and to unblock the
+    // Reset / closing_sessions lifecycle.
     let (signal_tx, signal_rx) = mpsc::channel::<SessionSignal>();
 
     // Session dispatch table: session_id -> primary sender + pending

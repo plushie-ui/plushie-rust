@@ -5,7 +5,7 @@
 //! sink is initialized at startup via [`init_sink`] and shared with
 //! the App's EventEmitter via [`sink_arc`].
 //!
-//! The global provides three functions for code that runs without
+//! The global provides free functions for code that runs without
 //! an App instance (startup handshake, headless writer thread):
 //! [`emit_hello`], [`write_output`].
 

@@ -7,7 +7,7 @@
 //! # Usage from JavaScript
 //!
 //! ```js
-//! import init, { PlushieApp } from './plushie_web.js';
+//! import init, { PlushieApp } from './plushie_renderer_wasm.js';
 //!
 //! await init();
 //! const app = new PlushieApp(settingsJson, (event) => {

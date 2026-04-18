@@ -247,11 +247,10 @@ fn find_window_recursive<'a>(
     depth: usize,
 ) -> Option<&'a TreeNode> {
     if depth > MAX_TREE_DEPTH {
-        let diag = plushie_core::Diagnostic::TreeDepthExceeded {
+        crate::diagnostics::warn(plushie_core::Diagnostic::TreeDepthExceeded {
             id: node.id.clone(),
             max_depth: MAX_TREE_DEPTH,
-        };
-        log::warn!("find_window_recursive: {diag}");
+        });
         return None;
     }
     if node.type_name == "window" && node.id == window_id {
@@ -267,11 +266,10 @@ fn find_window_recursive<'a>(
 
 fn collect_window_ids_recursive(node: &TreeNode, ids: &mut Vec<String>, depth: usize) {
     if depth > MAX_TREE_DEPTH {
-        let diag = plushie_core::Diagnostic::TreeDepthExceeded {
+        crate::diagnostics::warn(plushie_core::Diagnostic::TreeDepthExceeded {
             id: node.id.clone(),
             max_depth: MAX_TREE_DEPTH,
-        };
-        log::warn!("collect_window_ids_recursive: {diag}");
+        });
         return;
     }
     if node.type_name == "window" {

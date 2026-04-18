@@ -151,12 +151,35 @@ pub fn parse_file(path: &str) -> Result<PlushieFile, String> {
     parse(&content)
 }
 
+/// Minimum viewport dimension accepted by `parse_viewport`.
+///
+/// Below this size a window would be effectively unusable and some
+/// compositors refuse to render at all.
+const MIN_VIEWPORT: u32 = 64;
+
+/// Maximum viewport dimension accepted by `parse_viewport`.
+///
+/// Matches the window-dimension clamp applied by prop validation
+/// (well above real displays, below the values that trip GPU drivers
+/// or winit on most platforms).
+const MAX_VIEWPORT: u32 = 32767;
+
 fn parse_viewport(s: &str) -> Result<(u32, u32), String> {
     let (w, h) = s
         .split_once('x')
         .ok_or_else(|| format!("expected 'WxH' format, got '{s}'"))?;
     let w: u32 = w.parse().map_err(|_| format!("invalid width '{w}'"))?;
     let h: u32 = h.parse().map_err(|_| format!("invalid height '{h}'"))?;
+    if !(MIN_VIEWPORT..=MAX_VIEWPORT).contains(&w) {
+        return Err(format!(
+            "viewport width {w} out of range {MIN_VIEWPORT}..={MAX_VIEWPORT}"
+        ));
+    }
+    if !(MIN_VIEWPORT..=MAX_VIEWPORT).contains(&h) {
+        return Err(format!(
+            "viewport height {h} out of range {MIN_VIEWPORT}..={MAX_VIEWPORT}"
+        ));
+    }
     Ok((w, h))
 }
 
@@ -411,6 +434,28 @@ mod tests {
         let result = parse("viewport: bad\n-----\n");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("viewport"));
+    }
+
+    #[test]
+    fn viewport_too_small_rejected() {
+        let result = parse("viewport: 10x10\n-----\n");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("viewport") && err.contains("out of range"));
+    }
+
+    #[test]
+    fn viewport_too_large_rejected() {
+        let result = parse("viewport: 1000000x100\n-----\n");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("viewport") && err.contains("out of range"));
+    }
+
+    #[test]
+    fn viewport_in_range_accepted() {
+        let file = parse("viewport: 800x600\n-----\n").unwrap();
+        assert_eq!(file.header.viewport, (800, 600));
     }
 
     #[test]

@@ -84,6 +84,7 @@ pub struct SharedState {
 }
 
 impl SharedState {
+    /// Create an empty state with no cached overrides or interpolated props.
     pub fn new() -> Self {
         Self {
             style_overrides: HashMap::new(),

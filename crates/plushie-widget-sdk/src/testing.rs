@@ -104,11 +104,17 @@ pub fn node_with_props_and_children(
 /// let ctx = test.render_ctx();
 /// ```
 pub struct TestEnv {
+    /// Shared state used by widget caches.
     pub shared_state: SharedState,
+    /// Image registry stub for tests.
     pub images: ImageRegistry,
+    /// Active iced theme for the test.
     pub theme: Theme,
+    /// Widget registry pre-populated with the built-in widget set.
     pub registry: WidgetRegistry,
+    /// Default text size (pixels) applied to widgets without overrides.
     pub default_text_size: Option<f32>,
+    /// Default font applied to widgets without overrides.
     pub default_font: Option<iced::Font>,
 }
 

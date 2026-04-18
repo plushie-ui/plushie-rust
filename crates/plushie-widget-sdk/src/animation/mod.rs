@@ -31,7 +31,9 @@ use std::collections::HashMap;
 /// The value being animated: either a number or a color.
 #[derive(Clone, Debug)]
 pub enum AnimValue {
+    /// Scalar f32 value (pixels, angles, opacity, etc.).
     Number(f32),
+    /// Color value interpolated in linear RGBA.
     Color(iced::Color),
 }
 
@@ -50,17 +52,28 @@ impl AnimValue {
 /// The kind of animation being performed.
 #[derive(Clone, Debug)]
 pub enum AnimationKind {
+    /// Time-based tween with easing and optional loop/delay/reverse.
     Timed {
+        /// Animation duration in milliseconds.
         duration_ms: f32,
+        /// Easing curve.
         easing: Easing,
+        /// Optional four-point bezier for custom easing.
         bezier: Option<[f32; 4]>,
+        /// Delay before the tween starts, in milliseconds.
         delay_ms: f32,
+        /// Repeat policy.
         repeat: RepeatMode,
+        /// When true, each loop reverses direction.
         auto_reverse: bool,
     },
+    /// Spring physics animation.
     Spring {
+        /// Spring stiffness (higher is faster).
         stiffness: f32,
+        /// Damping coefficient (higher resists oscillation).
         damping: f32,
+        /// Mass of the animated "body" (higher feels heavier).
         mass: f32,
     },
 }
@@ -68,43 +81,62 @@ pub enum AnimationKind {
 /// Repeat mode for timed transitions.
 #[derive(Clone, Debug)]
 pub enum RepeatMode {
+    /// Run once and stop.
     None,
+    /// Repeat a fixed number of times.
     Count(u32),
+    /// Repeat indefinitely.
     Forever,
 }
 
 /// State for a single animated property.
 #[derive(Clone, Debug)]
 pub struct TransitionState {
+    /// Animation kind (timed or spring) with its parameters.
     pub kind: AnimationKind,
+    /// Starting value.
     pub from: AnimValue,
+    /// Target value.
     pub to: AnimValue,
+    /// Current interpolated value.
     pub current: AnimValue,
+    /// Current velocity (spring mode).
     pub velocity: f32,
+    /// Elapsed milliseconds since the animation started.
     pub elapsed_ms: f32,
+    /// Optional SDK completion tag.
     pub on_complete: Option<String>,
+    /// True once the animation has reached its target.
     pub finished: bool,
 }
 
 /// State for a sequence of animations on one property.
 #[derive(Clone, Debug)]
 pub struct SequenceState {
+    /// Ordered list of steps in the sequence.
     pub steps: Vec<TransitionState>,
+    /// Index of the step currently running.
     pub current_step: usize,
+    /// Optional SDK completion tag emitted when the sequence finishes.
     pub on_complete: Option<String>,
 }
 
 /// An active animation: either a single transition/spring or a sequence.
 #[derive(Clone, Debug)]
 pub enum ActiveAnimation {
+    /// A single transition or spring.
     Single(TransitionState),
+    /// A sequence of steps.
     Sequence(SequenceState),
 }
 
 /// Completion event to emit back to the SDK.
 pub struct CompletionEvent {
+    /// ID of the widget whose animation finished.
     pub widget_id: String,
+    /// Name of the animated prop.
     pub prop_name: String,
+    /// SDK completion tag (for correlation with `on_complete`).
     pub tag: String,
 }
 
@@ -129,6 +161,7 @@ impl Default for TransitionManager {
 }
 
 impl TransitionManager {
+    /// Create an empty manager with no active animations.
     pub fn new() -> Self {
         Self {
             active: HashMap::new(),
@@ -335,6 +368,7 @@ impl TransitionManager {
 /// renderer hosts can compose `[PrepareTransform, ScanTransform]` in
 /// a single walk.
 pub struct ScanTransform<'a> {
+    /// Manager receiving animation start/update/cancel notifications.
     pub manager: &'a mut TransitionManager,
 }
 

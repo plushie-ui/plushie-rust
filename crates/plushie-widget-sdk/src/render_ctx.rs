@@ -22,13 +22,18 @@ use crate::shared_state::SharedState;
 /// The `R` parameter selects the renderer backend: `iced::Renderer` for
 /// headless/windowed modes, `()` (null renderer) for mock mode.
 pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
+    /// Shared renderer-side caches (style hashes, override memoization).
     pub caches: &'a SharedState,
+    /// Image handles registered with the renderer.
     pub images: &'a ImageRegistry,
+    /// Active iced theme for this window.
     pub theme: &'a Theme,
     /// Widget registry for unified dispatch. All widget types are
     /// registered here.
     pub registry: &'a crate::registry::WidgetRegistry<R>,
+    /// Default text size inherited from Settings (pixels).
     pub default_text_size: Option<f32>,
+    /// Default font inherited from Settings.
     pub default_font: Option<iced::Font>,
     /// The plushie window ID this render is for.
     ///

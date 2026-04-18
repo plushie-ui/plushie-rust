@@ -2,14 +2,19 @@
 
 /// Spring parameters.
 pub struct SpringParams {
+    /// Spring constant (higher values return to target faster).
     pub stiffness: f32,
+    /// Damping coefficient (higher values suppress oscillation).
     pub damping: f32,
+    /// Mass of the animated body (higher feels heavier).
     pub mass: f32,
 }
 
 /// Spring state (position + velocity).
 pub struct SpringState {
+    /// Current position along the animated axis.
     pub position: f32,
+    /// Current velocity.
     pub velocity: f32,
 }
 

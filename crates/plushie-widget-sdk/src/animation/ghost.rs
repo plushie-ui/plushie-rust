@@ -30,6 +30,7 @@ impl Default for GhostManager {
 }
 
 impl GhostManager {
+    /// Create an empty ghost manager.
     pub fn new() -> Self {
         Self {
             ghosts: HashMap::new(),

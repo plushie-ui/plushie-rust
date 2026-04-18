@@ -24,6 +24,8 @@
 //! `engine`, `tree`, `message`, `widget`, `protocol`, `codec`,
 //! `theming`, `image_registry`
 
+#![deny(missing_docs)]
+
 // Ensure catch_unwind works: widget panic isolation requires unwinding.
 // If this fails, remove `panic = "abort"` from your Cargo profile.
 // On WASM, catch_unwind is a no-op (panics always abort), so skip this check.

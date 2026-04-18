@@ -204,6 +204,7 @@ fn override_pair(
 // Length
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Length to an iced Length.
 pub fn length(l: &types::Length) -> iced::Length {
     match *l {
         types::Length::Fill => iced::Length::Fill,
@@ -217,6 +218,7 @@ pub fn length(l: &types::Length) -> iced::Length {
 // Padding
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Padding to an iced Padding.
 pub fn padding(p: &types::Padding) -> iced::Padding {
     iced::Padding {
         top: p.top,
@@ -230,6 +232,7 @@ pub fn padding(p: &types::Padding) -> iced::Padding {
 // FontWeight
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core FontWeight to an iced font weight.
 pub fn font_weight(w: types::FontWeight) -> iced::font::Weight {
     match w {
         types::FontWeight::Thin => iced::font::Weight::Thin,
@@ -248,6 +251,7 @@ pub fn font_weight(w: types::FontWeight) -> iced::font::Weight {
 // FontStyle
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core FontStyle to an iced font style.
 pub fn font_style(s: types::FontStyle) -> iced::font::Style {
     match s {
         types::FontStyle::Normal => iced::font::Style::Normal,
@@ -260,6 +264,7 @@ pub fn font_style(s: types::FontStyle) -> iced::font::Style {
 // FontStretch
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core FontStretch to an iced font stretch.
 pub fn font_stretch(s: types::FontStretch) -> iced::font::Stretch {
     match s {
         types::FontStretch::UltraCondensed => iced::font::Stretch::UltraCondensed,
@@ -323,6 +328,7 @@ pub fn font(f: &types::Font) -> iced::Font {
 // Radius
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Radius to an iced border radius.
 pub fn radius(r: types::Radius) -> iced::border::Radius {
     match r {
         types::Radius::Uniform(v) => v.into(),
@@ -344,6 +350,7 @@ pub fn radius(r: types::Radius) -> iced::border::Radius {
 // Border
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Border to an iced Border.
 pub fn border(b: &types::Border) -> iced::Border {
     iced::Border {
         color: b
@@ -360,6 +367,7 @@ pub fn border(b: &types::Border) -> iced::Border {
 // Shadow
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Shadow to an iced Shadow.
 pub fn shadow(s: &types::Shadow) -> iced::Shadow {
     iced::Shadow {
         color: color(&s.color),
@@ -372,6 +380,7 @@ pub fn shadow(s: &types::Shadow) -> iced::Shadow {
 // HorizontalAlignment
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core HorizontalAlignment to an iced horizontal alignment.
 pub fn horizontal_alignment(a: types::HorizontalAlignment) -> iced::alignment::Horizontal {
     match a {
         types::HorizontalAlignment::Left => iced::alignment::Horizontal::Left,
@@ -384,6 +393,7 @@ pub fn horizontal_alignment(a: types::HorizontalAlignment) -> iced::alignment::H
 // VerticalAlignment
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core VerticalAlignment to an iced vertical alignment.
 pub fn vertical_alignment(a: types::VerticalAlignment) -> iced::alignment::Vertical {
     match a {
         types::VerticalAlignment::Top => iced::alignment::Vertical::Top,
@@ -396,6 +406,7 @@ pub fn vertical_alignment(a: types::VerticalAlignment) -> iced::alignment::Verti
 // Wrapping
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Wrapping to an iced text wrapping.
 pub fn wrapping(w: types::Wrapping) -> text::Wrapping {
     match w {
         types::Wrapping::None => text::Wrapping::None,
@@ -409,6 +420,7 @@ pub fn wrapping(w: types::Wrapping) -> text::Wrapping {
 // Shaping
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Shaping to an iced text shaping.
 pub fn shaping(s: types::Shaping) -> text::Shaping {
     match s {
         types::Shaping::Basic => text::Shaping::Basic,
@@ -421,6 +433,7 @@ pub fn shaping(s: types::Shaping) -> text::Shaping {
 // Ellipsis
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Ellipsis to an iced text ellipsis.
 pub fn ellipsis(e: types::Ellipsis) -> text::Ellipsis {
     match e {
         types::Ellipsis::None => text::Ellipsis::None,
@@ -434,6 +447,7 @@ pub fn ellipsis(e: types::Ellipsis) -> text::Ellipsis {
 // ContentFit
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core ContentFit to an iced ContentFit.
 pub fn content_fit(f: types::ContentFit) -> iced::ContentFit {
     match f {
         types::ContentFit::Contain => iced::ContentFit::Contain,
@@ -448,6 +462,7 @@ pub fn content_fit(f: types::ContentFit) -> iced::ContentFit {
 // LineHeight
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core LineHeight to an iced text line height.
 pub fn line_height(lh: types::LineHeight) -> text::LineHeight {
     match lh {
         types::LineHeight::Relative(r) => text::LineHeight::Relative(r),
@@ -459,6 +474,7 @@ pub fn line_height(lh: types::LineHeight) -> text::LineHeight {
 // CursorStyle
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core CursorStyle to an iced mouse Interaction.
 pub fn cursor_style(c: types::CursorStyle) -> iced::mouse::Interaction {
     match c {
         types::CursorStyle::Pointer => iced::mouse::Interaction::Pointer,
@@ -494,6 +510,7 @@ pub fn cursor_style(c: types::CursorStyle) -> iced::mouse::Interaction {
 // InputPurpose
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core InputPurpose to an iced input-method Purpose.
 pub fn input_purpose(p: types::InputPurpose) -> iced::advanced::input_method::Purpose {
     use iced::advanced::input_method::Purpose;
     match p {
@@ -513,6 +530,7 @@ pub fn input_purpose(p: types::InputPurpose) -> iced::advanced::input_method::Pu
 // Anchor
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core scrollable Anchor to an iced Anchor.
 pub fn anchor(a: types::Anchor) -> iced::widget::scrollable::Anchor {
     match a {
         types::Anchor::Start => iced::widget::scrollable::Anchor::Start,
@@ -547,6 +565,7 @@ pub fn scrollable_direction(
 // Background
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Background to an iced Background.
 pub fn background(bg: &types::Background) -> iced::Background {
     match bg {
         types::Background::Color(c) => iced::Background::Color(color(c)),
@@ -577,6 +596,7 @@ pub fn gradient(g: &types::Gradient) -> iced::Gradient {
 // Canvas: FillRule
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core canvas FillRule to an iced canvas fill::Rule.
 pub fn fill_rule(r: types::canvas::FillRule) -> canvas::fill::Rule {
     match r {
         types::canvas::FillRule::NonZero => canvas::fill::Rule::NonZero,
@@ -602,6 +622,7 @@ pub fn canvas_gradient(g: &types::Gradient) -> canvas::Gradient {
 // Canvas: LineCap
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core canvas LineCap to an iced canvas LineCap.
 pub fn line_cap(c: types::canvas::LineCap) -> canvas::LineCap {
     match c {
         types::canvas::LineCap::Butt => canvas::LineCap::Butt,
@@ -614,6 +635,7 @@ pub fn line_cap(c: types::canvas::LineCap) -> canvas::LineCap {
 // Canvas: LineJoin
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core canvas LineJoin to an iced canvas LineJoin.
 pub fn line_join(j: types::canvas::LineJoin) -> canvas::LineJoin {
     match j {
         types::canvas::LineJoin::Miter => canvas::LineJoin::Miter,
@@ -626,6 +648,7 @@ pub fn line_join(j: types::canvas::LineJoin) -> canvas::LineJoin {
 // FilterMethod
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core FilterMethod to an iced image filter method.
 pub fn filter_method(f: types::FilterMethod) -> iced::widget::image::FilterMethod {
     match f {
         types::FilterMethod::Nearest => iced::widget::image::FilterMethod::Nearest,
@@ -637,6 +660,7 @@ pub fn filter_method(f: types::FilterMethod) -> iced::widget::image::FilterMetho
 // A11y: Role
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Role to an iced accessible Role.
 pub fn a11y_role(r: &types::Role) -> accessible::Role {
     match r {
         types::Role::Alert => accessible::Role::Alert,
@@ -693,6 +717,7 @@ pub fn a11y_role(r: &types::Role) -> accessible::Role {
 // A11y: Live
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Live to an iced accessible Live.
 pub fn a11y_live(l: &types::Live) -> accessible::Live {
     match l {
         types::Live::Polite => accessible::Live::Polite,
@@ -704,6 +729,7 @@ pub fn a11y_live(l: &types::Live) -> accessible::Live {
 // A11y: Orientation
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core Orientation to an iced accessible Orientation.
 pub fn a11y_orientation(o: &types::Orientation) -> accessible::Orientation {
     match o {
         types::Orientation::Horizontal => accessible::Orientation::Horizontal,
@@ -715,6 +741,7 @@ pub fn a11y_orientation(o: &types::Orientation) -> accessible::Orientation {
 // A11y: HasPopup
 // -------------------------------------------------------------------------
 
+/// Convert a plushie-core HasPopup to an iced accessible HasPopup.
 pub fn a11y_has_popup(h: &types::HasPopup) -> accessible::HasPopup {
     match h {
         types::HasPopup::Listbox => accessible::HasPopup::Listbox,

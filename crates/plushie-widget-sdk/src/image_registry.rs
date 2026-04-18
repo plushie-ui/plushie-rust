@@ -70,6 +70,7 @@ impl Default for ImageRegistry {
 }
 
 impl ImageRegistry {
+    /// Create an empty image registry.
     pub fn new() -> Self {
         Self {
             handles: HashMap::new(),

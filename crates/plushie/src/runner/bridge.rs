@@ -48,6 +48,18 @@ pub enum Codec {
 pub struct Bridge {
     child: Child,
     codec: Codec,
+    /// Buffered reader owning the child's stdout.
+    ///
+    /// Held by the struct (rather than created per-call in
+    /// [`Self::receive`]) so JSON-mode reads don't discard the
+    /// lookahead buffer between calls. `BufReader::new(stdout)` on
+    /// every call would drop any bytes the previous call had already
+    /// pulled in past the newline, corrupting framing on back-to-back
+    /// renderer messages.
+    ///
+    /// `None` after [`Self::start_reader`] takes ownership for the
+    /// background reader thread.
+    sync_stdout: Option<BufReader<ChildStdout>>,
     /// Background reader thread state. `None` between spawn() and
     /// the first start_reader() call (used by tests that don't need
     /// a reader).
@@ -82,7 +94,7 @@ impl Bridge {
     /// other unrelated variables do not reach the renderer even when
     /// they are present in the host process env.
     pub fn spawn(binary_path: &str) -> io::Result<Self> {
-        let child = ProcessCommand::new(binary_path)
+        let mut child = ProcessCommand::new(binary_path)
             .env_clear()
             .envs(crate::runner::env::renderer_env())
             .stdin(Stdio::piped())
@@ -90,9 +102,18 @@ impl Bridge {
             .stderr(Stdio::inherit())
             .spawn()?;
 
+        // Wrap stdout in a BufReader up-front so the sync receive() path
+        // keeps any lookahead buffering across calls. start_reader()
+        // takes this back out if the background reader is started.
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout unavailable"))?;
+
         Ok(Self {
             child,
             codec: Codec::Json, // default, may be negotiated via hello
+            sync_stdout: Some(BufReader::new(stdout)),
             reader: None,
         })
     }
@@ -106,9 +127,13 @@ impl Bridge {
         if self.reader.is_some() {
             return Ok(());
         }
-        let stdout = self
-            .child
-            .stdout
+        // Hand the owning BufReader (with any lookahead already
+        // buffered by sync receive() calls during hello processing)
+        // over to the background reader thread. Framing is preserved
+        // across the handoff because the reader thread keeps reading
+        // from the same buffered handle.
+        let reader = self
+            .sync_stdout
             .take()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout already taken"))?;
         let (tx, rx) = mpsc::sync_channel::<io::Result<Value>>(256);
@@ -117,7 +142,7 @@ impl Bridge {
         let codec = self.codec;
         let thread = thread::Builder::new()
             .name("plushie-wire-reader".into())
-            .spawn(move || reader_loop(stdout, codec, tx, stop_for_thread))?;
+            .spawn(move || reader_loop(reader, codec, tx, stop_for_thread))?;
         self.reader = Some(ReaderHandle {
             rx,
             stop,
@@ -361,13 +386,12 @@ impl Bridge {
     /// [`recv_timeout`](Self::recv_timeout) in the main loop so
     /// heartbeat silence can be detected.
     pub fn receive(&mut self) -> io::Result<Value> {
-        let stdout = self
-            .child
-            .stdout
+        let reader = self
+            .sync_stdout
             .as_mut()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "stdout closed"))?;
 
-        read_one(stdout, self.codec)
+        read_one(reader, self.codec)
     }
 
     /// Check if the child process is still running.
@@ -424,14 +448,18 @@ impl Drop for Bridge {
     }
 }
 
-/// Read a single message from a stdout handle, with codec-specific
-/// framing. Helper shared by synchronous `receive()` and the
-/// background reader loop.
+/// Read a single message from a buffered stdout handle, with
+/// codec-specific framing. Helper shared by synchronous `receive()`
+/// and the background reader loop.
+///
+/// The caller must own the `BufReader` across calls so JSON-mode
+/// lookahead (anything the previous `read_line` pulled in past the
+/// delimiter) survives. MsgPack framing is length-prefixed and
+/// unaffected by buffering but still benefits from a shared handle.
 #[cfg(feature = "wire")]
-fn read_one<R: Read>(mut stdout: R, codec: Codec) -> io::Result<Value> {
+fn read_one<R: Read>(reader: &mut BufReader<R>, codec: Codec) -> io::Result<Value> {
     match codec {
         Codec::Json => {
-            let mut reader = BufReader::new(&mut stdout);
             let mut line = String::new();
             reader.read_line(&mut line)?;
             if line.is_empty() {
@@ -445,7 +473,7 @@ fn read_one<R: Read>(mut stdout: R, codec: Codec) -> io::Result<Value> {
         Codec::MsgPack => {
             const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MB
             let mut len_buf = [0u8; 4];
-            stdout.read_exact(&mut len_buf)?;
+            reader.read_exact(&mut len_buf)?;
             let len = u32::from_be_bytes(len_buf) as usize;
             if len > MAX_MESSAGE_SIZE {
                 return Err(io::Error::new(
@@ -454,7 +482,7 @@ fn read_one<R: Read>(mut stdout: R, codec: Codec) -> io::Result<Value> {
                 ));
             }
             let mut buf = vec![0u8; len];
-            stdout.read_exact(&mut buf)?;
+            reader.read_exact(&mut buf)?;
             // Share the widget-sdk's depth pre-check so a pathological
             // msgpack payload cannot blow rmp_serde's recursive parser
             // even when the renderer is the peer. Today the renderer is
@@ -473,13 +501,13 @@ fn read_one<R: Read>(mut stdout: R, codec: Codec) -> io::Result<Value> {
     }
 }
 
-/// Background reader thread. Reads frames from `stdout` until an I/O
-/// error occurs or `stop` flips. Every frame (or terminating error)
-/// is sent to the receiver; when the sender is dropped, the main
-/// loop's `recv_timeout` returns Disconnected.
+/// Background reader thread. Reads frames from the buffered child
+/// stdout until an I/O error occurs or `stop` flips. Every frame (or
+/// terminating error) is sent to the receiver; when the sender is
+/// dropped, the main loop's `recv_timeout` returns Disconnected.
 #[cfg(feature = "wire")]
 fn reader_loop(
-    mut stdout: ChildStdout,
+    mut reader: BufReader<ChildStdout>,
     codec: Codec,
     tx: mpsc::SyncSender<io::Result<Value>>,
     stop: Arc<AtomicBool>,
@@ -488,7 +516,7 @@ fn reader_loop(
         if stop.load(Ordering::SeqCst) {
             return;
         }
-        let result = read_one(&mut stdout, codec);
+        let result = read_one(&mut reader, codec);
         let is_err = result.is_err();
         if tx.send(result).is_err() {
             // Main loop dropped the receiver; exit quietly.
@@ -497,5 +525,52 @@ fn reader_loop(
         if is_err {
             return;
         }
+    }
+}
+
+#[cfg(all(test, feature = "wire"))]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    /// Two JSON messages back-to-back through a single shared
+    /// BufReader must both decode. The previous implementation
+    /// reconstructed `BufReader::new(...)` on each `read_one` call,
+    /// discarding any bytes the previous call had pulled past the
+    /// first newline; when the OS delivered both messages in one
+    /// read, the second was lost.
+    #[test]
+    fn read_one_json_back_to_back_messages_are_both_decoded() {
+        let bytes = b"{\"type\":\"hello\",\"n\":1}\n{\"type\":\"hello\",\"n\":2}\n";
+        let cursor = Cursor::new(bytes.to_vec());
+        let mut reader = BufReader::new(cursor);
+        let first = read_one(&mut reader, Codec::Json).expect("first decode");
+        let second = read_one(&mut reader, Codec::Json).expect("second decode");
+        assert_eq!(first.get("n").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(second.get("n").and_then(|v| v.as_u64()), Some(2));
+    }
+
+    /// MsgPack framing uses `read_exact` on a 4-byte length prefix
+    /// followed by the payload; back-to-back frames must both decode
+    /// from a single shared BufReader too.
+    #[test]
+    fn read_one_msgpack_back_to_back_messages_are_both_decoded() {
+        use serde_json::json;
+
+        fn frame(value: &Value) -> Vec<u8> {
+            let bytes = rmp_serde::to_vec(value).unwrap();
+            let mut buf = (bytes.len() as u32).to_be_bytes().to_vec();
+            buf.extend_from_slice(&bytes);
+            buf
+        }
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&frame(&json!({"type": "hello", "n": 1})));
+        bytes.extend_from_slice(&frame(&json!({"type": "hello", "n": 2})));
+        let mut reader = BufReader::new(Cursor::new(bytes));
+        let first = read_one(&mut reader, Codec::MsgPack).expect("first decode");
+        let second = read_one(&mut reader, Codec::MsgPack).expect("second decode");
+        assert_eq!(first.get("n").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(second.get("n").and_then(|v| v.as_u64()), Some(2));
     }
 }

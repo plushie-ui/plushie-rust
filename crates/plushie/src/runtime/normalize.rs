@@ -136,12 +136,20 @@ fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
         return;
     }
     if id.len() > MAX_WIDGET_ID_LEN {
-        warnings.push(format!(
-            "widget_id_invalid: {type_name} ID is {} bytes, exceeds \
-             {} (reason=too_long)",
+        let detail = format!(
+            "{type_name} ID is {} bytes, exceeds {} (reason=too_long)",
             id.len(),
             MAX_WIDGET_ID_LEN,
-        ));
+        );
+        warnings.push(
+            Diagnostic::WidgetIdInvalid {
+                reason: "too_long".to_string(),
+                type_name: type_name.to_string(),
+                id: id.to_string(),
+                detail,
+            }
+            .to_string(),
+        );
         return;
     }
     // ASCII printable range 0x21..=0x7E excludes space and control
@@ -153,24 +161,50 @@ fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<String>) {
         .enumerate()
         .find(|(_, b)| !matches!(*b, 0x21..=0x7E));
     if let Some((offset, byte)) = first_non_ascii {
-        warnings.push(format!(
-            "widget_id_invalid: ID \"{id}\" contains non-printable or \
-             non-ASCII byte 0x{byte:02X} at offset {offset} (reason=non_ascii)"
-        ));
+        let detail = format!(
+            "ID \"{id}\" contains non-printable or non-ASCII byte \
+             0x{byte:02X} at offset {offset} (reason=non_ascii)"
+        );
+        warnings.push(
+            Diagnostic::WidgetIdInvalid {
+                reason: "non_ascii".to_string(),
+                type_name: type_name.to_string(),
+                id: id.to_string(),
+                detail,
+            }
+            .to_string(),
+        );
         return;
     }
     if id.contains('/') {
-        warnings.push(format!(
-            "widget_id_invalid: ID \"{id}\" contains reserved character \
-             '/'. Use container scoping instead. (reason=reserved_char)"
-        ));
+        let detail = format!(
+            "ID \"{id}\" contains reserved character '/'. Use container \
+             scoping instead. (reason=reserved_char)"
+        );
+        warnings.push(
+            Diagnostic::WidgetIdInvalid {
+                reason: "reserved_char".to_string(),
+                type_name: type_name.to_string(),
+                id: id.to_string(),
+                detail,
+            }
+            .to_string(),
+        );
     }
     if id.contains('#') {
-        warnings.push(format!(
-            "widget_id_invalid: ID \"{id}\" contains reserved character \
-             '#'. '#' is reserved for window-qualified paths. \
-             (reason=reserved_char)"
-        ));
+        let detail = format!(
+            "ID \"{id}\" contains reserved character '#'. '#' is reserved \
+             for window-qualified paths. (reason=reserved_char)"
+        );
+        warnings.push(
+            Diagnostic::WidgetIdInvalid {
+                reason: "reserved_char".to_string(),
+                type_name: type_name.to_string(),
+                id: id.to_string(),
+                detail,
+            }
+            .to_string(),
+        );
     }
 }
 
@@ -327,7 +361,13 @@ impl TreeTransform for NormalizeTransform<'_> {
         // Duplicate detection (non-auto only). One clone for the
         // HashSet entry.
         if !is_auto && !scoped_id.is_empty() && !self.seen_ids.insert(scoped_id.clone()) {
-            ctx.warnings.push(format!("duplicate ID: \"{scoped_id}\""));
+            ctx.warnings.push(
+                Diagnostic::DuplicateId {
+                    id: scoped_id.clone(),
+                    window_id: None,
+                }
+                .to_string(),
+            );
         }
 
         // Windows append a trailing '#' so their children slot in
@@ -567,11 +607,15 @@ fn apply_a11y_rewrites(
         {
             let rewritten = resolve_ref(s, scope);
             if !declared.contains(&rewritten) && !s.is_empty() {
-                warnings.push(format!(
-                    "a11y_ref_unresolved: {key}=\"{s}\" on \"{}\" \
-                     does not match any declared widget ID",
-                    node.id,
-                ));
+                warnings.push(
+                    Diagnostic::A11yRefUnresolved {
+                        id: node.id.clone(),
+                        key: key.to_string(),
+                        value: s.to_string(),
+                        is_member: false,
+                    }
+                    .to_string(),
+                );
             }
             obj.insert(key.to_string(), serde_json::Value::String(rewritten));
         }
@@ -587,11 +631,15 @@ fn apply_a11y_rewrites(
             .map(|s| {
                 let r = resolve_ref(s, scope);
                 if !declared.contains(&r) && !s.is_empty() {
-                    warnings.push(format!(
-                        "a11y_ref_unresolved: radio_group member \"{s}\" \
-                         on \"{}\" does not match any declared widget ID",
-                        node.id,
-                    ));
+                    warnings.push(
+                        Diagnostic::A11yRefUnresolved {
+                            id: node.id.clone(),
+                            key: "radio_group".to_string(),
+                            value: s.to_string(),
+                            is_member: true,
+                        }
+                        .to_string(),
+                    );
                 }
                 serde_json::Value::String(r)
             })
@@ -664,13 +712,13 @@ fn resolve_ref(raw: &str, scope: &str) -> String {
 fn check_missing_accessible_name(node: &TreeNode, warnings: &mut Vec<String>) {
     fn walk(node: &TreeNode, warnings: &mut Vec<String>) {
         if widget_requires_accessible_name(&node.type_name) && !has_accessible_name(node) {
-            warnings.push(format!(
-                "missing_accessible_name: {type_name} \"{id}\" has no \
-                 label, text child, a11y.label, or a11y.labelled_by; \
-                 screen readers will announce no name",
-                type_name = node.type_name,
-                id = node.id,
-            ));
+            warnings.push(
+                Diagnostic::MissingAccessibleName {
+                    type_name: node.type_name.clone(),
+                    id: node.id.clone(),
+                }
+                .to_string(),
+            );
         }
         for child in &node.children {
             walk(child, warnings);

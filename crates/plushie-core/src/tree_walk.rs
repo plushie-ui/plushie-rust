@@ -162,12 +162,11 @@ pub fn walk(node: &mut TreeNode, transforms: &mut [&mut dyn TreeTransform], ctx:
     // its own depth counter.
     let depth_cap_hit = ctx.depth >= MAX_TREE_DEPTH && !node.children.is_empty();
     if depth_cap_hit {
-        ctx.warnings.push(format!(
-            "tree_depth_exceeded: subtree rooted at \"{id}\" exceeds \
-             MAX_TREE_DEPTH={cap}, skipping descent",
-            id = node.id,
-            cap = MAX_TREE_DEPTH,
-        ));
+        let diag = crate::Diagnostic::TreeDepthExceeded {
+            id: node.id.clone(),
+            max_depth: MAX_TREE_DEPTH,
+        };
+        ctx.warnings.push(diag.to_string());
     }
 
     if !transform_skip && !depth_cap_hit {

@@ -256,6 +256,37 @@ pub enum Diagnostic {
         /// Cap value (max pending entries).
         cap: usize,
     },
+    /// A composite widget ID was registered against two different
+    /// widget types, most commonly because the same ID is reused on
+    /// distinct custom widgets. The SDK panics after emitting this
+    /// because silent acceptance would trip the downcast path later
+    /// with no actionable context.
+    WidgetIdTypeCollision {
+        /// ID that collided.
+        id: String,
+        /// Type name of the previously-registered widget.
+        existing_type: String,
+        /// Type name of the widget that attempted to reuse the ID.
+        incoming_type: String,
+    },
+    /// `A::view()` panicked and was caught by the runtime's safety
+    /// net. The renderer keeps drawing the last-good tree; after
+    /// enough consecutive failures it injects a visible error
+    /// overlay.
+    ViewPanicked {
+        /// Consecutive panic count (including this one).
+        consecutive: u32,
+        /// Best-effort message extracted from the panic payload.
+        message: String,
+    },
+    /// A wire message carried a `type` field the SDK does not
+    /// recognise, or arrived without a `type` field at all. Usually
+    /// signals host / renderer version skew.
+    UnknownMessageType {
+        /// The unrecognised message type string, or an empty string
+        /// when the message had no `type` field.
+        msg_type: String,
+    },
 }
 
 impl Diagnostic {
@@ -431,6 +462,31 @@ impl std::fmt::Display for Diagnostic {
             Self::EmitterCoalesceCapExceeded { cap } => write!(
                 f,
                 "emitter_coalesce_cap_exceeded: pending map hit cap ({cap}); flushing"
+            ),
+            Self::WidgetIdTypeCollision {
+                id,
+                existing_type,
+                incoming_type,
+            } => write!(
+                f,
+                "widget_id_type_collision: id={id} reused across types: \
+                 `{existing_type}` was previously registered; `{incoming_type}` \
+                 attempted to register against the same slot"
+            ),
+            Self::ViewPanicked {
+                consecutive,
+                message,
+            } => write!(
+                f,
+                "view_panicked: A::view() panicked ({consecutive} consecutive): {message}"
+            ),
+            Self::UnknownMessageType { msg_type } if msg_type.is_empty() => {
+                write!(f, "unknown_message_type: wire message without `type` field")
+            }
+            Self::UnknownMessageType { msg_type } => write!(
+                f,
+                "unknown_message_type: unrecognised renderer message type `{msg_type}`; \
+                 likely a host or renderer version skew"
             ),
         }
     }

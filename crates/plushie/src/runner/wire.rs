@@ -1036,7 +1036,10 @@ fn wire_to_sdk_events(
 
     let Some(decoded) = decode_incoming(msg) else {
         // No `type` field at all: not our message shape.
-        log::warn!("[code=unknown_message_type] wire message without `type` field: {msg}");
+        let diag = plushie_core::Diagnostic::UnknownMessageType {
+            msg_type: String::new(),
+        };
+        log::warn!("{diag}: {msg}");
         return vec![];
     };
 
@@ -1050,13 +1053,11 @@ fn wire_to_sdk_events(
                 .collect();
         }
         IncomingRendererMessage::Unknown { msg_type, raw: _ } => {
-            // Emit is `log::error!` with a `[code=...]` tag today;
-            // `WalkCtx` only covers view-tree normalization, so the
-            // typed `Diagnostic` sink does not reach this site.
-            log::error!(
-                "[code=unknown_message_type] unrecognised renderer message type `{msg_type}`; \
-                     likely a host/renderer version skew"
-            );
+            // SDK is receiving renderer events here, so there is no
+            // outgoing sink to route through. Emit via the typed
+            // Diagnostic's Display impl to the shared log channel.
+            let diag = plushie_core::Diagnostic::UnknownMessageType { msg_type };
+            log::error!("{diag}");
             return vec![];
         }
         IncomingRendererMessage::Event {

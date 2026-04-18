@@ -458,9 +458,12 @@ impl WidgetStateStore {
     /// naming both types and panics. Silent acceptance would leave
     /// the downcast path to trip later with no actionable context.
     ///
-    /// Today the emit is a `log::error!` with a `[code=...]` tag;
-    /// the typed `Diagnostic` sink is scoped to the tree-walk
-    /// `WalkCtx` and does not cover registration-time call sites.
+    /// The emit uses the typed Diagnostic's Display output through
+    /// `log::error!` so the log line stays consistent with other
+    /// typed sites. Registration fires before any per-subtree wire
+    /// channel exists, so there is no outgoing sink to route the
+    /// diagnostic through; the panic that follows ensures the
+    /// collision surfaces loudly regardless.
     pub(crate) fn register_expander(&mut self, id: String, expander: Box<dyn DynWidgetExpander>) {
         let incoming_type = expander.state_type_id();
         let incoming_name = expander.widget_type_name();
@@ -473,11 +476,12 @@ impl WidgetStateStore {
                     .get(&id)
                     .map(|e| e.widget_type_name())
                     .unwrap_or("<unknown>");
-                log::error!(
-                    "[code=widget_id_type_collision][id={id}] widget ID reused across types: \
-                     `{existing_name}` was previously registered; `{incoming_name}` attempted \
-                     to register against the same slot",
-                );
+                let diag = plushie_core::Diagnostic::WidgetIdTypeCollision {
+                    id: id.clone(),
+                    existing_type: existing_name.to_string(),
+                    incoming_type: incoming_name.to_string(),
+                };
+                log::error!("{diag}");
                 panic!(
                     "widget_id_type_collision: ID {id:?} was previously registered as \
                      `{existing_name}`; cannot reuse it for `{incoming_name}`. Pick a \

@@ -100,13 +100,14 @@ pub fn run_guarded_view<A: App>(
         Err(payload) => {
             let message = panic_payload_message(&payload);
             state.consecutive = state.consecutive.saturating_add(1);
-            log::error!(
-                "[code=view_panicked] A::view() panicked ({} consecutive): {message}",
-                state.consecutive
-            );
-            // Emit is log-only today. The typed `Diagnostic` pipeline
-            // is scoped to `WalkCtx`, populated by a successful walk;
-            // a panicking walk cannot push into it.
+            let diag = plushie_core::Diagnostic::ViewPanicked {
+                consecutive: state.consecutive,
+                message: message.clone(),
+            };
+            log::error!("{diag}");
+            // Emit is log-only. The typed `Diagnostic` pipeline is
+            // fed by `WalkCtx::warnings` on the normal successful
+            // walk path, and a panicking walk cannot push into it.
             let tree = if state.consecutive >= VIEW_ERROR_THRESHOLD && !state.overlay_active {
                 state.overlay_active = true;
                 inject_overlay(last_good)
@@ -146,10 +147,11 @@ pub fn run_guarded_view_wire<A: App>(
         Err(payload) => {
             let message = panic_payload_message(&payload);
             state.consecutive = state.consecutive.saturating_add(1);
-            log::error!(
-                "[code=view_panicked] A::view() panicked ({} consecutive): {message}",
-                state.consecutive
-            );
+            let diag = plushie_core::Diagnostic::ViewPanicked {
+                consecutive: state.consecutive,
+                message: message.clone(),
+            };
+            log::error!("{diag}");
             let tree = if state.consecutive >= VIEW_ERROR_THRESHOLD && !state.overlay_active {
                 state.overlay_active = true;
                 inject_overlay(last_good)

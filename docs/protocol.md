@@ -1064,9 +1064,9 @@ Single characters (e.g. `"a"`, `"1"`, `"/"`) are sent as character
 key events. Multi-character strings that don't match a named key
 are sent as-is (the renderer does not reject them).
 
-In **windowed mode**, all actions produce synthetic events regardless
--- the interact protocol is a scripting convenience, not a
-substitute for real user input via iced subscriptions.
+In **windowed mode**, all actions produce synthetic events regardless:
+the interact protocol is a scripting convenience, not a substitute
+for real user input via iced subscriptions.
 
 #### Headless mode: iterative interact with round-trips
 

@@ -60,8 +60,8 @@ fires depends on the feature flags enabled at build time:
   registers your widgets, install that binary instead, and point the
   SDK at it with `PLUSHIE_BINARY_PATH=/path/to/my-renderer` or call
   `plushie::run_with_renderer(path)` directly.
-- **WebAssembly**: wire mode runs in-browser today only when using the
-  pure direct setup; a future Web Worker transport is planned.
+- **WebAssembly**: direct mode runs in-browser today. A Web Worker +
+  postMessage transport for WASM wire mode is tracked in the backlog.
 
 The [protocol reference](docs/protocol.md) documents the full wire
 format, message types, and startup handshake.
@@ -168,8 +168,12 @@ libraries can detect incompatibilities.
   types, encoding, startup handshake
 - [Widget development](docs/widget-development.md) - building custom
   widgets
-- [Core widget guide](docs/core-widget-guide.md) - adding widgets to
-  the renderer itself
+- [Custom widgets](docs/custom-widgets.md) - native widget crates and
+  the `PlushieWidget` trait
+- [Core widget guide](docs/core-widget-guide.md) - reusable iced
+  widgets that work across every SDK
+- [Build tool](docs/build-tool.md) - `cargo plushie` reference,
+  binary discovery, and the dev loop
 - [WASM build](docs/wasm-build.md) - building for WebAssembly
 
 ## License

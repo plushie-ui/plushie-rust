@@ -77,7 +77,7 @@ platform.
 ## Why two crates?
 
 Separation of concerns. The widget crate has zero plushie knowledge
--- it depends only on iced. This means:
+and depends only on iced. This means:
 
 - **Testable in isolation.** Test the widget with iced's test
   harness. No protocol, no JSON, no plushie runtime needed.

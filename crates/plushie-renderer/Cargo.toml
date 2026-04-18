@@ -18,8 +18,15 @@ path = "src/lib.rs"
 [package.metadata.docs.rs]
 all-features = true
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+unreachable_patterns = "deny"
+
+# Binary crate: fallible internals don't need rustdoc sections.
+[lints.clippy]
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
 
 [[bin]]
 name = "plushie-renderer"

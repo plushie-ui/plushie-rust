@@ -18,8 +18,18 @@ path = "src/lib.rs"
 [package.metadata.docs.rs]
 all-features = true
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+unreachable_patterns = "deny"
+
+# Internal crate: documentation of error/panic cases is tracked in-code
+# where relevant, not on every fallible helper. The public-surface
+# crates (plushie, plushie-widget-sdk, plushie-core) still enforce the
+# workspace-level warn.
+[lints.clippy]
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
 
 [dependencies]
 plushie-core = { workspace = true }

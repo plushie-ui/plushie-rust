@@ -15,8 +15,15 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.docs.rs]
 all-features = true
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+unreachable_patterns = "deny"
+
+# WASM bindings layer: fallible internals don't need rustdoc sections.
+[lints.clippy]
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
 
 [dependencies]
 plushie-core = { workspace = true }

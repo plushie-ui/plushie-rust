@@ -120,6 +120,11 @@ impl InitCtx<'_> {
     /// Returns the deserialization error on malformed input so the
     /// caller can decide how to handle it (log, fail fast, fall back
     /// to defaults).
+    ///
+    /// # Errors
+    ///
+    /// Returns a `serde_json::Error` when the config cannot be
+    /// deserialized into `T` (missing fields, type mismatches, etc.).
     pub fn config_as<T: serde::de::DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
         T::deserialize(self.config.clone())
     }

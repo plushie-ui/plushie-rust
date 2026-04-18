@@ -66,6 +66,11 @@ impl StreamEmitter {
 
     /// Replace the underlying delivery mechanism with a sink closure.
     /// Any buffered values are flushed through the new sink in order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the inner mutex is poisoned (only happens if another
+    /// thread panicked while holding it).
     pub fn attach_sink(&self, mut sink: Box<dyn FnMut(String, Value) + Send>) {
         let mut guard = self.inner.lock().unwrap();
         if let StreamEmitterInner::Buffer(values) = &mut *guard {
@@ -78,6 +83,10 @@ impl StreamEmitter {
 
     /// Drain buffered values. Only meaningful when the emitter is
     /// still in buffer mode; returns empty otherwise.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the inner mutex is poisoned.
     pub fn drain_buffer(&self) -> Vec<Value> {
         let mut guard = self.inner.lock().unwrap();
         match &mut *guard {
@@ -94,6 +103,10 @@ impl StreamEmitter {
     /// Emit an intermediate value to the runtime. Delivered as
     /// [`StreamEvent`](crate::event::StreamEvent) with this emitter's
     /// tag.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the inner mutex is poisoned.
     pub fn emit(&self, value: impl Into<Value>) {
         let value = value.into();
         let mut guard = self.inner.lock().unwrap();
@@ -271,6 +284,16 @@ impl Command {
     ///   unwinding).
     /// - Nothing at all if the task is cancelled via
     ///   [`Command::cancel`] with the same `tag` before it completes.
+    ///
+    /// # Errors
+    ///
+    /// Errors are not returned from this constructor; they are
+    /// delivered asynchronously as `AsyncEvent(Err(value))` via the
+    /// MVU loop. The inner future's `Err` payload becomes the event's
+    /// error value verbatim. Panics inside the future are converted
+    /// into an error event with the shape
+    /// `{"error": "panic", "message": ...}` rather than unwinding the
+    /// runtime.
     pub fn async_task<F, Fut>(tag: &str, f: F) -> Self
     where
         F: FnOnce() -> Fut + Send + 'static,

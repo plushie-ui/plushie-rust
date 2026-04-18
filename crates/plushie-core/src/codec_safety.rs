@@ -47,6 +47,13 @@ pub const MAX_RMPV_DEPTH: usize = 128;
 /// `max_depth * children_at_this_level`, so the per-level count
 /// check is enough to defeat forged-count-plus-forged-depth attacks
 /// in combination with the depth cap.
+///
+/// # Errors
+///
+/// Returns a human-readable reason string when the payload nests
+/// deeper than `max_depth`, declares a container size larger than
+/// the remaining bytes can hold, or is malformed (truncated or
+/// contains an unrecognised format marker).
 pub fn check_msgpack_depth(bytes: &[u8], max_depth: usize) -> Result<(), String> {
     let len = bytes.len();
     let mut pos: usize = 0;

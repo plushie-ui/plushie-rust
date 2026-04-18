@@ -55,6 +55,15 @@ use crate::settings::ExitReason;
 /// effect-timeout scheduling). Apps that already have a tokio
 /// runtime should prefer [`run_wire_with_runtime`] to avoid a
 /// second runtime living alongside theirs.
+///
+/// # Errors
+///
+/// Returns [`crate::Error::Spawn`] when the renderer binary cannot
+/// be spawned, [`crate::Error::ProtocolVersionMismatch`] on a
+/// handshake version mismatch, [`crate::Error::WireEncode`] or
+/// [`crate::Error::WireDecode`] on framing failures, and
+/// [`crate::Error::RendererExit`] after the restart policy is
+/// exhausted.
 #[cfg(feature = "wire")]
 pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
     run_wire_inner::<A>(binary_path, None)
@@ -69,6 +78,10 @@ pub fn run_wire<A: App>(binary_path: &str) -> crate::Result {
 ///
 /// The handle is only used to spawn tasks; the runtime itself is
 /// owned by the caller and must outlive the returned [`crate::Result`].
+///
+/// # Errors
+///
+/// Same error conditions as [`run_wire`].
 #[cfg(feature = "wire")]
 pub fn run_wire_with_runtime<A: App>(
     binary_path: &str,

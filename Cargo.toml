@@ -66,6 +66,12 @@ unreachable_patterns = "deny"
 # justfile. Specific clippy denials go here only when they should block
 # local development too (not just CI).
 
+# Require documented `# Panics` / `# Errors` sections on fallible or
+# panicking public APIs. Warns rather than denies so localized
+# additions can land incrementally.
+missing_panics_doc = "warn"
+missing_errors_doc = "warn"
+
 # Shipping profile for optimized artifacts. CI and release-build
 # pipelines use `cargo build --profile dist`; local `cargo run
 # --release` and `cargo test --release` stay on the default

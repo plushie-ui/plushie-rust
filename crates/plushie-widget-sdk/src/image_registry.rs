@@ -141,6 +141,12 @@ impl ImageRegistry {
     /// and iced's decoder does its own validation when the image is
     /// rasterised. Hosts that take image bytes from untrusted sources
     /// should pre-decode and re-encode at known dimensions.
+    ///
+    /// # Errors
+    ///
+    /// Returns a reason string when `data` exceeds `MAX_PIXEL_BYTES`
+    /// or when adding it would push the registry past its aggregate
+    /// memory budget.
     pub fn create_from_bytes(&mut self, name: &str, data: Vec<u8>) -> Result<(), String> {
         if data.len() > Self::MAX_PIXEL_BYTES {
             let msg = format!(
@@ -165,6 +171,14 @@ impl ImageRegistry {
     }
 
     /// Store an image from raw RGBA pixel data.
+    ///
+    /// # Errors
+    ///
+    /// Returns a reason string when `width`/`height` exceed
+    /// `MAX_DIMENSION`, when the pixel buffer is the wrong length
+    /// for the declared dimensions, when the pixel buffer exceeds
+    /// `MAX_PIXEL_BYTES`, or when adding it would push the registry
+    /// past its aggregate memory budget.
     pub fn create_from_rgba(
         &mut self,
         name: &str,
@@ -252,6 +266,15 @@ impl ImageRegistry {
     /// - `"create_image"` / `"update_image"` - create or replace an image
     ///   from raw RGBA `pixels` or encoded `data` (PNG, JPEG, etc.).
     /// - `"delete_image"` - remove the named image.
+    ///
+    /// # Errors
+    ///
+    /// Returns a reason string when `op` is not one of the supported
+    /// values, when a create/update op lacks both `data` and `pixels`,
+    /// or when the underlying
+    /// [`create_from_bytes`](Self::create_from_bytes) or
+    /// [`create_from_rgba`](Self::create_from_rgba) call rejects the
+    /// image.
     pub fn apply_op(
         &mut self,
         op: &str,

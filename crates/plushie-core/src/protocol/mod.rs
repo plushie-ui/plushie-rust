@@ -33,6 +33,13 @@ pub struct SessionMessage {
 impl SessionMessage {
     /// Extract `session` from a JSON value and deserialize the rest as
     /// [`IncomingMessage`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a `serde_json::Error` when the input is not a JSON
+    /// object, when the `session` field is present but not a string,
+    /// or when the remaining value does not deserialize as an
+    /// [`IncomingMessage`].
     pub fn from_value(mut value: serde_json::Value) -> Result<Self, serde_json::Error> {
         let session = match value.as_object_mut() {
             Some(obj) => match obj.remove("session") {

@@ -604,6 +604,13 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
 // ---------------------------------------------------------------------------
 
 /// Run the app in direct mode.
+///
+/// # Errors
+///
+/// Returns [`crate::Error::Iced`] when the iced daemon fails to
+/// start (event-loop init, window-system failure, etc.), or
+/// [`crate::Error::Startup`] when settings validation rejects
+/// the configuration.
 pub fn run<A: App>() -> crate::Result {
     // Build iced daemon settings from the user's A::settings().
     // These are startup-only values that can't change after launch.

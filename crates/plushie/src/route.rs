@@ -84,11 +84,22 @@ impl Route {
     }
 
     /// The current path (top of the stack).
+    ///
+    /// # Panics
+    ///
+    /// Never in practice: [`Route::new`] always pushes a root entry,
+    /// and no public API allows the stack to become empty. The
+    /// internal `expect` guards against the private invariant being
+    /// violated.
     pub fn current(&self) -> &str {
         &self.stack.last().expect("route stack is never empty").path
     }
 
     /// Parameters of the current route.
+    ///
+    /// # Panics
+    ///
+    /// See [`Route::current`] for the stack-never-empty invariant.
     pub fn params(&self) -> &HashMap<String, serde_json::Value> {
         &self
             .stack

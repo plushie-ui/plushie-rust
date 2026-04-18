@@ -7,6 +7,11 @@
 //! Reading is handled by a background thread that feeds a bounded
 //! channel so the main event loop can `recv_timeout` and detect
 //! heartbeat silence without blocking forever on a stuck renderer.
+//!
+//! Internal helpers in this module are `pub` so the wire runner can
+//! compose them directly; their error contracts are captured by the
+//! inner `io::Error` / framing layer rather than per-method rustdoc.
+#![allow(clippy::missing_errors_doc)]
 
 #[cfg(feature = "wire")]
 use std::io::{self, BufRead, BufReader, Read, Write};

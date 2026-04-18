@@ -104,6 +104,13 @@ pub struct PlushieFile {
 ///
 /// Returns the parsed header and instructions with line numbers
 /// for error reporting.
+///
+/// # Errors
+///
+/// Returns a descriptive string when the file is missing the
+/// `-----` separator between header and body, when a header field
+/// has an invalid value (e.g. malformed `viewport`), or when an
+/// instruction line cannot be parsed.
 pub fn parse(content: &str) -> Result<PlushieFile, String> {
     let mut lines = content.lines().enumerate();
     let mut header = Header::default();
@@ -165,6 +172,11 @@ pub fn parse(content: &str) -> Result<PlushieFile, String> {
 }
 
 /// Parse a `.plushie` file from a file path.
+///
+/// # Errors
+///
+/// Returns a descriptive string when the file cannot be read or
+/// when parsing fails (see [`parse`] for parse-time errors).
 pub fn parse_file(path: &str) -> Result<PlushieFile, String> {
     let content =
         std::fs::read_to_string(path).map_err(|e| format!("failed to read {path}: {e}"))?;

@@ -100,6 +100,11 @@ impl State {
     }
 
     /// Begin a transaction. Returns Err if one is already active.
+    ///
+    /// # Errors
+    ///
+    /// Returns `"transaction already active"` when a transaction is
+    /// already in progress.
     pub fn begin_transaction(&mut self) -> Result<(), &'static str> {
         if self.transaction.is_some() {
             return Err("transaction already active");
@@ -113,6 +118,11 @@ impl State {
 
     /// Commit the active transaction. Revision becomes
     /// pre-transaction revision + 1.
+    ///
+    /// # Errors
+    ///
+    /// Returns `"no active transaction"` when no transaction has
+    /// been started.
     pub fn commit_transaction(&mut self) -> Result<(), &'static str> {
         let tx = self.transaction.take().ok_or("no active transaction")?;
         self.revision = tx.revision + 1;
@@ -120,6 +130,11 @@ impl State {
     }
 
     /// Roll back the active transaction, restoring data and revision.
+    ///
+    /// # Errors
+    ///
+    /// Returns `"no active transaction"` when no transaction has
+    /// been started.
     pub fn rollback_transaction(&mut self) -> Result<(), &'static str> {
         let tx = self.transaction.take().ok_or("no active transaction")?;
         self.data = tx.data;

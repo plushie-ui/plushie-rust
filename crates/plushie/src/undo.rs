@@ -179,6 +179,12 @@ impl<T: Clone + Send + 'static> UndoStack<T> {
     /// If coalescing is enabled and the previous entry has the same
     /// key within the time window, the functions are composed: a
     /// single undo reverses all coalesced changes.
+    ///
+    /// # Panics
+    ///
+    /// Never in practice: the internal `unwrap` in the coalesce path
+    /// is guarded by the preceding `undo_stack.last().is_some()`
+    /// check, so the stack is guaranteed non-empty at the pop site.
     pub fn apply(&mut self, cmd: UndoCommand<T>) {
         let new_state = (cmd.apply_fn)(&self.current);
 

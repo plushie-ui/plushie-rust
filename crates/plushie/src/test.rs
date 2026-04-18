@@ -193,6 +193,11 @@ impl<A: App> TestSession<A> {
     // -----------------------------------------------------------------------
 
     /// Simulate a click on a widget.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the selector does not match a widget in the current
+    /// tree. Use [`TestSession::find`] for a non-panicking lookup.
     pub fn click(&mut self, selector: impl Into<Selector>) {
         let id = self.resolve(selector).id.clone();
         self.dispatch(widget_event(EventType::Click, &id, Value::Null));
@@ -324,6 +329,12 @@ impl<A: App> TestSession<A> {
     /// session.press(Key::Enter);
     /// session.press((Key::Char('s'), KeyModifiers { ctrl: true, ..Default::default() }));
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if `key` is a combo string that fails to parse (e.g.
+    /// unknown modifier or key name). See [`KeyPress::from_str`] for
+    /// the recognised syntax.
     pub fn press(&mut self, key: impl Into<KeyPress>) {
         let kp = key.into();
         self.dispatch(key_event(
@@ -723,6 +734,12 @@ impl<A: App> TestSession<A> {
     /// `tree_hash` golden files are NOT byte-portable across SDKs
     /// unless the other SDK also sorts alphabetically. See
     /// `by-design.md` for the documented divergence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the current tree fails to serialize to JSON.
+    /// `TreeNode` is designed to always serialize successfully, so
+    /// this is a sanity check rather than a real failure mode.
     pub fn tree_hash(&self) -> u64 {
         let json = serde_json::to_string(&self.tree).expect("tree serialization failed");
         fnv1a(json.as_bytes())
@@ -732,6 +749,11 @@ impl<A: App> TestSession<A> {
     ///
     /// Useful for snapshot testing (e.g., with insta) or manual
     /// inspection. Deterministic within the same tree structure.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the current tree fails to serialize to JSON
+    /// (never in practice; see [`tree_hash`](Self::tree_hash)).
     pub fn tree_snapshot(&self) -> String {
         serde_json::to_string_pretty(&self.tree).expect("tree serialization failed")
     }
@@ -891,6 +913,10 @@ impl<A: App> TestSession<A> {
     // -----------------------------------------------------------------------
 
     /// Assert that a matching widget exists in the view tree.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the selector matches nothing in the current tree.
     pub fn assert_exists(&self, selector: impl Into<Selector>) {
         let sel = selector.into();
         assert!(
@@ -900,6 +926,11 @@ impl<A: App> TestSession<A> {
     }
 
     /// Assert that no matching widget exists in the view tree.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the selector matches at least one widget in the
+    /// current tree.
     pub fn assert_not_exists(&self, selector: impl Into<Selector>) {
         let sel = selector.into();
         assert!(
@@ -909,6 +940,11 @@ impl<A: App> TestSession<A> {
     }
 
     /// Assert that a widget displays the expected text content.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the selector does not match any widget, if the match
+    /// has no text content, or if the text differs from `expected`.
     pub fn assert_text(&self, selector: impl Into<Selector>, expected: &str) {
         let sel = selector.into();
         let actual = sel
@@ -922,6 +958,11 @@ impl<A: App> TestSession<A> {
     }
 
     /// Assert that a widget prop has the expected value.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the selector matches nothing, when the prop is
+    /// missing, or when the prop value differs from `expected`.
     pub fn assert_prop(&self, selector: impl Into<Selector>, key: &str, expected: &Value) {
         let sel = selector.into();
         let actual = sel.find(&self.tree).and_then(|n| n.props.get_value(key));
@@ -936,6 +977,11 @@ impl<A: App> TestSession<A> {
     ///
     /// Checks the [`Element::inferred_role`], which reads the
     /// explicit a11y role or falls back to a widget-type mapping.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the selector does not match any widget, or if the
+    /// resolved role differs from `expected`.
     pub fn assert_role(&self, selector: impl Into<Selector>, expected: &str) {
         let sel = selector.into();
         let elem = self
@@ -986,6 +1032,12 @@ impl<A: App> TestSession<A> {
     /// ```ignore
     /// session.assert_a11y("heading", &serde_json::json!({"role": "heading", "level": 1}));
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the selector does not match any widget, if `expected`
+    /// is not a JSON object, or if any key in `expected` is missing or
+    /// has a different value on the resolved a11y.
     pub fn assert_a11y(&self, selector: impl Into<Selector>, expected: &Value) {
         let sel = selector.into();
         let resolved = self
@@ -1017,8 +1069,12 @@ impl<A: App> TestSession<A> {
 
     /// Assert that no diagnostics have been emitted.
     ///
-    /// Checks the accumulated normalization warnings. Panics with
-    /// the diagnostic details if any warnings exist.
+    /// Checks the accumulated normalization warnings.
+    ///
+    /// # Panics
+    ///
+    /// Panics with the full diagnostic details when any warning has
+    /// been recorded during the session.
     pub fn assert_no_diagnostics(&self) {
         if !self.diagnostics.is_empty() {
             let details: Vec<_> = self
@@ -1046,6 +1102,11 @@ where
     ///
     /// Requires `PartialEq + Debug` on the model type. Uses
     /// `assert_eq!` for rich diff output on mismatch.
+    ///
+    /// # Panics
+    ///
+    /// Panics with a diff when the current model does not equal
+    /// `expected`.
     pub fn assert_model(&self, expected: &A::Model) {
         assert_eq!(self.model(), expected, "model mismatch");
     }
@@ -1092,6 +1153,12 @@ impl<A: App> Drop for TestSession<A> {
 /// session.click("inc");
 /// assert_tree_hash(&session, "counter_after_inc", "tests/golden");
 /// ```
+///
+/// # Panics
+///
+/// Panics when the stored golden hash cannot be read or parsed,
+/// when writing a new golden file fails, or when the current tree
+/// hash does not match the stored value.
 pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir: &str) {
     let hash = session.tree_hash();
     let path = format!("{golden_dir}/{name}.hash");

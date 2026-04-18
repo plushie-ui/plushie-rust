@@ -117,15 +117,13 @@ impl PlushieApp {
     ) -> Result<PlushieApp, JsValue> {
         console_log::init_with_level(log::Level::Warn).ok();
 
-        let writer = WebOutputWriter::new(on_event);
-        let codec = Codec::Json;
-        let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), codec);
-        plushie_renderer_lib::emitters::init_sink(Box::new(sink));
-
+        // Order matters: parse settings and validate the protocol
+        // version before wiring up the event sink. Error paths here
+        // return Err(JsValue) directly to the caller; they must not
+        // route through a half-initialised sink.
         let settings: serde_json::Value = serde_json::from_str(settings_json)
             .map_err(|e| JsValue::from_str(&format!("invalid settings JSON: {e}")))?;
 
-        // Validate protocol version.
         let expected = u64::from(plushie_widget_sdk::protocol::PROTOCOL_VERSION);
         if let Some(version) = settings.get("protocol_version").and_then(|v| v.as_u64())
             && version != expected
@@ -134,6 +132,12 @@ impl PlushieApp {
                 "protocol version mismatch: expected {expected}, got {version}"
             )));
         }
+
+        // Settings validated. Safe to initialise the output sink now.
+        let writer = WebOutputWriter::new(on_event);
+        let codec = Codec::Json;
+        let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), codec);
+        plushie_renderer_lib::emitters::init_sink(Box::new(sink));
 
         plushie_renderer_lib::settings::apply_validate_props(&settings);
         let iced_settings = plushie_renderer_lib::settings::parse_iced_settings(&settings);

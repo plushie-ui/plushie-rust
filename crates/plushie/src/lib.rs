@@ -67,6 +67,8 @@ pub mod automation;
 pub mod cli;
 pub mod command;
 pub mod derive_support;
+#[cfg(feature = "dev")]
+pub mod dev;
 mod error;
 pub mod event;
 pub mod prelude;

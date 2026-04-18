@@ -55,6 +55,38 @@ pub(crate) enum SubscriptionKind {
     OnEvent,
 }
 
+impl SubscriptionKind {
+    /// Canonical wire identifier for this kind. Single source of truth
+    /// shared by the default tag assigned in [`Subscription::renderer`]
+    /// and the wire kind reported by [`Subscription::kind`]; keeping
+    /// both paths routed through this method prevents drift when a new
+    /// variant is added.
+    fn wire_str(&self) -> &'static str {
+        match self {
+            Self::Every(_) => "every",
+            Self::OnKeyPress => "on_key_press",
+            Self::OnKeyRelease => "on_key_release",
+            Self::OnModifiersChanged => "on_modifiers_changed",
+            Self::OnWindowClose => "on_window_close",
+            Self::OnWindowEvent => "on_window_event",
+            Self::OnWindowOpen => "on_window_open",
+            Self::OnWindowResize => "on_window_resize",
+            Self::OnWindowFocus => "on_window_focus",
+            Self::OnWindowUnfocus => "on_window_unfocus",
+            Self::OnWindowMove => "on_window_move",
+            Self::OnPointerMove => "on_pointer_move",
+            Self::OnPointerButton => "on_pointer_button",
+            Self::OnPointerScroll => "on_pointer_scroll",
+            Self::OnPointerTouch => "on_pointer_touch",
+            Self::OnIme => "on_ime",
+            Self::OnThemeChange => "on_theme_change",
+            Self::OnAnimationFrame => "on_animation_frame",
+            Self::OnFileDrop => "on_file_drop",
+            Self::OnEvent => "on_event",
+        }
+    }
+}
+
 impl Subscription {
     /// Fire every `interval`. Delivers [`TimerEvent`](crate::event::TimerEvent).
     ///
@@ -82,31 +114,14 @@ impl Subscription {
     }
 
     fn renderer(kind: SubscriptionKind) -> Self {
-        let tag = match &kind {
-            SubscriptionKind::Every(_) => unreachable!(),
-            SubscriptionKind::OnKeyPress => "on_key_press",
-            SubscriptionKind::OnKeyRelease => "on_key_release",
-            SubscriptionKind::OnModifiersChanged => "on_modifiers_changed",
-            SubscriptionKind::OnWindowClose => "on_window_close",
-            SubscriptionKind::OnWindowEvent => "on_window_event",
-            SubscriptionKind::OnWindowOpen => "on_window_open",
-            SubscriptionKind::OnWindowResize => "on_window_resize",
-            SubscriptionKind::OnWindowFocus => "on_window_focus",
-            SubscriptionKind::OnWindowUnfocus => "on_window_unfocus",
-            SubscriptionKind::OnWindowMove => "on_window_move",
-            SubscriptionKind::OnPointerMove => "on_pointer_move",
-            SubscriptionKind::OnPointerButton => "on_pointer_button",
-            SubscriptionKind::OnPointerScroll => "on_pointer_scroll",
-            SubscriptionKind::OnPointerTouch => "on_pointer_touch",
-            SubscriptionKind::OnIme => "on_ime",
-            SubscriptionKind::OnThemeChange => "on_theme_change",
-            SubscriptionKind::OnAnimationFrame => "on_animation_frame",
-            SubscriptionKind::OnFileDrop => "on_file_drop",
-            SubscriptionKind::OnEvent => "on_event",
-        };
+        debug_assert!(
+            !matches!(kind, SubscriptionKind::Every(_)),
+            "SubscriptionKind::Every is constructed via `Subscription::every`, not `renderer`",
+        );
+        let tag = kind.wire_str().to_string();
         Self {
             kind,
-            tag: tag.to_string(),
+            tag,
             max_rate: None,
             window_id: None,
         }
@@ -237,9 +252,9 @@ impl Subscription {
     /// The wire kind string for this subscription.
     ///
     /// Stable, lowercase identifier (e.g. `"every"`, `"on_key_press"`).
-    /// Exposed for use in test assertions.
-    pub fn kind(&self) -> &str {
-        self.wire_kind()
+    /// Exposed for use in test assertions and subscription diffing.
+    pub fn kind(&self) -> &'static str {
+        self.kind.wire_str()
     }
 
     /// Event-rate cap, if one was configured via
@@ -262,35 +277,9 @@ impl Subscription {
         }
     }
 
-    /// Wire kind string for this subscription.
-    pub(crate) fn wire_kind(&self) -> &str {
-        match &self.kind {
-            SubscriptionKind::Every(_) => "every",
-            SubscriptionKind::OnKeyPress => "on_key_press",
-            SubscriptionKind::OnKeyRelease => "on_key_release",
-            SubscriptionKind::OnModifiersChanged => "on_modifiers_changed",
-            SubscriptionKind::OnWindowClose => "on_window_close",
-            SubscriptionKind::OnWindowEvent => "on_window_event",
-            SubscriptionKind::OnWindowOpen => "on_window_open",
-            SubscriptionKind::OnWindowResize => "on_window_resize",
-            SubscriptionKind::OnWindowFocus => "on_window_focus",
-            SubscriptionKind::OnWindowUnfocus => "on_window_unfocus",
-            SubscriptionKind::OnWindowMove => "on_window_move",
-            SubscriptionKind::OnPointerMove => "on_pointer_move",
-            SubscriptionKind::OnPointerButton => "on_pointer_button",
-            SubscriptionKind::OnPointerScroll => "on_pointer_scroll",
-            SubscriptionKind::OnPointerTouch => "on_pointer_touch",
-            SubscriptionKind::OnIme => "on_ime",
-            SubscriptionKind::OnThemeChange => "on_theme_change",
-            SubscriptionKind::OnAnimationFrame => "on_animation_frame",
-            SubscriptionKind::OnFileDrop => "on_file_drop",
-            SubscriptionKind::OnEvent => "on_event",
-        }
-    }
-
     /// Unique key for diffing: `(kind, tag)`.
-    pub(crate) fn diff_key(&self) -> (&str, &str) {
-        (self.wire_kind(), &self.tag)
+    pub(crate) fn diff_key(&self) -> (&'static str, &str) {
+        (self.kind(), &self.tag)
     }
 }
 

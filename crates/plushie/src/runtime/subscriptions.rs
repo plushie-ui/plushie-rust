@@ -93,7 +93,7 @@ impl SubscriptionManager {
     pub fn sync(&mut self, new: Vec<Subscription>) -> Vec<SubOp> {
         let mut ops = Vec::new();
 
-        // Build lookup maps keyed by (wire_kind, tag).
+        // Build lookup maps keyed by (kind, tag).
         let old_map: HashMap<(&str, &str), &Subscription> =
             self.active.iter().map(|s| (s.diff_key(), s)).collect();
         let new_map: HashMap<(&str, &str), &Subscription> =
@@ -111,7 +111,7 @@ impl SubscriptionManager {
                         });
                     } else {
                         ops.push(SubOp::Unsubscribe {
-                            kind: sub.wire_kind().to_string(),
+                            kind: sub.kind().to_string(),
                             tag: sub.tag.clone(),
                         });
                     }
@@ -147,7 +147,7 @@ impl SubscriptionManager {
                         // removes the event-delivery gap during the
                         // transition.
                         ops.push(SubOp::Subscribe {
-                            kind: new_sub.wire_kind().to_string(),
+                            kind: new_sub.kind().to_string(),
                             tag: new_sub.tag.clone(),
                             max_rate: new_sub.max_rate,
                             window_id: new_sub.window_id.clone(),
@@ -168,7 +168,7 @@ impl SubscriptionManager {
                     });
                 } else {
                     ops.push(SubOp::Subscribe {
-                        kind: sub.wire_kind().to_string(),
+                        kind: sub.kind().to_string(),
                         tag: sub.tag.clone(),
                         max_rate: sub.max_rate,
                         window_id: sub.window_id.clone(),

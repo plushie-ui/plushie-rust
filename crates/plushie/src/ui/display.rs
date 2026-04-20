@@ -310,6 +310,15 @@ impl RuleBuilder {
         super::set_prop(&mut self.props, "direction", d.wire_encode());
         self
     }
+    /// Set the rule thickness in pixels.
+    ///
+    /// Direction-agnostic alias: horizontal rules use this as height,
+    /// vertical rules use this as width. Explicit `width` / `height`
+    /// take precedence for the matching axis.
+    pub fn thickness(mut self, t: f32) -> Self {
+        super::set_prop(&mut self.props, "thickness", t);
+        self
+    }
     /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));

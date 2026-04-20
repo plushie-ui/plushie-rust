@@ -55,6 +55,23 @@ impl Gradient {
                 .collect(),
         }
     }
+
+    /// Construct a linear gradient from an angle (in degrees) and color stops.
+    ///
+    /// Matches the convention used by every other plushie SDK:
+    ///
+    /// - 0 deg = east, 90 = south, 180 = west, 270 = north
+    /// - Start and end points are computed so the gradient axis passes
+    ///   through the unit square centered at (0.5, 0.5)
+    pub fn linear_from_angle(angle_degrees: f32, stops: Vec<(f32, Color)>) -> Self {
+        let radians = angle_degrees * std::f32::consts::PI / 180.0;
+        let dx = radians.cos();
+        let dy = radians.sin();
+        let half_len = dx.abs() / 2.0 + dy.abs() / 2.0;
+        let start = (0.5 - dx * half_len, 0.5 - dy * half_len);
+        let end = (0.5 + dx * half_len, 0.5 + dy * half_len);
+        Self::linear(start, end, stops)
+    }
 }
 
 impl PlushieType for Gradient {
@@ -133,5 +150,25 @@ mod tests {
         let stop = GradientStop::new(0.5, Color::hex("#ff0000"));
         assert_eq!(stop.offset, 0.5);
         assert_eq!(stop.color, Color::hex("#ff0000"));
+    }
+
+    #[test]
+    fn gradient_linear_from_angle_zero_is_east() {
+        // 0 degrees -> east: start near (0, 0.5), end near (1, 0.5).
+        let g = Gradient::linear_from_angle(0.0, vec![(0.0, Color::hex("#000000"))]);
+        assert!((g.start.0 - 0.0).abs() < 1e-5);
+        assert!((g.start.1 - 0.5).abs() < 1e-5);
+        assert!((g.end.0 - 1.0).abs() < 1e-5);
+        assert!((g.end.1 - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn gradient_linear_from_angle_ninety_is_south() {
+        // 90 degrees -> south: start near (0.5, 0), end near (0.5, 1).
+        let g = Gradient::linear_from_angle(90.0, vec![(0.0, Color::hex("#000000"))]);
+        assert!((g.start.0 - 0.5).abs() < 1e-5);
+        assert!((g.start.1 - 0.0).abs() < 1e-5);
+        assert!((g.end.0 - 0.5).abs() < 1e-5);
+        assert!((g.end.1 - 1.0).abs() < 1e-5);
     }
 }

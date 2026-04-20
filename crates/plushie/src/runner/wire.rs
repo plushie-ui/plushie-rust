@@ -1669,3 +1669,82 @@ fn apply_wire_sub_ops(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod build_settings_tests {
+    //! Coverage for the Settings handshake payload produced by
+    //! [`build_settings`]. Focuses on `required_widgets` pass-through
+    //! so the wire message is shaped right before the renderer even
+    //! parses it.
+
+    use super::*;
+    use crate::App;
+    use crate::Event;
+    use crate::Subscription;
+    use crate::settings::Settings;
+    use crate::widget::WidgetRegistrar;
+
+    /// Minimal App with an overridable `Settings` return. Each test
+    /// wires a different `settings()` body via a distinct App impl
+    /// because `settings()` is an associated function with no self.
+    struct AppWithRequired;
+    impl App for AppWithRequired {
+        type Model = ();
+        fn init() -> (Self::Model, crate::Command) {
+            ((), crate::Command::none())
+        }
+        fn update(_model: &mut Self::Model, _event: Event) -> crate::Command {
+            crate::Command::none()
+        }
+        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::View {
+            crate::ui::window("main").into()
+        }
+        fn subscribe(_model: &Self::Model) -> Vec<Subscription> {
+            vec![]
+        }
+        fn settings() -> Settings {
+            Settings {
+                required_widgets: vec!["gauge".into(), "custom_chart".into()],
+                ..Settings::default()
+            }
+        }
+    }
+
+    struct AppWithoutRequired;
+    impl App for AppWithoutRequired {
+        type Model = ();
+        fn init() -> (Self::Model, crate::Command) {
+            ((), crate::Command::none())
+        }
+        fn update(_model: &mut Self::Model, _event: Event) -> crate::Command {
+            crate::Command::none()
+        }
+        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::View {
+            crate::ui::window("main").into()
+        }
+        fn subscribe(_model: &Self::Model) -> Vec<Subscription> {
+            vec![]
+        }
+        // settings() uses the default, which leaves required_widgets empty.
+    }
+
+    #[test]
+    fn required_widgets_populated_lands_on_wire() {
+        let json = build_settings::<AppWithRequired>();
+        let arr = json
+            .get("required_widgets")
+            .and_then(|v| v.as_array())
+            .expect("required_widgets should be present when the App supplies names");
+        let names: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
+        assert_eq!(names, vec!["gauge", "custom_chart"]);
+    }
+
+    #[test]
+    fn required_widgets_empty_is_omitted() {
+        let json = build_settings::<AppWithoutRequired>();
+        assert!(
+            json.get("required_widgets").is_none(),
+            "empty required_widgets should not appear on the wire; got: {json}"
+        );
+    }
+}

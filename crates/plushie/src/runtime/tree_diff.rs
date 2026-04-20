@@ -1068,4 +1068,76 @@ mod tests {
         let ops = diff_tree(&old, &new);
         assert!(ops.is_empty());
     }
+
+    #[test]
+    fn id_keyed_list_content_change_produces_patch() {
+        // When a shape's content changes, the diff must still produce
+        // an update_props: the semantic-equality path must not mask
+        // real changes.
+        let old_shapes = json!([
+            {"id": "s1", "type": "rect", "x": 0},
+            {"id": "s2", "type": "circle", "r": 10},
+        ]);
+        let new_shapes = json!([
+            {"id": "s1", "type": "rect", "x": 5},
+            {"id": "s2", "type": "circle", "r": 10},
+        ]);
+        let old = node("c", "canvas", json!({"shapes": old_shapes}), vec![]);
+        let new = node("c", "canvas", json!({"shapes": new_shapes}), vec![]);
+        let ops = diff_tree(&old, &new);
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], PatchOp::UpdateProps { .. }));
+    }
+
+    #[test]
+    fn id_keyed_list_added_element_produces_patch() {
+        let old_shapes = json!([{"id": "s1", "type": "rect"}]);
+        let new_shapes = json!([
+            {"id": "s1", "type": "rect"},
+            {"id": "s2", "type": "circle"},
+        ]);
+        let old = node("c", "canvas", json!({"shapes": old_shapes}), vec![]);
+        let new = node("c", "canvas", json!({"shapes": new_shapes}), vec![]);
+        let ops = diff_tree(&old, &new);
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], PatchOp::UpdateProps { .. }));
+    }
+
+    #[test]
+    fn id_keyed_list_removed_element_produces_patch() {
+        let old_shapes = json!([
+            {"id": "s1", "type": "rect"},
+            {"id": "s2", "type": "circle"},
+        ]);
+        let new_shapes = json!([{"id": "s1", "type": "rect"}]);
+        let old = node("c", "canvas", json!({"shapes": old_shapes}), vec![]);
+        let new = node("c", "canvas", json!({"shapes": new_shapes}), vec![]);
+        let ops = diff_tree(&old, &new);
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], PatchOp::UpdateProps { .. }));
+    }
+
+    #[test]
+    fn id_keyed_list_with_different_key_ordering_still_equal() {
+        // Two shapes with the same IDs and values, but produced via
+        // different serde_json::Map key insertion order. This is the
+        // realistic miss case `==` rarely catches (JSON object keys
+        // are already sorted in Rust's serde_json::Map, but this
+        // pattern still exercises the path).
+        let old_shapes = json!([
+            {"id": "s1", "x": 0, "type": "rect"},
+            {"id": "s2", "r": 10, "type": "circle"},
+        ]);
+        let new_shapes = json!([
+            {"type": "rect", "id": "s1", "x": 0},
+            {"type": "circle", "id": "s2", "r": 10},
+        ]);
+        let old = node("c", "canvas", json!({"shapes": old_shapes}), vec![]);
+        let new = node("c", "canvas", json!({"shapes": new_shapes}), vec![]);
+        let ops = diff_tree(&old, &new);
+        assert!(
+            ops.is_empty(),
+            "shapes with identical content should compare equal regardless of key order"
+        );
+    }
 }

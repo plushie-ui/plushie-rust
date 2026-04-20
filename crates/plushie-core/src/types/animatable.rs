@@ -19,7 +19,7 @@
 //! let size: Animatable<f32> = 24.0_f32.into();
 //!
 //! // Animated value (transition descriptor)
-//! let animated: Animatable<f32> = Transition::new(300, 24.0_f32)
+//! let animated: Animatable<f32> = Transition::new(24.0_f32, 300)
 //!     .easing(Easing::EaseOut)
 //!     .into();
 //!
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn transition_f32() {
-        let t: Transition<f32> = Transition::new(300, 24.0_f32).easing(Easing::EaseOut);
+        let t: Transition<f32> = Transition::new(24.0_f32, 300).easing(Easing::EaseOut);
         let a: Animatable<f32> = t.into();
         let encoded = a.wire_encode();
         let json = serde_json::Value::from(encoded);
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn sequence_f32() {
         let seq: Sequence<f32> = Sequence::new(vec![
-            Transition::new(200, 1.0_f32).into(),
+            Transition::new(1.0_f32, 200).into(),
             Spring::new(0.0_f32).stiffness(200.0).into(),
         ]);
         let a: Animatable<f32> = seq.into();
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn color_transition() {
-        let t: Transition<Color> = Transition::new(300, Color::blue());
+        let t: Transition<Color> = Transition::new(Color::blue(), 300);
         let a: Animatable<Color> = t.into();
         let encoded = a.wire_encode();
         let json = serde_json::Value::from(encoded);

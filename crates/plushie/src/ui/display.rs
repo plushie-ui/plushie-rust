@@ -481,7 +481,7 @@ impl ImageBuilder {
     /// ```ignore
     /// image("photo", "/img/hero.png").rotation(45.0)
     /// image("photo", "/img/hero.png").rotation(Angle::rad(PI / 4.0))
-    /// image("photo", "/img/hero.png").rotation(Transition::new(300, Angle::deg(90.0)))
+    /// image("photo", "/img/hero.png").rotation(Transition::new(Angle::deg(90.0), 300))
     /// ```
     pub fn rotation(mut self, angle: impl Into<Animatable<Angle>>) -> Self {
         super::set_prop(&mut self.props, "rotation", angle.into().wire_encode());
@@ -607,7 +607,7 @@ impl SvgBuilder {
     /// ```ignore
     /// image("photo", "/img/hero.png").rotation(45.0)
     /// image("photo", "/img/hero.png").rotation(Angle::rad(PI / 4.0))
-    /// image("photo", "/img/hero.png").rotation(Transition::new(300, Angle::deg(90.0)))
+    /// image("photo", "/img/hero.png").rotation(Transition::new(Angle::deg(90.0), 300))
     /// ```
     pub fn rotation(mut self, angle: impl Into<Animatable<Angle>>) -> Self {
         super::set_prop(&mut self.props, "rotation", angle.into().wire_encode());

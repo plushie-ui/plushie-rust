@@ -36,7 +36,7 @@ use serde_json::Value;
 /// ```
 /// use plushie_core::animation::{Transition, Easing};
 ///
-/// let t: Transition<f32> = Transition::new(500, 24.0_f32)
+/// let t: Transition<f32> = Transition::new(24.0_f32, 500)
 ///     .easing(Easing::EaseOutCubic)
 ///     .delay(100);
 /// ```
@@ -61,8 +61,14 @@ pub struct Transition<T: PlushieType = PropValue> {
 }
 
 impl<T: PlushieType> Transition<T> {
-    /// Create a transition with the given duration and target value.
-    pub fn new(duration_ms: u64, to: impl Into<T>) -> Self {
+    /// Create a transition with the given target value and duration.
+    ///
+    /// `to` is the animation target (the value the widget prop is moving
+    /// toward); `duration_ms` is the interpolation length in milliseconds.
+    /// The target-first ordering matches Gleam, Python, and TypeScript;
+    /// Elixir and Ruby keep duration first with `to` as a keyword, which
+    /// is equally idiomatic in those languages.
+    pub fn new(to: impl Into<T>, duration_ms: u64) -> Self {
         Self {
             to: to.into(),
             duration: duration_ms,
@@ -117,8 +123,8 @@ impl<T: PlushieType> Transition<T> {
     }
 
     /// Create a looping transition (repeat forever, auto-reverse).
-    pub fn looping(duration_ms: u64, to: impl Into<T>) -> Self {
-        Self::new(duration_ms, to)
+    pub fn looping(to: impl Into<T>, duration_ms: u64) -> Self {
+        Self::new(to, duration_ms)
             .repeat_forever()
             .auto_reverse(true)
     }
@@ -510,7 +516,7 @@ mod tests {
 
     #[test]
     fn transition_encodes_as_descriptor() {
-        let t: Transition<f64> = Transition::new(300, 24.0).easing(Easing::EaseOut);
+        let t: Transition<f64> = Transition::new(24.0, 300).easing(Easing::EaseOut);
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["type"], "transition");
@@ -521,12 +527,12 @@ mod tests {
 
     #[test]
     fn transition_repeat_encodes_as_integer() {
-        let t: Transition<f64> = Transition::new(300, 1.0).repeat(3);
+        let t: Transition<f64> = Transition::new(1.0, 300).repeat(3);
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["repeat"], 3);
 
-        let t: Transition<f64> = Transition::looping(300, 1.0);
+        let t: Transition<f64> = Transition::looping(1.0, 300);
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["repeat"], -1);
@@ -546,7 +552,7 @@ mod tests {
     #[test]
     fn sequence_encodes_as_descriptor() {
         let seq: Sequence<f64> = Sequence::new(vec![
-            Transition::new(200, 1.0).into(),
+            Transition::new(1.0, 200).into(),
             Spring::new(0.0).stiffness(200.0).into(),
         ]);
         let encoded = seq.wire_encode();
@@ -560,7 +566,7 @@ mod tests {
 
     #[test]
     fn transition_round_trips() {
-        let orig: Transition<f64> = Transition::new(500, 24.0)
+        let orig: Transition<f64> = Transition::new(24.0, 500)
             .easing(Easing::EaseOutCubic)
             .delay(100)
             .from(0.0)
@@ -600,7 +606,7 @@ mod tests {
     #[test]
     fn sequence_round_trips() {
         let orig: Sequence<f64> = Sequence::new(vec![
-            Transition::new(200, 1.0).into(),
+            Transition::new(1.0, 200).into(),
             Spring::new(0.0).stiffness(200.0).into(),
         ])
         .on_complete("seq_done");
@@ -614,7 +620,7 @@ mod tests {
 
     #[test]
     fn typed_transition_f32() {
-        let t: Transition<f32> = Transition::new(300, 24.0_f32);
+        let t: Transition<f32> = Transition::new(24.0_f32, 300);
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["type"], "transition");
@@ -624,7 +630,7 @@ mod tests {
 
     #[test]
     fn default_propvalue_transition_still_works() {
-        let t: Transition<PropValue> = Transition::new(300, PropValue::F64(42.0));
+        let t: Transition<PropValue> = Transition::new(PropValue::F64(42.0), 300);
         let encoded = t.wire_encode();
         let json = serde_json::Value::from(encoded);
         assert_eq!(json["to"], 42.0);
@@ -633,7 +639,7 @@ mod tests {
     #[test]
     fn color_transition_round_trips() {
         use crate::types::Color;
-        let t = Transition::<Color>::new(300, Color::hex("#ff0000"))
+        let t = Transition::<Color>::new(Color::hex("#ff0000"), 300)
             .from(Color::hex("#0000ff"))
             .easing(Easing::EaseOut);
         let encoded = t.wire_encode();

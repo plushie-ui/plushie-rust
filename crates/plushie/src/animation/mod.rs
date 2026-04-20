@@ -12,7 +12,7 @@
 //! text("value").size(24.0)
 //!
 //! // Animate size with a transition
-//! text("value").size(Transition::new(300, 24.0_f32).easing(Easing::EaseOut))
+//! text("value").size(Transition::new(24.0_f32, 300).easing(Easing::EaseOut))
 //!
 //! // Animate color with a spring
 //! text("value").color(Spring::bouncy(Color::red()))

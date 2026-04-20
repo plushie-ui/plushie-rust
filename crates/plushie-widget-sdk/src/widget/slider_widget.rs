@@ -398,55 +398,67 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     let rail_width = prop_f32(props, "rail_width");
     let has_rail_overrides = rail_color.is_some() || rail_width.is_some();
 
-    // Style: preset name or custom style map
-    match &vp.style {
-        Some(CoreStyle::Preset(name)) => {
-            s = match name.as_str() {
-                "default" => {
-                    if has_rail_overrides {
-                        s.style(move |theme: &iced::Theme, status| {
-                            let mut style = vertical_slider::default(theme, status);
-                            apply_rail_overrides(&mut style, rail_color, rail_width);
-                            style
-                        })
-                    } else {
-                        s.style(vertical_slider::default)
-                    }
-                }
-                _ => {
-                    log::warn!(
-                        "unknown style {:?} for widget type {:?}, using default",
-                        name,
-                        "vertical_slider"
-                    );
-                    s
-                }
-            };
-        }
-        Some(CoreStyle::Custom(style_map)) => {
-            let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
-            s = s.style(move |theme: &iced::Theme, status| {
-                let mut style = vertical_slider::default(theme, status);
-                apply_slider_handle_fields(&mut style.handle, &ov.base);
-                apply_rail_overrides(&mut style, rail_color, rail_width);
-                if matches!(status, vertical_slider::Status::Hovered) {
-                    if let Some(ref f) = ov.hovered {
-                        apply_slider_handle_fields(&mut style.handle, f);
-                    } else {
-                        style.handle.background = deviate_background(style.handle.background, 0.1);
-                    }
-                }
-                style
-            });
-        }
-        None => {}
-    }
-    if vp.style.is_none() && has_rail_overrides {
-        s = s.style(move |theme: &iced::Theme, status| {
-            let mut style = vertical_slider::default(theme, status);
+    // Circular handle support (mirrors horizontal slider)
+    let circular = prop_bool_default(props, "circular_handle", false);
+    if circular {
+        let radius = prop_f32(props, "handle_radius").unwrap_or(8.0);
+        s = s.style(move |theme, status| {
+            let mut style = vertical_slider::default(theme, status).with_circular_handle(radius);
             apply_rail_overrides(&mut style, rail_color, rail_width);
             style
         });
+    } else {
+        // Style: preset name or custom style map
+        match &vp.style {
+            Some(CoreStyle::Preset(name)) => {
+                s = match name.as_str() {
+                    "default" => {
+                        if has_rail_overrides {
+                            s.style(move |theme: &iced::Theme, status| {
+                                let mut style = vertical_slider::default(theme, status);
+                                apply_rail_overrides(&mut style, rail_color, rail_width);
+                                style
+                            })
+                        } else {
+                            s.style(vertical_slider::default)
+                        }
+                    }
+                    _ => {
+                        log::warn!(
+                            "unknown style {:?} for widget type {:?}, using default",
+                            name,
+                            "vertical_slider"
+                        );
+                        s
+                    }
+                };
+            }
+            Some(CoreStyle::Custom(style_map)) => {
+                let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
+                s = s.style(move |theme: &iced::Theme, status| {
+                    let mut style = vertical_slider::default(theme, status);
+                    apply_slider_handle_fields(&mut style.handle, &ov.base);
+                    apply_rail_overrides(&mut style, rail_color, rail_width);
+                    if matches!(status, vertical_slider::Status::Hovered) {
+                        if let Some(ref f) = ov.hovered {
+                            apply_slider_handle_fields(&mut style.handle, f);
+                        } else {
+                            style.handle.background =
+                                deviate_background(style.handle.background, 0.1);
+                        }
+                    }
+                    style
+                });
+            }
+            None => {}
+        }
+        if vp.style.is_none() && has_rail_overrides {
+            s = s.style(move |theme: &iced::Theme, status| {
+                let mut style = vertical_slider::default(theme, status);
+                apply_rail_overrides(&mut style, rail_color, rail_width);
+                style
+            });
+        }
     }
 
     {

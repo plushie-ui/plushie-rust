@@ -203,6 +203,33 @@ impl App {
             .map(|v| v as u32)
     }
 
+    /// True when the widget at `widget_id` is declared disabled and is
+    /// of a type that participates in functional disabled interception.
+    ///
+    /// iced's native `Status::Disabled` is style-only: events still reach
+    /// `update()` from widgets the user considers disabled. This helper
+    /// lets the dispatcher swallow events for input-family widgets so
+    /// `disabled: true` blocks interaction as every host SDK documents.
+    ///
+    /// Widget types in scope: `text_input`, `text_editor`, `combo_box`,
+    /// `pick_list`. Extending coverage to other widgets (e.g. slider)
+    /// is a future step once their behaviour is audited.
+    pub fn is_widget_disabled_for_interception(&self, widget_id: &str) -> bool {
+        let Some(node) = self.core.tree.find_by_id(widget_id) else {
+            return false;
+        };
+        if !matches!(
+            node.type_name.as_str(),
+            "text_input" | "text_editor" | "combo_box" | "pick_list"
+        ) {
+            return false;
+        }
+        node.props
+            .get("disabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
     /// Coalesce a subscription event for all matching entries.
     pub fn coalesce_subscription(
         &mut self,

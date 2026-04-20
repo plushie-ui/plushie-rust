@@ -44,6 +44,26 @@ impl App {
             | Message::PaneResized(..)
             | Message::PaneDragged(..)
             | Message::PaneClicked(..)) => {
+                // Functional disabled interception. iced's
+                // `Status::Disabled` is style-only; text-input-family
+                // widgets with `disabled: true` still propagate events.
+                // Swallow them here so disabled widgets behave as
+                // documented across every host SDK. Covers both the
+                // `Event { id, .. }` path and TextEditorAction, which
+                // the text editor widget converts into an input event
+                // without going through Message::Event first.
+                let disabled_target: Option<&str> = match &msg {
+                    Message::Event { id, .. } => Some(id.as_str()),
+                    Message::TextEditorAction(_, id, _) => Some(id.as_str()),
+                    _ => None,
+                };
+                if let Some(id) = disabled_target
+                    && self.is_widget_disabled_for_interception(id)
+                {
+                    log::trace!("disabled widget {id} suppressed event");
+                    return Task::none();
+                }
+
                 let events = self.registry.process_message(&msg);
                 let mut task = Task::none();
                 for event in events {

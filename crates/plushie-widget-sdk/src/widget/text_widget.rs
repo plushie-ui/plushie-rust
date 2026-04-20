@@ -111,23 +111,43 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
             t = t.ellipsis(iced_convert::ellipsis(e));
         }
 
-        // Named style preset (text widget only supports presets)
-        if let Some(CoreStyle::Preset(name)) = &tp.style {
-            t = match name.as_str() {
-                "primary" => t.style(text::primary),
-                "secondary" => t.style(text::secondary),
-                "success" => t.style(text::success),
-                "danger" => t.style(text::danger),
-                "warning" => t.style(text::warning),
-                _ => {
-                    log::warn!(
-                        "unknown style {:?} for widget type {:?}, using default",
-                        name,
-                        "text"
-                    );
-                    t.style(text::default)
+        // Style: preset name or StyleMap with text_color. Explicit `color`
+        // prop (applied above) takes precedence; this only runs when no
+        // color prop was given.
+        if tp.color.is_none() {
+            match &tp.style {
+                Some(CoreStyle::Preset(name)) => {
+                    t = match name.as_str() {
+                        "primary" => t.style(text::primary),
+                        "secondary" => t.style(text::secondary),
+                        "success" => t.style(text::success),
+                        "danger" => t.style(text::danger),
+                        "warning" => t.style(text::warning),
+                        _ => {
+                            log::warn!(
+                                "unknown style {:?} for widget type {:?}, using default",
+                                name,
+                                "text"
+                            );
+                            t.style(text::default)
+                        }
+                    };
                 }
-            };
+                Some(CoreStyle::Custom(style_map)) => {
+                    // iced's text::Style only has a `color` field; other
+                    // StyleMap fields (background, border, shadow, state
+                    // overrides) aren't applicable to raw text and are
+                    // silently ignored. Users wrap in a container for
+                    // those effects.
+                    if let Some(ref tc) = style_map.text_color {
+                        let color = iced_convert::color(tc);
+                        t = t.style(move |_theme: &iced::Theme| iced::widget::text::Style {
+                            color: Some(color),
+                        });
+                    }
+                }
+                None => {}
+            }
         }
 
         t.into()

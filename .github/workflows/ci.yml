@@ -92,5 +92,8 @@ jobs:
       - name: Smoke - wire connect
         run: cargo nextest run -p plushie --features wire --test wire_connect --profile ci
 
+      - name: Smoke - wire image ops
+        run: cargo nextest run -p plushie --features wire --test wire_image_ops --profile ci
+
       - name: Smoke - automation replay windowed
         run: cargo nextest run -p plushie --features wire --test automation_replay_windowed --profile ci

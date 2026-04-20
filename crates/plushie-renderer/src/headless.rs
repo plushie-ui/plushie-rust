@@ -671,6 +671,29 @@ fn handle_message<R: PlushieRenderer>(
                         });
                         let _ = s.writer.emit(&resp);
                     }
+                    CoreEffect::Dispatch(Dispatch::WidgetOp {
+                        ref op,
+                        ref payload,
+                    }) if op == "list_images" => {
+                        // Mirror the windowed-mode `widget_ops::list_images`
+                        // response so host SDKs can observe image-registry
+                        // state end-to-end in mock and headless modes.
+                        let tag = payload
+                            .get("tag")
+                            .or_else(|| payload.get("target"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("list_images")
+                            .to_string();
+                        let handles = s.images.handle_names();
+                        let resp = serde_json::json!({
+                            "type": "op_query_response",
+                            "session": session_id,
+                            "kind": "list_images",
+                            "tag": tag,
+                            "data": {"handles": handles}
+                        });
+                        let _ = s.writer.emit(&resp);
+                    }
                     CoreEffect::Dispatch(Dispatch::WidgetOp { .. }) => {}
                     CoreEffect::Dispatch(Dispatch::Window(_))
                     | CoreEffect::Dispatch(Dispatch::WindowQuery(_))

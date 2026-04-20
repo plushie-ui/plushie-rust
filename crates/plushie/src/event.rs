@@ -169,6 +169,23 @@ fn parse_resize(value: &Value) -> ResizeDimensions {
     }
 }
 
+/// Extract the `link` field from a link_click event payload.
+///
+/// The renderer emits `{"link": "https://..."}` for link-capable widgets
+/// (rich_text, markdown, future link emitters). Missing or malformed
+/// payloads log a warning and yield an empty string.
+fn expect_link<'a>(value: &'a Value, id: &str) -> &'a str {
+    match value.get("link").and_then(Value::as_str) {
+        Some(link) => link,
+        None => {
+            log::warn!(
+                "event value type mismatch: link_click event for \"{id}\" expected {{\"link\": ...}}, got {value}"
+            );
+            ""
+        }
+    }
+}
+
 /// Extract a string value, logging a warning if the type is wrong.
 fn expect_str<'a>(value: &'a Value, family: &str, id: &str) -> &'a str {
     match value.as_str() {
@@ -446,6 +463,7 @@ impl WidgetEvent {
             Open => WidgetMatch::Open(id),
             Close => WidgetMatch::Close(id),
             KeyBinding => WidgetMatch::KeyBinding(id, &self.value),
+            LinkClick => WidgetMatch::LinkClicked(id, expect_link(&self.value, id)),
             TransitionComplete => WidgetMatch::TransitionComplete(id),
             PaneResized => WidgetMatch::PaneResized(id, &self.value),
             PaneDragged => WidgetMatch::PaneDragged(id, &self.value),
@@ -552,6 +570,9 @@ pub enum WidgetMatch<'a> {
     PaneClicked(&'a str, &'a Value),
     /// Pane grid focus cycled to the pane's region.
     PaneFocusCycle(&'a str),
+    /// Hyperlink in a link-capable widget (rich_text, markdown) was clicked.
+    /// Carries the widget id and the link URL extracted from the event payload.
+    LinkClicked(&'a str, &'a str),
     /// Timer tick (from `Subscription::every`).
     Timer(&'a str),
     /// Custom widget event. `family` is the full family string

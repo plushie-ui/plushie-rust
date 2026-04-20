@@ -165,6 +165,21 @@ fn widget_match_slide_carries_f64() {
 }
 
 #[test]
+fn widget_match_link_click_extracts_link() {
+    let event = Event::Widget(WidgetEvent {
+        event_type: EventType::LinkClick,
+        scoped_id: ScopedId::new("article", vec![], Some("main".to_string())),
+        value: json!({"link": "https://example.com/spam"}),
+    });
+    match event.widget_match() {
+        Some(WidgetMatch::LinkClicked("article", link)) => {
+            assert_eq!(link, "https://example.com/spam");
+        }
+        other => panic!("expected LinkClicked, got {other:?}"),
+    }
+}
+
+#[test]
 fn widget_match_handles_timer_events() {
     let event = Event::Timer(TimerEvent {
         tag: "tick".into(),

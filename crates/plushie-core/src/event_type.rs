@@ -140,6 +140,8 @@ event_types! {
     Close <=> "close",
     /// Keyboard binding fired.
     KeyBinding <=> "key_binding",
+    /// A link in a link-capable widget (rich_text, markdown, etc.) was clicked.
+    LinkClick <=> "link_click",
 }
 
 impl std::fmt::Display for EventType {

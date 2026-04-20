@@ -456,3 +456,36 @@ fn canvas_rounded_rect_command_accepts_per_corner_radius() {
     assert_eq!(first["radius"]["top_left"], 4.0);
     assert_eq!(first["radius"]["top_right"], 8.0);
 }
+
+#[test]
+fn rich_text_typed_spans_encode_with_snake_case_keys() {
+    let v = view_json(rich_text().spans(vec![
+        Span::new("Build "),
+        Span::new("ok").color(Color::hex("#22aa22")).underline(true),
+    ]));
+    assert_eq!(get_type(&v), "rich_text");
+    let spans = get_prop(&v, "spans");
+    assert_eq!(spans[0]["text"], "Build ");
+    assert_eq!(spans[1]["text"], "ok");
+    assert_eq!(spans[1]["color"], "#22aa22");
+    assert_eq!(spans[1]["underline"], true);
+}
+
+#[test]
+fn rich_text_span_omits_unset_fields() {
+    let v = view_json(rich_text().spans(vec![Span::new("hi")]));
+    let span = &get_prop(&v, "spans")[0];
+    assert_eq!(span["text"], "hi");
+    assert!(span.get("color").is_none(), "color should be omitted");
+    assert!(
+        span.get("underline").is_none(),
+        "underline should be omitted"
+    );
+}
+
+#[test]
+fn rich_text_span_link_serialises_as_string() {
+    let v = view_json(rich_text().spans(vec![Span::new("docs").link("https://example.com/docs")]));
+    let span = &get_prop(&v, "spans")[0];
+    assert_eq!(span["link"], "https://example.com/docs");
+}

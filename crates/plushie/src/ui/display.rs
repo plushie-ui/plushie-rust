@@ -123,6 +123,183 @@ impl From<TextBuilder> for View {
 // rich_text
 // ---------------------------------------------------------------------------
 
+/// Highlight backdrop drawn behind a [`Span`]'s text.
+///
+/// `background` paints a solid colour; `border` adds a stroke around
+/// the highlighted region. Both fields are optional.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SpanHighlight {
+    /// Solid background colour.
+    pub background: Option<Color>,
+    /// Border drawn around the highlighted region.
+    pub border: Option<Border>,
+}
+
+impl SpanHighlight {
+    /// Empty highlight; both fields default to `None`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the background colour.
+    pub fn background(mut self, color: impl Into<Color>) -> Self {
+        self.background = Some(color.into());
+        self
+    }
+
+    /// Set the border.
+    pub fn border(mut self, border: Border) -> Self {
+        self.border = Some(border);
+        self
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        let mut map = PropMap::new();
+        if let Some(ref bg) = self.background {
+            map.insert("background", bg.wire_encode());
+        }
+        if let Some(ref b) = self.border {
+            map.insert("border", b.wire_encode());
+        }
+        PropValue::Object(map)
+    }
+}
+
+/// A typed span for the [`rich_text`] widget.
+///
+/// Each span carries one segment of text with its own optional
+/// styling. Unset fields fall back to the rich_text widget's
+/// defaults.
+///
+/// ```ignore
+/// use plushie::ui::Span;
+///
+/// let title = Span::new("Build ").color(Color::black());
+/// let ok = Span::new("ok").color(Color::green()).underline(true);
+/// rich_text().spans(vec![title, ok]);
+/// ```
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Span {
+    /// Required text content for this span.
+    pub text: String,
+    /// Font size in pixels.
+    pub size: Option<f32>,
+    /// Font family and weight.
+    pub font: Option<Font>,
+    /// Text colour.
+    pub color: Option<Color>,
+    /// Line height for this span.
+    pub line_height: Option<LineHeight>,
+    /// Hyperlink URL; clicks emit a `link_click` event with this value.
+    pub link: Option<String>,
+    /// Underline decoration.
+    pub underline: Option<bool>,
+    /// Strikethrough decoration.
+    pub strikethrough: Option<bool>,
+    /// Padding around the span's text.
+    pub padding: Option<Padding>,
+    /// Highlight backdrop.
+    pub highlight: Option<SpanHighlight>,
+}
+
+impl Span {
+    /// Build a span with the given text and no style overrides.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            ..Self::default()
+        }
+    }
+
+    /// Set the font size in pixels.
+    pub fn size(mut self, size: f32) -> Self {
+        self.size = Some(size);
+        self
+    }
+
+    /// Set the font.
+    pub fn font(mut self, font: Font) -> Self {
+        self.font = Some(font);
+        self
+    }
+
+    /// Set the text colour.
+    pub fn color(mut self, color: impl Into<Color>) -> Self {
+        self.color = Some(color.into());
+        self
+    }
+
+    /// Set the line height.
+    pub fn line_height(mut self, line_height: impl Into<LineHeight>) -> Self {
+        self.line_height = Some(line_height.into());
+        self
+    }
+
+    /// Set the hyperlink URL.
+    pub fn link(mut self, url: impl Into<String>) -> Self {
+        self.link = Some(url.into());
+        self
+    }
+
+    /// Set the underline decoration.
+    pub fn underline(mut self, on: bool) -> Self {
+        self.underline = Some(on);
+        self
+    }
+
+    /// Set the strikethrough decoration.
+    pub fn strikethrough(mut self, on: bool) -> Self {
+        self.strikethrough = Some(on);
+        self
+    }
+
+    /// Set the padding around the span's text.
+    pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = Some(padding.into());
+        self
+    }
+
+    /// Set the highlight backdrop.
+    pub fn highlight(mut self, highlight: SpanHighlight) -> Self {
+        self.highlight = Some(highlight);
+        self
+    }
+
+    /// Encode the span to its wire `PropValue` form.
+    pub fn wire_encode(&self) -> PropValue {
+        let mut map = PropMap::new();
+        map.insert("text", PropValue::Str(self.text.clone()));
+        if let Some(size) = self.size {
+            map.insert("size", PropValue::F64(size as f64));
+        }
+        if let Some(ref font) = self.font {
+            map.insert("font", font.wire_encode());
+        }
+        if let Some(ref color) = self.color {
+            map.insert("color", color.wire_encode());
+        }
+        if let Some(lh) = self.line_height {
+            map.insert("line_height", lh.wire_encode());
+        }
+        if let Some(ref link) = self.link {
+            map.insert("link", PropValue::Str(link.clone()));
+        }
+        if let Some(u) = self.underline {
+            map.insert("underline", PropValue::Bool(u));
+        }
+        if let Some(s) = self.strikethrough {
+            map.insert("strikethrough", PropValue::Bool(s));
+        }
+        if let Some(ref p) = self.padding {
+            map.insert("padding", p.wire_encode());
+        }
+        if let Some(ref h) = self.highlight {
+            map.insert("highlight", h.wire_encode());
+        }
+        PropValue::Object(map)
+    }
+}
+
 /// Builder for a rich text widget with individually styled spans.
 pub struct RichTextBuilder {
     id: String,
@@ -154,9 +331,10 @@ impl RichTextBuilder {
         self.id = id.to_string();
         self
     }
-    /// Set the ordered list of styled spans that make up the text.
-    pub fn spans(mut self, spans: Vec<PropValue>) -> Self {
-        super::set_prop(&mut self.props, "spans", PropValue::Array(spans));
+    /// Set the ordered list of typed [`Span`]s that make up the text.
+    pub fn spans(mut self, spans: Vec<Span>) -> Self {
+        let encoded: Vec<PropValue> = spans.iter().map(Span::wire_encode).collect();
+        super::set_prop(&mut self.props, "spans", PropValue::Array(encoded));
         self
     }
     /// Default font size for spans that don't override it (pixels).

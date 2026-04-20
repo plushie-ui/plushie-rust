@@ -11,19 +11,25 @@ use super::color::Color;
 use super::shadow::Shadow;
 
 /// Style preset name or custom style map.
+///
+/// The [`Custom`](Self::Custom) variant boxes its [`StyleMap`] to keep
+/// the enum small (otherwise the Preset variant would pay for every
+/// StyleMap field). Widget callers construct via `Style::from(map)`
+/// or pattern-match via `Style::Custom(map)`; the `Box` is transparent
+/// in both directions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Style {
     /// A named preset style (e.g. "primary", "secondary").
     Preset(String),
     /// A fully custom style with explicit properties.
-    Custom(StyleMap),
+    Custom(Box<StyleMap>),
 }
 
 impl PlushieType for Style {
     fn wire_decode(value: &Value) -> Option<Self> {
         match value {
             Value::String(s) => Some(Self::Preset(s.clone())),
-            Value::Object(_) => StyleMap::wire_decode(value).map(Self::Custom),
+            Value::Object(_) => StyleMap::wire_decode(value).map(|m| Self::Custom(Box::new(m))),
             _ => None,
         }
     }
@@ -37,6 +43,88 @@ impl PlushieType for Style {
 
     fn type_name() -> &'static str {
         "style"
+    }
+}
+
+/// Status-specific style override.
+///
+/// Holds the visual fields that can be overridden for a widget state
+/// (hovered / pressed / disabled / focused). This is a flat record
+/// rather than a recursive [`StyleMap`]: the renderer only consumes
+/// depth-1 overrides, and Elixir's flat shape is the canonical form.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StatusOverride {
+    /// Background color.
+    pub background: Option<Background>,
+    /// Text color.
+    pub text_color: Option<Color>,
+    /// Border descriptor.
+    pub border: Option<Border>,
+    /// Shadow descriptor.
+    pub shadow: Option<Shadow>,
+}
+
+impl StatusOverride {
+    /// Construct a new empty override.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set or construct `background`.
+    pub fn background(mut self, bg: impl Into<Background>) -> Self {
+        self.background = Some(bg.into());
+        self
+    }
+
+    /// Set or construct `text_color`.
+    pub fn text_color(mut self, c: impl Into<Color>) -> Self {
+        self.text_color = Some(c.into());
+        self
+    }
+
+    /// Set or construct `border`.
+    pub fn border(mut self, b: Border) -> Self {
+        self.border = Some(b);
+        self
+    }
+
+    /// Set or construct `shadow`.
+    pub fn shadow(mut self, s: Shadow) -> Self {
+        self.shadow = Some(s);
+        self
+    }
+}
+
+impl PlushieType for StatusOverride {
+    fn wire_decode(value: &Value) -> Option<Self> {
+        let obj = value.as_object()?;
+        Some(Self {
+            background: obj.get("background").and_then(Background::wire_decode),
+            text_color: obj.get("text_color").and_then(Color::wire_decode),
+            border: obj.get("border").and_then(Border::wire_decode),
+            shadow: obj.get("shadow").and_then(Shadow::wire_decode),
+        })
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        let mut m = PropMap::new();
+        if let Some(ref bg) = self.background {
+            m.insert("background", bg.wire_encode());
+        }
+        if let Some(ref tc) = self.text_color {
+            m.insert("text_color", tc.wire_encode());
+        }
+        if let Some(ref border) = self.border {
+            m.insert("border", border.wire_encode());
+        }
+        if let Some(ref shadow) = self.shadow {
+            m.insert("shadow", shadow.wire_encode());
+        }
+        PropValue::Object(m)
+    }
+
+    fn type_name() -> &'static str {
+        "status_override"
     }
 }
 
@@ -65,13 +153,13 @@ pub struct StyleMap {
     /// Shadow descriptor.
     pub shadow: Option<Shadow>,
     /// Hovered state.
-    pub hovered: Option<Box<StyleMap>>,
+    pub hovered: Option<StatusOverride>,
     /// Pressed state.
-    pub pressed: Option<Box<StyleMap>>,
+    pub pressed: Option<StatusOverride>,
     /// Disabled state.
-    pub disabled: Option<Box<StyleMap>>,
+    pub disabled: Option<StatusOverride>,
     /// Focused state.
-    pub focused: Option<Box<StyleMap>>,
+    pub focused: Option<StatusOverride>,
 }
 
 impl StyleMap {
@@ -111,26 +199,26 @@ impl StyleMap {
     }
 
     /// Set or construct `hovered`.
-    pub fn hovered(mut self, f: impl FnOnce(StyleMap) -> StyleMap) -> Self {
-        self.hovered = Some(Box::new(f(StyleMap::new())));
+    pub fn hovered(mut self, f: impl FnOnce(StatusOverride) -> StatusOverride) -> Self {
+        self.hovered = Some(f(StatusOverride::new()));
         self
     }
 
     /// Set or construct `pressed`.
-    pub fn pressed(mut self, f: impl FnOnce(StyleMap) -> StyleMap) -> Self {
-        self.pressed = Some(Box::new(f(StyleMap::new())));
+    pub fn pressed(mut self, f: impl FnOnce(StatusOverride) -> StatusOverride) -> Self {
+        self.pressed = Some(f(StatusOverride::new()));
         self
     }
 
     /// Set or construct `disabled`.
-    pub fn disabled(mut self, f: impl FnOnce(StyleMap) -> StyleMap) -> Self {
-        self.disabled = Some(Box::new(f(StyleMap::new())));
+    pub fn disabled(mut self, f: impl FnOnce(StatusOverride) -> StatusOverride) -> Self {
+        self.disabled = Some(f(StatusOverride::new()));
         self
     }
 
     /// Set or construct `focused`.
-    pub fn focused(mut self, f: impl FnOnce(StyleMap) -> StyleMap) -> Self {
-        self.focused = Some(Box::new(f(StyleMap::new())));
+    pub fn focused(mut self, f: impl FnOnce(StatusOverride) -> StatusOverride) -> Self {
+        self.focused = Some(f(StatusOverride::new()));
         self
     }
 }
@@ -198,7 +286,7 @@ impl From<&str> for Style {
 
 impl From<StyleMap> for Style {
     fn from(m: StyleMap) -> Self {
-        Self::Custom(m)
+        Self::Custom(Box::new(m))
     }
 }
 
@@ -211,22 +299,10 @@ impl PlushieType for StyleMap {
         let text_color = obj.get("text_color").and_then(Color::wire_decode);
         let border = obj.get("border").and_then(Border::wire_decode);
         let shadow = obj.get("shadow").and_then(Shadow::wire_decode);
-        let hovered = obj
-            .get("hovered")
-            .and_then(StyleMap::wire_decode)
-            .map(Box::new);
-        let pressed = obj
-            .get("pressed")
-            .and_then(StyleMap::wire_decode)
-            .map(Box::new);
-        let disabled = obj
-            .get("disabled")
-            .and_then(StyleMap::wire_decode)
-            .map(Box::new);
-        let focused = obj
-            .get("focused")
-            .and_then(StyleMap::wire_decode)
-            .map(Box::new);
+        let hovered = obj.get("hovered").and_then(StatusOverride::wire_decode);
+        let pressed = obj.get("pressed").and_then(StatusOverride::wire_decode);
+        let disabled = obj.get("disabled").and_then(StatusOverride::wire_decode);
+        let focused = obj.get("focused").and_then(StatusOverride::wire_decode);
 
         Some(Self {
             base,

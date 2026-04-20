@@ -76,7 +76,7 @@ pub use length::Length;
 pub use line_height::LineHeight;
 pub use padding::Padding;
 pub use shadow::Shadow;
-pub use style::{Style, StyleMap};
+pub use style::{StatusOverride, Style, StyleMap};
 pub use text::{Ellipsis, Shaping, Wrapping};
 pub use theme::{BUILTIN_THEMES, CustomTheme, Theme};
 pub use value_range::ValueRange;

@@ -710,8 +710,8 @@ impl GridBuilder {
     }
 
     /// Number of columns in the grid.
-    pub fn columns(mut self, n: u32) -> Self {
-        super::set_prop(&mut self.props, "columns", n);
+    pub fn num_columns(mut self, n: u32) -> Self {
+        super::set_prop(&mut self.props, "num_columns", n);
         self
     }
 

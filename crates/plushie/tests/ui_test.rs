@@ -113,6 +113,13 @@ fn pane_grid_requires_id() {
     assert_eq!(get_type(&v), "pane_grid");
 }
 
+#[test]
+fn grid_num_columns_sets_wire_prop() {
+    let v = view_json(grid().num_columns(3));
+    assert_eq!(get_type(&v), "grid");
+    assert_eq!(get_prop(&v, "num_columns"), &serde_json::json!(3));
+}
+
 // ---------------------------------------------------------------------------
 // Display builders
 // ---------------------------------------------------------------------------

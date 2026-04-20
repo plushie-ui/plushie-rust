@@ -12,7 +12,7 @@ use crate::widget::helpers::*;
 use plushie_core::types::{Length, PlushieType};
 
 struct GridProps {
-    columns: Option<u32>,
+    num_columns: Option<u32>,
     width: Option<f32>,
     height: Option<f32>,
     column_width: Option<Length>,
@@ -24,7 +24,7 @@ impl GridProps {
     fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
-            columns: u32::extract(p, "columns"),
+            num_columns: u32::extract(p, "num_columns"),
             width: f32::extract(p, "width"),
             height: f32::extract(p, "height"),
             column_width: Length::extract(p, "column_width"),
@@ -54,7 +54,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GridWidget {
             "spacing",
         );
 
-        let cols = gp.columns.unwrap_or(1) as usize;
+        let cols = gp.num_columns.unwrap_or(1) as usize;
 
         let children = ctx.render_children(node);
 

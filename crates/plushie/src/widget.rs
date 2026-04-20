@@ -157,6 +157,44 @@ pub trait Widget: Send + Sync + 'static {
     fn subscribe(_props: &Self::Props, _state: &Self::State) -> Vec<Subscription> {
         vec![]
     }
+
+    /// Optional cache-key hash derived from props and state.
+    ///
+    /// When this returns `Some(hash)`, the runtime records the value
+    /// alongside the widget's expanded view. On the next render, if
+    /// the widget's cache key hashes to the same value, the cached
+    /// expanded view is reused and [`Widget::view`] is not re-invoked.
+    /// A widget that returns `None` (the default) is never cached; its
+    /// `view()` runs every render.
+    ///
+    /// Use this for widgets whose output depends on a small number of
+    /// inputs and whose view construction is expensive. For example, a
+    /// markdown renderer might hash `(props.source, props.theme)` so
+    /// the subtree is reused until either changes.
+    ///
+    /// The [`hash_cache_key`] helper takes any `Hash` value and returns
+    /// a `u64` suitable for this method:
+    ///
+    /// ```ignore
+    /// fn cache_key(props: &Self::Props, state: &Self::State) -> Option<u64> {
+    ///     Some(plushie::widget::hash_cache_key(&(&props.source, &state.theme)))
+    /// }
+    /// ```
+    fn cache_key(_props: &Self::Props, _state: &Self::State) -> Option<u64> {
+        None
+    }
+}
+
+/// Hash any `Hash` value into a `u64` suitable for [`Widget::cache_key`].
+///
+/// Uses [`std::collections::hash_map::DefaultHasher`], the same hasher
+/// the [`crate::ui::memo`] helper uses to compute its deps hash.
+pub fn hash_cache_key<T: std::hash::Hash + ?Sized>(value: &T) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +377,10 @@ pub(crate) trait DynWidgetExpander: Send {
     /// Human-readable name of the concrete `Widget` type. Used only
     /// for diagnostic messages on ID collisions.
     fn widget_type_name(&self) -> &'static str;
+    /// Ask the widget for its cache-key hash, if any. Returns `None`
+    /// when the widget has not opted into view caching; the runtime
+    /// then skips the cache entirely for this widget.
+    fn cache_key(&self, node: &View, state: &dyn Any) -> Option<u64>;
 }
 
 struct WidgetExpander<W: Widget>(std::marker::PhantomData<W>);
@@ -377,6 +419,14 @@ impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
 
     fn widget_type_name(&self) -> &'static str {
         std::any::type_name::<W>()
+    }
+
+    fn cache_key(&self, node: &View, state: &dyn Any) -> Option<u64> {
+        let state = state.downcast_ref::<W::State>().unwrap_or_else(|| {
+            widget_type_mismatch_panic::<W>(&node.id);
+        });
+        let props = W::Props::from_node(node);
+        W::cache_key(&props, state)
     }
 }
 
@@ -505,12 +555,49 @@ impl WidgetStateStore {
     /// `__widget__` node through iced produces a blank region; the
     /// fallback turns it into a visible "missing widget" container
     /// and emits a diagnostic so the app-level bug surfaces.
-    pub(crate) fn expand_in_place(&self, node: &mut View) {
+    /// Replace `node` in place with the expansion of its `__widget__`
+    /// placeholder, consulting and updating the optional view-level
+    /// cache. Iterates so widgets that return widgets keep unwinding
+    /// until we hit a concrete widget type.
+    ///
+    /// A widget that returns `None` from [`Widget::cache_key`] bypasses
+    /// the cache; widgets that return `Some(hash)` reuse their
+    /// previous expansion when the hash is unchanged, skipping
+    /// `view()` and any nested widget expansion within the cached
+    /// subtree. Passing `None` for the cache disables caching entirely
+    /// (used by tests and the no-cache transform constructor).
+    pub(crate) fn expand_in_place(
+        &self,
+        node: &mut View,
+        cache: Option<&mut crate::runtime::widget_view_cache::WidgetViewCache>,
+    ) {
+        // Fold into a local Option so the two call sites below share
+        // one body. The outer caller owns the borrow; we just forward
+        // lookups and writes through it.
+        let mut cache = cache;
         while node.type_name == "__widget__" {
             if let Some(expander) = self.expanders.get(&node.id) {
                 let (_type_id, state) = self.states.get(&node.id).expect("widget state missing");
-                let expanded = expander.expand(&node.id, node, state.as_ref());
-                *node = expanded;
+
+                if let Some(cache_ref) = cache.as_deref_mut()
+                    && let Some(key_hash) = expander.cache_key(node, state.as_ref())
+                {
+                    let widget_id = node.id.clone();
+                    cache_ref.mark_live(&widget_id);
+                    if let Some(cached_view) = cache_ref.get(&widget_id, key_hash) {
+                        *node = cached_view.clone();
+                        // The cached view's own type cannot be `__widget__`
+                        // (it is already expanded), so the loop exits
+                        // naturally on the next iteration.
+                        continue;
+                    }
+                    let expanded = expander.expand(&widget_id, node, state.as_ref());
+                    cache_ref.insert(widget_id, key_hash, expanded.clone());
+                    *node = expanded;
+                } else {
+                    let expanded = expander.expand(&node.id, node, state.as_ref());
+                    *node = expanded;
+                }
             } else {
                 Self::rewrite_unrecognized_placeholder(node);
                 break;
@@ -604,13 +691,22 @@ impl WidgetStateStore {
 ///
 /// Runs before normalization so widgets' expanded subtrees participate
 /// in scope-prefixing and a11y rewrites identically to authored nodes.
+///
+/// When a [`WidgetViewCache`][crate::runtime::widget_view_cache::WidgetViewCache]
+/// is supplied, widgets that opt in via [`Widget::cache_key`] reuse
+/// their previously-expanded subtree instead of re-running `view()`.
+/// Widgets without a cache key (the default) always re-expand.
 pub(crate) struct ExpandWidgetsTransform<'a> {
     store: &'a WidgetStateStore,
+    cache: Option<&'a mut crate::runtime::widget_view_cache::WidgetViewCache>,
 }
 
 impl<'a> ExpandWidgetsTransform<'a> {
-    pub(crate) fn new(store: &'a WidgetStateStore) -> Self {
-        Self { store }
+    pub(crate) fn with_cache(
+        store: &'a WidgetStateStore,
+        cache: Option<&'a mut crate::runtime::widget_view_cache::WidgetViewCache>,
+    ) -> Self {
+        Self { store, cache }
     }
 }
 
@@ -628,7 +724,7 @@ impl TreeTransform for ExpandWidgetsTransform<'_> {
         if self.store.expanders.is_empty() {
             return;
         }
-        self.store.expand_in_place(node);
+        self.store.expand_in_place(node, self.cache.as_deref_mut());
     }
 }
 

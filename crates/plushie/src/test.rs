@@ -90,6 +90,7 @@ pub struct TestSession<A: App> {
     tree: TreeNode,
     widget_store: WidgetStateStore,
     memo_cache: runtime::MemoCache,
+    widget_view_cache: runtime::WidgetViewCache,
     /// Completed async task results keyed by tag.
     async_results: HashMap<String, Result<Value, Value>>,
     /// Stubbed effect responses keyed by effect kind.
@@ -129,13 +130,19 @@ impl<A: App> TestSession<A> {
         let (model, init_cmd) = A::init();
         let mut widget_store = WidgetStateStore::new();
         let mut memo_cache = runtime::MemoCache::new();
-        let (tree, warnings) =
-            runtime::prepare_tree::<A>(&model, &mut widget_store, &mut memo_cache);
+        let mut widget_view_cache = runtime::WidgetViewCache::new();
+        let (tree, warnings) = runtime::prepare_tree::<A>(
+            &model,
+            &mut widget_store,
+            &mut memo_cache,
+            &mut widget_view_cache,
+        );
         let mut session = Self {
             model,
             tree,
             widget_store,
             memo_cache,
+            widget_view_cache,
             async_results: HashMap::new(),
             effect_stubs: HashMap::new(),
             diagnostics: warnings,
@@ -510,8 +517,12 @@ impl<A: App> TestSession<A> {
         self.run_pending_async();
 
         // Re-render and expand widgets.
-        let (tree, warnings) =
-            runtime::prepare_tree::<A>(&self.model, &mut self.widget_store, &mut self.memo_cache);
+        let (tree, warnings) = runtime::prepare_tree::<A>(
+            &self.model,
+            &mut self.widget_store,
+            &mut self.memo_cache,
+            &mut self.widget_view_cache,
+        );
         self.tree = tree;
         self.diagnostics.extend(warnings);
 
@@ -536,8 +547,12 @@ impl<A: App> TestSession<A> {
     /// `dispatch(AnimationFrame)` trick used by
     /// [`WidgetTestSession::start`] but names the intent.
     pub fn rerender(&mut self) {
-        let (tree, warnings) =
-            runtime::prepare_tree::<A>(&self.model, &mut self.widget_store, &mut self.memo_cache);
+        let (tree, warnings) = runtime::prepare_tree::<A>(
+            &self.model,
+            &mut self.widget_store,
+            &mut self.memo_cache,
+            &mut self.widget_view_cache,
+        );
         self.tree = tree;
         self.diagnostics.extend(warnings);
     }
@@ -715,6 +730,7 @@ impl<A: App> TestSession<A> {
         self.model = model;
         self.widget_store = WidgetStateStore::new();
         self.memo_cache = runtime::MemoCache::new();
+        self.widget_view_cache = runtime::WidgetViewCache::new();
         self.async_results.clear();
         self.effect_stubs.clear();
         self.sub_manager = SubscriptionManager::new();
@@ -722,8 +738,12 @@ impl<A: App> TestSession<A> {
         self.pending_async.clear();
         self.pending_streams.clear();
         self.issued_ops.clear();
-        let (tree, warnings) =
-            runtime::prepare_tree::<A>(&self.model, &mut self.widget_store, &mut self.memo_cache);
+        let (tree, warnings) = runtime::prepare_tree::<A>(
+            &self.model,
+            &mut self.widget_store,
+            &mut self.memo_cache,
+            &mut self.widget_view_cache,
+        );
         self.tree = tree;
         self.diagnostics = warnings;
         self.execute_command(init_cmd);

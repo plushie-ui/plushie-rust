@@ -16,10 +16,12 @@ pub mod subscriptions;
 pub mod tree_diff;
 #[cfg(any(feature = "direct", feature = "wire"))]
 pub mod view_errors;
+pub(crate) mod widget_view_cache;
 #[cfg(any(feature = "direct", feature = "wire"))]
 pub mod windows;
 
 pub(crate) use memo_cache::MemoCache;
+pub(crate) use widget_view_cache::WidgetViewCache;
 
 /// Maximum depth of a synchronous command dispatch chain.
 ///
@@ -52,6 +54,7 @@ pub fn prepare_tree<A: App>(
     model: &A::Model,
     widget_store: &mut WidgetStateStore,
     memo_cache: &mut MemoCache,
+    widget_view_cache: &mut WidgetViewCache,
 ) -> (TreeNode, Vec<plushie_core::Diagnostic>) {
     let mut registrar = crate::widget::WidgetRegistrar::new();
     // view() returning None is a valid "no UI" signal (loading,
@@ -64,14 +67,17 @@ pub fn prepare_tree<A: App>(
     register_expanders(widget_store, registrar);
 
     memo_cache.begin_cycle();
-    let mut expand = ExpandWidgetsTransform::new(widget_store);
-    let mut normalize_pass = normalize::NormalizeTransform::with_memo_cache(Some(memo_cache));
+    widget_view_cache.begin_cycle();
+    // Scope both transforms so their &mut borrows on the caches are
+    // released before we prune stale entries below.
     let mut ctx = WalkCtx::default();
-    walk(&mut tree, &mut [&mut expand, &mut normalize_pass], &mut ctx);
-    // Dropping `normalize_pass` releases the &mut borrow on the
-    // memo cache so we can prune it below.
-    drop(normalize_pass);
+    {
+        let mut expand = ExpandWidgetsTransform::with_cache(widget_store, Some(widget_view_cache));
+        let mut normalize_pass = normalize::NormalizeTransform::with_memo_cache(Some(memo_cache));
+        walk(&mut tree, &mut [&mut expand, &mut normalize_pass], &mut ctx);
+    }
     memo_cache.finish_cycle();
+    widget_view_cache.finish_cycle();
 
     // Post-expansion a11y rewrite + missing-name checks. These stay
     // in a separate traversal because they need the full set of

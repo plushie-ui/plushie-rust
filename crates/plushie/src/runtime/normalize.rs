@@ -526,6 +526,80 @@ fn rewrite_a11y_in_place(
     }
 }
 
+/// Widget types that accept `required` / `validation` props and project
+/// them onto the `a11y` sub-object. Mirrors Elixir, Python, Ruby,
+/// TypeScript, Gleam.
+const VALIDATABLE_WIDGETS: &[&str] = &[
+    "text_input",
+    "text_editor",
+    "checkbox",
+    "pick_list",
+    "combo_box",
+];
+
+/// Extract a `required` prop, guarded to validatable widget types.
+fn required_from_props(type_name: &str, props: &plushie_core::protocol::Props) -> Option<bool> {
+    if !VALIDATABLE_WIDGETS.contains(&type_name) {
+        return None;
+    }
+    props.get_value("required").and_then(|v| v.as_bool())
+}
+
+/// Parse a `validation` prop onto `(invalid, error_message)`. Guarded to
+/// validatable widget types.
+///
+/// Accepted shapes (mirrors the permissive matcher the other SDKs use):
+///
+/// - `"valid"`                                    -> `(Some(false), None)`
+/// - `"pending"`                                  -> `(None, None)`
+/// - `["invalid", message]`                       -> `(Some(true), Some(message))`
+/// - `{"state": "invalid", "message": m}`         -> `(Some(true), Some(m))`
+/// - `{"state": "valid"}`                         -> `(Some(false), None)`
+/// - `{"state": "pending"}`                       -> `(None, None)`
+fn invalid_from_props(
+    type_name: &str,
+    props: &plushie_core::protocol::Props,
+) -> (Option<bool>, Option<String>) {
+    if !VALIDATABLE_WIDGETS.contains(&type_name) {
+        return (None, None);
+    }
+    let Some(v) = props.get_value("validation") else {
+        return (None, None);
+    };
+
+    if let Some(s) = v.as_str() {
+        return match s {
+            "valid" => (Some(false), None),
+            "pending" => (None, None),
+            _ => (None, None),
+        };
+    }
+
+    if let Some(arr) = v.as_array()
+        && arr.len() == 2
+        && arr[0].as_str() == Some("invalid")
+    {
+        let msg = arr[1].as_str().map(str::to_string);
+        return (Some(true), msg);
+    }
+
+    if let Some(obj) = v.as_object() {
+        let state = obj.get("state").and_then(|s| s.as_str());
+        let message = obj
+            .get("message")
+            .and_then(|s| s.as_str())
+            .map(str::to_string);
+        return match state {
+            Some("valid") => (Some(false), None),
+            Some("pending") => (None, None),
+            Some("invalid") => (Some(true), message),
+            _ => (None, None),
+        };
+    }
+
+    (None, None)
+}
+
 /// Build a new Props for `node` with its a11y sub-object rewritten.
 ///
 /// Returns the input node's props unchanged if there is nothing to do.
@@ -556,6 +630,9 @@ fn apply_a11y_rewrites(
         None
     };
 
+    let required_prop = required_from_props(&node.type_name, &node.props);
+    let (invalid_prop, error_text) = invalid_from_props(&node.type_name, &node.props);
+
     let a11y_obj = node
         .props
         .get_value("a11y")
@@ -563,7 +640,13 @@ fn apply_a11y_rewrites(
 
     // If the existing a11y is absent AND we have nothing to inject,
     // leave props alone. This keeps untouched nodes bit-identical.
-    if a11y_obj.is_none() && inferred_role.is_none() && radio_ids.is_none() {
+    if a11y_obj.is_none()
+        && inferred_role.is_none()
+        && radio_ids.is_none()
+        && required_prop.is_none()
+        && invalid_prop.is_none()
+        && error_text.is_none()
+    {
         return node.props.clone();
     }
 
@@ -630,6 +713,27 @@ fn apply_a11y_rewrites(
     {
         let arr: Vec<serde_json::Value> = ids.into_iter().map(serde_json::Value::String).collect();
         obj.insert("radio_group".to_string(), serde_json::Value::Array(arr));
+    }
+
+    // Project `required: true` onto `a11y.required`. Explicit a11y
+    // override (from the author) wins. `false` is not projected: the
+    // absence of the key carries the same semantic weight as `false`.
+    if required_prop == Some(true) && !obj.contains_key("required") {
+        obj.insert("required".to_string(), serde_json::Value::Bool(true));
+    }
+
+    // Project `validation` onto `a11y.invalid` and `a11y.error_message`.
+    // Only `invalid` gets a boolean either way; `valid` -> `false` so
+    // assistive tech can announce "no error".
+    if let Some(inv) = invalid_prop
+        && !obj.contains_key("invalid")
+    {
+        obj.insert("invalid".to_string(), serde_json::Value::Bool(inv));
+    }
+    if let Some(msg) = error_text
+        && !obj.contains_key("error_message")
+    {
+        obj.insert("error_message".to_string(), serde_json::Value::String(msg));
     }
 
     // Reassemble props with the updated a11y object.
@@ -1425,6 +1529,187 @@ mod tests {
                 .any(|w| matches!(w, Diagnostic::MultipleTopLevelWindows { .. })),
             "expected multiple_top_level_windows diagnostic, got {warnings:?}"
         );
+    }
+
+    #[test]
+    fn required_prop_projects_to_a11y_required() {
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "email",
+                "text_input",
+                json!({"required": true}),
+            )],
+        );
+        let (result, warnings) = normalize(&tree);
+        assert!(warnings.is_empty(), "got {warnings:?}");
+        let email = &result.children[0];
+        let required = email
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("required").and_then(|r| r.as_bool()));
+        assert_eq!(required, Some(true));
+    }
+
+    #[test]
+    fn required_false_does_not_project() {
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "email",
+                "text_input",
+                json!({"required": false}),
+            )],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let email = &result.children[0];
+        let required = email
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("required").cloned());
+        assert!(required.is_none(), "required=false should not project");
+    }
+
+    #[test]
+    fn required_skipped_for_non_validatable_widgets() {
+        // Button is not a validatable widget. A `required: true` prop on
+        // it should not flow into a11y.required.
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "save",
+                "button",
+                json!({"label": "Save", "required": true}),
+            )],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let btn = &result.children[0];
+        let required = btn
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("required").cloned());
+        assert!(
+            required.is_none(),
+            "required should not project on non-validatable widgets"
+        );
+    }
+
+    #[test]
+    fn required_explicit_a11y_wins() {
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "email",
+                "text_input",
+                json!({"required": true, "a11y": {"required": false}}),
+            )],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let email = &result.children[0];
+        let required = email
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("required").and_then(|r| r.as_bool()));
+        assert_eq!(required, Some(false));
+    }
+
+    #[test]
+    fn validation_invalid_projects_to_a11y_invalid_and_error_message() {
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "email",
+                "text_input",
+                json!({
+                    "validation": {"state": "invalid", "message": "Must be an email"},
+                }),
+            )],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let email = &result.children[0];
+        let a11y = email
+            .props
+            .get_value("a11y")
+            .expect("a11y should be populated");
+        assert_eq!(a11y.get("invalid").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            a11y.get("error_message").and_then(|v| v.as_str()),
+            Some("Must be an email")
+        );
+    }
+
+    #[test]
+    fn validation_invalid_array_shape_accepted() {
+        // Shape `["invalid", msg]` is the wire form some SDKs emit.
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "email",
+                "text_input",
+                json!({"validation": ["invalid", "Required field"]}),
+            )],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let email = &result.children[0];
+        let a11y = email
+            .props
+            .get_value("a11y")
+            .expect("a11y should be populated");
+        assert_eq!(a11y.get("invalid").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            a11y.get("error_message").and_then(|v| v.as_str()),
+            Some("Required field")
+        );
+    }
+
+    #[test]
+    fn validation_valid_projects_false() {
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "email",
+                "text_input",
+                json!({"validation": "valid"}),
+            )],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let email = &result.children[0];
+        let invalid = email
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("invalid").and_then(|b| b.as_bool()));
+        assert_eq!(invalid, Some(false));
+    }
+
+    #[test]
+    fn validation_pending_does_not_project() {
+        let tree = node(
+            "form",
+            "container",
+            vec![node_with_props(
+                "email",
+                "text_input",
+                json!({"validation": "pending"}),
+            )],
+        );
+        let (result, _warnings) = normalize(&tree);
+        let email = &result.children[0];
+        let a11y = email.props.get_value("a11y");
+        // No invalid projection; role inference still runs so a11y
+        // exists with at least the role field.
+        if let Some(a11y) = a11y {
+            assert!(
+                a11y.get("invalid").is_none(),
+                "pending should not project invalid"
+            );
+        }
     }
 
     #[test]

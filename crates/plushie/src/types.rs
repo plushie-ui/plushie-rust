@@ -62,6 +62,7 @@ pub use plushie_core::types::{
     // Untyped props escape hatch
     UntypedProps,
     // Value
+    Validation,
     ValueRange,
     VerticalAlignment,
     // Text layout

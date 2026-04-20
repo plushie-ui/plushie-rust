@@ -69,7 +69,7 @@ pub use border::{Border, Radius};
 pub use color::Color;
 pub use font::{Font, FontStretch, FontStyle, FontWeight};
 pub use gradient::{Gradient, GradientStop};
-pub use input::{ErrorCorrection, FilterMethod, InputPurpose};
+pub use input::{ErrorCorrection, FilterMethod, InputPurpose, Validation};
 pub use interaction::CursorStyle;
 pub use layout::{Anchor, ArrowMode, ContentFit, Direction, Position, SortOrder};
 pub use length::Length;

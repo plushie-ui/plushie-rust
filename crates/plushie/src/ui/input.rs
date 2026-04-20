@@ -119,6 +119,17 @@ impl TextInputBuilder {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Mark this field as required. Flows into `a11y.required`.
+    pub fn required(mut self, required: bool) -> Self {
+        super::set_prop(&mut self.props, "required", required);
+        self
+    }
+    /// Set the form-validation state. Flows into `a11y.invalid` and
+    /// `a11y.error_message`.
+    pub fn validation(mut self, v: Validation) -> Self {
+        super::set_prop(&mut self.props, "validation", v.wire_encode());
+        self
+    }
     /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
@@ -256,6 +267,17 @@ impl TextEditorBuilder {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Mark this field as required. Flows into `a11y.required`.
+    pub fn required(mut self, required: bool) -> Self {
+        super::set_prop(&mut self.props, "required", required);
+        self
+    }
+    /// Set the form-validation state. Flows into `a11y.invalid` and
+    /// `a11y.error_message`.
+    pub fn validation(mut self, v: Validation) -> Self {
+        super::set_prop(&mut self.props, "validation", v.wire_encode());
+        self
+    }
     /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
@@ -357,6 +379,17 @@ impl CheckboxBuilder {
     /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+    /// Mark this checkbox as required. Flows into `a11y.required`.
+    pub fn required(mut self, required: bool) -> Self {
+        super::set_prop(&mut self.props, "required", required);
+        self
+    }
+    /// Set the form-validation state. Flows into `a11y.invalid` and
+    /// `a11y.error_message`.
+    pub fn validation(mut self, v: Validation) -> Self {
+        super::set_prop(&mut self.props, "validation", v.wire_encode());
         self
     }
     /// Attach accessibility metadata.
@@ -901,6 +934,17 @@ impl PickListBuilder {
         super::set_prop(&mut self.props, "event_rate", rate);
         self
     }
+    /// Mark this field as required. Flows into `a11y.required`.
+    pub fn required(mut self, required: bool) -> Self {
+        super::set_prop(&mut self.props, "required", required);
+        self
+    }
+    /// Set the form-validation state. Flows into `a11y.invalid` and
+    /// `a11y.error_message`.
+    pub fn validation(mut self, v: Validation) -> Self {
+        super::set_prop(&mut self.props, "validation", v.wire_encode());
+        self
+    }
     /// Attach accessibility metadata.
     pub fn a11y(mut self, a11y: &A11y) -> Self {
         super::set_prop(&mut self.props, "a11y", a11y.wire_encode());
@@ -1031,6 +1075,17 @@ impl ComboBoxBuilder {
     /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
+        self
+    }
+    /// Mark this combo box as required. Flows into `a11y.required`.
+    pub fn required(mut self, required: bool) -> Self {
+        super::set_prop(&mut self.props, "required", required);
+        self
+    }
+    /// Set the form-validation state. Flows into `a11y.invalid` and
+    /// `a11y.error_message`.
+    pub fn validation(mut self, v: Validation) -> Self {
+        super::set_prop(&mut self.props, "validation", v.wire_encode());
         self
     }
     /// Attach accessibility metadata.

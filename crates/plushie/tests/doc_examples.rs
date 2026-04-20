@@ -97,13 +97,13 @@ fn test_session_interactions_compile() {
 }
 
 // ---------------------------------------------------------------------------
-// Command builders: mirror the `Command::async_task` / `Command::stream`
+// Command builders: mirror the `Command::task` / `Command::stream`
 // snippets, plus the widget-command example.
 // ---------------------------------------------------------------------------
 
 #[test]
 fn async_task_builder_compiles() {
-    let _cmd = Command::async_task("fetch", || async {
+    let _cmd = Command::task("fetch", || async {
         let value: Result<Value, Value> = Ok(json!("data"));
         value
     });

@@ -236,7 +236,7 @@ impl App for FetchApp {
     fn update(model: &mut Self, event: Event) -> Command {
         if let Some(Click("fetch")) = event.widget_match() {
             model.status = FetchStatus::Loading;
-            return Command::async_task("fetch_result", || async {
+            return Command::task("fetch_result", || async {
                 // Pinned literal to keep the resulting tree
                 // deterministic across runs; the real async_fetch
                 // example uses a timestamp that can't be hashed.

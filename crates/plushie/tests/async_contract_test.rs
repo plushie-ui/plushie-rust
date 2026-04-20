@@ -1,7 +1,7 @@
 //! Async delivery-contract tests.
 //!
 //! Covers the three non-happy-path outcomes documented on
-//! [`Command::async_task`] and [`Command::cancel`]: an `Err` resolves
+//! [`Command::task`] and [`Command::cancel`]: an `Err` resolves
 //! to `AsyncEvent(Err(..))`, a cancel-before-completion delivers
 //! nothing, and a panicking future resolves to a typed `Err` carrying
 //! `{"error": "panic", ...}` without tearing down the harness.
@@ -53,18 +53,16 @@ impl App for AsyncApp {
         if let Some(Click("start")) = event.widget_match() {
             model.outcomes.started = true;
             return match model.mode {
-                AsyncMode::Ok => Command::async_task("job", || async { Ok(json!("done")) }),
-                AsyncMode::Err => Command::async_task("job", || async { Err(json!("boom")) }),
+                AsyncMode::Ok => Command::task("job", || async { Ok(json!("done")) }),
+                AsyncMode::Err => Command::task("job", || async { Err(json!("boom")) }),
                 AsyncMode::Panic => {
-                    Command::async_task("job", || async { panic!("simulated task panic") })
+                    Command::task("job", || async { panic!("simulated task panic") })
                 }
                 AsyncMode::CancelFirst => Command::batch([
-                    Command::async_task("job", || async { Ok(json!("should not arrive")) }),
+                    Command::task("job", || async { Ok(json!("should not arrive")) }),
                     Command::cancel("job"),
                 ]),
-                AsyncMode::StartOnly => {
-                    Command::async_task("job", || async { Ok(json!("pending")) })
-                }
+                AsyncMode::StartOnly => Command::task("job", || async { Ok(json!("pending")) }),
             };
         }
         if let Some(a) = event.as_async()

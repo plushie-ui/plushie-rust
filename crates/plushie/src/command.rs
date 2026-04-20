@@ -260,7 +260,7 @@ impl Command {
     /// [`AsyncEvent`](crate::event::AsyncEvent).
     ///
     /// ```ignore
-    /// Command::async_task("fetch", || async {
+    /// Command::task("fetch", || async {
     ///     let data = reqwest::get("https://api.example.com/data")
     ///         .await
     ///         .map_err(|e| serde_json::json!(e.to_string()))?
@@ -273,7 +273,7 @@ impl Command {
     ///
     /// # Delivery contract
     ///
-    /// For every `async_task` the MVU loop sees exactly one of:
+    /// For every `task` the MVU loop sees exactly one of:
     ///
     /// - `AsyncEvent(Ok(value))` when the future resolves successfully.
     /// - `AsyncEvent(Err(value))` when the future resolves to `Err`,
@@ -294,7 +294,7 @@ impl Command {
     /// into an error event with the shape
     /// `{"error": "panic", "message": ...}` rather than unwinding the
     /// runtime.
-    pub fn async_task<F, Fut>(tag: &str, f: F) -> Self
+    pub fn task<F, Fut>(tag: &str, f: F) -> Self
     where
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<Value, Value>> + Send + 'static,
@@ -320,7 +320,7 @@ impl Command {
     ///   cancellation is swallowed.
     /// - If no task with `tag` exists, the command is a no-op.
     ///
-    /// Tags are how `Command::async_task`, `Command::stream`, and
+    /// Tags are how `Command::task`, `Command::stream`, and
     /// `Command::cancel` rendezvous. Reusing a tag while an earlier
     /// task is still in flight replaces the earlier task (the
     /// runner cancels it on the author's behalf).
@@ -1217,30 +1217,5 @@ impl Command {
     /// ```
     pub fn widget_batch(cmds: impl IntoIterator<Item = plushie_core::ops::WidgetCommand>) -> Self {
         Self::Renderer(RendererOp::Commands(cmds.into_iter().collect()))
-    }
-
-    /// Apply a batch of typed commands to a single target widget.
-    ///
-    /// Convenience for the common case of pushing several commands of
-    /// the same family to the same target; every command is routed
-    /// through the same `WidgetCommand::new(id, cmd)` path as
-    /// [`Command::widget`] and the batch is delivered atomically.
-    /// Mirrors Elixir's `Plushie.Command.widget_commands/2`.
-    ///
-    /// ```ignore
-    /// Command::widget_commands("pane", vec![
-    ///     PaneCommand::SelectPane(1),
-    ///     PaneCommand::Focus,
-    /// ])
-    /// ```
-    pub fn widget_commands<C: plushie_core::WidgetCommandEncode>(
-        id: &str,
-        cmds: impl IntoIterator<Item = C>,
-    ) -> Self {
-        let wcs: Vec<plushie_core::ops::WidgetCommand> = cmds
-            .into_iter()
-            .map(|c| plushie_core::ops::WidgetCommand::new(id, c))
-            .collect();
-        Self::Renderer(RendererOp::Commands(wcs))
     }
 }

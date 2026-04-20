@@ -454,7 +454,7 @@ pub fn run_with_renderer<A: App>(binary_path: &str) -> Result {
 /// Run the app in wire mode on a caller-provided tokio runtime.
 ///
 /// Identical to [`run_with_renderer`] except SDK-local async tasks
-/// ([`Command::async_task`](crate::command::Command::async_task),
+/// ([`Command::task`](crate::command::Command::task),
 /// streams, delayed events, and effect-timeout deadlines) are
 /// spawned on the supplied [`tokio::runtime::Handle`] instead of
 /// a privately owned runtime. Use this when the host app already

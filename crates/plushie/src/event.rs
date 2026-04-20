@@ -267,7 +267,7 @@ pub enum Event {
     Window(WindowEvent),
     /// Timer tick from a `Subscription::every` subscription.
     Timer(TimerEvent),
-    /// Result from a `Command::async_task` future.
+    /// Result from a `Command::task` future.
     Async(AsyncEvent),
     /// Item emitted by a `Subscription::stream`.
     Stream(StreamEvent),
@@ -739,7 +739,7 @@ pub struct TimerEvent {
 // AsyncEvent
 // ---------------------------------------------------------------------------
 
-/// The result of an async task started with [`Command::async_task`](crate::Command).
+/// The result of an async task started with [`Command::task`](crate::Command).
 #[derive(Debug, Clone)]
 pub struct AsyncEvent {
     /// Task tag used to correlate the result with the originating command.

@@ -1,6 +1,6 @@
 //! Async command example: a button that triggers background work.
 //!
-//! Demonstrates `Command::async_task` for off-thread work, pattern
+//! Demonstrates `Command::task` for off-thread work, pattern
 //! matching on `AsyncEvent` for success/error, and loading state
 //! management.
 //!
@@ -47,7 +47,7 @@ impl App for FetchApp {
             // The runner will execute this task on a background
             // thread and deliver the result as an AsyncEvent
             // once async command support is complete.
-            return Command::async_task("fetch_result", || async {
+            return Command::task("fetch_result", || async {
                 // Simulate network delay.
                 std::thread::sleep(Duration::from_millis(500));
                 Ok(json!(format!(

@@ -107,7 +107,7 @@ pub struct TestSession<A: App> {
     /// Ops produced by the most recent subscription diff. Reset on
     /// every `advance_subscriptions` call.
     last_sub_ops: Vec<SubOp>,
-    /// Async tasks queued by [`Command::async_task`] and waiting to be
+    /// Async tasks queued by [`Command::task`] and waiting to be
     /// driven by the next [`run_pending_async`](Self::run_pending_async)
     /// cycle. Queuing rather than running-inline gives
     /// [`Command::cancel`] a window to drop a task before it

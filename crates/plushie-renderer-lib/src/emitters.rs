@@ -345,7 +345,11 @@ fn emit_panic_events(msg: &str, location: &str) {
         let error_event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
             "session_error",
             "",
-            Some(serde_json::json!({ "error": msg, "location": location })),
+            Some(serde_json::json!({
+                "code": "renderer_panic",
+                "error": msg,
+                "location": location,
+            })),
         );
         let _ = guard.emit_event(error_event);
 
@@ -503,6 +507,10 @@ mod tests {
         assert_eq!(ev[1].family, "session_closed");
 
         let err_value = ev[0].value.as_ref().expect("session_error carries a value");
+        assert_eq!(
+            err_value.get("code").and_then(|v| v.as_str()),
+            Some("renderer_panic"),
+        );
         assert_eq!(
             err_value.get("error").and_then(|v| v.as_str()),
             Some("boom")

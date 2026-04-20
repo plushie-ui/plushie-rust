@@ -119,6 +119,7 @@ than error text. Current codes:
 | `session_channel_closed` | Session thread exited unexpectedly |
 | `writer_dead` | Renderer's stdout writer thread exited; affects every active session |
 | `font_cap_exceeded` | Process-wide `load_font` cap reached; this session tried to load another font |
+| `renderer_panic` | Renderer process panicked (caught by the process-wide panic hook); `error` carries the panic payload and `location` carries `file:line:col` |
 
 ### Multiplex test-harness notes
 

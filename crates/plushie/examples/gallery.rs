@@ -53,76 +53,80 @@ impl App for Gallery {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
         let section = |label: &str| text(label).size(14.0).color(Color::hex("#888888"));
 
-        window("main")
-            .title("Widget Gallery")
-            .child(
-                scrollable().id("gallery").height(Fill).child(
-                    column()
-                        .padding(16)
-                        .spacing(16.0)
-                        .child(text("Widget Gallery").id("title").size(20.0))
-                        // Buttons
-                        .child(section("Buttons"))
-                        .child(row().spacing(8.0).children([
-                            button("btn-default", "Default"),
-                            button("btn-primary", "Primary").style(Style::primary()),
-                            button("btn-danger", "Danger").style(Style::danger()),
-                            button("btn-text", "Text").style(Style::text()),
-                        ]))
-                        // Text input
-                        .child(section("Text Input"))
-                        .child(text_input("input", &model.input_value).placeholder("Type here..."))
-                        .child(
-                            text_input("submit-input", &model.submit_value)
-                                .placeholder("Press Enter (on_submit)")
-                                .on_submit(true),
-                        )
-                        // Toggles
-                        .child(section("Toggles"))
-                        .child(
-                            row()
-                                .spacing(16.0)
-                                .child(checkbox("check", model.checked).label("I agree"))
-                                .child(toggler("toggler", model.toggled).label("Enable")),
-                        )
-                        // Slider
-                        .child(section("Slider"))
-                        .child(slider("slide", (0.0, 100.0), model.slider_value))
-                        .child(
-                            text(&format!("Value: {}", model.slider_value as i32))
-                                .id("slide-value")
-                                .size(12.0),
-                        )
-                        // Selection
-                        .child(section("Selection"))
-                        .child(pick_list(
-                            "pick",
-                            &["Apple", "Banana", "Cherry"],
-                            Some(&model.selected),
-                        ))
-                        .child(
-                            row()
-                                .spacing(8.0)
-                                .child(radio("radio-a", "A", Some(&model.radio)).label("A"))
-                                .child(radio("radio-b", "B", Some(&model.radio)).label("B"))
-                                .child(radio("radio-c", "C", Some(&model.radio)).label("C")),
-                        )
-                        // Display
-                        .child(section("Display"))
-                        .child(progress_bar((0.0, 100.0), 65.0).id("progress"))
-                        .child(rule())
-                        .child(
-                            text("Styled text")
-                                .id("styled")
-                                .size(18.0)
-                                .color(Color::hex("#3b82f6")),
-                        ),
-                ),
-            )
-            .into()
+        Some(
+            window("main")
+                .title("Widget Gallery")
+                .child(
+                    scrollable().id("gallery").height(Fill).child(
+                        column()
+                            .padding(16)
+                            .spacing(16.0)
+                            .child(text("Widget Gallery").id("title").size(20.0))
+                            // Buttons
+                            .child(section("Buttons"))
+                            .child(row().spacing(8.0).children([
+                                button("btn-default", "Default"),
+                                button("btn-primary", "Primary").style(Style::primary()),
+                                button("btn-danger", "Danger").style(Style::danger()),
+                                button("btn-text", "Text").style(Style::text()),
+                            ]))
+                            // Text input
+                            .child(section("Text Input"))
+                            .child(
+                                text_input("input", &model.input_value).placeholder("Type here..."),
+                            )
+                            .child(
+                                text_input("submit-input", &model.submit_value)
+                                    .placeholder("Press Enter (on_submit)")
+                                    .on_submit(true),
+                            )
+                            // Toggles
+                            .child(section("Toggles"))
+                            .child(
+                                row()
+                                    .spacing(16.0)
+                                    .child(checkbox("check", model.checked).label("I agree"))
+                                    .child(toggler("toggler", model.toggled).label("Enable")),
+                            )
+                            // Slider
+                            .child(section("Slider"))
+                            .child(slider("slide", (0.0, 100.0), model.slider_value))
+                            .child(
+                                text(&format!("Value: {}", model.slider_value as i32))
+                                    .id("slide-value")
+                                    .size(12.0),
+                            )
+                            // Selection
+                            .child(section("Selection"))
+                            .child(pick_list(
+                                "pick",
+                                &["Apple", "Banana", "Cherry"],
+                                Some(&model.selected),
+                            ))
+                            .child(
+                                row()
+                                    .spacing(8.0)
+                                    .child(radio("radio-a", "A", Some(&model.radio)).label("A"))
+                                    .child(radio("radio-b", "B", Some(&model.radio)).label("B"))
+                                    .child(radio("radio-c", "C", Some(&model.radio)).label("C")),
+                            )
+                            // Display
+                            .child(section("Display"))
+                            .child(progress_bar((0.0, 100.0), 65.0).id("progress"))
+                            .child(rule())
+                            .child(
+                                text("Styled text")
+                                    .id("styled")
+                                    .size(18.0)
+                                    .color(Color::hex("#3b82f6")),
+                            ),
+                    ),
+                )
+                .into(),
+        )
     }
 }
 

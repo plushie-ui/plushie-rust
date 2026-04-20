@@ -33,17 +33,19 @@ impl App for Counter {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .title("Counter")
-            .child(
-                column()
-                    .spacing(8.0)
-                    .padding(16)
-                    .child(text(&format!("{}", model.count)).id("display"))
-                    .child(button("inc", "+")),
-            )
-            .into()
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .title("Counter")
+                .child(
+                    column()
+                        .spacing(8.0)
+                        .padding(16)
+                        .child(text(&format!("{}", model.count)).id("display"))
+                        .child(button("inc", "+")),
+                )
+                .into(),
+        )
     }
 }
 
@@ -113,27 +115,29 @@ impl App for TodoApp {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .title("Todo")
-            .child(
-                column()
-                    .spacing(8.0)
-                    .padding(16)
-                    .child(text_input("new_todo", &model.input).placeholder("Add todo"))
-                    .child(
-                        column()
-                            .id("list")
-                            .spacing(4.0)
-                            .children(model.items.iter().map(|item| {
-                                row()
-                                    .id(&item.id)
-                                    .spacing(8.0)
-                                    .child(checkbox("done", item.done).label(&item.text))
-                            })),
-                    ),
-            )
-            .into()
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .title("Todo")
+                .child(
+                    column()
+                        .spacing(8.0)
+                        .padding(16)
+                        .child(text_input("new_todo", &model.input).placeholder("Add todo"))
+                        .child(
+                            column()
+                                .id("list")
+                                .spacing(4.0)
+                                .children(model.items.iter().map(|item| {
+                                    row()
+                                        .id(&item.id)
+                                        .spacing(8.0)
+                                        .child(checkbox("done", item.done).label(&item.text))
+                                })),
+                        ),
+                )
+                .into(),
+        )
     }
 }
 
@@ -181,17 +185,19 @@ impl App for Form {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(
-                column()
-                    .spacing(8.0)
-                    .child(text_input("name", &model.name).placeholder("Your name"))
-                    .child(checkbox("agree", model.agreed).label("I agree"))
-                    .child(slider("volume", (0.0, 100.0), model.volume as f32))
-                    .child(text(&format!("Name: {}", model.name)).id("name_display")),
-            )
-            .into()
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(
+                    column()
+                        .spacing(8.0)
+                        .child(text_input("name", &model.name).placeholder("Your name"))
+                        .child(checkbox("agree", model.agreed).label("I agree"))
+                        .child(slider("volume", (0.0, 100.0), model.volume as f32))
+                        .child(text(&format!("Name: {}", model.name)).id("name_display")),
+                )
+                .into(),
+        )
     }
 }
 
@@ -253,23 +259,25 @@ impl App for FetchApp {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(
-                column()
-                    .spacing(8.0)
-                    .child(button("fetch", "Fetch"))
-                    .child(
-                        text(match model.status {
-                            FetchStatus::Idle => "idle",
-                            FetchStatus::Loading => "loading",
-                            FetchStatus::Done => "done",
-                        })
-                        .id("status"),
-                    )
-                    .child(text(model.result.as_deref().unwrap_or("")).id("result")),
-            )
-            .into()
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(
+                    column()
+                        .spacing(8.0)
+                        .child(button("fetch", "Fetch"))
+                        .child(
+                            text(match model.status {
+                                FetchStatus::Idle => "idle",
+                                FetchStatus::Loading => "loading",
+                                FetchStatus::Done => "done",
+                            })
+                            .id("status"),
+                        )
+                        .child(text(model.result.as_deref().unwrap_or("")).id("result")),
+                )
+                .into(),
+        )
     }
 }
 

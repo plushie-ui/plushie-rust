@@ -34,33 +34,35 @@ impl App for A11yHarness {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(
-                column()
-                    // text_input with placeholder + explicit a11y.label.
-                    // Precedence: explicit label wins, inferred
-                    // description (from placeholder) is preserved.
-                    .child(
-                        text_input("search", "")
-                            .placeholder("Search...")
-                            .a11y(&A11y::new().label("Global search")),
-                    )
-                    // text_editor with placeholder only. Description
-                    // should come from inference.
-                    .child(text_editor("notes", "").placeholder("Write here..."))
-                    // image with both alt and explicit a11y.label.
-                    // Precedence pin: explicit label wins over alt.
-                    .child(
-                        image("logo.png")
-                            .id("photo")
-                            .alt("Auto alt")
-                            .a11y(&A11y::new().label("Explicit label")),
-                    )
-                    // image with alt only. Label should be inferred.
-                    .child(image("icon.png").id("icon").alt("Settings icon")),
-            )
-            .into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(
+                    column()
+                        // text_input with placeholder + explicit a11y.label.
+                        // Precedence: explicit label wins, inferred
+                        // description (from placeholder) is preserved.
+                        .child(
+                            text_input("search", "")
+                                .placeholder("Search...")
+                                .a11y(&A11y::new().label("Global search")),
+                        )
+                        // text_editor with placeholder only. Description
+                        // should come from inference.
+                        .child(text_editor("notes", "").placeholder("Write here..."))
+                        // image with both alt and explicit a11y.label.
+                        // Precedence pin: explicit label wins over alt.
+                        .child(
+                            image("logo.png")
+                                .id("photo")
+                                .alt("Auto alt")
+                                .a11y(&A11y::new().label("Explicit label")),
+                        )
+                        // image with alt only. Label should be inferred.
+                        .child(image("icon.png").id("icon").alt("Settings icon")),
+                )
+                .into(),
+        )
     }
 }
 
@@ -181,14 +183,16 @@ impl App for TabHarness {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(
-                column()
-                    .child(text_editor("notes", "").placeholder("Write here..."))
-                    .child(button("ok", "OK")),
-            )
-            .into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(
+                    column()
+                        .child(text_editor("notes", "").placeholder("Write here..."))
+                        .child(button("ok", "OK")),
+                )
+                .into(),
+        )
     }
 }
 

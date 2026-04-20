@@ -123,11 +123,13 @@ mod tests {
         fn update(_m: &mut Self::Model, _e: Event) -> Command {
             Command::none()
         }
-        fn view(_m: &Self::Model, _w: &mut WidgetRegistrar) -> crate::View {
-            window("main")
-                .title("Noop")
-                .child(column().child(text("hello")))
-                .into()
+        fn view(_m: &Self::Model, _w: &mut WidgetRegistrar) -> Option<crate::View> {
+            Some(
+                window("main")
+                    .title("Noop")
+                    .child(column().child(text("hello")))
+                    .into(),
+            )
         }
     }
 

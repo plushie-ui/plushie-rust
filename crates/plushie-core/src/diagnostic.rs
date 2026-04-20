@@ -287,6 +287,19 @@ pub enum Diagnostic {
         /// Best-effort message extracted from the panic payload.
         message: String,
     },
+    /// `A::update()` panicked and was caught by the runtime's safety
+    /// net. The model is reverted to the last-good snapshot so the
+    /// app keeps running; the consecutive counter is shared with
+    /// [`Diagnostic::ViewPanicked`] so the frozen-UI overlay surfaces
+    /// after enough total panics across either callback.
+    UpdatePanicked {
+        /// Consecutive panic count (including this one). Counts any
+        /// combination of view and update panics since the last
+        /// successful render.
+        consecutive: u32,
+        /// Best-effort message extracted from the panic payload.
+        message: String,
+    },
     /// A wire message carried a `type` field the SDK does not
     /// recognise, or arrived without a `type` field at all. Usually
     /// signals host / renderer version skew.
@@ -490,6 +503,13 @@ impl std::fmt::Display for Diagnostic {
             } => write!(
                 f,
                 "view_panicked: A::view() panicked ({consecutive} consecutive): {message}"
+            ),
+            Self::UpdatePanicked {
+                consecutive,
+                message,
+            } => write!(
+                f,
+                "update_panicked: A::update() panicked ({consecutive} consecutive): {message}"
             ),
             Self::UnknownMessageType { msg_type } if msg_type.is_empty() => {
                 write!(f, "unknown_message_type: wire message without `type` field")

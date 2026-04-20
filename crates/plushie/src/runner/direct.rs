@@ -25,7 +25,7 @@ use crate::App;
 use crate::command::Command;
 use crate::event::{EffectEvent, EffectResult, Event, WidgetEvent};
 use crate::runtime::subscriptions::{SubOp, SubscriptionManager};
-use crate::runtime::view_errors::{ViewErrors, ViewOutcome};
+use crate::runtime::view_errors::{UpdateOutcome, ViewErrors, ViewOutcome};
 use crate::widget::{EventResult as WidgetEventResult, Interception, WidgetStateStore};
 
 use super::effect_tracker::{self, EffectTracker};
@@ -324,7 +324,7 @@ impl<A: App> DirectApp<A> {
                         return None;
                     }
                 }
-                let cmd = A::update(&mut self.model, new_event);
+                let cmd = self.guarded_update(new_event);
                 Some(self.execute_command(cmd))
             }
             Some(Interception {
@@ -332,9 +332,24 @@ impl<A: App> DirectApp<A> {
                 ..
             })
             | None => {
-                let cmd = A::update(&mut self.model, event);
+                let cmd = self.guarded_update(event);
                 Some(self.execute_command(cmd))
             }
+        }
+    }
+
+    /// Run `A::update()` under `catch_unwind` so a panicking event
+    /// handler doesn't take the iced task thread down with it. Shares
+    /// the consecutive-error counter with view guarding so a steady
+    /// stream of update panics also surfaces the frozen-UI overlay.
+    fn guarded_update(&mut self, event: Event) -> Command {
+        match crate::runtime::view_errors::run_guarded_update::<A>(
+            &mut self.view_errors,
+            &mut self.model,
+            event,
+        ) {
+            UpdateOutcome::Ok(cmd) => cmd,
+            UpdateOutcome::Panicked { cmd, .. } => cmd,
         }
     }
 
@@ -384,7 +399,9 @@ impl<A: App> DirectApp<A> {
             });
             // Fire-and-forget: commands from Shutdown are discarded
             // since iced::exit is about to tear the loop down.
-            let _ = A::update(&mut self.model, event);
+            // Guarded so a panic in the final update doesn't crash
+            // the shutdown path; the panic is logged by the guard.
+            let _ = self.guarded_update(event);
         }
     }
 

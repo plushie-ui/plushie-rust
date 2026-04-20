@@ -44,30 +44,32 @@ impl App for Shortcuts {
         vec![Subscription::on_key_press()]
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
         let mut log_col = column().spacing(2.0).width(Fill);
         for (i, entry) in model.log.iter().enumerate() {
             log_col = log_col.child(text(entry).id(&format!("log_{i}")).size(13.0));
         }
 
-        window("main")
-            .title("Keyboard Shortcuts")
-            .child(
-                column()
-                    .padding(16)
-                    .spacing(12.0)
-                    .width(Fill)
-                    .child(text("Press any key").id("header").size(20.0))
-                    .child(
-                        text(&format!("{} key events captured", model.count))
-                            .id("count")
-                            .size(12.0)
-                            .color(Color::hex("#888888")),
-                    )
-                    .child(rule())
-                    .child(scrollable().id("log").height(Fill).child(log_col)),
-            )
-            .into()
+        Some(
+            window("main")
+                .title("Keyboard Shortcuts")
+                .child(
+                    column()
+                        .padding(16)
+                        .spacing(12.0)
+                        .width(Fill)
+                        .child(text("Press any key").id("header").size(20.0))
+                        .child(
+                            text(&format!("{} key events captured", model.count))
+                                .id("count")
+                                .size(12.0)
+                                .color(Color::hex("#888888")),
+                        )
+                        .child(rule())
+                        .child(scrollable().id("log").height(Fill).child(log_col)),
+                )
+                .into(),
+        )
     }
 }
 

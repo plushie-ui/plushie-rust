@@ -38,8 +38,8 @@ impl App for SubscribeApp {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").child(text("")).into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(window("main").child(text("")).into())
     }
 
     fn subscribe(model: &Self) -> Vec<Subscription> {

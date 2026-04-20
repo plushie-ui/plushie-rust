@@ -1,15 +1,23 @@
-//! Consecutive-view-error tracking and frozen-UI overlay injection.
+//! Consecutive-callback-error tracking and frozen-UI overlay injection.
 //!
-//! When `A::view()` panics repeatedly, the renderer keeps drawing
-//! the last-good tree. Without intervention the user sees a UI
-//! frozen at its last working state with no feedback about why.
+//! When `A::view()` or `A::update()` panics repeatedly, the
+//! renderer keeps drawing the last-good tree. Without intervention
+//! the user sees a UI frozen at its last working state with no
+//! feedback about why.
 //!
 //! This module mirrors the Elixir SDK's `Plushie.Runtime.ViewErrors`
-//! safety net: every panic in `A::view()` increments a counter;
-//! at [`VIEW_ERROR_THRESHOLD`] consecutive panics the runtime
-//! overlays a minimal error container onto the tree so the user
-//! knows the UI is stale. The counter resets and the overlay
-//! clears the next time `A::view()` returns normally.
+//! safety net: every panic in `A::view()` or `A::update()`
+//! increments a shared counter; at [`VIEW_ERROR_THRESHOLD`]
+//! consecutive panics the runtime overlays a minimal error container
+//! onto the tree so the user knows the UI is stale. The counter
+//! resets and the overlay clears the next time a view runs to
+//! completion.
+//!
+//! A panicking `update()` leaves `A::Model` in whatever state the
+//! handler reached before it unwound; Rust's `catch_unwind` does not
+//! roll back mutations made through `&mut`. The frozen-UI overlay is
+//! the app-visible signal that the next event should be treated as
+//! recovery, not continuation.
 //!
 //! This is a *production* safety net, not a dev-only banner. It
 //! runs in both debug and release builds; the dev rebuild banner
@@ -21,6 +29,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use plushie_core::protocol::{PropMap, PropValue, Props, TreeNode};
 
 use crate::App;
+use crate::command::Command;
+use crate::event::Event;
 #[cfg(feature = "direct")]
 use crate::runtime::prepare_tree;
 #[cfg(feature = "wire")]
@@ -28,9 +38,10 @@ use crate::widget::WidgetRegistrar;
 #[cfg(feature = "direct")]
 use crate::widget::WidgetStateStore;
 
-/// Number of consecutive `A::view()` panics before the frozen-UI
-/// overlay is injected. Matches the Elixir SDK's threshold; shared
-/// across SDKs via the protocol documentation.
+/// Number of consecutive `A::view()` or `A::update()` panics
+/// before the frozen-UI overlay is injected. Matches the Elixir
+/// SDK's threshold; shared across SDKs via the protocol
+/// documentation.
 pub const VIEW_ERROR_THRESHOLD: u32 = 5;
 
 /// Prop marker used to detect and clear the injected overlay
@@ -72,6 +83,29 @@ pub enum ViewOutcome {
     },
 }
 
+/// Outcome of a guarded `A::update()` call.
+pub enum UpdateOutcome {
+    /// Update returned normally.
+    Ok(Command),
+    /// Update panicked. Model may be partially mutated (Rust's
+    /// panic-unwind does not roll back mutations made via
+    /// `&mut`). The consecutive counter is incremented; callers
+    /// fall through to [`run_guarded_view`] / [`run_guarded_view_wire`]
+    /// which surfaces the frozen-UI overlay at
+    /// [`VIEW_ERROR_THRESHOLD`]. The returned [`Command`] is
+    /// [`Command::None`] so the caller can treat a panic exactly
+    /// like a successful update that produced no side effect.
+    Panicked {
+        cmd: Command,
+        /// Consecutive panic count after this failure.
+        #[allow(dead_code)]
+        consecutive: u32,
+        /// Best-effort panic message.
+        #[allow(dead_code)]
+        message: String,
+    },
+}
+
 /// Call `A::view()` under `catch_unwind` and update `state`.
 ///
 /// On success, resets the counter and clears any prior overlay
@@ -98,7 +132,7 @@ pub fn run_guarded_view<A: App>(
             ViewOutcome::Ok(tree, warnings)
         }
         Err(payload) => {
-            let message = panic_payload_message(&payload);
+            let message = panic_payload_message(&*payload);
             state.consecutive = state.consecutive.saturating_add(1);
             let diag = plushie_core::Diagnostic::ViewPanicked {
                 consecutive: state.consecutive,
@@ -135,7 +169,9 @@ pub fn run_guarded_view_wire<A: App>(
 ) -> ViewOutcome {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut registrar = WidgetRegistrar::new();
-        let view = A::view(model, &mut registrar);
+        // None from view() means "render an empty tree"; normalize
+        // the sentinel so wire-mode diff still sees a valid root.
+        let view = A::view(model, &mut registrar).unwrap_or_else(crate::runtime::empty_view);
         crate::runtime::normalize::normalize(&view)
     }));
     match result {
@@ -145,7 +181,7 @@ pub fn run_guarded_view_wire<A: App>(
             ViewOutcome::Ok(tree, warnings)
         }
         Err(payload) => {
-            let message = panic_payload_message(&payload);
+            let message = panic_payload_message(&*payload);
             state.consecutive = state.consecutive.saturating_add(1);
             let diag = plushie_core::Diagnostic::ViewPanicked {
                 consecutive: state.consecutive,
@@ -160,6 +196,50 @@ pub fn run_guarded_view_wire<A: App>(
             };
             ViewOutcome::Panicked {
                 last_good: tree,
+                consecutive: state.consecutive,
+                message,
+            }
+        }
+    }
+}
+
+/// Call `A::update()` under `catch_unwind` and update `state`.
+///
+/// On success, returns the [`Command`] the user produced. On panic,
+/// increments the same consecutive-error counter that
+/// [`run_guarded_view`] feeds so the frozen-UI overlay surfaces
+/// whether the failures came from view, update, or a mix. The
+/// returned `Command` is [`Command::None`] after a panic.
+///
+/// Note: Rust's `catch_unwind` does not roll back mutations made
+/// to `&mut` bindings before the panic. A partial mutation of
+/// `A::Model` is therefore observable in the next frame. The
+/// frozen-UI overlay at the threshold is the app-visible signal
+/// that recovery is needed; user code that mutates fields in
+/// place before validating should validate first or use a
+/// transactional wrapper.
+pub fn run_guarded_update<A: App>(
+    state: &mut ViewErrors,
+    model: &mut A::Model,
+    event: Event,
+) -> UpdateOutcome {
+    // AssertUnwindSafe: we do not guarantee model consistency after
+    // a panic (see module docs). Frozen-UI overlay is the recovery
+    // mechanism; a rolling clone would require `A::Model: Clone`
+    // which is a larger API constraint than the safety net is worth.
+    let result = catch_unwind(AssertUnwindSafe(|| A::update(model, event)));
+    match result {
+        Ok(cmd) => UpdateOutcome::Ok(cmd),
+        Err(payload) => {
+            let message = panic_payload_message(&*payload);
+            state.consecutive = state.consecutive.saturating_add(1);
+            let diag = plushie_core::Diagnostic::UpdatePanicked {
+                consecutive: state.consecutive,
+                message: message.clone(),
+            };
+            log::error!("{diag}");
+            UpdateOutcome::Panicked {
+                cmd: Command::None,
                 consecutive: state.consecutive,
                 message,
             }
@@ -320,5 +400,125 @@ mod tests {
         assert_eq!(result.type_name, "window");
         assert_eq!(result.children.len(), 1);
         assert_eq!(result.children[0].id, FROZEN_OVERLAY_ID);
+    }
+
+    // --- Update guard ------------------------------------------------------
+    //
+    // The update guard catches panics from `A::update()` so the iced
+    // task thread survives a bug in the user's handler. The tests below
+    // drive a tiny App impl whose update() panics on command and verify
+    // the outcome, counter behavior, and shared-counter fall-through to
+    // the frozen-UI overlay.
+
+    use crate::App;
+    use crate::command::Command;
+    use crate::event::{Event, WidgetEvent};
+    use crate::widget::WidgetRegistrar;
+
+    /// Test-only app: update() panics when the incoming event carries
+    /// ID "boom"; any other event is a no-op. view() returns an empty
+    /// container so normalize never fails.
+    struct BoomApp;
+
+    impl App for BoomApp {
+        type Model = Self;
+
+        fn init() -> (Self, Command) {
+            (BoomApp, Command::None)
+        }
+
+        fn update(_model: &mut Self::Model, event: Event) -> Command {
+            if let Event::Widget(WidgetEvent { scoped_id, .. }) = &event
+                && scoped_id.id == "boom"
+            {
+                panic!("update boom");
+            }
+            Command::None
+        }
+
+        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> Option<crate::View> {
+            // Bypass the SDK builders so this test file stays
+            // self-contained. A bare container is structurally valid.
+            Some(plushie_core::protocol::TreeNode {
+                id: String::new(),
+                type_name: "container".to_string(),
+                props: Props::from(PropMap::new()),
+                children: vec![],
+            })
+        }
+    }
+
+    fn boom_event() -> Event {
+        Event::Widget(WidgetEvent {
+            event_type: plushie_core::EventType::Click,
+            scoped_id: plushie_core::ScopedId::new("boom".to_string(), Vec::new(), None),
+            value: serde_json::Value::Null,
+        })
+    }
+
+    fn benign_event() -> Event {
+        Event::Widget(WidgetEvent {
+            event_type: plushie_core::EventType::Click,
+            scoped_id: plushie_core::ScopedId::new("ok".to_string(), Vec::new(), None),
+            value: serde_json::Value::Null,
+        })
+    }
+
+    #[test]
+    fn run_guarded_update_catches_panic() {
+        // A panic in update() must not propagate out; the helper
+        // returns a Panicked outcome with the panic message captured
+        // so callers can keep driving the event loop.
+        let mut state = ViewErrors::default();
+        let mut model = BoomApp;
+        match run_guarded_update::<BoomApp>(&mut state, &mut model, boom_event()) {
+            UpdateOutcome::Panicked { message, .. } => {
+                assert!(
+                    message.contains("update boom"),
+                    "expected panic message, got {message:?}"
+                );
+            }
+            UpdateOutcome::Ok(_) => panic!("expected panic to be caught"),
+        }
+        assert_eq!(state.consecutive, 1);
+    }
+
+    #[test]
+    fn run_guarded_update_passes_ok_through() {
+        // Non-panicking update() must flow through unchanged and must
+        // not touch the consecutive counter.
+        let mut state = ViewErrors {
+            consecutive: 7,
+            ..ViewErrors::default()
+        };
+        let mut model = BoomApp;
+        match run_guarded_update::<BoomApp>(&mut state, &mut model, benign_event()) {
+            UpdateOutcome::Ok(_) => {}
+            UpdateOutcome::Panicked { .. } => panic!("benign event should not panic"),
+        }
+        // The view guard is what resets the counter on success; update
+        // success is neutral. This keeps the semantics aligned with
+        // Elixir's ViewErrors.track_view_error / clear_view_errors:
+        // only a successful render clears the count.
+        assert_eq!(state.consecutive, 7);
+    }
+
+    #[test]
+    fn update_panics_share_counter_with_view() {
+        // Repeated update panics accumulate in the same counter the
+        // view guard reads, so the frozen-UI overlay surfaces after
+        // VIEW_ERROR_THRESHOLD total callback panics whether they
+        // came from view(), update(), or a mix.
+        let mut state = ViewErrors::default();
+        let mut model = BoomApp;
+        for _ in 0..VIEW_ERROR_THRESHOLD {
+            let _ = run_guarded_update::<BoomApp>(&mut state, &mut model, boom_event());
+        }
+        assert_eq!(state.consecutive, VIEW_ERROR_THRESHOLD);
+        assert!(
+            !state.overlay_active,
+            "update guard should not flip the overlay flag directly; \
+             the view guard owns overlay injection"
+        );
     }
 }

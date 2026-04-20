@@ -220,7 +220,7 @@ impl App for NestedApp {
         Command::None
     }
 
-    fn view(_model: &Self, widgets: &mut WidgetRegistrar) -> View {
+    fn view(_model: &Self, widgets: &mut WidgetRegistrar) -> Option<View> {
         // Register both widgets. Outer wraps Inner through a
         // manually-built `__widget__` placeholder inside its own
         // `view()`, so only one call to WidgetView::register is
@@ -234,9 +234,11 @@ impl App for NestedApp {
         // returned placeholder View; Outer's view already provides
         // a placeholder node at the same ID in the tree.
         let _ = _inner_register.register(widgets);
-        window("main")
-            .child(column().id("root").child(outer))
-            .into()
+        Some(
+            window("main")
+                .child(column().id("root").child(outer))
+                .into(),
+        )
     }
 }
 

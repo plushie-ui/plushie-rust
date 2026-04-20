@@ -90,14 +90,16 @@ impl App for Counter {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(
-                column()
-                    .child(text(&format!("{}", model.count)).id("display"))
-                    .child(button("inc", "+")),
-            )
-            .into()
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(
+                    column()
+                        .child(text(&format!("{}", model.count)).id("display"))
+                        .child(button("inc", "+")),
+                )
+                .into(),
+        )
     }
 
     fn handle_renderer_exit(model: &mut Self, reason: plushie::settings::ExitReason) {

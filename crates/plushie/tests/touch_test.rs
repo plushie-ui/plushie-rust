@@ -67,10 +67,12 @@ impl App for TouchApp {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(canvas("pad").width(Fill).height(Fill))
-            .into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(canvas("pad").width(Fill).height(Fill))
+                .into(),
+        )
     }
 }
 

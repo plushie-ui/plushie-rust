@@ -121,8 +121,8 @@ impl App for SwapApp {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").child(text("swap app").id("display")).into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(window("main").child(text("swap app").id("display")).into())
     }
 
     fn handle_renderer_exit(model: &mut Self, _reason: plushie::settings::ExitReason) {

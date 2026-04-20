@@ -77,8 +77,8 @@ impl App for AsyncApp {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").child(button("start", "Start")).into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(window("main").child(button("start", "Start")).into())
     }
 }
 

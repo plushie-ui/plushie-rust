@@ -38,15 +38,15 @@ impl App for Counter {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").title("Counter").child(
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(window("main").title("Counter").child(
             column().spacing(8.0).padding(16)
                 .child(text(&format!("Count: {}", model.count)).size(24.0))
                 .child(row().spacing(8.0).children([
                     button("inc", "+").style(Style::primary()),
                     button("dec", "-").style(Style::danger()),
                 ]))
-        ).into()
+        ).into())
     }
 }
 

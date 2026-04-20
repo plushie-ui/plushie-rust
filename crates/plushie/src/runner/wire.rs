@@ -467,7 +467,14 @@ fn run_wire_inner<A: App>(
                     tag,
                     result: EffectResult::RendererRestarted,
                 });
-                A::update(&mut model, event);
+                // Guarded so a panic in the app's restart-handling
+                // branch doesn't kill the main thread before the new
+                // renderer is fully wired up.
+                let _ = crate::runtime::view_errors::run_guarded_update::<A>(
+                    &mut view_errors,
+                    &mut model,
+                    event,
+                );
             }
         }
 
@@ -580,6 +587,10 @@ fn flush_effects_on_shutdown<A: App>(model: &mut A::Model, effect_tracker: &mut 
         return;
     }
     log::info!("wire shutdown: flushing {pending} in-flight effect(s) as Shutdown");
+    // Ephemeral error tracking: shutdown is terminal, so a fresh
+    // counter is fine. The guard still logs any panic instead of
+    // crashing the process during teardown.
+    let mut shutdown_errors = crate::runtime::view_errors::ViewErrors::default();
     for (tag, _kind) in effect_tracker.flush_all() {
         let event = Event::Effect(EffectEvent {
             tag,
@@ -587,7 +598,11 @@ fn flush_effects_on_shutdown<A: App>(model: &mut A::Model, effect_tracker: &mut 
         });
         // Fire-and-forget: commands returned from update() are
         // discarded on teardown since the wire is already closing.
-        let _ = A::update(model, event);
+        let _ = crate::runtime::view_errors::run_guarded_update::<A>(
+            &mut shutdown_errors,
+            model,
+            event,
+        );
     }
 }
 
@@ -771,7 +786,11 @@ fn process_event<A: App>(
             return Ok(());
         }
     }
-    let cmd = A::update(model, event);
+    let cmd = match crate::runtime::view_errors::run_guarded_update::<A>(view_errors, model, event)
+    {
+        crate::runtime::view_errors::UpdateOutcome::Ok(cmd) => cmd,
+        crate::runtime::view_errors::UpdateOutcome::Panicked { cmd, .. } => cmd,
+    };
     execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
 
     // Re-render and diff under panic guard.
@@ -1696,8 +1715,8 @@ mod build_settings_tests {
         fn update(_model: &mut Self::Model, _event: Event) -> crate::Command {
             crate::Command::none()
         }
-        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::View {
-            crate::ui::window("main").into()
+        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> Option<crate::View> {
+            Some(crate::ui::window("main").into())
         }
         fn subscribe(_model: &Self::Model) -> Vec<Subscription> {
             vec![]
@@ -1719,8 +1738,8 @@ mod build_settings_tests {
         fn update(_model: &mut Self::Model, _event: Event) -> crate::Command {
             crate::Command::none()
         }
-        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::View {
-            crate::ui::window("main").into()
+        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> Option<crate::View> {
+            Some(crate::ui::window("main").into())
         }
         fn subscribe(_model: &Self::Model) -> Vec<Subscription> {
             vec![]

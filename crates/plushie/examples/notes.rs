@@ -157,12 +157,12 @@ impl App for Notes {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        match model.route.current() {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(match model.route.current() {
             "/list" => view_list(model),
             "/edit" => view_edit(model),
             _ => view_list(model),
-        }
+        })
     }
 }
 

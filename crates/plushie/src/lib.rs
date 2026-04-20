@@ -27,8 +27,8 @@
 //!         Command::none()
 //!     }
 //!
-//!     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-//!         window("main").title("Counter").child(
+//!     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+//!         Some(window("main").title("Counter").child(
 //!             column().spacing(8).padding(16).children([
 //!                 text(&format!("Count: {}", model.count)),
 //!                 row().spacing(8).children([
@@ -36,7 +36,7 @@
 //!                     button("dec", "-"),
 //!                 ]),
 //!             ])
-//!         )
+//!         ).into())
 //!     }
 //! }
 //!
@@ -189,15 +189,25 @@ pub trait App: Send + 'static {
     /// every update. Return a tree built from UI builder functions
     /// (`window`, `column`, `button`, `text`, etc.).
     ///
+    /// Returning `Option<View>` is also accepted; `None` renders
+    /// an empty tree, useful for loading, transition, or error
+    /// screens where the app has nothing to display yet. The
+    /// runtime replaces the UI with an empty container and the
+    /// next `Some(...)` restores normal rendering.
+    ///
     /// Use `widgets` to register composite widgets:
     /// ```ignore
-    /// fn view(model: &Self, widgets: &mut WidgetRegistrar) -> View {
-    ///     window("main").child(
+    /// fn view(model: &Self, widgets: &mut WidgetRegistrar) -> Option<View> {
+    ///     Some(window("main").child(
     ///         WidgetView::<MyWidget>::new("w1").register(widgets)
-    ///     ).into()
+    ///     ).into())
     /// }
     /// ```
-    fn view(model: &Self::Model, widgets: &mut widget::WidgetRegistrar) -> View;
+    ///
+    /// Return `None` to render an empty tree (loading, transition,
+    /// or error states).
+    ///
+    fn view(model: &Self::Model, widgets: &mut widget::WidgetRegistrar) -> Option<View>;
 
     /// Active subscriptions. Called after every update. The runtime
     /// diffs the returned list and starts/stops subscriptions as

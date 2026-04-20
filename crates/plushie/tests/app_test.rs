@@ -31,21 +31,23 @@ impl App for Counter {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .title("Counter")
-            .child(
-                column()
-                    .spacing(8.0)
-                    .padding(16)
-                    .child(text(&format!("{}", model.count)).id("display"))
-                    .child(row().spacing(4.0).children([
-                        button("inc", "+"),
-                        button("dec", "-"),
-                        button("reset", "Reset"),
-                    ])),
-            )
-            .into()
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .title("Counter")
+                .child(
+                    column()
+                        .spacing(8.0)
+                        .padding(16)
+                        .child(text(&format!("{}", model.count)).id("display"))
+                        .child(row().spacing(4.0).children([
+                            button("inc", "+"),
+                            button("dec", "-"),
+                            button("reset", "Reset"),
+                        ])),
+                )
+                .into(),
+        )
     }
 }
 
@@ -143,18 +145,20 @@ impl App for Form {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(
-                column()
-                    .spacing(8.0)
-                    .child(text_input("name", &model.name).placeholder("Your name"))
-                    .child(checkbox("agree", model.agreed).label("I agree"))
-                    .child(slider("volume", (0.0, 100.0), model.volume as f32))
-                    .child(text(&format!("Name: {}", model.name)).id("name_display"))
-                    .child(text(&format!("Agreed: {}", model.agreed)).id("agreed_display")),
-            )
-            .into()
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(
+                    column()
+                        .spacing(8.0)
+                        .child(text_input("name", &model.name).placeholder("Your name"))
+                        .child(checkbox("agree", model.agreed).label("I agree"))
+                        .child(slider("volume", (0.0, 100.0), model.volume as f32))
+                        .child(text(&format!("Name: {}", model.name)).id("name_display"))
+                        .child(text(&format!("Agreed: {}", model.agreed)).id("agreed_display")),
+                )
+                .into(),
+        )
     }
 }
 
@@ -281,28 +285,30 @@ impl App for TodoApp {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .title("Todos")
-            .child(
-                column()
-                    .spacing(8.0)
-                    .padding(16)
-                    .child(text_input("new_todo", &model.input).placeholder("Add todo..."))
-                    .child(
-                        column()
-                            .id("list")
-                            .spacing(4.0)
-                            .children(model.items.iter().map(|item| {
-                                row()
-                                    .id(&item.id)
-                                    .spacing(8.0)
-                                    .child(checkbox("done", item.done).label(&item.text))
-                                    .child(button("delete", "X"))
-                            })),
-                    ),
-            )
-            .into()
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .title("Todos")
+                .child(
+                    column()
+                        .spacing(8.0)
+                        .padding(16)
+                        .child(text_input("new_todo", &model.input).placeholder("Add todo..."))
+                        .child(
+                            column()
+                                .id("list")
+                                .spacing(4.0)
+                                .children(model.items.iter().map(|item| {
+                                    row()
+                                        .id(&item.id)
+                                        .spacing(8.0)
+                                        .child(checkbox("done", item.done).label(&item.text))
+                                        .child(button("delete", "X"))
+                                })),
+                        ),
+                )
+                .into(),
+        )
     }
 }
 
@@ -361,14 +367,16 @@ impl App for CommandApp {
         }
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(
-                column()
-                    .child(button("focus_email", "Focus Email"))
-                    .child(button("quit", "Quit")),
-            )
-            .into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(
+                    column()
+                        .child(button("focus_email", "Focus Email"))
+                        .child(button("quit", "Quit")),
+                )
+                .into(),
+        )
     }
 }
 
@@ -423,15 +431,17 @@ impl App for MixedEventApp {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main")
-            .child(
-                column()
-                    .child(button("btn", "Click"))
-                    .child(text_input("inp", ""))
-                    .child(pick_list("sel", &["A", "B", "C"], None)),
-            )
-            .into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(
+            window("main")
+                .child(
+                    column()
+                        .child(button("btn", "Click"))
+                        .child(text_input("inp", ""))
+                        .child(pick_list("sel", &["A", "B", "C"], None)),
+                )
+                .into(),
+        )
     }
 }
 
@@ -525,8 +535,8 @@ impl App for Importer {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> View {
-        window("main").child(text("importer")).into()
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(window("main").child(text("importer")).into())
     }
 }
 

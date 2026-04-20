@@ -21,6 +21,18 @@ pub mod windows;
 
 pub(crate) use memo_cache::MemoCache;
 
+/// Maximum depth of a synchronous command dispatch chain.
+///
+/// `Command::dispatch` and `Command::SendAfter(Duration::ZERO)` let an
+/// `update` callback kick another event into the MVU loop. That is
+/// convenient for chaining derived state transitions but creates a risk
+/// of unbounded recursion when one update keeps producing another
+/// dispatch. The runtime tracks the chain length and drops a command
+/// once it reaches this cap, emitting
+/// [`plushie_core::Diagnostic::DispatchLoopExceeded`] so the loop is
+/// visible instead of stalling silently.
+pub const DISPATCH_DEPTH_LIMIT: usize = 100;
+
 /// Build, expand, and normalize a view tree from the current model.
 ///
 /// Pipeline: `App::view()` produces the placeholder tree, then a

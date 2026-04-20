@@ -553,12 +553,31 @@ impl<A: App> TestSession<A> {
     /// pass. This lets a subsequent `Command::Cancel` for the same tag
     /// drop the task before it runs. Effects with stubs get immediate
     /// responses. Other commands are logged and ignored.
+    ///
+    /// Recursive chains driven by [`Command::dispatch`] / [`Command::SendAfter`]
+    /// and effect-stub responses are capped at
+    /// [`runtime::DISPATCH_DEPTH_LIMIT`]; exceeding the cap emits a
+    /// [`plushie_core::Diagnostic::DispatchLoopExceeded`] and drops the
+    /// offending command so the test session keeps running.
     fn execute_command(&mut self, cmd: Command) {
+        self.execute_command_at_depth(cmd, 0);
+    }
+
+    fn execute_command_at_depth(&mut self, cmd: Command, depth: usize) {
+        if depth >= runtime::DISPATCH_DEPTH_LIMIT {
+            let diag = plushie_core::Diagnostic::DispatchLoopExceeded {
+                depth: depth + 1,
+                limit: runtime::DISPATCH_DEPTH_LIMIT,
+            };
+            log::error!("{diag}");
+            self.diagnostics.push(diag);
+            return;
+        }
         match cmd {
             Command::None | Command::Exit => {}
             Command::Batch(cmds) => {
                 for c in cmds {
-                    self.execute_command(c);
+                    self.execute_command_at_depth(c, depth);
                 }
             }
             Command::Async { tag, task } => {
@@ -571,9 +590,11 @@ impl<A: App> TestSession<A> {
                 self.pending_streams.push((tag, task));
             }
             Command::SendAfter { event, .. } => {
-                // In tests, deliver immediately (ignore delay).
+                // In tests, deliver immediately (ignore delay). The
+                // synchronous chain bumps `depth` so a pathological
+                // update returning another dispatch trips the guard.
                 let cmd = A::update(&mut self.model, *event);
-                self.execute_command(cmd);
+                self.execute_command_at_depth(cmd, depth + 1);
             }
             Command::Cancel { tag } => {
                 // Drop any pending async/stream task registered for
@@ -596,7 +617,7 @@ impl<A: App> TestSession<A> {
                             result,
                         });
                         let cmd = A::update(&mut self.model, event);
-                        self.execute_command(cmd);
+                        self.execute_command_at_depth(cmd, depth + 1);
                         return;
                     }
                 }

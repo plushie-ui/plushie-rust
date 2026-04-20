@@ -94,6 +94,11 @@ pub mod runtime_internals {
     pub use crate::runtime::subscriptions::{SubOp, SubscriptionManager};
     pub use crate::runtime::tree_diff::{PatchOp, apply_patch, diff_tree};
 }
+
+/// Runtime tuning constants exposed to tests and advanced callers.
+pub mod runtime_config {
+    pub use crate::runtime::DISPATCH_DEPTH_LIMIT;
+}
 pub mod selection;
 pub mod settings;
 pub mod state;

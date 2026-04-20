@@ -549,3 +549,71 @@ fn stream_delivers_intermediate_emits_and_final_result() {
     );
     assert!(session.model().done);
 }
+
+// ---------------------------------------------------------------------------
+// Dispatch depth guard
+// ---------------------------------------------------------------------------
+//
+// An update that keeps returning `Command::dispatch(event)` would loop
+// forever without a guard. The runtime caps the synchronous chain so
+// the test session emits a `DispatchLoopExceeded` diagnostic and drops
+// the offending command rather than overflowing the call stack.
+
+struct LoopApp {
+    ticks: u32,
+}
+
+impl App for LoopApp {
+    type Model = Self;
+
+    fn init() -> (Self, Command) {
+        (LoopApp { ticks: 0 }, Command::none())
+    }
+
+    fn update(model: &mut Self, event: Event) -> Command {
+        if let Event::Timer(t) = &event
+            && t.tag == "tick"
+        {
+            model.ticks += 1;
+            // Re-dispatch unconditionally; the runtime guard is what
+            // stops the chain.
+            return Command::dispatch(Event::Timer(plushie::event::TimerEvent {
+                tag: "tick".into(),
+                timestamp: 0,
+            }));
+        }
+        Command::none()
+    }
+
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+        Some(window("main").child(text("loop")).into())
+    }
+}
+
+#[test]
+fn dispatch_depth_limit_stops_pathological_update_loop() {
+    let mut session = TestSession::<LoopApp>::start().allow_diagnostics();
+    session.dispatch(Event::Timer(plushie::event::TimerEvent {
+        tag: "tick".into(),
+        timestamp: 0,
+    }));
+
+    // The first tick runs, then the SendAfter chain re-entering
+    // `update` gets clamped by the dispatch depth guard. The app must
+    // see one update call per chain step up to (but not past) the cap.
+    let ticks = session.model().ticks;
+    assert!(ticks > 0, "expected at least one tick");
+    assert!(
+        ticks <= plushie::runtime_config::DISPATCH_DEPTH_LIMIT as u32 + 1,
+        "update ran {ticks} times; expected at most {}",
+        plushie::runtime_config::DISPATCH_DEPTH_LIMIT as u32 + 1
+    );
+
+    let diags = session.typed_diagnostics();
+    assert!(
+        diags
+            .iter()
+            .any(|d| matches!(d, plushie_core::Diagnostic::DispatchLoopExceeded { .. })),
+        "expected DispatchLoopExceeded diagnostic; got {diags:?}"
+    );
+}

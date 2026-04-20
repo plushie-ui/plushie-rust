@@ -602,28 +602,45 @@ impl Drop for Bridge {
 /// unaffected by buffering but still benefits from a shared handle.
 #[cfg(feature = "wire")]
 fn read_one<R: Read>(reader: &mut BufReader<R>, codec: Codec) -> io::Result<Value> {
+    /// Per-message size cap shared by JSON and msgpack framing in
+    /// this bridge. Matches the widget-sdk's `MAX_MESSAGE_SIZE`.
+    const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
     match codec {
         Codec::Json => {
             let mut line = String::new();
-            reader.read_line(&mut line)?;
-            if line.is_empty() {
+            // Bound the in-memory buffer so a renderer emitting an
+            // unterminated line can't grow the host process without
+            // limit. +1 so an exactly-sized line is readable; any byte
+            // past the cap trips the overflow path below.
+            let limit = (MAX_MESSAGE_SIZE + 1) as u64;
+            let n = reader.take(limit).read_line(&mut line)?;
+            if n == 0 && line.is_empty() {
                 return Err(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
                     "renderer closed",
                 ));
             }
+            if line.len() > MAX_MESSAGE_SIZE {
+                let diag = plushie_core::Diagnostic::BufferOverflow {
+                    size: line.len(),
+                    limit: MAX_MESSAGE_SIZE,
+                };
+                plushie_core::diagnostics::error(diag.clone());
+                return Err(io::Error::new(io::ErrorKind::InvalidData, diag.to_string()));
+            }
             serde_json::from_str(&line).map_err(io::Error::other)
         }
         Codec::MsgPack => {
-            const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024; // 64 MB
             let mut len_buf = [0u8; 4];
             reader.read_exact(&mut len_buf)?;
             let len = u32::from_be_bytes(len_buf) as usize;
             if len > MAX_MESSAGE_SIZE {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("message size {len} exceeds {MAX_MESSAGE_SIZE} byte limit"),
-                ));
+                let diag = plushie_core::Diagnostic::BufferOverflow {
+                    size: len,
+                    limit: MAX_MESSAGE_SIZE,
+                };
+                plushie_core::diagnostics::error(diag.clone());
+                return Err(io::Error::new(io::ErrorKind::InvalidData, diag.to_string()));
             }
             let mut buf = vec![0u8; len];
             reader.read_exact(&mut buf)?;
@@ -692,6 +709,43 @@ mod tests {
         let second = read_one(&mut reader, Codec::Json).expect("second decode");
         assert_eq!(first.get("n").and_then(|v| v.as_u64()), Some(1));
         assert_eq!(second.get("n").and_then(|v| v.as_u64()), Some(2));
+    }
+
+    /// Msgpack frame with a length prefix past the 64 MiB cap is
+    /// rejected with a typed `BufferOverflow` diagnostic payload.
+    #[test]
+    fn read_one_msgpack_rejects_oversized_length_prefix() {
+        // Declare a frame size one byte past the cap. Don't actually
+        // send that many bytes; the reader bails out on the length
+        // check before touching the payload.
+        let oversize = (64 * 1024 * 1024 + 1) as u32;
+        let bytes = oversize.to_be_bytes().to_vec();
+        let mut reader = BufReader::new(Cursor::new(bytes));
+        let err = read_one(&mut reader, Codec::MsgPack).expect_err("expected overflow error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("buffer_overflow"),
+            "unexpected error text: {msg}"
+        );
+    }
+
+    /// JSON framing rejects a line past the 64 MiB cap with a typed
+    /// `BufferOverflow` diagnostic payload rather than silently
+    /// growing the host's memory.
+    #[test]
+    fn read_one_json_rejects_oversized_line() {
+        // 70 MiB of `x` plus a closing newline. `Read::take` bounds
+        // the allocation to MAX+1 so `read_line` returns that and the
+        // overflow guard fires deterministically.
+        let payload: Vec<u8> = std::iter::repeat_n(b'x', 70 * 1024 * 1024).collect();
+        let mut bytes = payload;
+        bytes.push(b'\n');
+        let mut reader = BufReader::new(Cursor::new(bytes));
+        let err = read_one(&mut reader, Codec::Json).expect_err("expected overflow error");
+        assert!(
+            err.to_string().contains("buffer_overflow"),
+            "unexpected error text: {err}"
+        );
     }
 
     /// MsgPack framing uses `read_exact` on a 4-byte length prefix

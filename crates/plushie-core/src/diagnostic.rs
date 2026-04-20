@@ -308,6 +308,27 @@ pub enum Diagnostic {
         /// when the message had no `type` field.
         msg_type: String,
     },
+    /// The runtime's command dispatch chain exceeded the configured
+    /// depth limit, indicating an `update` loop that keeps returning a
+    /// command whose delivered event produces another command. The
+    /// offending command is dropped; the app keeps running so a
+    /// recoverable state is still reachable.
+    DispatchLoopExceeded {
+        /// Depth counter that tripped the guard (one past the limit).
+        depth: usize,
+        /// Configured depth cap.
+        limit: usize,
+    },
+    /// A single wire message exceeded the protocol's 64 MiB per-message
+    /// size cap. The frame is rejected and the transport is closed;
+    /// hosts surface the error to the app through their typed-error
+    /// channel so retry vs abort is a caller decision.
+    BufferOverflow {
+        /// Size of the offending frame in bytes.
+        size: usize,
+        /// Configured cap in bytes.
+        limit: usize,
+    },
 }
 
 impl Diagnostic {
@@ -518,6 +539,15 @@ impl std::fmt::Display for Diagnostic {
                 f,
                 "unknown_message_type: unrecognised renderer message type `{msg_type}`; \
                  likely a host or renderer version skew"
+            ),
+            Self::DispatchLoopExceeded { depth, limit } => write!(
+                f,
+                "dispatch_loop_exceeded: command chain reached depth {depth} \
+                 (limit {limit}); dropping command to break the loop"
+            ),
+            Self::BufferOverflow { size, limit } => write!(
+                f,
+                "buffer_overflow: wire frame of {size} bytes exceeds {limit} byte limit"
             ),
         }
     }

@@ -88,6 +88,17 @@ pub enum Error {
         /// Human-readable hint describing the search order and remediation.
         hint: String,
     },
+
+    /// A wire frame exceeded the 64 MiB per-message cap. Emitted as a
+    /// typed error so callers can distinguish a protocol-violation
+    /// frame from a generic decode failure without string parsing.
+    #[error("wire frame of {size} bytes exceeds {limit} byte limit")]
+    BufferOverflow {
+        /// Size of the offending frame in bytes.
+        size: usize,
+        /// Configured cap in bytes.
+        limit: usize,
+    },
 }
 
 impl Error {

@@ -209,6 +209,28 @@ impl std::fmt::Debug for Command {
 }
 
 // ---------------------------------------------------------------------------
+// Builder helpers
+// ---------------------------------------------------------------------------
+
+/// Panic if a raw RGBA pixel buffer does not match `width * height * 4`.
+///
+/// Mirrors the pixel-buffer precondition enforced by the other host
+/// SDKs (Python's `ValueError`, Ruby's `ArgumentError`). The renderer
+/// would otherwise interpret out-of-range bytes as image content,
+/// producing garbled output with no clear error origin.
+fn assert_pixel_buffer_size(handle: &str, width: u32, height: u32, actual: usize) {
+    let expected = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|n| n.checked_mul(4))
+        .unwrap_or(usize::MAX);
+    assert!(
+        actual == expected,
+        "create_image_rgba / update_image_rgba: pixel buffer for {handle:?} has {actual} bytes, \
+         expected {expected} (width={width} height={height} channels=4)",
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Builder methods
 // ---------------------------------------------------------------------------
 
@@ -787,7 +809,15 @@ impl Command {
     }
 
     /// Create an image from raw RGBA pixel data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `pixels.len()` is not exactly `width * height * 4`.
+    /// RGBA requires four bytes per pixel; a buffer of any other size
+    /// is always a programmer error and would corrupt the renderer's
+    /// image registry.
     pub fn create_image_rgba(handle: &str, width: u32, height: u32, pixels: Vec<u8>) -> Self {
+        assert_pixel_buffer_size(handle, width, height, pixels.len());
         Self::Renderer(RendererOp::Image(ImageOp::CreateRaw {
             handle: handle.to_string(),
             width,
@@ -805,7 +835,15 @@ impl Command {
     }
 
     /// Replace an existing image with new raw RGBA pixel data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `pixels.len()` is not exactly `width * height * 4`.
+    /// RGBA requires four bytes per pixel; a buffer of any other size
+    /// is always a programmer error and would corrupt the renderer's
+    /// image registry.
     pub fn update_image_rgba(handle: &str, width: u32, height: u32, pixels: Vec<u8>) -> Self {
+        assert_pixel_buffer_size(handle, width, height, pixels.len());
         Self::Renderer(RendererOp::Image(ImageOp::UpdateRaw {
             handle: handle.to_string(),
             width,

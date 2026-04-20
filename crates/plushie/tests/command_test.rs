@@ -484,6 +484,29 @@ fn command_clear_images() {
     ));
 }
 
+#[test]
+fn command_create_image_rgba_accepts_matching_buffer() {
+    // 2x2 RGBA = 2 * 2 * 4 = 16 bytes.
+    let cmd = Command::create_image_rgba("pixels", 2, 2, vec![0; 16]);
+    assert!(matches!(
+        cmd,
+        Command::Renderer(RendererOp::Image(ImageOp::CreateRaw { .. }))
+    ));
+}
+
+#[test]
+#[should_panic(expected = "expected 16")]
+fn command_create_image_rgba_rejects_mismatched_buffer() {
+    // 2x2 RGBA wants 16 bytes; 10 is a programmer error.
+    let _ = Command::create_image_rgba("pixels", 2, 2, vec![0; 10]);
+}
+
+#[test]
+#[should_panic(expected = "expected 16")]
+fn command_update_image_rgba_rejects_mismatched_buffer() {
+    let _ = Command::update_image_rgba("pixels", 2, 2, vec![0; 10]);
+}
+
 // ---------------------------------------------------------------------------
 // Pane grid
 // ---------------------------------------------------------------------------

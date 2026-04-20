@@ -23,6 +23,9 @@ pub struct PointerPress {
     pub finger: Option<u64>,
     /// Active modifier keys.
     pub modifiers: KeyModifiers,
+    /// Whether the event was consumed by a widget before reaching the
+    /// global subscription layer.
+    pub captured: bool,
 }
 
 /// Data from a pointer release event (mouse button up, touch end).
@@ -40,6 +43,12 @@ pub struct PointerRelease {
     pub finger: Option<u64>,
     /// Active modifier keys.
     pub modifiers: KeyModifiers,
+    /// Whether the event was consumed by a widget before reaching the
+    /// global subscription layer.
+    pub captured: bool,
+    /// Whether a touch release happened outside the widget's bounds
+    /// (touch `lost` event). Absent for mouse / pen releases.
+    pub lost: Option<bool>,
 }
 
 /// Data from a pointer move event.
@@ -55,6 +64,9 @@ pub struct PointerMove {
     pub finger: Option<u64>,
     /// Active modifier keys.
     pub modifiers: KeyModifiers,
+    /// Whether the event was consumed by a widget before reaching the
+    /// global subscription layer.
+    pub captured: bool,
 }
 
 /// Data from a raw scroll input event (mouse wheel, trackpad).
@@ -75,6 +87,25 @@ pub struct PointerScroll {
     pub pointer: PointerKind,
     /// Active modifier keys.
     pub modifiers: KeyModifiers,
+    /// Whether the event was consumed by a widget before reaching the
+    /// global subscription layer.
+    pub captured: bool,
+}
+
+/// Data from a pointer enter / exit event.
+///
+/// Coordinates are populated when the event originates from a canvas
+/// element (where they carry meaning) and `None` for widget-level
+/// enter / exit (where they don't).
+#[derive(Debug, Clone, Default)]
+pub struct PointerBoundary {
+    /// X coordinate (canvas sources only).
+    pub x: Option<f32>,
+    /// Y coordinate (canvas sources only).
+    pub y: Option<f32>,
+    /// Whether the event was consumed by a widget before reaching the
+    /// global subscription layer.
+    pub captured: bool,
 }
 
 /// Data from a drag event.
@@ -88,6 +119,9 @@ pub struct PointerDrag {
     pub pointer: PointerKind,
     /// Active modifier keys.
     pub modifiers: KeyModifiers,
+    /// Whether the event was consumed by a widget before reaching the
+    /// global subscription layer.
+    pub captured: bool,
 }
 
 /// Viewport state from a scrollable widget's "scrolled" event.

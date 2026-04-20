@@ -11,11 +11,17 @@ use serde_json::Value;
 // Re-export typed event data from plushie-core so SDK users can
 // access them via `plushie::event::PointerPress` etc.
 pub use plushie_core::pointer::{
-    KeyData, PointerDrag, PointerMove, PointerPress, PointerRelease, PointerScroll,
-    ResizeDimensions, ScrollPosition,
+    KeyData, PointerBoundary, PointerDrag, PointerMove, PointerPress, PointerRelease,
+    PointerScroll, ResizeDimensions, ScrollPosition,
 };
 
 use crate::types::KeyModifiers;
+
+fn get_captured(obj: Option<&serde_json::Map<String, Value>>) -> bool {
+    obj.and_then(|o| o.get("captured"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
 
 /// Parse pointer press/release data from an event value.
 fn parse_pointer_press(value: &Value) -> PointerPress {
@@ -41,10 +47,12 @@ fn parse_pointer_press(value: &Value) -> PointerPress {
         pointer: PointerKind::from(get_str("pointer")),
         finger: obj.and_then(|o| o.get("finger")).and_then(|v| v.as_u64()),
         modifiers: parse_modifiers(obj),
+        captured: get_captured(obj),
     }
 }
 
 fn parse_pointer_release(value: &Value) -> PointerRelease {
+    let obj = value.as_object();
     let p = parse_pointer_press(value);
     PointerRelease {
         x: p.x,
@@ -53,6 +61,8 @@ fn parse_pointer_release(value: &Value) -> PointerRelease {
         pointer: p.pointer,
         finger: p.finger,
         modifiers: p.modifiers,
+        captured: p.captured,
+        lost: obj.and_then(|o| o.get("lost")).and_then(|v| v.as_bool()),
     }
 }
 
@@ -74,6 +84,7 @@ fn parse_pointer_move(value: &Value) -> PointerMove {
         pointer: PointerKind::from(get_str("pointer")),
         finger: obj.and_then(|o| o.get("finger")).and_then(|v| v.as_u64()),
         modifiers: parse_modifiers(obj),
+        captured: get_captured(obj),
     }
 }
 
@@ -96,6 +107,7 @@ fn parse_pointer_scroll(value: &Value) -> PointerScroll {
         delta_y: get_f32("delta_y"),
         pointer: PointerKind::from(get_str("pointer")),
         modifiers: parse_modifiers(obj),
+        captured: get_captured(obj),
     }
 }
 
@@ -116,6 +128,21 @@ fn parse_pointer_drag(value: &Value) -> PointerDrag {
         y: get_f32("y"),
         pointer: PointerKind::from(get_str("pointer")),
         modifiers: parse_modifiers(obj),
+        captured: get_captured(obj),
+    }
+}
+
+fn parse_pointer_boundary(value: &Value) -> PointerBoundary {
+    let obj = value.as_object();
+    let get_opt_f32 = |k: &str| -> Option<f32> {
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_f64())
+            .map(|n| n as f32)
+    };
+    PointerBoundary {
+        x: get_opt_f32("x"),
+        y: get_opt_f32("y"),
+        captured: get_captured(obj),
     }
 }
 
@@ -448,8 +475,8 @@ impl WidgetEvent {
             Move => WidgetMatch::Move(id, parse_pointer_move(&self.value)),
             Scroll => WidgetMatch::Scroll(id, parse_pointer_scroll(&self.value)),
             Scrolled => WidgetMatch::Scrolled(id, parse_scroll_position(&self.value)),
-            Enter => WidgetMatch::Enter(id),
-            Exit => WidgetMatch::Exit(id),
+            Enter => WidgetMatch::Enter(id, parse_pointer_boundary(&self.value)),
+            Exit => WidgetMatch::Exit(id, parse_pointer_boundary(&self.value)),
             Drag => WidgetMatch::Drag(id, parse_pointer_drag(&self.value)),
             DragEnd => WidgetMatch::DragEnd(id, parse_pointer_drag(&self.value)),
             Focused => WidgetMatch::Focused(id),
@@ -531,9 +558,9 @@ pub enum WidgetMatch<'a> {
     /// Scrollable content position changed.
     Scrolled(&'a str, ScrollPosition),
     /// Pointer entered the widget bounds.
-    Enter(&'a str),
+    Enter(&'a str, PointerBoundary),
     /// Pointer left the widget bounds.
-    Exit(&'a str),
+    Exit(&'a str, PointerBoundary),
     /// Drag in progress.
     Drag(&'a str, PointerDrag),
     /// Drag finished.

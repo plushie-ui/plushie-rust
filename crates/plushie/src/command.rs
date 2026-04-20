@@ -1123,6 +1123,9 @@ impl Command {
 
     /// Show a desktop notification.
     ///
+    /// On macOS, notifications may require the app to be bundled
+    /// (.app) or have notification entitlements to display.
+    ///
     /// `title`, `body`, `icon`, and `sound` are forwarded to the
     /// platform notification daemon verbatim. Different daemons
     /// interpret the fields differently; some historical

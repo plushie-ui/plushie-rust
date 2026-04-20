@@ -209,7 +209,9 @@ pub fn length(l: &types::Length) -> iced::Length {
     match *l {
         types::Length::Fill => iced::Length::Fill,
         types::Length::Shrink => iced::Length::Shrink,
-        types::Length::FillPortion(n) => iced::Length::FillPortion(n),
+        types::Length::FillPortion(n) => {
+            iced::Length::FillPortion(u16::try_from(n).unwrap_or(u16::MAX))
+        }
         types::Length::Fixed(f) => iced::Length::Fixed(f),
     }
 }

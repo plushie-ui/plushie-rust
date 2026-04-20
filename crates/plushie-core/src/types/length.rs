@@ -25,7 +25,7 @@ pub enum Length {
     #[default]
     Shrink,
     /// Fill a weighted portion of available space.
-    FillPortion(u16),
+    FillPortion(u32),
     /// A fixed size in logical pixels.
     Fixed(f32),
 }
@@ -49,7 +49,7 @@ impl PlushieType for Length {
             Value::Object(obj) => obj
                 .get("fill_portion")
                 .and_then(|v| v.as_u64())
-                .map(|n| Self::FillPortion(u16::try_from(n).unwrap_or(1).max(1))),
+                .map(|n| Self::FillPortion(u32::try_from(n).unwrap_or(u32::MAX).max(1))),
             _ => None,
         }
     }
@@ -59,11 +59,15 @@ impl PlushieType for Length {
             Self::Fill => PropValue::Str("fill".into()),
             Self::Shrink => PropValue::Str("shrink".into()),
             Self::FillPortion(n) => {
+                assert!(*n >= 1, "length fill_portion must be >= 1, got {n}");
                 let mut m = PropMap::new();
                 m.insert("fill_portion", PropValue::U64(*n as u64));
                 PropValue::Object(m)
             }
-            Self::Fixed(f) => PropValue::F64(*f as f64),
+            Self::Fixed(f) => {
+                assert!(*f >= 0.0, "length must be non-negative, got {f}");
+                PropValue::F64(*f as f64)
+            }
         }
     }
 
@@ -130,5 +134,17 @@ mod tests {
         assert_eq!(Length::wire_decode(&json!(true)), None);
         assert_eq!(Length::wire_decode(&json!([1, 2])), None);
         assert_eq!(Length::wire_decode(&json!(-1.0)), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "length must be non-negative")]
+    fn encode_rejects_negative_fixed() {
+        Length::Fixed(-1.0).wire_encode();
+    }
+
+    #[test]
+    #[should_panic(expected = "fill_portion must be >= 1")]
+    fn encode_rejects_zero_fill_portion() {
+        Length::FillPortion(0).wire_encode();
     }
 }

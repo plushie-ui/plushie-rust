@@ -1080,7 +1080,9 @@ pub(crate) fn run(
             return;
         }
     };
-    if let Err(e) = crate::startup::validate_settings(&initial.settings, expected_token) {
+    if let Err(e) =
+        crate::startup::validate_settings(&initial.settings, expected_token, &ext_key_refs)
+    {
         crate::startup::emit_startup_error(&codec, &e);
         return;
     }

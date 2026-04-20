@@ -215,6 +215,14 @@ pub enum Diagnostic {
         /// Detail from the serde decode error.
         detail: String,
     },
+    /// The Settings handshake declared one or more native widget type
+    /// names under `required_widgets` that the renderer does not know
+    /// about. Non-fatal; the renderer emits the diagnostic and keeps
+    /// running so the host SDK can choose how to react.
+    RequiredWidgetsMissing {
+        /// Names declared but not registered.
+        missing: Vec<String>,
+    },
     /// A non-trusted widget panicked inside the registry's
     /// catch_unwind firewall. The renderer ignores the widget's
     /// contribution for this call and continues.
@@ -438,6 +446,9 @@ impl std::fmt::Display for Diagnostic {
             }
             Self::InvalidSettings { detail } => {
                 write!(f, "invalid_settings: {detail}")
+            }
+            Self::RequiredWidgetsMissing { missing } => {
+                write!(f, "required_widgets_missing: {}", missing.join(", "))
             }
             Self::WidgetPanic {
                 id,

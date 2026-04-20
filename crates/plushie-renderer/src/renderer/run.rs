@@ -205,8 +205,11 @@ fn run_inner(
             return Ok(());
         }
     };
-    if let Err(e) = crate::startup::validate_settings(&initial.settings, expected_token.as_deref())
-    {
+    if let Err(e) = crate::startup::validate_settings(
+        &initial.settings,
+        expected_token.as_deref(),
+        &ext_key_refs,
+    ) {
         crate::startup::emit_startup_error(&codec, &e);
         return Ok(());
     }

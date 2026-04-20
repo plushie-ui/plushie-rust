@@ -51,6 +51,39 @@ pub fn parse_iced_settings(settings: &Value) -> iced::Settings {
     iced_settings
 }
 
+/// Validate the `required_widgets` list against the renderer's
+/// registered widgets.
+///
+/// Looks at the `required_widgets` array in the Settings JSON and
+/// emits a [`Diagnostic::RequiredWidgetsMissing`] diagnostic listing
+/// any type names the renderer does not know about. Both the built-in
+/// widget set and the `native_widgets` argument contribute to the
+/// "known" pool. Non-fatal: the caller keeps running regardless.
+pub fn validate_required_widgets(settings: &Value, native_widgets: &[&str]) {
+    let Some(required) = settings.get("required_widgets").and_then(|v| v.as_array()) else {
+        return;
+    };
+    if required.is_empty() {
+        return;
+    }
+    let builtin = plushie_widget_sdk::widget::widget_set::IcedWidgetSet::type_names();
+    let mut known: std::collections::HashSet<&str> = builtin.iter().map(|s| s.as_ref()).collect();
+    known.extend(native_widgets.iter().copied());
+    let mut missing = Vec::new();
+    for item in required {
+        if let Some(name) = item.as_str()
+            && !known.contains(name)
+        {
+            missing.push(name.to_string());
+        }
+    }
+    if !missing.is_empty() {
+        plushie_widget_sdk::diagnostics::warn(plushie_core::Diagnostic::RequiredWidgetsMissing {
+            missing,
+        });
+    }
+}
+
 /// Enable prop validation if the host requested it.
 ///
 /// Checks for `validate_props: true` in the settings JSON and, if

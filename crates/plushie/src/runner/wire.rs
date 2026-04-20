@@ -1621,6 +1621,9 @@ fn build_settings<A: App>() -> Value {
         json["widget_config"] =
             serde_json::to_value(&settings.widget_config).unwrap_or(Value::Null);
     }
+    if !settings.required_widgets.is_empty() {
+        json["required_widgets"] = serde_json::json!(settings.required_widgets);
+    }
     if let Some(theme) = settings.theme {
         use plushie_core::types::PlushieType;
         json["theme"] = Value::from(theme.wire_encode());

@@ -222,12 +222,15 @@ pub(crate) fn read_required_settings(
 ///   settings must contain a matching `token` field. Comparison uses
 ///   constant-time equality to prevent timing attacks.
 ///
-/// On success, applies the prop validation flag via `OnceLock`.
+/// On success, applies the prop validation flag via `OnceLock`, and
+/// emits a `required_widgets_missing` diagnostic if any names declared
+/// in `required_widgets` are not registered with the renderer.
 ///
 /// [`PROTOCOL_VERSION`]: plushie_widget_sdk::protocol::PROTOCOL_VERSION
 pub(crate) fn validate_settings(
     settings: &Value,
     expected_token: Option<&str>,
+    native_widgets: &[&str],
 ) -> StartupResult<()> {
     // Protocol version check (mandatory).
     let expected = u64::from(plushie_widget_sdk::protocol::PROTOCOL_VERSION);
@@ -264,6 +267,9 @@ pub(crate) fn validate_settings(
 
     // Prop validation flag.
     plushie_renderer_lib::settings::apply_validate_props(settings);
+    // required_widgets advisory check: emits a diagnostic listing any
+    // names the renderer does not know about. Non-fatal.
+    plushie_renderer_lib::settings::validate_required_widgets(settings, native_widgets);
     Ok(())
 }
 

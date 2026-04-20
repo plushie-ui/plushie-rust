@@ -31,6 +31,12 @@ pub struct Settings {
     pub default_event_rate: Option<u32>,
     /// Per-widget-type configuration passed to native widgets.
     pub widget_config: HashMap<String, Value>,
+    /// Native widget type names this app requires to be present in
+    /// the renderer. Validated during the Settings handshake: any
+    /// missing names are surfaced via a `required_widgets_missing`
+    /// diagnostic. Non-fatal by design; host SDKs decide whether to
+    /// warn or halt based on the diagnostic.
+    pub required_widgets: Vec<String>,
 }
 
 /// Per-window defaults. Returned from the SDK's `App::window_config`

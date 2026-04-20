@@ -21,6 +21,14 @@ use super::PlushieType;
 /// let short = Color::hex("#f0f");       // expands to #ff00ff
 /// let rgb = Color::rgb(0.5, 0.8, 1.0);
 /// ```
+///
+/// # Named color catalog
+///
+/// All 148 CSS Color Module Level 4 names are exposed as constructor
+/// methods alongside `transparent`. Method names match the canonical
+/// lowercase CSS identifier (`Color::aliceblue()`, `Color::cornflowerblue()`,
+/// `Color::rebeccapurple()`, etc.). The full list lives below in the
+/// `impl Color` block and is kept in sync with the other host SDKs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Color(String);
 

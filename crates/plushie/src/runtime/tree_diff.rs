@@ -1140,4 +1140,48 @@ mod tests {
             "shapes with identical content should compare equal regardless of key order"
         );
     }
+
+    #[test]
+    fn id_keyed_list_reordered_same_content_still_equal() {
+        // Same id set with identical content, but the elements appear
+        // in a different order. Matches the Elixir/Ruby/Gleam contract
+        // (id-keyed comparison is set-based, not positional) and is
+        // what lets hosts resort canvas shape lists without forcing a
+        // prop update.
+        let old_shapes = json!([
+            {"id": "s1", "type": "rect", "x": 0},
+            {"id": "s2", "type": "circle", "r": 10},
+        ]);
+        let new_shapes = json!([
+            {"id": "s2", "type": "circle", "r": 10},
+            {"id": "s1", "type": "rect", "x": 0},
+        ]);
+        let old = node("c", "canvas", json!({"shapes": old_shapes}), vec![]);
+        let new = node("c", "canvas", json!({"shapes": new_shapes}), vec![]);
+        let ops = diff_tree(&old, &new);
+        assert!(
+            ops.is_empty(),
+            "reordered id-keyed lists with identical content should compare equal"
+        );
+    }
+
+    #[test]
+    fn id_keyed_list_different_id_sets_not_equal() {
+        // Same length, but one list has an id the other doesn't.
+        // `id_keyed_list_equal` must refuse equality so the diff still
+        // emits an update_props patch.
+        let old_shapes = json!([
+            {"id": "s1", "type": "rect"},
+            {"id": "s2", "type": "circle"},
+        ]);
+        let new_shapes = json!([
+            {"id": "s1", "type": "rect"},
+            {"id": "s3", "type": "circle"},
+        ]);
+        let old = node("c", "canvas", json!({"shapes": old_shapes}), vec![]);
+        let new = node("c", "canvas", json!({"shapes": new_shapes}), vec![]);
+        let ops = diff_tree(&old, &new);
+        assert_eq!(ops.len(), 1);
+        assert!(matches!(ops[0], PatchOp::UpdateProps { .. }));
+    }
 }

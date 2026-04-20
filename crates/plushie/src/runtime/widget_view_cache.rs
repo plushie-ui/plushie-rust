@@ -15,9 +15,12 @@
 //! scoped ID so two widget placements that happen to hash to the
 //! same cache key don't collide.
 //!
-//! Stale entries are pruned at the start of each render via
-//! [`WidgetViewCache::begin_cycle`] / [`WidgetViewCache::mark_live`],
-//! mirroring the live-IDs pattern used by `MemoCache`.
+//! Stale entries are pruned at the end of each render via
+//! [`WidgetViewCache::finish_cycle`]: [`WidgetViewCache::begin_cycle`]
+//! resets the live-set at the start, [`WidgetViewCache::mark_live`]
+//! records every widget touched during the render, and `finish_cycle`
+//! evicts anything not in that set. Mirrors the live-IDs pattern used
+//! by `MemoCache`.
 
 use std::collections::{HashMap, HashSet};
 

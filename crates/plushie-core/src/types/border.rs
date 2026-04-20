@@ -74,13 +74,23 @@ impl PlushieType for Radius {
 
     fn wire_encode(&self) -> PropValue {
         match self {
-            Self::Uniform(r) => PropValue::F64(*r as f64),
+            Self::Uniform(r) => {
+                assert!(*r >= 0.0, "border radius must be non-negative, got {r}");
+                PropValue::F64(*r as f64)
+            }
             Self::PerCorner {
                 top_left,
                 top_right,
                 bottom_right,
                 bottom_left,
             } => {
+                assert!(
+                    *top_left >= 0.0
+                        && *top_right >= 0.0
+                        && *bottom_right >= 0.0
+                        && *bottom_left >= 0.0,
+                    "border radius corners must be non-negative, got top_left={top_left} top_right={top_right} bottom_right={bottom_right} bottom_left={bottom_left}"
+                );
                 let mut m = PropMap::new();
                 m.insert("top_left", PropValue::F64(*top_left as f64));
                 m.insert("top_right", PropValue::F64(*top_right as f64));
@@ -181,6 +191,11 @@ impl PlushieType for Border {
     }
 
     fn wire_encode(&self) -> PropValue {
+        assert!(
+            self.width >= 0.0,
+            "border width must be non-negative, got {}",
+            self.width
+        );
         let mut m = PropMap::new();
         if let Some(ref color) = self.color {
             m.insert("color", color.wire_encode());
@@ -192,5 +207,30 @@ impl PlushieType for Border {
 
     fn type_name() -> &'static str {
         "border"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "border width must be non-negative")]
+    fn encode_rejects_negative_width() {
+        Border::new().width(-1.0).wire_encode();
+    }
+
+    #[test]
+    #[should_panic(expected = "border radius must be non-negative")]
+    fn encode_rejects_negative_radius() {
+        Border::new().radius(-1.0).wire_encode();
+    }
+
+    #[test]
+    #[should_panic(expected = "border radius corners must be non-negative")]
+    fn encode_rejects_negative_radius_corner() {
+        Border::new()
+            .radius_corners(-1.0, 0.0, 0.0, 0.0)
+            .wire_encode();
     }
 }

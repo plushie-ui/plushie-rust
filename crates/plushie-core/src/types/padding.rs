@@ -126,6 +126,14 @@ impl PlushieType for Padding {
     }
 
     fn wire_encode(&self) -> PropValue {
+        assert!(
+            self.top >= 0.0 && self.right >= 0.0 && self.bottom >= 0.0 && self.left >= 0.0,
+            "padding must be non-negative, got top={} right={} bottom={} left={}",
+            self.top,
+            self.right,
+            self.bottom,
+            self.left
+        );
         if self.top == self.right && self.right == self.bottom && self.bottom == self.left {
             PropValue::F64(self.top as f64)
         } else {
@@ -181,5 +189,11 @@ mod tests {
     fn default_is_zero() {
         let p = Padding::default();
         assert_eq!(p, Padding::all(0.0));
+    }
+
+    #[test]
+    #[should_panic(expected = "padding must be non-negative")]
+    fn encode_rejects_negative_padding() {
+        Padding::new(-1.0, 0.0, 0.0, 0.0).wire_encode();
     }
 }

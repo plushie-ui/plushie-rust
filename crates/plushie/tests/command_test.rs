@@ -431,6 +431,42 @@ fn command_create_image() {
 }
 
 #[test]
+fn command_create_image_rgba() {
+    match Command::create_image_rgba("pixels", 2, 2, vec![0; 16]) {
+        Command::Renderer(RendererOp::Image(ImageOp::CreateRaw {
+            handle,
+            width,
+            height,
+            pixels,
+        })) => {
+            assert_eq!(handle, "pixels");
+            assert_eq!(width, 2);
+            assert_eq!(height, 2);
+            assert_eq!(pixels.len(), 16);
+        }
+        _ => panic!("expected Image(CreateRaw)"),
+    }
+}
+
+#[test]
+fn command_update_image_rgba() {
+    match Command::update_image_rgba("pixels", 1, 1, vec![255, 0, 0, 255]) {
+        Command::Renderer(RendererOp::Image(ImageOp::UpdateRaw {
+            handle,
+            width,
+            height,
+            pixels,
+        })) => {
+            assert_eq!(handle, "pixels");
+            assert_eq!(width, 1);
+            assert_eq!(height, 1);
+            assert_eq!(pixels, vec![255, 0, 0, 255]);
+        }
+        _ => panic!("expected Image(UpdateRaw)"),
+    }
+}
+
+#[test]
 fn command_delete_image() {
     match Command::delete_image("logo") {
         Command::Renderer(RendererOp::Image(ImageOp::Delete(handle))) => {

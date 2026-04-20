@@ -146,7 +146,7 @@ impl App {
     fn execute_image_op(&mut self, op: ImageOp) -> Task<Message> {
         match op {
             ImageOp::Create { handle, data } => {
-                self.handle_image_op("create_from_bytes", &handle, Some(data), None, None, None);
+                self.handle_image_op("create_image", &handle, Some(data), None, None, None);
                 Task::none()
             }
             ImageOp::CreateRaw {
@@ -156,7 +156,7 @@ impl App {
                 pixels,
             } => {
                 self.handle_image_op(
-                    "create_from_rgba",
+                    "create_image",
                     &handle,
                     None,
                     Some(pixels),
@@ -166,7 +166,7 @@ impl App {
                 Task::none()
             }
             ImageOp::Update { handle, data } => {
-                self.handle_image_op("create_from_bytes", &handle, Some(data), None, None, None);
+                self.handle_image_op("update_image", &handle, Some(data), None, None, None);
                 Task::none()
             }
             ImageOp::UpdateRaw {
@@ -176,7 +176,7 @@ impl App {
                 pixels,
             } => {
                 self.handle_image_op(
-                    "create_from_rgba",
+                    "update_image",
                     &handle,
                     None,
                     Some(pixels),
@@ -186,7 +186,7 @@ impl App {
                 Task::none()
             }
             ImageOp::Delete(handle) => {
-                self.handle_image_op("delete", &handle, None, None, None, None);
+                self.handle_image_op("delete_image", &handle, None, None, None, None);
                 Task::none()
             }
             ImageOp::List { tag } => {

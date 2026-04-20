@@ -787,7 +787,7 @@ impl Command {
     }
 
     /// Create an image from raw RGBA pixel data.
-    pub fn create_image_raw(handle: &str, width: u32, height: u32, pixels: Vec<u8>) -> Self {
+    pub fn create_image_rgba(handle: &str, width: u32, height: u32, pixels: Vec<u8>) -> Self {
         Self::Renderer(RendererOp::Image(ImageOp::CreateRaw {
             handle: handle.to_string(),
             width,
@@ -805,7 +805,7 @@ impl Command {
     }
 
     /// Replace an existing image with new raw RGBA pixel data.
-    pub fn update_image_raw(handle: &str, width: u32, height: u32, pixels: Vec<u8>) -> Self {
+    pub fn update_image_rgba(handle: &str, width: u32, height: u32, pixels: Vec<u8>) -> Self {
         Self::Renderer(RendererOp::Image(ImageOp::UpdateRaw {
             handle: handle.to_string(),
             width,

@@ -1510,9 +1510,15 @@ fn execute_wire_renderer_op(
             bridge.send_effect(&wire_id, kind, &payload)
         }
         RendererOp::Image(image_op) => {
+            // Wire op names must match the renderer's `apply_op`
+            // dispatch in `plushie-widget-sdk::image_registry`, which
+            // keys on `create_image` / `update_image` / `delete_image`.
+            // `list` and `clear` route through the widget_op channel
+            // because the renderer's image registry does not own them
+            // directly.
             let (op, payload) = match image_op {
                 ImageOp::Create { handle, data } => (
-                    "create_from_bytes",
+                    "create_image",
                     json!({"handle": handle, "data": base64_encode(data)}),
                 ),
                 ImageOp::CreateRaw {
@@ -1521,12 +1527,12 @@ fn execute_wire_renderer_op(
                     height,
                     pixels,
                 } => (
-                    "create_from_rgba",
+                    "create_image",
                     json!({"handle": handle, "pixels": base64_encode(pixels),
                            "width": width, "height": height}),
                 ),
                 ImageOp::Update { handle, data } => (
-                    "update",
+                    "update_image",
                     json!({"handle": handle, "data": base64_encode(data)}),
                 ),
                 ImageOp::UpdateRaw {
@@ -1535,13 +1541,17 @@ fn execute_wire_renderer_op(
                     height,
                     pixels,
                 } => (
-                    "update_raw",
+                    "update_image",
                     json!({"handle": handle, "pixels": base64_encode(pixels),
                            "width": width, "height": height}),
                 ),
-                ImageOp::Delete(handle) => ("delete", json!({"handle": handle})),
-                ImageOp::List { tag } => ("list", json!({"tag": tag})),
-                ImageOp::Clear => ("clear", json!({})),
+                ImageOp::Delete(handle) => ("delete_image", json!({"handle": handle})),
+                ImageOp::List { tag } => {
+                    return bridge.send_widget_op("list_images", &json!({"tag": tag}));
+                }
+                ImageOp::Clear => {
+                    return bridge.send_widget_op("clear_images", &json!({}));
+                }
                 _ => {
                     log::warn!("wire mode: unhandled ImageOp variant; op skipped");
                     return Ok(());

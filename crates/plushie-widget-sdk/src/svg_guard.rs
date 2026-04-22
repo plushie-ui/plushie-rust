@@ -15,6 +15,7 @@
 //! wire cap bounds input size and usvg's own safeguards (recursion
 //! caps inside its tree builder) keep most pathological inputs finite.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -38,36 +39,36 @@ pub const INTERACTIVE_TIMEOUT: Duration = Duration::from_secs(1);
 /// on the frame.
 pub const HEADLESS_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Parse the given SVG source with a wall-clock deadline.
-///
-/// `source` is UTF-8 SVG text. The caller picks the appropriate
-/// deadline ([`INTERACTIVE_TIMEOUT`] or [`HEADLESS_TIMEOUT`]) based
-/// on the rendering context.
-///
-/// Returns [`DecodeOutcome::Ok`] on success, [`DecodeOutcome::ParseError`]
-/// on a syntactic failure reported by usvg, or [`DecodeOutcome::Timeout`]
-/// if the deadline passed before the worker finished.
+const MAX_CONCURRENT_SVG_WORKERS: usize = 8;
+
+static ACTIVE_SVG_WORKERS: AtomicUsize = AtomicUsize::new(0);
+
 pub fn parse_with_timeout(source: String, deadline: Duration) -> DecodeOutcome {
+    if ACTIVE_SVG_WORKERS.fetch_add(1, Ordering::Relaxed) >= MAX_CONCURRENT_SVG_WORKERS {
+        ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
+        return DecodeOutcome::Timeout;
+    }
+
     let (tx, rx) = mpsc::channel();
     std::thread::Builder::new()
         .name("plushie-svg-guard".into())
         .spawn(move || {
             let opt = usvg::Options::default();
             let result = usvg::Tree::from_str(&source, &opt).map_err(|e| e.to_string());
-            // Receiver may have already dropped due to timeout; send
-            // is best-effort.
             let _ = tx.send(result);
+            ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
         })
         .map(|_| ())
-        .unwrap_or_else(|e| log::error!("svg_guard: failed to spawn worker: {e}"));
+        .unwrap_or_else(|e| {
+            log::error!("svg_guard: failed to spawn worker: {e}");
+            ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
+        });
 
     match rx.recv_timeout(deadline) {
         Ok(Ok(_tree)) => DecodeOutcome::Ok,
         Ok(Err(msg)) => DecodeOutcome::ParseError(msg),
         Err(mpsc::RecvTimeoutError::Timeout) => DecodeOutcome::Timeout,
         Err(mpsc::RecvTimeoutError::Disconnected) => {
-            // Worker panicked before sending. Treat as a parse error
-            // with a generic message so the caller still falls back.
             DecodeOutcome::ParseError("svg_guard: worker panicked".into())
         }
     }

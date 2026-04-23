@@ -82,7 +82,7 @@ pub use plushie_core::types::{
 // Re-exports from plushie-core (canvas)
 // -------------------------------------------------------------------------
 
-pub use plushie_core::types::canvas::{DragAxis, FillRule, LineCap, LineJoin};
+pub use plushie_core::types::{DragAxis, FillRule, LineCap, LineJoin};
 
 // -------------------------------------------------------------------------
 // SDK-specific: Alignment

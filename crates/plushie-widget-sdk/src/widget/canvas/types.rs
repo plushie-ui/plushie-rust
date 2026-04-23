@@ -240,8 +240,8 @@ impl TransformMatrix {
     }
 
     /// Build a matrix from typed [`Transform`] values.
-    pub fn from_typed_transforms(transforms: &[plushie_core::types::canvas::Transform]) -> Self {
-        use plushie_core::types::canvas::Transform;
+    pub fn from_typed_transforms(transforms: &[plushie_core::types::Transform]) -> Self {
+        use plushie_core::types::Transform;
 
         let mut m = Self::identity();
         for t in transforms {

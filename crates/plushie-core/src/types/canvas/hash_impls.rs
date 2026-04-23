@@ -527,7 +527,7 @@ mod tests {
     use serde_json::json;
 
     use crate::protocol::TreeNode;
-    use crate::types::canvas::CanvasShape;
+    use crate::types::CanvasShape;
 
     fn hash_shapes(shapes: &[CanvasShape]) -> u64 {
         let mut hasher = DefaultHasher::new();

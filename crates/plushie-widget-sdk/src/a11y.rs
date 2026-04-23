@@ -21,7 +21,7 @@ use iced::advanced::widget::{self, Widget};
 use iced::{Element, Event, Length, Rectangle, Size, Vector};
 
 use plushie_core::types::PlushieType;
-use plushie_core::types::a11y::{A11y, Role};
+use plushie_core::types::{A11y, Role};
 
 // ---------------------------------------------------------------------------
 // A11yOverrides: parsed from the `a11y` JSON prop
@@ -29,7 +29,7 @@ use plushie_core::types::a11y::{A11y, Role};
 
 /// Accessibility overrides parsed from the `a11y` JSON prop.
 ///
-/// Wraps a [`plushie_core::types::a11y::A11y`] internally and converts
+/// Wraps a [`plushie_core::types::A11y`] internally and converts
 /// to iced accessible types on demand. When present on a node, the
 /// renderer wraps the child widget in an internal a11y override layer
 /// that intercepts iced's `operate` call to apply these overrides to
@@ -567,7 +567,7 @@ impl widget::Operation for A11yInterceptor<'_, '_> {
 mod tests {
     use super::*;
     use iced::advanced::widget::Operation;
-    use plushie_core::types::a11y as core_a11y;
+    use plushie_core::types::{HasPopup, Live, Orientation, Role};
     use serde_json::json;
 
     fn wire(v: serde_json::Value) -> plushie_core::protocol::Props {
@@ -655,7 +655,7 @@ mod tests {
         assert_eq!(o.core.expanded, Some(true));
         assert_eq!(o.core.required, Some(true));
         assert_eq!(o.core.level, Some(2));
-        assert_eq!(o.core.live, Some(core_a11y::Live::Assertive));
+        assert_eq!(o.core.live, Some(Live::Assertive));
         assert_eq!(o.core.busy, Some(true));
         assert_eq!(o.core.invalid, Some(true));
         assert_eq!(o.core.modal, Some(true));
@@ -664,22 +664,19 @@ mod tests {
         assert_eq!(o.toggled(), Some(true));
         assert_eq!(o.selected(), Some(false));
         assert_eq!(o.core.value.as_deref(), Some("42%"));
-        assert_eq!(o.core.orientation, Some(core_a11y::Orientation::Vertical));
+        assert_eq!(o.core.orientation, Some(Orientation::Vertical));
         assert!(o.labelled_by.is_some());
         assert!(o.described_by.is_some());
         assert!(o.error_message.is_some());
         assert_eq!(o.core.disabled, Some(true));
         assert_eq!(o.position_in_set(), Some(3));
         assert_eq!(o.core.size_of_set, Some(10));
-        assert_eq!(o.core.has_popup, Some(core_a11y::HasPopup::Menu));
+        assert_eq!(o.core.has_popup, Some(HasPopup::Menu));
     }
 
     #[test]
     fn from_core_converts_correctly() {
-        let core = A11y::new()
-            .role(core_a11y::Role::Button)
-            .label("Save")
-            .disabled(true);
+        let core = A11y::new().role(Role::Button).label("Save").disabled(true);
         let result = A11yOverrides::from_core(&core);
         assert_eq!(result.role(), Some(accessible::Role::Button));
         assert_eq!(result.label(), Some("Save"));
@@ -819,11 +816,11 @@ mod tests {
     #[test]
     fn has_overrides_true_for_each_field() {
         let cases: Vec<A11yOverrides> = vec![
-            A11yOverrides::from_core(&A11y::new().role(core_a11y::Role::Button)),
+            A11yOverrides::from_core(&A11y::new().role(Role::Button)),
             A11yOverrides::from_core(&A11y::new().label("x")),
             A11yOverrides::from_core(&A11y::new().required(true)),
             A11yOverrides::from_core(&A11y::new().toggled(true)),
-            A11yOverrides::from_core(&A11y::new().orientation(core_a11y::Orientation::Horizontal)),
+            A11yOverrides::from_core(&A11y::new().orientation(Orientation::Horizontal)),
             A11yOverrides::from_core(&A11y::new().labelled_by("x")),
         ];
         for (i, o) in cases.iter().enumerate() {
@@ -835,11 +832,8 @@ mod tests {
 
     #[test]
     fn apply_to_overrides_win() {
-        let overrides = A11yOverrides::from_core(
-            &A11y::new()
-                .label("Override")
-                .role(core_a11y::Role::Navigation),
-        );
+        let overrides =
+            A11yOverrides::from_core(&A11y::new().label("Override").role(Role::Navigation));
         let base = Accessible {
             role: accessible::Role::Group,
             label: Some("Original"),
@@ -952,11 +946,8 @@ mod tests {
 
     #[test]
     fn to_accessible_uses_defaults_for_base() {
-        let overrides = A11yOverrides::from_core(
-            &A11y::new()
-                .role(core_a11y::Role::Navigation)
-                .label("Main nav"),
-        );
+        let overrides =
+            A11yOverrides::from_core(&A11y::new().role(Role::Navigation).label("Main nav"));
         let node = overrides.to_accessible();
         assert_eq!(node.role, accessible::Role::Navigation);
         assert_eq!(node.label, Some("Main nav"));
@@ -1003,11 +994,11 @@ mod tests {
     #[test]
     fn from_props_parses_has_popup() {
         let cases = [
-            ("listbox", core_a11y::HasPopup::Listbox),
-            ("menu", core_a11y::HasPopup::Menu),
-            ("dialog", core_a11y::HasPopup::Dialog),
-            ("tree", core_a11y::HasPopup::Tree),
-            ("grid", core_a11y::HasPopup::Grid),
+            ("listbox", HasPopup::Listbox),
+            ("menu", HasPopup::Menu),
+            ("dialog", HasPopup::Dialog),
+            ("tree", HasPopup::Tree),
+            ("grid", HasPopup::Grid),
         ];
         for (input, expected) in cases {
             let o =
@@ -1022,7 +1013,7 @@ mod tests {
             A11yOverrides::from_core(&A11y::new().disabled(true)),
             A11yOverrides::from_core(&A11y::new().position_in_set(1)),
             A11yOverrides::from_core(&A11y::new().size_of_set(5)),
-            A11yOverrides::from_core(&A11y::new().has_popup(core_a11y::HasPopup::Dialog)),
+            A11yOverrides::from_core(&A11y::new().has_popup(HasPopup::Dialog)),
         ];
         for (i, o) in cases.iter().enumerate() {
             assert!(
@@ -1089,7 +1080,7 @@ mod tests {
 
     #[test]
     fn apply_to_has_popup_override_wins() {
-        let overrides = A11yOverrides::from_core(&A11y::new().has_popup(core_a11y::HasPopup::Grid));
+        let overrides = A11yOverrides::from_core(&A11y::new().has_popup(HasPopup::Grid));
         let base = Accessible {
             has_popup: Some(accessible::HasPopup::Listbox),
             ..Default::default()
@@ -1207,11 +1198,8 @@ mod tests {
 
     #[test]
     fn interceptor_merges_overrides_with_base_accessible() {
-        let overrides = A11yOverrides::from_core(
-            &A11y::new()
-                .label("Override label")
-                .role(core_a11y::Role::Link),
-        );
+        let overrides =
+            A11yOverrides::from_core(&A11y::new().label("Override label").role(Role::Link));
         let base = Accessible {
             role: accessible::Role::Button,
             label: Some("Click me"),
@@ -1268,8 +1256,7 @@ mod tests {
 
     #[test]
     fn interceptor_container_upgrades_when_overrides_present() {
-        let overrides =
-            A11yOverrides::from_core(&A11y::new().role(core_a11y::Role::Group).label("Nav group"));
+        let overrides = A11yOverrides::from_core(&A11y::new().role(Role::Group).label("Nav group"));
         let mut recording = RecordingOperation::new();
         {
             let mut interceptor = A11yInterceptor {

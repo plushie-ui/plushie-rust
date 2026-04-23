@@ -192,7 +192,7 @@ pub enum HasPopup {
 ///
 /// Build fluently:
 /// ```
-/// use plushie_core::types::a11y::{A11y, Role, Live};
+/// use plushie_core::types::{A11y, Role, Live};
 ///
 /// let a11y = A11y::new()
 ///     .role(Role::Button)
@@ -451,7 +451,7 @@ impl A11y {
     /// result preserves defaults for any field the user didn't specify.
     ///
     /// ```
-    /// use plushie_core::types::a11y::{A11y, Role};
+    /// use plushie_core::types::{A11y, Role};
     ///
     /// let widget_default = A11y::new().role(Role::Slider).label("Volume");
     /// let user_override = A11y::new().label("Master Volume");

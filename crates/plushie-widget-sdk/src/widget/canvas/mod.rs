@@ -25,8 +25,8 @@ use std::collections::HashMap;
 use iced::widget::canvas;
 use iced::{Element, Point, Theme};
 
-use plushie_core::types::canvas::{CanvasShape, extract_canvas_layers};
 use plushie_core::types::{self as core_types, PlushieType};
+use plushie_core::types::{CanvasShape, extract_canvas_layers};
 
 use crate::PlushieRenderer;
 use crate::iced_convert;

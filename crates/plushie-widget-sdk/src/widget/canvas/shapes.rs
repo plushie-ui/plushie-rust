@@ -4,7 +4,7 @@ use iced::widget::canvas;
 use iced::{Color, Pixels, Point, Radians, Size, Vector, alignment};
 use serde_json::Value;
 
-use plushie_core::types::canvas::{self as canvas_types, CanvasShape, ClipRect, Transform};
+use plushie_core::types::{self as canvas_types, CanvasShape, ClipRect, Transform};
 use plushie_core::types::{Color as CoreColor, PlushieType};
 
 use super::types::MAX_SHAPES_PER_LAYER;
@@ -824,7 +824,7 @@ pub(super) fn draw_canvas_shape_with_overrides<R: PlushieRenderer>(
     shape: &CanvasShape,
     images: &crate::image_registry::ImageRegistry,
     theme: &iced::Theme,
-    overrides: &plushie_core::types::canvas::ShapeStyle,
+    overrides: &plushie_core::types::ShapeStyle,
 ) {
     // Build a modified clone of the shape with overrides applied, then draw it.
     // This approach keeps the drawing logic in draw_canvas_shape.
@@ -835,10 +835,10 @@ pub(super) fn draw_canvas_shape_with_overrides<R: PlushieRenderer>(
 /// Apply a ShapeStyle override to a shape, returning a modified clone.
 fn apply_style_overrides(
     shape: &CanvasShape,
-    overrides: &plushie_core::types::canvas::ShapeStyle,
+    overrides: &plushie_core::types::ShapeStyle,
 ) -> CanvasShape {
+    use plushie_core::types::CanvasFill;
     use plushie_core::types::Color as CoreColor;
-    use plushie_core::types::canvas::CanvasFill;
 
     let override_fill = overrides
         .fill

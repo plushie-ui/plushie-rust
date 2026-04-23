@@ -4,13 +4,13 @@
 //! implements [`PlushieType`] with wire encode/decode, making them
 //! usable by both SDK builders (encode) and widget renderers (decode).
 
-pub mod a11y;
+mod a11y;
 mod alignment;
 mod angle;
 mod animatable;
 mod background;
 mod border;
-pub mod canvas;
+mod canvas;
 mod color;
 mod font;
 mod gradient;
@@ -66,6 +66,12 @@ pub use angle::Angle;
 pub use animatable::Animatable;
 pub use background::Background;
 pub use border::{Border, Radius};
+pub use canvas::{
+    CanvasFill, CanvasShape, CircleShape, ClipRect, Dash, DragAxis, DragBounds, FillRule,
+    GroupShape, HitRect, ImageShape, LineCap, LineJoin, LineShape, PathCommand, PathShape,
+    RectShape, ShapeStyle, Stroke, SvgShape, TextShape, Transform, decode_commands,
+    decode_transforms, encode_transforms, extract_canvas_layers,
+};
 pub use color::Color;
 pub use font::{Font, FontStretch, FontStyle, FontWeight};
 pub use gradient::{Gradient, GradientStop};

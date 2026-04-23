@@ -74,7 +74,7 @@ fn normalizer_auto_populates_role_for_text_input() {
         .expect("text_input should have resolved a11y");
     assert_eq!(
         a11y.role,
-        Some(plushie_core::types::a11y::Role::TextInput),
+        Some(plushie_core::types::Role::TextInput),
         "normalizer should auto-populate role on built-in widgets"
     );
 }
@@ -145,7 +145,7 @@ fn resolved_a11y_round_trips_via_wire() {
     let session = TestSession::<A11yHarness>::start();
     let a11y = session.resolved_a11y("search").unwrap();
     let wire = serde_json::Value::from(a11y.wire_encode());
-    let decoded = plushie_core::types::a11y::A11y::wire_decode(&wire).expect("should decode back");
+    let decoded = plushie_core::types::A11y::wire_decode(&wire).expect("should decode back");
     assert_eq!(decoded.label.as_deref(), Some("Global search"));
     assert_eq!(decoded.description.as_deref(), Some("Search..."));
 }

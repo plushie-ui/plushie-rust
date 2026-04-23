@@ -1564,8 +1564,8 @@ fn execute_wire_renderer_op(
             &json!({
                 "text": text,
                 "politeness": match politeness {
-                    plushie_core::types::a11y::Live::Polite => "polite",
-                    plushie_core::types::a11y::Live::Assertive => "assertive",
+                    plushie_core::types::Live::Polite => "polite",
+                    plushie_core::types::Live::Assertive => "assertive",
                 },
             }),
         ),

@@ -1149,7 +1149,7 @@ impl<A: App> TestSession<A> {
     pub fn resolved_a11y(
         &self,
         selector: impl Into<Selector>,
-    ) -> Option<plushie_core::types::a11y::A11y> {
+    ) -> Option<plushie_core::types::A11y> {
         let sel = selector.into();
         let node = sel.find(&self.tree)?;
         Some(resolve_a11y_for_node(node))
@@ -1178,9 +1178,7 @@ impl<A: App> TestSession<A> {
             .resolved_a11y(sel.clone())
             .unwrap_or_else(|| panic!("assert_a11y: element not found: {sel}"));
         let actual = Value::from(
-            <plushie_core::types::a11y::A11y as plushie_core::types::PlushieType>::wire_encode(
-                &resolved,
-            ),
+            <plushie_core::types::A11y as plushie_core::types::PlushieType>::wire_encode(&resolved),
         );
         let expected_obj = expected
             .as_object()
@@ -1776,9 +1774,9 @@ fn key_event(
 /// fallbacks (placeholder / alt inference). The normalizer has already
 /// injected tree-authored defaults (role, implicit radio_group), so we
 /// only need to layer in the infer_a11y fallbacks here.
-fn resolve_a11y_for_node(node: &TreeNode) -> plushie_core::types::a11y::A11y {
+fn resolve_a11y_for_node(node: &TreeNode) -> plushie_core::types::A11y {
+    use plushie_core::types::A11y;
     use plushie_core::types::PlushieType;
-    use plushie_core::types::a11y::A11y;
 
     let explicit = A11y::extract(&node.props, "a11y").unwrap_or_default();
     let mut inferred = A11y::default();

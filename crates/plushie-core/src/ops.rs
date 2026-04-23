@@ -165,7 +165,7 @@ pub enum RendererOp {
         /// Text payload.
         text: String,
         /// Screen-reader politeness (polite vs assertive).
-        politeness: crate::types::a11y::Live,
+        politeness: crate::types::Live,
     },
     /// Load a font from raw byte data.
     ///

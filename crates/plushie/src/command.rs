@@ -930,9 +930,9 @@ impl Command {
     /// - [`Live::Assertive`] interrupts ongoing speech; reserved
     ///   for urgent announcements the user must hear immediately.
     ///
-    /// [`Live::Polite`]: plushie_core::types::a11y::Live::Polite
-    /// [`Live::Assertive`]: plushie_core::types::a11y::Live::Assertive
-    pub fn announce(text: &str, politeness: plushie_core::types::a11y::Live) -> Self {
+    /// [`Live::Polite`]: plushie_core::types::Live::Polite
+    /// [`Live::Assertive`]: plushie_core::types::Live::Assertive
+    pub fn announce(text: &str, politeness: plushie_core::types::Live) -> Self {
         Self::Renderer(RendererOp::Announce {
             text: text.to_string(),
             politeness,
@@ -942,7 +942,7 @@ impl Command {
     /// Announce text politely to screen readers. Shorthand for
     /// [`Command::announce(text, Live::Polite)`](Command::announce).
     pub fn announce_text(text: &str) -> Self {
-        Self::announce(text, plushie_core::types::a11y::Live::Polite)
+        Self::announce(text, plushie_core::types::Live::Polite)
     }
 
     /// Load a font from raw byte data.

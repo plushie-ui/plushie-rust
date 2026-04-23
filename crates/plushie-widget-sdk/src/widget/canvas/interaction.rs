@@ -2,7 +2,7 @@
 
 use iced::{Point, Rectangle, mouse};
 
-use plushie_core::types::canvas::{CanvasShape, GroupShape, Transform};
+use plushie_core::types::{CanvasShape, GroupShape, Transform};
 
 use super::types::*;
 use crate::protocol::OutgoingEvent;
@@ -120,8 +120,8 @@ pub(super) fn parse_interactive_element(
     let hit_region = compute_hit_region(group)?;
 
     let drag_axis = match group.drag_axis {
-        Some(plushie_core::types::canvas::DragAxis::X) => DragAxis::X,
-        Some(plushie_core::types::canvas::DragAxis::Y) => DragAxis::Y,
+        Some(plushie_core::types::DragAxis::X) => DragAxis::X,
+        Some(plushie_core::types::DragAxis::Y) => DragAxis::Y,
         _ => DragAxis::Both,
     };
 
@@ -594,10 +594,8 @@ fn child_bounds(child: &CanvasShape) -> Option<(f32, f32, f32, f32)> {
 /// Compute bounding box of a path from its commands.
 /// Examines move_to, line_to, and arc endpoints. Bezier control points
 /// are included conservatively (they bound the curve).
-fn path_bounds(
-    commands: &[plushie_core::types::canvas::PathCommand],
-) -> Option<(f32, f32, f32, f32)> {
-    use plushie_core::types::canvas::PathCommand;
+fn path_bounds(commands: &[plushie_core::types::PathCommand]) -> Option<(f32, f32, f32, f32)> {
+    use plushie_core::types::PathCommand;
 
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;

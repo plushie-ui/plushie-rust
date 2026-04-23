@@ -174,13 +174,13 @@ pub use crate::types::Wrapping;
 
 // A11y sub-types for typed accessibility builders
 /// Accessibility popup hint kind.
-pub use plushie_core::types::a11y::HasPopup;
+pub use plushie_core::types::HasPopup;
 /// Live-region politeness (Polite / Assertive).
-pub use plushie_core::types::a11y::Live;
+pub use plushie_core::types::Live;
 /// Accessibility orientation.
-pub use plushie_core::types::a11y::Orientation;
+pub use plushie_core::types::Orientation;
 /// Accessibility role.
-pub use plushie_core::types::a11y::Role;
+pub use plushie_core::types::Role;
 
 // Animation
 /// A single step within a [`Sequence`].

@@ -542,7 +542,7 @@ fn command_pane_restore() {
 
 #[test]
 fn command_announce_with_politeness() {
-    use plushie_core::types::a11y::Live;
+    use plushie_core::types::Live;
     match Command::announce("Item saved", Live::Polite) {
         Command::Renderer(RendererOp::Announce { text, politeness }) => {
             assert_eq!(text, "Item saved");
@@ -554,7 +554,7 @@ fn command_announce_with_politeness() {
 
 #[test]
 fn command_announce_text_defaults_to_polite() {
-    use plushie_core::types::a11y::Live;
+    use plushie_core::types::Live;
     match Command::announce_text("Saved") {
         Command::Renderer(RendererOp::Announce { text, politeness }) => {
             assert_eq!(text, "Saved");

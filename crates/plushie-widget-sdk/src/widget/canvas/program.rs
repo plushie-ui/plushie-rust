@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use iced::widget::canvas;
 use iced::{Color, Pixels, Point, Radians, Size, Vector, keyboard, mouse};
 
-use plushie_core::types::canvas::CanvasShape;
+use plushie_core::types::CanvasShape;
 
 use super::interaction::*;
 use super::shapes::*;

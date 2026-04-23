@@ -11,7 +11,7 @@ use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use plushie_core::types::HorizontalAlignment;
-use plushie_core::types::a11y::Role;
+use plushie_core::types::Role;
 use plushie_core::types::{self as core_types, PlushieType, SortOrder};
 
 // ---------------------------------------------------------------------------

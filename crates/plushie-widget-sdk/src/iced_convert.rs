@@ -624,10 +624,10 @@ pub fn gradient(g: &types::Gradient) -> iced::Gradient {
 // -------------------------------------------------------------------------
 
 /// Convert a plushie-core canvas FillRule to an iced canvas fill::Rule.
-pub fn fill_rule(r: types::canvas::FillRule) -> canvas::fill::Rule {
+pub fn fill_rule(r: types::FillRule) -> canvas::fill::Rule {
     match r {
-        types::canvas::FillRule::NonZero => canvas::fill::Rule::NonZero,
-        types::canvas::FillRule::EvenOdd => canvas::fill::Rule::EvenOdd,
+        types::FillRule::NonZero => canvas::fill::Rule::NonZero,
+        types::FillRule::EvenOdd => canvas::fill::Rule::EvenOdd,
     }
 }
 
@@ -650,11 +650,11 @@ pub fn canvas_gradient(g: &types::Gradient) -> canvas::Gradient {
 // -------------------------------------------------------------------------
 
 /// Convert a plushie-core canvas LineCap to an iced canvas LineCap.
-pub fn line_cap(c: types::canvas::LineCap) -> canvas::LineCap {
+pub fn line_cap(c: types::LineCap) -> canvas::LineCap {
     match c {
-        types::canvas::LineCap::Butt => canvas::LineCap::Butt,
-        types::canvas::LineCap::Round => canvas::LineCap::Round,
-        types::canvas::LineCap::Square => canvas::LineCap::Square,
+        types::LineCap::Butt => canvas::LineCap::Butt,
+        types::LineCap::Round => canvas::LineCap::Round,
+        types::LineCap::Square => canvas::LineCap::Square,
     }
 }
 
@@ -663,11 +663,11 @@ pub fn line_cap(c: types::canvas::LineCap) -> canvas::LineCap {
 // -------------------------------------------------------------------------
 
 /// Convert a plushie-core canvas LineJoin to an iced canvas LineJoin.
-pub fn line_join(j: types::canvas::LineJoin) -> canvas::LineJoin {
+pub fn line_join(j: types::LineJoin) -> canvas::LineJoin {
     match j {
-        types::canvas::LineJoin::Miter => canvas::LineJoin::Miter,
-        types::canvas::LineJoin::Round => canvas::LineJoin::Round,
-        types::canvas::LineJoin::Bevel => canvas::LineJoin::Bevel,
+        types::LineJoin::Miter => canvas::LineJoin::Miter,
+        types::LineJoin::Round => canvas::LineJoin::Round,
+        types::LineJoin::Bevel => canvas::LineJoin::Bevel,
     }
 }
 
@@ -989,7 +989,7 @@ mod tests {
     #[test]
     fn canvas_fill_rule_mapping() {
         assert_eq!(
-            fill_rule(types::canvas::FillRule::EvenOdd),
+            fill_rule(types::FillRule::EvenOdd),
             canvas::fill::Rule::EvenOdd
         );
     }
@@ -997,15 +997,15 @@ mod tests {
     #[test]
     fn canvas_line_cap_mapping() {
         assert!(matches!(
-            line_cap(types::canvas::LineCap::Butt),
+            line_cap(types::LineCap::Butt),
             canvas::LineCap::Butt
         ));
         assert!(matches!(
-            line_cap(types::canvas::LineCap::Round),
+            line_cap(types::LineCap::Round),
             canvas::LineCap::Round
         ));
         assert!(matches!(
-            line_cap(types::canvas::LineCap::Square),
+            line_cap(types::LineCap::Square),
             canvas::LineCap::Square
         ));
     }
@@ -1013,15 +1013,15 @@ mod tests {
     #[test]
     fn canvas_line_join_mapping() {
         assert!(matches!(
-            line_join(types::canvas::LineJoin::Miter),
+            line_join(types::LineJoin::Miter),
             canvas::LineJoin::Miter
         ));
         assert!(matches!(
-            line_join(types::canvas::LineJoin::Round),
+            line_join(types::LineJoin::Round),
             canvas::LineJoin::Round
         ));
         assert!(matches!(
-            line_join(types::canvas::LineJoin::Bevel),
+            line_join(types::LineJoin::Bevel),
             canvas::LineJoin::Bevel
         ));
     }

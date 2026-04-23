@@ -22,7 +22,7 @@ use super::{PropMap, PropValue};
 use crate::View;
 use crate::derive_support::PlushieType;
 use crate::types::*;
-pub use plushie_core::types::canvas::PathCommand;
+pub use plushie_core::types::PathCommand;
 
 /// Push a transform entry to the "transforms" array in a props map.
 fn push_transform(props: &mut PropMap, kind: &str, fields: &[(&str, f32)]) {

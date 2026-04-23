@@ -3,7 +3,7 @@ use crate::protocol::TreeNode;
 use crate::shared_state::hash_str;
 use iced::widget::canvas;
 use iced::{Color, Point, alignment};
-use plushie_core::types::canvas::{CanvasShape, GroupShape};
+use plushie_core::types::{CanvasShape, GroupShape};
 use serde_json::Value;
 use serde_json::json;
 
@@ -143,10 +143,7 @@ fn canvas_layers_from_layer_children() {
     let bg = result.get("background").unwrap();
     assert_eq!(bg.len(), 1);
     // Shape should be a Rect variant.
-    assert!(matches!(
-        &bg[0],
-        plushie_core::types::canvas::CanvasShape::Rect(_)
-    ));
+    assert!(matches!(&bg[0], plushie_core::types::CanvasShape::Rect(_)));
 }
 
 #[test]

@@ -13,6 +13,16 @@ mod types;
 /// and checked against the value the host embeds in Settings.
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Decode a JSON protocol version field into the canonical in-memory type.
+///
+/// The wire format uses a JSON number, but the Rust protocol model keeps the
+/// version as `u32`. Any non-integer, negative, or out-of-range JSON number is
+/// rejected at the boundary instead of widening `PROTOCOL_VERSION` and the
+/// surrounding public API surface.
+pub fn json_protocol_version(value: &serde_json::Value) -> Option<u32> {
+    value.as_u64().and_then(|v| u32::try_from(v).ok())
+}
+
 pub use incoming::IncomingMessage;
 pub use outgoing::{
     CoalesceHint, DiagnosticLevel, DiagnosticMessage, EffectResponse, EffectStubAck,
@@ -59,5 +69,28 @@ impl SessionMessage {
 
         let message = serde_json::from_value(value)?;
         Ok(Self { session, message })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn json_protocol_version_accepts_u32_max() {
+        assert_eq!(json_protocol_version(&json!(u32::MAX)), Some(u32::MAX));
+    }
+
+    #[test]
+    fn json_protocol_version_rejects_out_of_range_values() {
+        assert_eq!(json_protocol_version(&json!(u64::from(u32::MAX) + 1)), None);
+    }
+
+    #[test]
+    fn json_protocol_version_rejects_non_integer_values() {
+        assert_eq!(json_protocol_version(&json!(1.5)), None);
+        assert_eq!(json_protocol_version(&json!(-1)), None);
+        assert_eq!(json_protocol_version(&json!("1")), None);
     }
 }

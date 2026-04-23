@@ -233,8 +233,11 @@ pub(crate) fn validate_settings(
     native_widgets: &[&str],
 ) -> StartupResult<()> {
     // Protocol version check (mandatory).
-    let expected = u64::from(plushie_widget_sdk::protocol::PROTOCOL_VERSION);
-    match settings.get("protocol_version").and_then(|v| v.as_u64()) {
+    let expected = plushie_widget_sdk::protocol::PROTOCOL_VERSION;
+    match settings
+        .get("protocol_version")
+        .and_then(plushie_widget_sdk::protocol::json_protocol_version)
+    {
         Some(version) if version == expected => {}
         Some(version) => {
             return Err(StartupError::new(format!(
@@ -243,7 +246,7 @@ pub(crate) fn validate_settings(
         }
         None => {
             return Err(StartupError::new(format!(
-                "missing protocol_version in Settings (expected {expected})"
+                "missing or invalid protocol_version in Settings (expected {expected})"
             )));
         }
     }
@@ -410,5 +413,31 @@ mod tests {
             json!(PROTOCOL_VERSION)
         );
         assert_eq!(initial.settings["validate_props"], json!(true));
+    }
+
+    #[test]
+    fn validate_settings_rejects_out_of_range_protocol_version() {
+        let settings = json!({
+            "protocol_version": u64::from(u32::MAX) + 1,
+        });
+
+        let err = validate_settings(&settings, None, &[]).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("missing or invalid protocol_version")
+        );
+    }
+
+    #[test]
+    fn validate_settings_rejects_non_integer_protocol_version() {
+        let settings = json!({
+            "protocol_version": 1.5,
+        });
+
+        let err = validate_settings(&settings, None, &[]).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("missing or invalid protocol_version")
+        );
     }
 }

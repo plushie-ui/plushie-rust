@@ -41,8 +41,7 @@ fn hello_protocol_version(hello: &Value) -> Option<u32> {
     hello
         .get("protocol_version")
         .or_else(|| hello.get("protocol"))
-        .and_then(|v| v.as_u64())
-        .and_then(|v| u32::try_from(v).ok())
+        .and_then(plushie_core::protocol::json_protocol_version)
 }
 
 /// Run the app in wire mode.
@@ -1806,5 +1805,23 @@ mod hello_protocol_tests {
         });
 
         assert_eq!(hello_protocol_version(&hello), None);
+    }
+
+    #[test]
+    fn non_integer_protocol_is_rejected() {
+        let hello = serde_json::json!({
+            "protocol_version": 1.5,
+        });
+
+        assert_eq!(hello_protocol_version(&hello), None);
+    }
+
+    #[test]
+    fn u32_max_protocol_is_accepted() {
+        let hello = serde_json::json!({
+            "protocol_version": u32::MAX,
+        });
+
+        assert_eq!(hello_protocol_version(&hello), Some(u32::MAX));
     }
 }

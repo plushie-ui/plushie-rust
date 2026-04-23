@@ -171,7 +171,7 @@ protocol version:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `protocol_version` | number | Canonical protocol version (currently 1) |
+| `protocol_version` | number | Canonical protocol version (currently 1), encoded as an integer JSON number that must fit in `u32` |
 | `protocol` | number | Legacy alias for `protocol_version`, emitted temporarily for host SDK compatibility |
 | `codec` | string | Wire codec detected before hello: `"json"` or `"msgpack"`. This confirms the active codec; it is not negotiated in hello. |
 | `version` | string | Renderer build version |
@@ -372,7 +372,7 @@ All fields inside `settings` are optional.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `protocol_version` | number | required | Protocol version (must match renderer) |
+| `protocol_version` | number | required | Protocol version as an integer JSON number that must match the renderer and fit in `u32` |
 | `default_text_size` | number | 16.0 | Default text size for all text widgets |
 | `default_font` | object | system | Default font descriptor (`{"family": "..."}`) |
 | `antialiasing` | bool | false | Enable anti-aliasing (startup only) |
@@ -1261,6 +1261,8 @@ Every request message produces exactly one response. The `id` and
 | Screenshot | `screenshot_response` | |
 | Reset | `reset_response` | |
 | Effect | `effect_response` | |
+| RegisterEffectStub | `effect_stub_register_ack` | |
+| UnregisterEffectStub | `effect_stub_unregister_ack` | |
 | WidgetOp (query ops) | `op_query_response` | tree_hash, find_focused, list_images |
 | WindowOp (query ops) | `effect_response` | get_size, get_position, get_mode, etc. |
 | SystemQuery | `op_query_response` | get_system_theme, get_system_info |
@@ -1542,7 +1544,7 @@ Response to an Effect.
 |-------|------|-------------|
 | `session` | string | Session that produced this response |
 | `id` | string | Matches the request id |
-| `status` | string | `"ok"`, `"cancelled"`, or `"error"` |
+| `status` | string | `"ok"`, `"cancelled"`, `"error"`, or `"unsupported"` |
 | `result` | any | Result data (when status is ok) |
 | `error` | string | Error message (when status is error) |
 
@@ -1550,6 +1552,9 @@ The `"cancelled"` status is returned when the user dismisses a dialog
 without selecting (e.g. clicks Cancel on a file picker). It carries no
 `result` or `error` field. Clients should treat it as a normal outcome,
 not as a failure.
+
+The `"unsupported"` status is returned when the renderer recognizes the
+effect kind but cannot perform it in the current mode or backend.
 
 Window query operations (get_size, get_position, etc.) also use this
 format, with the `id` set to the window_id.
@@ -1736,9 +1741,17 @@ Acknowledgment that an effect stub has been registered.
 {
   "type": "effect_stub_register_ack",
   "session": "s1",
-  "kind": "open_file"
+  "kind": "open_file",
+  "status": "registered"
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"effect_stub_register_ack"` |
+| `session` | string | Session |
+| `kind` | string | Effect kind that was registered |
+| `status` | string | Always `"registered"` |
 
 ### effect_stub_unregister_ack
 
@@ -1748,9 +1761,17 @@ Acknowledgment that an effect stub has been removed.
 {
   "type": "effect_stub_unregister_ack",
   "session": "s1",
-  "kind": "open_file"
+  "kind": "open_file",
+  "status": "unregistered"
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"effect_stub_unregister_ack"` |
+| `session` | string | Session |
+| `kind` | string | Effect kind that was removed |
+| `status` | string | Always `"unregistered"` |
 
 ---
 

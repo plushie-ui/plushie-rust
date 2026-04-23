@@ -52,6 +52,22 @@ use output::WebOutputWriter;
 /// constructor, consumed once by the message subscription.
 static MSG_RX: Mutex<Option<futures::channel::mpsc::UnboundedReceiver<String>>> = Mutex::new(None);
 
+fn validate_protocol_version(settings: &serde_json::Value) -> Result<(), String> {
+    let expected = plushie_widget_sdk::protocol::PROTOCOL_VERSION;
+    match settings
+        .get("protocol_version")
+        .and_then(plushie_widget_sdk::protocol::json_protocol_version)
+    {
+        Some(version) if version == expected => Ok(()),
+        Some(version) => Err(format!(
+            "protocol version mismatch: expected {expected}, got {version}"
+        )),
+        None => Err(format!(
+            "missing or invalid protocol_version in Settings (expected {expected})"
+        )),
+    }
+}
+
 /// WASM plushie renderer handle.
 ///
 /// Created via the constructor, which initializes the renderer and
@@ -124,14 +140,7 @@ impl PlushieApp {
         let settings: serde_json::Value = serde_json::from_str(settings_json)
             .map_err(|e| JsValue::from_str(&format!("invalid settings JSON: {e}")))?;
 
-        let expected = u64::from(plushie_widget_sdk::protocol::PROTOCOL_VERSION);
-        if let Some(version) = settings.get("protocol_version").and_then(|v| v.as_u64())
-            && version != expected
-        {
-            return Err(JsValue::from_str(&format!(
-                "protocol version mismatch: expected {expected}, got {version}"
-            )));
-        }
+        validate_protocol_version(&settings).map_err(|e| JsValue::from_str(&e))?;
 
         // Settings validated. Safe to initialise the output sink now.
         let writer = WebOutputWriter::new(on_event);
@@ -302,4 +311,48 @@ fn message_subscription() -> impl iced::futures::Stream<Item = StdinEvent> {
         // Channel closed (PlushieApp dropped); signal the daemon.
         let _ = sender.send(StdinEvent::Closed).await;
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::validate_protocol_version;
+
+    #[test]
+    fn validate_protocol_version_accepts_expected_value() {
+        let settings = json!({
+            "protocol_version": plushie_widget_sdk::protocol::PROTOCOL_VERSION,
+        });
+
+        assert!(validate_protocol_version(&settings).is_ok());
+    }
+
+    #[test]
+    fn validate_protocol_version_rejects_missing_value() {
+        let settings = json!({});
+
+        let err = validate_protocol_version(&settings).unwrap_err();
+        assert!(err.contains("missing or invalid protocol_version"));
+    }
+
+    #[test]
+    fn validate_protocol_version_rejects_non_integer_value() {
+        let settings = json!({
+            "protocol_version": 1.5,
+        });
+
+        let err = validate_protocol_version(&settings).unwrap_err();
+        assert!(err.contains("missing or invalid protocol_version"));
+    }
+
+    #[test]
+    fn validate_protocol_version_rejects_mismatch() {
+        let settings = json!({
+            "protocol_version": plushie_widget_sdk::protocol::PROTOCOL_VERSION + 1,
+        });
+
+        let err = validate_protocol_version(&settings).unwrap_err();
+        assert!(err.contains("protocol version mismatch"));
+    }
 }

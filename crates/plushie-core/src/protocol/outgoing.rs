@@ -1115,6 +1115,8 @@ pub struct EffectStubAck {
     pub session: String,
     /// Event kind string used on the wire.
     pub kind: String,
+    /// Stub registration state.
+    pub status: &'static str,
 }
 
 impl EffectStubAck {
@@ -1124,6 +1126,7 @@ impl EffectStubAck {
             message_type: "effect_stub_register_ack",
             session: String::new(),
             kind,
+            status: "registered",
         }
     }
 
@@ -1133,6 +1136,7 @@ impl EffectStubAck {
             message_type: "effect_stub_unregister_ack",
             session: String::new(),
             kind,
+            status: "unregistered",
         }
     }
 
@@ -1283,5 +1287,41 @@ impl ResetResponse {
     pub fn with_session(mut self, session: impl Into<String>) -> Self {
         self.session = session.into();
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn effect_stub_register_ack_includes_status() {
+        let ack = EffectStubAck::registered("open_file".to_string()).with_session("s1");
+
+        assert_eq!(
+            serde_json::to_value(ack).unwrap(),
+            json!({
+                "type": "effect_stub_register_ack",
+                "session": "s1",
+                "kind": "open_file",
+                "status": "registered",
+            })
+        );
+    }
+
+    #[test]
+    fn effect_stub_unregister_ack_includes_status() {
+        let ack = EffectStubAck::unregistered("open_file".to_string()).with_session("s1");
+
+        assert_eq!(
+            serde_json::to_value(ack).unwrap(),
+            json!({
+                "type": "effect_stub_unregister_ack",
+                "session": "s1",
+                "kind": "open_file",
+                "status": "unregistered",
+            })
+        );
     }
 }

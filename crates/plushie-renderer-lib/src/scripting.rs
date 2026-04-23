@@ -1003,16 +1003,13 @@ pub fn handle_reset(
 
 /// Build a TreeHashResponse without writing it anywhere.
 pub fn build_tree_hash_response(core: &Core, id: String, name: String) -> TreeHashResponse {
-    use sha2::{Digest, Sha256};
-
-    let tree_json = match core.tree.root() {
-        Some(root) => serde_json::to_string(root).unwrap_or_default(),
-        None => "null".to_string(),
+    let hash = match plushie_widget_sdk::protocol::canonical_tree_hash(core.tree.root()) {
+        Ok(hash) => hash,
+        Err(e) => {
+            log::error!("tree_hash: serialization failed: {e}");
+            "SERIALIZATION_ERROR".to_string()
+        }
     };
-
-    let mut hasher = Sha256::new();
-    hasher.update(tree_json.as_bytes());
-    let hash = format!("{:x}", hasher.finalize());
 
     TreeHashResponse::new(id, name, hash)
 }
@@ -1307,6 +1304,20 @@ mod tests {
         });
         core.apply(plushie_widget_sdk::protocol::IncomingMessage::Snapshot { tree: root });
         core
+    }
+
+    #[test]
+    fn build_tree_hash_response_matches_core_tree_hash() {
+        let core = core_with_tree();
+        let response = build_tree_hash_response(&core, "q1".to_string(), "main".to_string());
+        assert_eq!(response.hash, core.tree_hash());
+    }
+
+    #[test]
+    fn build_tree_hash_response_empty_tree_uses_empty_string() {
+        let core = Core::new();
+        let response = build_tree_hash_response(&core, "q1".to_string(), "main".to_string());
+        assert_eq!(response.hash, "");
     }
 
     #[test]

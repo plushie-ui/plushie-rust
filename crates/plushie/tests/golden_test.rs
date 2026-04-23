@@ -1,7 +1,7 @@
 //! Golden-file regression tests for canonical view trees.
 //!
 //! Each test drives a small app into a known state and compares the
-//! resulting `tree_hash()` against a checked-in `.hash` file under
+//! resulting `tree_hash()` against a checked-in `.sha256` file under
 //! `tests/golden/`. Rebuild the hashes with
 //! `PLUSHIE_UPDATE_SNAPSHOTS=1 cargo test -p plushie --test golden_test`
 //! after intentional tree-shape changes.
@@ -56,6 +56,17 @@ fn counter_after_two_inc_clicks() {
     session.click("inc");
     session.assert_text("display", "2");
     assert_tree_hash(&session, "counter_after_two_inc", GOLDEN_DIR);
+}
+
+#[test]
+fn test_session_tree_hash_matches_canonical_tree_node_hash() {
+    let mut session = TestSession::<Counter>::start();
+    session.click("inc");
+    session.click("inc");
+
+    let hash = session.tree_hash();
+    assert_eq!(hash.len(), 64);
+    assert_eq!(hash, session.tree().canonical_hash().unwrap());
 }
 
 // ---------------------------------------------------------------------------

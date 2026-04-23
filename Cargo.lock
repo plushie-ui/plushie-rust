@@ -3440,6 +3440,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
  "strum",
 ]
 
@@ -3744,7 +3745,6 @@ dependencies = [
  "rmpv",
  "serde",
  "serde_json",
- "sha2",
  "usvg",
 ]
 

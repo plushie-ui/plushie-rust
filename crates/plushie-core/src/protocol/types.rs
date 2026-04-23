@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 /// A single node in the UI tree.
 ///
@@ -48,6 +49,77 @@ impl TreeNode {
     pub fn prop_bool(&self, key: &str) -> Option<bool> {
         self.props.get_bool(key)
     }
+
+    /// Compute the canonical tree hash used across SDKs.
+    ///
+    /// The hash input is recursively key-sorted JSON, so semantically
+    /// identical trees hash the same regardless of object insertion order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a serialization error if the tree cannot be converted to JSON.
+    pub fn canonical_hash(&self) -> Result<String, serde_json::Error> {
+        let json = self.canonical_json()?;
+        Ok(format!("{:x}", Sha256::digest(json.as_bytes())))
+    }
+
+    fn canonical_json(&self) -> Result<String, serde_json::Error> {
+        let value = serde_json::to_value(self)?;
+        let mut out = String::new();
+        write_canonical_json(&value, &mut out)?;
+        Ok(out)
+    }
+}
+
+/// Compute the canonical cross-SDK tree hash for an optional root node.
+///
+/// The hash input is recursively key-sorted JSON, then SHA-256 hex.
+/// A missing root produces the empty string so renderer-side queries,
+/// local test harnesses, and sibling SDKs can share one empty-tree policy.
+///
+/// # Errors
+///
+/// Returns a serialization error if the tree cannot be converted to JSON.
+pub fn canonical_tree_hash(root: Option<&TreeNode>) -> Result<String, serde_json::Error> {
+    match root {
+        Some(root) => root.canonical_hash(),
+        None => Ok(String::new()),
+    }
+}
+
+fn write_canonical_json(value: &Value, out: &mut String) -> Result<(), serde_json::Error> {
+    match value {
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+            out.push_str(&serde_json::to_string(value)?);
+            Ok(())
+        }
+        Value::Array(items) => {
+            out.push('[');
+            for (idx, item) in items.iter().enumerate() {
+                if idx > 0 {
+                    out.push(',');
+                }
+                write_canonical_json(item, out)?;
+            }
+            out.push(']');
+            Ok(())
+        }
+        Value::Object(map) => {
+            out.push('{');
+            let mut entries: Vec<_> = map.iter().collect();
+            entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            for (idx, (key, item)) in entries.into_iter().enumerate() {
+                if idx > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::to_string(key)?);
+                out.push(':');
+                write_canonical_json(item, out)?;
+            }
+            out.push('}');
+            Ok(())
+        }
+    }
 }
 
 /// A single patch operation applied incrementally to the retained tree.
@@ -76,6 +148,7 @@ pub struct PatchOp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{PropMap, PropValue, Props};
     use serde_json::json;
 
     // -- TreeNode deserialization ---------------------------------------------
@@ -120,6 +193,77 @@ mod tests {
         });
         let node: TreeNode = serde_json::from_value(val).unwrap();
         assert_eq!(node.children[0].children[0].id, "c");
+    }
+
+    #[test]
+    fn canonical_hash_ignores_prop_key_insertion_order() {
+        let mut left_inner = PropMap::new();
+        left_inner.insert("zebra", 3_i64);
+        left_inner.insert("apple", 1_i64);
+        let mut left_props = PropMap::new();
+        left_props.insert("style", PropValue::Object(left_inner));
+        left_props.insert("label", "hello");
+        let left = TreeNode {
+            id: "root".to_string(),
+            type_name: "text".to_string(),
+            props: Props::from(left_props),
+            children: vec![],
+        };
+
+        let mut right_inner = PropMap::new();
+        right_inner.insert("apple", 1_i64);
+        right_inner.insert("zebra", 3_i64);
+        let mut right_props = PropMap::new();
+        right_props.insert("label", "hello");
+        right_props.insert("style", PropValue::Object(right_inner));
+        let right = TreeNode {
+            id: "root".to_string(),
+            type_name: "text".to_string(),
+            props: Props::from(right_props),
+            children: vec![],
+        };
+
+        assert_eq!(
+            left.canonical_hash().unwrap(),
+            right.canonical_hash().unwrap()
+        );
+    }
+
+    #[test]
+    fn canonical_hash_matches_expected_json_contract() {
+        let mut child_props = PropMap::new();
+        child_props.insert("text", "hello");
+        let mut root_props = PropMap::new();
+        root_props.insert("z", true);
+        root_props.insert("a", 1_i64);
+
+        let tree = TreeNode {
+            id: "root".to_string(),
+            type_name: "column".to_string(),
+            props: Props::from(root_props),
+            children: vec![TreeNode {
+                id: "child".to_string(),
+                type_name: "text".to_string(),
+                props: Props::from(child_props),
+                children: vec![],
+            }],
+        };
+
+        let expected_json = concat!(
+            r#"{"children":[{"children":[],"id":"child","props":{"text":"hello"},"type":"text"}],"#,
+            r#""id":"root","props":{"a":1,"z":true},"type":"column"}"#
+        );
+
+        assert_eq!(tree.canonical_json().unwrap(), expected_json);
+        assert_eq!(
+            tree.canonical_hash().unwrap(),
+            format!("{:x}", Sha256::digest(expected_json.as_bytes()))
+        );
+    }
+
+    #[test]
+    fn canonical_tree_hash_empty_tree_is_empty_string() {
+        assert_eq!(canonical_tree_hash(None).unwrap(), "");
     }
 
     // -- PatchOp deserialization ----------------------------------------------

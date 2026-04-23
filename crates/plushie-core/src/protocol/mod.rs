@@ -30,7 +30,7 @@ pub use outgoing::{
     ScreenshotResponse, TreeHashResponse,
 };
 pub use props::{PropMap, PropValue, Props};
-pub use types::{PatchOp, TreeNode};
+pub use types::{PatchOp, TreeNode, canonical_tree_hash};
 
 /// An incoming message paired with its session ID.
 #[derive(Debug)]

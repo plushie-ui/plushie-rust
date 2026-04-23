@@ -261,11 +261,10 @@ impl From<PropValue> for Value {
 /// [`into_json_map`](PropMap::into_json_map) which collects into a
 /// `serde_json::Map`. The workspace compiles `serde_json` **without**
 /// the `preserve_order` feature, so `Map` is an alphabetical-key
-/// `BTreeMap` equivalent. Downstream consumers (wire protocol,
-/// `TestSession::tree_hash`, golden-file tests) rely on this.
+/// `BTreeMap` equivalent. That keeps direct JSON serialisation stable
+/// for protocol-facing code and prop regression tests in this crate.
 /// Enabling `preserve_order` would make JSON serialisation
-/// insertion-ordered and break golden-file stability silently.
-/// See `tree_hash` for the regression test pinning this.
+/// insertion-ordered and change the emitted wire shape.
 #[derive(Debug, Clone, Default)]
 pub struct PropMap(Vec<(String, PropValue)>);
 
@@ -726,14 +725,14 @@ mod tests {
     // ---------------------------------------------------------------------------
     // Alphabetical key ordering invariant
     //
-    // `tree_hash` and golden-file tests depend on `serde_json::to_string`
-    // producing alphabetical-key output. That holds only when `serde_json`'s
-    // `preserve_order` feature is NOT enabled. This test inserts keys in
-    // non-alphabetical order and asserts the serialised string is
-    // alphabetical.
+    // Direct prop serialisation depends on `serde_json::to_string`
+    // producing alphabetical-key output. That holds only when
+    // `serde_json`'s `preserve_order` feature is NOT enabled. This test
+    // inserts keys in non-alphabetical order and asserts the serialised
+    // string is alphabetical.
     //
     // If this test ever fails, a transitive dependency has enabled
-    // `preserve_order`; golden files across the workspace will break.
+    // `preserve_order`; direct prop serialisation will change.
     // ---------------------------------------------------------------------------
 
     #[test]

@@ -38,7 +38,7 @@ use std::collections::HashMap;
 
 use plushie_core::Selector;
 use plushie_core::key::{EffectKind, KeyPress, MouseButton};
-use plushie_core::protocol::TreeNode;
+use plushie_core::protocol::{TreeNode, canonical_tree_hash};
 use serde_json::Value;
 
 use crate::App;
@@ -800,38 +800,19 @@ impl<A: App> TestSession<A> {
         &self.tree
     }
 
-    /// Compute a stable hash of the current view tree.
+    /// Compute the canonical cross-SDK hash of the current view tree.
     ///
-    /// Uses FNV-1a on the tree's JSON serialization. The hash is
-    /// deterministic across builds, so it can be stored as a constant
-    /// in tests for regression detection.
-    ///
-    /// # Key ordering invariant
-    ///
-    /// The hash's stability depends on deterministic JSON key order.
-    /// `serde_json` is compiled **without** the `preserve_order`
-    /// feature in this workspace, so its `Map` is an alphabetical-key
-    /// `BTreeMap` equivalent. Enabling `preserve_order` would make
-    /// `serde_json::to_string(&tree)` insertion-ordered and break
-    /// golden files silently. If that feature ever leaks in via a
-    /// transitive dependency, the regression test
-    /// `tree_hash_serialisation_uses_alphabetical_keys` must fail
-    /// loudly.
-    ///
-    /// Cross-SDK portability: other host SDKs may emit different
-    /// key orderings over the wire. The wire is permissive, but
-    /// `tree_hash` golden files are NOT byte-portable across SDKs
-    /// unless the other SDK also sorts alphabetically. See
-    /// `by-design.md` for the documented divergence.
+    /// The hash input is recursively key-sorted JSON, then SHA-256 hex.
+    /// That keeps golden files aligned with the renderer path and the
+    /// sibling SDK test helpers.
     ///
     /// # Panics
     ///
     /// Panics if the current tree fails to serialize to JSON.
     /// `TreeNode` is designed to always serialize successfully, so
     /// this is a sanity check rather than a real failure mode.
-    pub fn tree_hash(&self) -> u64 {
-        let json = serde_json::to_string(&self.tree).expect("tree serialization failed");
-        fnv1a(json.as_bytes())
+    pub fn tree_hash(&self) -> String {
+        canonical_tree_hash(Some(&self.tree)).expect("tree serialization failed")
     }
 
     /// Pretty-printed JSON representation of the current view tree.
@@ -1277,8 +1258,8 @@ impl<A: App> Drop for TestSession<A> {
 /// subsequent runs, compares. Set `PLUSHIE_UPDATE_SNAPSHOTS=1`
 /// to overwrite existing golden files.
 ///
-/// Golden files are stored as `{dir}/{name}.hash` containing
-/// the decimal u64 hash value.
+/// Golden files are stored as `{dir}/{name}.sha256` containing
+/// the hex-encoded SHA-256 tree hash.
 ///
 /// `golden_dir` is resolved relative to `CARGO_MANIFEST_DIR` (the
 /// crate root at compile time), not the test's runtime cwd. That
@@ -1306,7 +1287,7 @@ pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir
     } else {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(golden_path)
     };
-    let path = format!("{}/{name}.hash", resolved_dir.display());
+    let path = format!("{}/{name}.sha256", resolved_dir.display());
     let golden_dir = resolved_dir.display().to_string();
 
     let update = std::env::var("PLUSHIE_UPDATE_SNAPSHOTS")
@@ -1315,7 +1296,7 @@ pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir
 
     if update || !std::path::Path::new(&path).exists() {
         std::fs::create_dir_all(&golden_dir).ok();
-        std::fs::write(&path, hash.to_string()).unwrap_or_else(|e| {
+        std::fs::write(&path, &hash).unwrap_or_else(|e| {
             panic!("failed to write golden file {path}: {e}");
         });
         return;
@@ -1323,10 +1304,7 @@ pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir
 
     let stored = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read golden file {path}: {e}"));
-    let expected: u64 = stored
-        .trim()
-        .parse()
-        .unwrap_or_else(|e| panic!("invalid golden file {path}: {e}"));
+    let expected = stored.trim();
 
     assert_eq!(
         hash, expected,
@@ -1663,17 +1641,6 @@ impl<W: crate::widget::Widget> WidgetTestSession<W> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/// FNV-1a hash for stable tree hashing. Deterministic across builds
-/// (unlike DefaultHasher which is randomized).
-fn fnv1a(data: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for &byte in data {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
 
 fn widget_event(event_type: EventType, id: &str, value: Value) -> Event {
     Event::Widget(WidgetEvent {

@@ -300,23 +300,15 @@ impl Core {
         })
     }
 
-    /// Compute a SHA-256 hash of the current tree (serialized as JSON).
+    /// Compute the canonical SHA-256 hash of the current tree.
     /// Returns the hex-encoded hash string, or an empty string if no tree.
     pub fn tree_hash(&self) -> String {
-        use sha2::{Digest, Sha256};
-        match &self.tree.root() {
-            Some(root) => {
-                let json = match serde_json::to_string(root) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        log::error!("tree_hash: serialization failed: {e}");
-                        return "SERIALIZATION_ERROR".to_string();
-                    }
-                };
-                let hash = Sha256::digest(json.as_bytes());
-                format!("{:x}", hash)
+        match crate::protocol::canonical_tree_hash(self.tree.root()) {
+            Ok(hash) => hash,
+            Err(e) => {
+                log::error!("tree_hash: serialization failed: {e}");
+                "SERIALIZATION_ERROR".to_string()
             }
-            None => String::new(),
         }
     }
 

@@ -178,17 +178,12 @@ impl Widget for Outer {
     fn view(id: &str, _props: &UntypedProps, _state: &NoState) -> View {
         // Outer's expanded view wraps an Inner `__widget__` placeholder
         // under Outer's own ID. WidgetRegistrar isn't reachable from
-        // inside a Widget::view, but a manually-built placeholder node
-        // still resolves through WidgetStateStore as long as the app's
-        // view registered an expander for the same ID above; see the
+        // inside a Widget::view, but a nested placeholder still
+        // resolves through WidgetStateStore as long as the app's view
+        // registered an expander for the same ID above; see the
         // `nested_app::view` below where Inner is registered under
         // "inner".
-        let inner_placeholder = View {
-            id: "inner".to_string(),
-            type_name: "__widget__".to_string(),
-            props: plushie_core::protocol::Props::from(plushie_core::protocol::PropMap::new()),
-            children: vec![],
-        };
+        let inner_placeholder = WidgetView::<Inner>::new("inner").placeholder();
         column().id(id).child(inner_placeholder).into()
     }
 

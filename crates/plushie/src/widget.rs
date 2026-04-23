@@ -96,6 +96,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 
+use plushie_core::protocol::TreeNode;
 use plushie_core::tree_walk::{TreeTransform, WalkCtx};
 use plushie_core::types::FromNode;
 use serde_json::Value;
@@ -324,6 +325,24 @@ impl<W: Widget> WidgetView<W> {
 }
 
 impl<W: Widget> WidgetView<W> {
+    /// Build the internal `__widget__` placeholder node.
+    ///
+    /// Useful when one composite widget wants to nest another from
+    /// inside `Widget::view`, where `WidgetRegistrar` is not
+    /// available but the app-level view already registered the
+    /// nested widget's expander.
+    pub fn placeholder(self) -> View {
+        let mut props = self.props;
+        props.insert("__widget__", plushie_core::protocol::PropValue::Bool(true));
+
+        View::new(
+            self.id,
+            "__widget__",
+            plushie_core::protocol::Props::from(props),
+            vec![],
+        )
+    }
+
     /// Register the widget expander and produce a View placeholder.
     ///
     /// Call this inside `App::view` to place a composite widget in
@@ -342,16 +361,7 @@ impl<W: Widget> WidgetView<W> {
         let expander: Box<dyn DynWidgetExpander> =
             Box::new(WidgetExpander::<W>(std::marker::PhantomData));
         registrar.register(self.id.clone(), expander);
-
-        let mut props = self.props;
-        props.insert("__widget__", plushie_core::protocol::PropValue::Bool(true));
-
-        View {
-            id: self.id,
-            type_name: "__widget__".to_string(),
-            props: plushie_core::protocol::Props::from(props),
-            children: vec![],
-        }
+        self.placeholder()
     }
 }
 
@@ -366,10 +376,10 @@ impl<W: Widget> WidgetView<W> {
 /// `W::Props::from_node(node)`.
 #[allow(dead_code)] // subscribe will be used when widget subscriptions are implemented
 pub(crate) trait DynWidgetExpander: Send {
-    fn expand(&self, id: &str, node: &View, state: &dyn Any) -> View;
+    fn expand(&self, id: &str, node: &TreeNode, state: &dyn Any) -> TreeNode;
     fn handle_event(&self, event: &Event, state: &mut dyn Any) -> EventResult;
     fn default_state(&self) -> Box<dyn Any + Send>;
-    fn subscribe(&self, node: &View, state: &dyn Any) -> Vec<Subscription>;
+    fn subscribe(&self, node: &TreeNode, state: &dyn Any) -> Vec<Subscription>;
     /// TypeId of the concrete `Widget::State` this expander owns.
     /// Used by [`WidgetStateStore`] to detect ID collisions between
     /// two different `Widget` types.
@@ -380,18 +390,18 @@ pub(crate) trait DynWidgetExpander: Send {
     /// Ask the widget for its cache-key hash, if any. Returns `None`
     /// when the widget has not opted into view caching; the runtime
     /// then skips the cache entirely for this widget.
-    fn cache_key(&self, node: &View, state: &dyn Any) -> Option<u64>;
+    fn cache_key(&self, node: &TreeNode, state: &dyn Any) -> Option<u64>;
 }
 
 struct WidgetExpander<W: Widget>(std::marker::PhantomData<W>);
 
 impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
-    fn expand(&self, id: &str, node: &View, state: &dyn Any) -> View {
+    fn expand(&self, id: &str, node: &TreeNode, state: &dyn Any) -> TreeNode {
         let state = state.downcast_ref::<W::State>().unwrap_or_else(|| {
             widget_type_mismatch_panic::<W>(id);
         });
         let props = W::Props::from_node(node);
-        W::view(id, &props, state)
+        W::view(id, &props, state).into_tree_node()
     }
 
     fn handle_event(&self, event: &Event, state: &mut dyn Any) -> EventResult {
@@ -405,7 +415,7 @@ impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
         Box::new(W::State::default())
     }
 
-    fn subscribe(&self, node: &View, state: &dyn Any) -> Vec<Subscription> {
+    fn subscribe(&self, node: &TreeNode, state: &dyn Any) -> Vec<Subscription> {
         let state = state.downcast_ref::<W::State>().unwrap_or_else(|| {
             widget_type_mismatch_panic::<W>(&node.id);
         });
@@ -421,7 +431,7 @@ impl<W: Widget> DynWidgetExpander for WidgetExpander<W> {
         std::any::type_name::<W>()
     }
 
-    fn cache_key(&self, node: &View, state: &dyn Any) -> Option<u64> {
+    fn cache_key(&self, node: &TreeNode, state: &dyn Any) -> Option<u64> {
         let state = state.downcast_ref::<W::State>().unwrap_or_else(|| {
             widget_type_mismatch_panic::<W>(&node.id);
         });
@@ -568,7 +578,7 @@ impl WidgetStateStore {
     /// (used by tests and the no-cache transform constructor).
     pub(crate) fn expand_in_place(
         &self,
-        node: &mut View,
+        node: &mut TreeNode,
         cache: Option<&mut crate::runtime::widget_view_cache::WidgetViewCache>,
     ) {
         // Fold into a local Option so the two call sites below share
@@ -613,7 +623,7 @@ impl WidgetStateStore {
     /// [`plushie_core::Diagnostic::UnrecognizedWidgetPlaceholder`] is
     /// emitted through the typed diagnostic channel so hosts observe
     /// the issue programmatically.
-    fn rewrite_unrecognized_placeholder(node: &mut View) {
+    fn rewrite_unrecognized_placeholder(node: &mut TreeNode) {
         let id = std::mem::take(&mut node.id);
         plushie_core::diagnostics::warn(plushie_core::Diagnostic::UnrecognizedWidgetPlaceholder {
             id: id.clone(),
@@ -626,7 +636,7 @@ impl WidgetStateStore {
                 "role": "alert",
             })),
         );
-        *node = View {
+        *node = TreeNode {
             id,
             type_name: "container".to_string(),
             props: plushie_core::protocol::Props::from(props),
@@ -711,7 +721,7 @@ impl<'a> ExpandWidgetsTransform<'a> {
 }
 
 impl TreeTransform for ExpandWidgetsTransform<'_> {
-    fn enter(&mut self, node: &mut View, _ctx: &mut WalkCtx) {
+    fn enter(&mut self, node: &mut TreeNode, _ctx: &mut WalkCtx) {
         // Expand this node until it is no longer a `__widget__`
         // placeholder. The walker will descend into the expanded
         // children on its own, so nested widget placeholders inside

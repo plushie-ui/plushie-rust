@@ -24,7 +24,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::View;
+use plushie_core::protocol::TreeNode;
 
 /// Per-render widget-view cache.
 ///
@@ -34,7 +34,7 @@ use crate::View;
 /// `W::view()` is skipped.
 #[derive(Default)]
 pub(crate) struct WidgetViewCache {
-    entries: HashMap<String, (u64, View)>,
+    entries: HashMap<String, (u64, TreeNode)>,
     /// IDs touched during the current render cycle. Anything not in
     /// this set at the end of `finish_cycle` is evicted so stale
     /// widgets (unmounted since the previous render) don't leak
@@ -65,7 +65,7 @@ impl WidgetViewCache {
 
     /// Retrieve a cached expanded view if the stored cache-key hash
     /// matches.
-    pub fn get(&self, widget_id: &str, key_hash: u64) -> Option<&View> {
+    pub fn get(&self, widget_id: &str, key_hash: u64) -> Option<&TreeNode> {
         let (stored_hash, cached) = self.entries.get(widget_id)?;
         if *stored_hash == key_hash {
             Some(cached)
@@ -75,7 +75,7 @@ impl WidgetViewCache {
     }
 
     /// Store an expanded view for reuse next render.
-    pub fn insert(&mut self, widget_id: String, key_hash: u64, view: View) {
+    pub fn insert(&mut self, widget_id: String, key_hash: u64, view: TreeNode) {
         self.entries.insert(widget_id, (key_hash, view));
     }
 }

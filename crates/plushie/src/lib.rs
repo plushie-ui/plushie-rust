@@ -155,10 +155,75 @@ use subscription::Subscription;
 
 /// A view tree returned from [`App::view`].
 ///
-/// This is a type alias for [`plushie_core::protocol::TreeNode`].
 /// Built using UI builder functions (`window`, `column`, `button`,
-/// `text`, etc.).
-pub type View = plushie_core::protocol::TreeNode;
+/// `text`, etc.). The Rust SDK keeps `View` as its own authoring
+/// type and converts it to the wire-level
+/// [`plushie_core::protocol::TreeNode`] at the runtime boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct View {
+    pub(crate) id: String,
+    pub(crate) type_name: String,
+    pub(crate) props: plushie_core::protocol::Props,
+    pub(crate) children: Vec<View>,
+}
+
+impl View {
+    pub(crate) fn new(
+        id: String,
+        type_name: impl Into<String>,
+        props: plushie_core::protocol::Props,
+        children: Vec<View>,
+    ) -> Self {
+        Self {
+            id,
+            type_name: type_name.into(),
+            props,
+            children,
+        }
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self::new(
+            String::new(),
+            "container",
+            plushie_core::protocol::Props::default(),
+            vec![],
+        )
+    }
+
+    /// Stable widget ID for this node.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Widget type name for this node.
+    pub fn type_name(&self) -> &str {
+        &self.type_name
+    }
+
+    /// Raw props carried by this node.
+    pub fn props(&self) -> &plushie_core::protocol::Props {
+        &self.props
+    }
+
+    /// Child views nested under this node.
+    pub fn children(&self) -> &[View] {
+        &self.children
+    }
+
+    pub(crate) fn into_tree_node(self) -> plushie_core::protocol::TreeNode {
+        plushie_core::protocol::TreeNode {
+            id: self.id,
+            type_name: self.type_name,
+            props: self.props,
+            children: self
+                .children
+                .into_iter()
+                .map(View::into_tree_node)
+                .collect(),
+        }
+    }
+}
 
 /// The core trait for plushie applications.
 ///

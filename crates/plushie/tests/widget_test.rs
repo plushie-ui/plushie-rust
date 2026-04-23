@@ -124,10 +124,10 @@ fn widget_view_returns_valid_json() {
     let p = props(json!({"label": "Press me"}));
     let view = ToggleButton::view("toggle_btn", &p, &state);
 
-    assert_eq!(view.id, "toggle_btn");
-    assert_eq!(view.type_name, "button");
-    assert_eq!(view.props.get_str("label"), Some("Press me"));
-    assert_eq!(view.props.get_str("style"), Some("secondary"));
+    assert_eq!(view.id(), "toggle_btn");
+    assert_eq!(view.type_name(), "button");
+    assert_eq!(view.props().get_str("label"), Some("Press me"));
+    assert_eq!(view.props().get_str("style"), Some("secondary"));
 }
 
 #[test]
@@ -176,10 +176,10 @@ fn widget_view_reflects_pressed_state() {
     let p = props(json!({"label": "Toggle"}));
 
     let unpressed = ToggleButton::view("t", &p, &ToggleState { pressed: false });
-    assert_eq!(unpressed.props.get_str("style"), Some("secondary"));
+    assert_eq!(unpressed.props().get_str("style"), Some("secondary"));
 
     let pressed = ToggleButton::view("t", &p, &ToggleState { pressed: true });
-    assert_eq!(pressed.props.get_str("style"), Some("primary"));
+    assert_eq!(pressed.props().get_str("style"), Some("primary"));
 }
 
 // ---------------------------------------------------------------------------

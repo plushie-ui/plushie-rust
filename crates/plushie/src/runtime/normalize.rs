@@ -1,6 +1,6 @@
 //! Tree normalization: scope prefixing, ID validation, a11y rewrites.
 //!
-//! After `App::view()` returns a `View` (TreeNode), normalization
+//! After `App::view()` returns a `View`, normalization
 //! walks the tree to apply scoped ID prefixes and validate ID
 //! constraints. A second pass rewrites cross-widget accessibility
 //! references (`labelled_by`, `described_by`, `error_message`,

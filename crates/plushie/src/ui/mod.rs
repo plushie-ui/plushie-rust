@@ -41,14 +41,14 @@ use crate::types::*;
 // View construction helpers
 // ---------------------------------------------------------------------------
 
-/// Create a View (TreeNode) with children.
+/// Create a View with children.
 pub(crate) fn view_node(id: String, type_name: &str, props: PropMap, children: Vec<View>) -> View {
-    View {
+    View::new(
         id,
-        type_name: type_name.to_string(),
-        props: plushie_core::protocol::Props::from(props),
+        type_name,
+        plushie_core::protocol::Props::from(props),
         children,
-    }
+    )
 }
 
 /// Create a leaf View (no children).

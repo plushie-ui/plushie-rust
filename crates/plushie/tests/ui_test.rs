@@ -8,10 +8,24 @@ use plushie::prelude::*;
 use plushie::types::{Direction, TextAlignment, TextDirection};
 use serde_json::Value;
 
-/// Extract the JSON value from a View for inspection.
+/// Extract a JSON value from a View through the public authoring API.
 fn view_json(v: impl Into<View>) -> Value {
     let view: View = v.into();
-    serde_json::to_value(&view).unwrap()
+    serde_json::json!({
+        "id": view.id(),
+        "type": view.type_name(),
+        "props": view.props().to_value(),
+        "children": view.children().iter().map(view_json_ref).collect::<Vec<_>>(),
+    })
+}
+
+fn view_json_ref(view: &View) -> Value {
+    serde_json::json!({
+        "id": view.id(),
+        "type": view.type_name(),
+        "props": view.props().to_value(),
+        "children": view.children().iter().map(view_json_ref).collect::<Vec<_>>(),
+    })
 }
 
 fn get_type(v: &Value) -> &str {

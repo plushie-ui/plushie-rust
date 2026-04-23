@@ -1494,10 +1494,7 @@ impl<W: crate::widget::Widget> App for WidgetHarness<W> {
         Command::None
     }
 
-    fn view(
-        model: &Self,
-        widgets: &mut crate::widget::WidgetRegistrar,
-    ) -> Option<plushie_core::protocol::TreeNode> {
+    fn view(model: &Self, widgets: &mut crate::widget::WidgetRegistrar) -> Option<crate::View> {
         use crate::ui::*;
 
         let mut wv = crate::widget::WidgetView::<W>::new(&model.widget_id);
@@ -1505,10 +1502,11 @@ impl<W: crate::widget::Widget> App for WidgetHarness<W> {
             wv = wv.prop(key, value.clone());
         }
 
-        let v: TreeNode = window("main")
-            .child(column().child(wv.register(widgets)))
-            .into();
-        Some(v)
+        Some(
+            window("main")
+                .child(column().child(wv.register(widgets)))
+                .into(),
+        )
     }
 }
 

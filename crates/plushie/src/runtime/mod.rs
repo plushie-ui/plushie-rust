@@ -60,7 +60,9 @@ pub fn prepare_tree<A: App>(
     // view() returning None is a valid "no UI" signal (loading,
     // transition, error state). Fall back to an empty tree so the
     // renderer still has a structurally valid snapshot to diff.
-    let mut tree = A::view(model, &mut registrar).unwrap_or_else(empty_view);
+    let mut tree = A::view(model, &mut registrar)
+        .unwrap_or_else(crate::View::empty)
+        .into_tree_node();
 
     // Merge newly-registered widget expanders into the store before
     // walking so the expand transform has up-to-date state.
@@ -96,19 +98,4 @@ pub fn prepare_tree<A: App>(
     }
 
     (tree, warnings)
-}
-
-/// Empty view placeholder used when `A::view()` returns `None`.
-///
-/// A bare container with no children is structurally valid for
-/// normalization and diffing; the renderer simply draws nothing.
-/// Kept `pub(crate)` so both runners and `prepare_tree` share a
-/// single sentinel rather than each spawning their own.
-pub(crate) fn empty_view() -> TreeNode {
-    TreeNode {
-        id: String::new(),
-        type_name: "container".to_string(),
-        props: plushie_core::protocol::Props::from(plushie_core::protocol::PropMap::new()),
-        children: vec![],
-    }
 }

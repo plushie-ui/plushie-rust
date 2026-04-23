@@ -321,12 +321,12 @@ pub mod factory {{
         }}
     }}
 
-    impl<R: PlushieRenderer> PlushieWidgetRender<R> for {factory_name} {{
+    impl PlushieWidgetRender for {factory_name} {{
         fn render<'a>(
             &'a self,
             node: &'a TreeNode,
-            _ctx: &RenderCtx<'a, R>,
-        ) -> PlushieElement<'a, R> {{
+            _ctx: &RenderCtx<'a>,
+        ) -> PlushieElement<'a> {{
             // Pull typed props the app set via the builder in
             // App::view. `prop_f32` handles JSON's loose number
             // shapes for us.
@@ -705,6 +705,7 @@ mod tests {
         let lib = std::fs::read_to_string(result.crate_root.join("src/lib.rs")).unwrap();
         assert!(lib.contains("pub struct MyGauge"));
         assert!(lib.contains("pub struct MyGaugeFactory"));
+        assert!(lib.contains("impl PlushieWidgetRender for MyGaugeFactory"));
         assert!(lib.contains("#[cfg(feature = \"impl\")]"));
     }
 }

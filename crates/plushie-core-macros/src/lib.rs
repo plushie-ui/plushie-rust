@@ -926,9 +926,11 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
 /// derive uses `Self::default()` when the type is not a unit struct).
 /// Requires `#[plushie_widget(type_name = "...")]`.
 ///
-/// The derive produces a full `impl<R: PlushieRenderer>
-/// PlushieWidget<R> for Self` that forwards `render` to an inherent
-/// method the author defines on the struct.
+/// The derive produces a `PlushieWidget<R>` impl for each renderer
+/// where the type also implements `PlushieWidgetRender<R>`. A plain
+/// `impl PlushieWidgetRender` targets the default iced renderer;
+/// use `impl<R: PlushieRenderer> PlushieWidgetRender<R>` only when
+/// the widget needs to stay renderer-generic.
 ///
 /// # Example
 ///
@@ -939,12 +941,12 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
 /// #[plushie_widget(type_name = "my_gauge")]
 /// struct MyGauge;
 ///
-/// impl MyGauge {
-///     fn render<'a, R: PlushieRenderer>(
+/// impl PlushieWidgetRender for MyGauge {
+///     fn render<'a>(
 ///         &'a self,
 ///         node: &'a TreeNode,
-///         ctx: &RenderCtx<'a, R>,
-///     ) -> PlushieElement<'a, R> {
+///         ctx: &RenderCtx<'a>,
+///     ) -> PlushieElement<'a> {
 ///         todo!()
 ///     }
 /// }

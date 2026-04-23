@@ -31,7 +31,7 @@ impl Counter {
     }
 }
 
-impl<R: PlushieRenderer> PlushieWidget<R> for Counter {
+impl PlushieWidget for Counter {
     fn type_names(&self) -> &[&str] {
         &["doc_counter"]
     }
@@ -45,7 +45,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for Counter {
             .or_insert_with(|| node.prop_f32("initial_value").unwrap_or(0.0) as u32);
     }
 
-    fn render<'a>(&'a self, node: &'a TreeNode, _ctx: &RenderCtx<'a, R>) -> PlushieElement<'a, R> {
+    fn render<'a>(&'a self, node: &'a TreeNode, _ctx: &RenderCtx<'a>) -> PlushieElement<'a> {
         let key = (String::new(), node.id.clone());
         let count = self.counts.get(&key).copied().unwrap_or(0);
         text(format!("count: {count}")).into()
@@ -96,7 +96,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for Counter {
         self.counts.retain(|k, _| live_ids.contains(k));
     }
 
-    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget> {
         Box::new(Counter::new())
     }
 }

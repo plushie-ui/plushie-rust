@@ -23,12 +23,12 @@
 //! #[plushie_widget(type_name = "gauge")]
 //! struct Gauge;
 //!
-//! impl<R: PlushieRenderer> PlushieWidgetRender<R> for Gauge {
+//! impl PlushieWidgetRender for Gauge {
 //!     fn render<'a>(
 //!         &'a self,
 //!         node: &'a TreeNode,
-//!         ctx: &RenderCtx<'a, R>,
-//!     ) -> PlushieElement<'a, R> {
+//!         ctx: &RenderCtx<'a>,
+//!     ) -> PlushieElement<'a> {
 //!         todo!()
 //!     }
 //! }
@@ -37,11 +37,11 @@
 //! Manual impl (stateful widgets, multiple type names, etc.):
 //!
 //! ```ignore
-//! impl<R: PlushieRenderer> PlushieWidget<R> for Gauge {
+//! impl PlushieWidget for Gauge {
 //!     fn type_names(&self) -> &[&str] { &["gauge"] }
-//!     fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>)
-//!         -> PlushieElement<'a, R> { todo!() }
-//!     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+//!     fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a>)
+//!         -> PlushieElement<'a> { todo!() }
+//!     fn fresh_for_session(&self) -> Box<dyn PlushieWidget> {
 //!         Box::new(Gauge)
 //!     }
 //! }
@@ -91,7 +91,7 @@ use crate::render_ctx::RenderCtx;
 ///     warn_threshold: f32,
 /// }
 ///
-/// impl<R: PlushieRenderer> PlushieWidget<R> for Gauge {
+/// impl PlushieWidget for Gauge {
 ///     fn namespace(&self) -> &str { "gauge" }
 ///     fn init(&mut self, ctx: &InitCtx<'_>) {
 ///         let cfg = ctx.config_or_default::<GaugeConfig>();
@@ -242,7 +242,7 @@ fn catch_unwind_enabled() -> bool {
 /// always accessed from a single thread. Multiplexed sessions create
 /// their own registries via [`WidgetSet::create_widgets`] rather than
 /// cloning across threads.
-pub trait PlushieWidget<R: PlushieRenderer> {
+pub trait PlushieWidget<R: PlushieRenderer = iced::Renderer> {
     /// Widget type name(s) this implementation handles.
     ///
     /// Most widgets handle a single type (e.g., `["button"]`).
@@ -478,7 +478,7 @@ impl WidgetSubscription {
 /// body; `type_names` and `fresh_for_session` are generated.
 ///
 /// Manually-implemented widgets do not need this trait.
-pub trait PlushieWidgetRender<R: PlushieRenderer> {
+pub trait PlushieWidgetRender<R: PlushieRenderer = iced::Renderer> {
     /// Render a tree node to an iced Element. Same contract as
     /// [`PlushieWidget::render`].
     fn render<'a>(
@@ -497,7 +497,7 @@ pub trait PlushieWidgetRender<R: PlushieRenderer> {
 /// Widget sets group related widgets (e.g., the "iced" set provides all
 /// 36 built-in widgets). Multiple sets can be registered; for type name
 /// collisions, the last-registered set wins.
-pub trait WidgetSet<R: PlushieRenderer> {
+pub trait WidgetSet<R: PlushieRenderer = iced::Renderer> {
     /// Human-readable name for this set (e.g., "iced", "material").
     ///
     /// Used for logging and introspection (e.g., hello message reports

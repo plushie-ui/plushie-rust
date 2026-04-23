@@ -206,12 +206,12 @@ pub mod factory {
         }
     }
 
-    impl<R: PlushieRenderer> PlushieWidgetRender<R> for MyGaugeFactory {
+    impl PlushieWidgetRender for MyGaugeFactory {
         fn render<'a>(
             &'a self,
             node: &'a TreeNode,
-            ctx: &RenderCtx<'a, R>,
-        ) -> PlushieElement<'a, R> {
+            ctx: &RenderCtx<'a>,
+        ) -> PlushieElement<'a> {
             let value = node.prop_f32("value").unwrap_or(0.0);
             let max = node.prop_f32("max").unwrap_or(1.0);
             let ratio = (value / max).clamp(0.0, 1.0);
@@ -226,8 +226,9 @@ pub mod factory {
 `#[derive(PlushieWidget)]` with `type_name` generates the
 `type_names()` and `fresh_for_session()` methods on the
 `PlushieWidget` trait. `PlushieWidgetRender` holds just the `render`
-body. `PlushieElement<'a, R>` is shorthand for
-`iced::Element<'a, Message, iced::Theme, R>`.
+body. `PlushieElement<'a>` is shorthand for
+`iced::Element<'a, Message, iced::Theme, iced::Renderer>`. Use
+`PlushieElement<'a, R>` only when writing renderer-generic code.
 
 ## Implementing `PlushieWidget`
 
@@ -241,9 +242,9 @@ Required methods:
 - `type_names(&self) -> &[&str]`: the widget type names this
   implementation handles. Usually `&["my_gauge"]` for a single-type
   widget.
-- `render(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>) -> PlushieElement<'a, R>`:
+- `render(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a>) -> PlushieElement<'a>`:
   produces an iced `Element` from the node's props and children.
-- `fresh_for_session(&self) -> Box<dyn PlushieWidget<R>>`: returns
+- `fresh_for_session(&self) -> Box<dyn PlushieWidget>`: returns
   a fresh instance for each session when the renderer runs with
   `--max-sessions > 1`. Isolates per-session state.
 
@@ -278,7 +279,7 @@ use plushie_widget_sdk::prelude::*;
 
 pub struct MyGaugeFactory;
 
-impl<R: PlushieRenderer> PlushieWidget<R> for MyGaugeFactory {
+impl PlushieWidget for MyGaugeFactory {
     fn type_names(&self) -> &[&str] {
         &["my_gauge"]
     }
@@ -286,13 +287,13 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MyGaugeFactory {
     fn render<'a>(
         &'a self,
         node: &'a TreeNode,
-        ctx: &RenderCtx<'a, R>,
-    ) -> PlushieElement<'a, R> {
+        ctx: &RenderCtx<'a>,
+    ) -> PlushieElement<'a> {
         // ...
         todo!()
     }
 
-    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget> {
         Box::new(Self)
     }
 }

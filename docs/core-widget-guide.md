@@ -44,10 +44,10 @@ use my_gauge::gauge;
 
 pub struct GaugeWidget;
 
-impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
+impl PlushieWidget for GaugeWidget {
     fn type_names(&self) -> &[&str] { &["gauge"] }
 
-    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>) -> Element<'a, Message, Theme, R> {
+    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a>) -> PlushieElement<'a> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let width = plushie_core::types::Length::extract(&node.props, "width")
             .map(|l| iced_convert::length(&l))
@@ -58,7 +58,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
         gauge(value).width(width).color(color).into()
     }
 
-    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget> {
         Box::new(GaugeWidget)
     }
 }
@@ -404,15 +404,15 @@ constructs that are not in the prelude.
 
 ```rust
 use plushie_widget_sdk::prelude::*;
-use plushie_widget_sdk::iced::{Length as IcedLength, Theme as IcedTheme};
+use plushie_widget_sdk::iced::Length as IcedLength;
 use my_gauge::gauge;
 
 pub struct GaugeWidget;
 
-impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
+impl PlushieWidget for GaugeWidget {
     fn type_names(&self) -> &[&str] { &["gauge"] }
 
-    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a, R>) -> Element<'a, Message, IcedTheme, R> {
+    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a>) -> PlushieElement<'a> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let color = node.prop_color("color")
             .unwrap_or(ctx.theme.palette().primary.base.color);
@@ -432,7 +432,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
             .into()
     }
 
-    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget> {
         Box::new(GaugeWidget)
     }
 }
@@ -552,7 +552,7 @@ against these specs and logs warnings on mismatch.
 ```rust
 use plushie_core::{EventSpec, CommandSpec, PayloadSpec, ValueType};
 
-impl<R: PlushieRenderer> PlushieWidget<R> for GaugeWidget {
+impl PlushieWidget for GaugeWidget {
     // ... type_names, render, fresh_for_session ...
 
     fn event_specs(&self) -> Vec<EventSpec> {
@@ -726,10 +726,10 @@ pub struct Counter {
     palette: Arc<Palette>,
 }
 
-impl<R: PlushieRenderer> PlushieWidget<R> for Counter {
+impl PlushieWidget for Counter {
     // type_names, render, ... as usual.
 
-    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget> {
         Box::new(Counter {
             counts: HashMap::new(),       // fresh per session
             palette: Arc::clone(&self.palette),  // shared read-only
@@ -762,7 +762,7 @@ struct GaugeConfig {
 
 fn default_warn_threshold() -> f32 { 80.0 }
 
-impl<R: PlushieRenderer> PlushieWidget<R> for Gauge {
+impl PlushieWidget for Gauge {
     fn type_names(&self) -> &[&str] { &["gauge"] }
 
     fn namespace(&self) -> &str { "gauge" }

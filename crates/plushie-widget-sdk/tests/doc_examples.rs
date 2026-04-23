@@ -29,16 +29,12 @@ use plushie_widget_sdk::iced::{Color as IcedColor, Theme as IcedTheme};
 
 struct DocGauge;
 
-impl<R: PlushieRenderer> PlushieWidget<R> for DocGauge {
+impl PlushieWidget for DocGauge {
     fn type_names(&self) -> &[&str] {
         &["doc_gauge"]
     }
 
-    fn render<'a>(
-        &'a self,
-        node: &'a TreeNode,
-        _ctx: &RenderCtx<'a, R>,
-    ) -> Element<'a, Message, IcedTheme, R> {
+    fn render<'a>(&'a self, node: &'a TreeNode, _ctx: &RenderCtx<'a>) -> PlushieElement<'a> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let label = node.prop_str("label").unwrap_or_default();
 
@@ -50,7 +46,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocGauge {
         .into()
     }
 
-    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget> {
         Box::new(DocGauge)
     }
 }
@@ -191,16 +187,12 @@ fn doc_coalesce_hint() {
 
 struct DocRating;
 
-impl<R: PlushieRenderer> PlushieWidget<R> for DocRating {
+impl PlushieWidget for DocRating {
     fn type_names(&self) -> &[&str] {
         &["doc_rating"]
     }
 
-    fn render<'a>(
-        &'a self,
-        node: &'a TreeNode,
-        ctx: &RenderCtx<'a, R>,
-    ) -> Element<'a, Message, IcedTheme, R> {
+    fn render<'a>(&'a self, node: &'a TreeNode, ctx: &RenderCtx<'a>) -> PlushieElement<'a> {
         let value = node.prop_f32("value").unwrap_or(0.0) as usize;
         let max = prop_u32(&node.props, "max").unwrap_or(5) as usize;
         let size = node.prop_f32("size").unwrap_or(24.0);
@@ -238,7 +230,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocRating {
         stars.into()
     }
 
-    fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
+    fn fresh_for_session(&self) -> Box<dyn PlushieWidget> {
         Box::new(DocRating)
     }
 }
@@ -272,7 +264,7 @@ fn doc_rating_no_props() {
 #[test]
 fn doc_fresh_for_session() {
     let widget = DocRating;
-    let cloned: Box<dyn PlushieWidget<iced::Renderer>> = widget.fresh_for_session();
+    let cloned: Box<dyn PlushieWidget> = widget.fresh_for_session();
     assert_eq!(cloned.type_names(), &["doc_rating"]);
 }
 
@@ -284,8 +276,8 @@ fn doc_fresh_for_session() {
 #[plushie_widget(type_name = "doc_derive_gauge")]
 struct DocDeriveGauge;
 
-impl<R: PlushieRenderer> PlushieWidgetRender<R> for DocDeriveGauge {
-    fn render<'a>(&'a self, node: &'a TreeNode, _ctx: &RenderCtx<'a, R>) -> PlushieElement<'a, R> {
+impl PlushieWidgetRender for DocDeriveGauge {
+    fn render<'a>(&'a self, node: &'a TreeNode, _ctx: &RenderCtx<'a>) -> PlushieElement<'a> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         progress_bar(0.0..=100.0, value).into()
     }
@@ -298,7 +290,7 @@ fn derive_widget_type_names_and_fresh() {
         <DocDeriveGauge as PlushieWidget<iced::Renderer>>::type_names(&widget),
         &["doc_derive_gauge"]
     );
-    let fresh: Box<dyn PlushieWidget<iced::Renderer>> = widget.fresh_for_session();
+    let fresh: Box<dyn PlushieWidget> = widget.fresh_for_session();
     assert_eq!(fresh.type_names(), &["doc_derive_gauge"]);
 }
 
@@ -351,5 +343,5 @@ fn derive_widget_renders() {
     let ctx = test.render_ctx();
     let widget = DocDeriveGauge;
     let _element: PlushieElement<'_> =
-        <DocDeriveGauge as PlushieWidget<iced::Renderer>>::render(&widget, &node, &ctx);
+        <DocDeriveGauge as PlushieWidget>::render(&widget, &node, &ctx);
 }

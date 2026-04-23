@@ -60,12 +60,12 @@ use plushie_widget_sdk::widget::widget_set::iced_widget_set;
 #[plushie_widget(type_name = "my_gauge")]
 struct MyGauge;
 
-impl<R: PlushieRenderer> PlushieWidgetRender<R> for MyGauge {
+impl PlushieWidgetRender for MyGauge {
     fn render<'a>(
         &'a self,
         node: &'a TreeNode,
-        ctx: &RenderCtx<'a, R>,
-    ) -> PlushieElement<'a, R> {
+        ctx: &RenderCtx<'a>,
+    ) -> PlushieElement<'a> {
         let value = node.prop_f32("value").unwrap_or(0.0);
         let color = ctx.theme.palette().primary.base.color;
         container(text(format!("{value:.0}%")).color(color))
@@ -85,8 +85,9 @@ fn main() -> iced::Result {
 
 The `#[derive(PlushieWidget)]` with `type_name` generates
 `type_names` and `fresh_for_session`. `PlushieWidgetRender` holds
-just the `render` body. `PlushieElement<'a, R>` is shorthand for
-`iced::Element<'a, Message, iced::Theme, R>`.
+just the `render` body. `PlushieElement<'a>` is shorthand for
+`iced::Element<'a, Message, iced::Theme, iced::Renderer>`. Use
+`PlushieElement<'a, R>` only when writing renderer-generic code.
 
 Stateful widgets implement `PlushieWidget` directly so they can
 override `prepare`, `handle_message`, `cleanup_stale`, etc. The
@@ -107,7 +108,7 @@ fn gauge_renders() {
     let test = TestEnv::default();
     let ctx = test.render_ctx();
     let _element: PlushieElement<'_> =
-        <MyGauge as PlushieWidget<iced::Renderer>>::render(&widget, &node, &ctx);
+        <MyGauge as PlushieWidget>::render(&widget, &node, &ctx);
 }
 ```
 
@@ -120,9 +121,8 @@ Common compile errors and fixes:
 
 - **"the trait `PlushieWidget` is not implemented for your type"**: you
   derived `PlushieWidget` but forgot the `PlushieWidgetRender` impl.
-  Either add `impl<R: PlushieRenderer> PlushieWidgetRender<R> for X`
-  with a `render` body, or drop the derive and implement
-  `PlushieWidget` directly.
+  Either add `impl PlushieWidgetRender for X` with a `render` body,
+  or drop the derive and implement `PlushieWidget` directly.
 
 - **"cannot find derive macro `PlushieWidget`"**: the prelude re-
   exports `PlushieWidget` as both the trait and the derive macro.
@@ -132,7 +132,7 @@ Common compile errors and fixes:
 
 - **"wrong number of type arguments"** on `Element`: the trait
   method returns `Element<'a, Message, Theme, R>`, four
-  parameters. Use `PlushieElement<'a, R>` from the prelude instead.
+  parameters. Use `PlushieElement<'a>` from the prelude instead.
 
 - **"two versions of `iced` in the dependency graph"**: you added a
   direct `iced` dependency. Delete it; use

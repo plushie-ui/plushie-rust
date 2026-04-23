@@ -91,10 +91,10 @@ pub enum Diagnostic {
         limit: usize,
     },
     /// A user-authored widget ID violated the canonical ID ruleset
-    /// (length, ASCII-printable range, reserved characters).
+    /// (length, reserved characters).
     WidgetIdInvalid {
-        /// Stable machine-readable reason tag. One of `too_long`,
-        /// `non_ascii`, or `reserved_char`.
+        /// Stable machine-readable reason tag. One of `too_long` or
+        /// `reserved_char`.
         reason: String,
         /// Widget type name the ID was declared on.
         type_name: String,

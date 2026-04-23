@@ -115,9 +115,7 @@ const MAX_WIDGET_ID_LEN: usize = 1024;
 ///
 /// Reasons surfaced (each a separate diagnostic so callers can match
 /// on the specific failure):
-/// - `empty`: zero-length ID
 /// - `too_long`: > 1024 bytes
-/// - `non_ascii`: contains bytes outside 0x21..=0x7E printable ASCII
 /// - `reserved_char`: contains `/` or `#`
 fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<Diagnostic>) {
     // Invariant: auto-generated IDs (prefixed `auto:`) never contain
@@ -140,27 +138,6 @@ fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<Diagnostic>)
         );
         warnings.push(Diagnostic::WidgetIdInvalid {
             reason: "too_long".to_string(),
-            type_name: type_name.to_string(),
-            id: id.to_string(),
-            detail,
-        });
-        return;
-    }
-    // ASCII printable range 0x21..=0x7E excludes space and control
-    // characters. Anything outside this range is rejected uniformly;
-    // scope rewriting can't rely on strings that might contain
-    // embedded newlines or unicode punctuation.
-    let first_non_ascii = id
-        .bytes()
-        .enumerate()
-        .find(|(_, b)| !matches!(*b, 0x21..=0x7E));
-    if let Some((offset, byte)) = first_non_ascii {
-        let detail = format!(
-            "ID \"{id}\" contains non-printable or non-ASCII byte \
-             0x{byte:02X} at offset {offset} (reason=non_ascii)"
-        );
-        warnings.push(Diagnostic::WidgetIdInvalid {
-            reason: "non_ascii".to_string(),
             type_name: type_name.to_string(),
             id: id.to_string(),
             detail,
@@ -284,7 +261,6 @@ impl TreeTransform for NormalizeTransform<'_> {
         // Ruby / TypeScript):
         //
         // - non-empty
-        // - ASCII 0x21..=0x7E printable range
         // - no `/` (reserved as scope separator)
         // - no `#` (reserved for window-qualified paths)
         // - length <= 1024 bytes
@@ -1208,29 +1184,29 @@ mod tests {
     }
 
     #[test]
-    fn non_ascii_id_produces_warning() {
+    fn non_ascii_id_is_accepted() {
         let tree = node("caf\u{00e9}", "text", vec![]);
-        let (_, warnings) = normalize(&tree);
+        let (result, warnings) = normalize(&tree);
         assert!(
-            warnings.iter().any(|w| matches!(
-                w,
-                Diagnostic::WidgetIdInvalid { reason, .. } if reason == "non_ascii"
-            )),
-            "expected non_ascii diagnostic, got {warnings:?}"
+            !warnings
+                .iter()
+                .any(|w| matches!(w, Diagnostic::WidgetIdInvalid { .. })),
+            "expected no widget_id_invalid diagnostic, got {warnings:?}"
         );
+        assert_eq!(result.id, "caf\u{00e9}");
     }
 
     #[test]
-    fn control_character_id_produces_warning() {
+    fn control_character_id_is_accepted() {
         let tree = node("has\tctrl", "text", vec![]);
-        let (_, warnings) = normalize(&tree);
+        let (result, warnings) = normalize(&tree);
         assert!(
-            warnings.iter().any(|w| matches!(
-                w,
-                Diagnostic::WidgetIdInvalid { reason, .. } if reason == "non_ascii"
-            )),
-            "expected non_ascii diagnostic for control char, got {warnings:?}"
+            !warnings
+                .iter()
+                .any(|w| matches!(w, Diagnostic::WidgetIdInvalid { .. })),
+            "expected no widget_id_invalid diagnostic, got {warnings:?}"
         );
+        assert_eq!(result.id, "has\tctrl");
     }
 
     #[test]
@@ -1249,9 +1225,7 @@ mod tests {
 
     #[test]
     fn auto_ids_bypass_all_id_validation() {
-        // Non-ASCII auto-generated ID (shouldn't happen in practice but
-        // the exemption should hold regardless). Auto IDs start with
-        // "auto:" so they skip the canonical rules.
+        // Auto IDs start with "auto:" so they skip the canonical rules.
         let tree = node("auto:col:\u{00e9}", "column", vec![]);
         let (_, warnings) = normalize(&tree);
         assert!(

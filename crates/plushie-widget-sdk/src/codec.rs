@@ -63,14 +63,23 @@ impl Codec {
     pub fn encode<T: Serialize>(&self, value: &T) -> Result<Vec<u8>, String> {
         match self {
             Codec::Json => {
+                let mut json_value =
+                    serde_json::to_value(value).map_err(|e| format!("json encode: {e}"))?;
+                sanitize_json_value(&mut json_value);
                 let mut bytes =
-                    serde_json::to_vec(value).map_err(|e| format!("json encode: {e}"))?;
+                    serde_json::to_vec(&json_value).map_err(|e| format!("json encode: {e}"))?;
                 bytes.push(b'\n');
                 Ok(bytes)
             }
             Codec::MsgPack => {
                 let payload =
                     rmp_serde::to_vec_named(value).map_err(|e| format!("msgpack encode: {e}"))?;
+                let mut msg = rmpv::decode::read_value(&mut &payload[..])
+                    .map_err(|e| format!("msgpack encode: {e}"))?;
+                sanitize_rmpv_value(&mut msg);
+                let mut payload = Vec::new();
+                rmpv::encode::write_value(&mut payload, &msg)
+                    .map_err(|e| format!("msgpack encode: {e}"))?;
                 let len = u32::try_from(payload.len()).map_err(|_| {
                     format!(
                         "payload exceeds 4 GiB frame limit ({} bytes)",
@@ -104,9 +113,16 @@ impl Codec {
     /// when the encoded msgpack payload exceeds the 4 GiB frame limit.
     pub fn encode_binary_message(
         &self,
-        mut map: serde_json::Map<String, serde_json::Value>,
+        map: serde_json::Map<String, serde_json::Value>,
         binary_field: Option<(&str, &[u8])>,
     ) -> Result<Vec<u8>, String> {
+        let mut val = serde_json::Value::Object(map);
+        sanitize_json_value(&mut val);
+        let mut map = match val {
+            serde_json::Value::Object(map) => map,
+            _ => unreachable!("object sanitizer must preserve object shape"),
+        };
+
         match self {
             Codec::Json => {
                 if let Some((key, bytes)) = binary_field
@@ -345,14 +361,14 @@ fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> Result<serde_json::Valu
         rmpv::Value::F32(f) => serde_json::Number::from_f64(f as f64)
             .map(serde_json::Value::Number)
             .unwrap_or_else(|| {
-                log::warn!("rmpv_to_json: non-finite f32 ({f}) replaced with 0.0");
-                serde_json::Value::Number(serde_json::Number::from_f64(0.0).unwrap())
+                log::warn!("rmpv_to_json: non-finite f32 ({f}) replaced with null");
+                serde_json::Value::Null
             }),
         rmpv::Value::F64(f) => serde_json::Number::from_f64(f)
             .map(serde_json::Value::Number)
             .unwrap_or_else(|| {
-                log::warn!("rmpv_to_json: non-finite f64 ({f}) replaced with 0.0");
-                serde_json::Value::Number(serde_json::Number::from_f64(0.0).unwrap())
+                log::warn!("rmpv_to_json: non-finite f64 ({f}) replaced with null");
+                serde_json::Value::Null
             }),
         rmpv::Value::String(s) => {
             // rmpv::Utf8String may hold invalid UTF-8. Surface the failure
@@ -463,6 +479,60 @@ fn json_to_rmpv(val: serde_json::Value) -> rmpv::Value {
     }
 }
 
+/// Recursively normalize JSON values before wire encoding.
+///
+/// Serde JSON already serializes non-finite floats as `null`; the
+/// explicit traversal here keeps JSON and msgpack encode paths aligned
+/// by feeding the same sanitized value tree into both serializers.
+fn sanitize_json_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                sanitize_json_value(item);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for item in map.values_mut() {
+                sanitize_json_value(item);
+            }
+        }
+        serde_json::Value::Number(number) => {
+            if let Some(float) = number.as_f64()
+                && !float.is_finite()
+            {
+                *value = serde_json::Value::Null;
+            }
+        }
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::String(_) => {}
+    }
+}
+
+/// Recursively normalize msgpack values before writing them to the wire.
+///
+/// Self-generated payloads should keep their existing scalar encodings, so
+/// this only rewrites non-finite floats to `nil`.
+fn sanitize_rmpv_value(value: &mut rmpv::Value) {
+    match value {
+        rmpv::Value::F32(float) if !float.is_finite() => {
+            *value = rmpv::Value::Nil;
+        }
+        rmpv::Value::F64(float) if !float.is_finite() => {
+            *value = rmpv::Value::Nil;
+        }
+        rmpv::Value::Array(items) => {
+            for item in items {
+                sanitize_rmpv_value(item);
+            }
+        }
+        rmpv::Value::Map(entries) => {
+            for (_, item) in entries {
+                sanitize_rmpv_value(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,6 +559,13 @@ mod tests {
         rest: serde_json::Value,
     }
 
+    #[derive(Debug, Serialize)]
+    struct NonFiniteScalars {
+        nan: f64,
+        pos_inf: f64,
+        neg_inf: f64,
+    }
+
     // -- JSON roundtrips --
 
     #[test]
@@ -511,6 +588,26 @@ mod tests {
         assert_eq!(decoded, original);
     }
 
+    #[test]
+    fn json_encode_non_finite_floats_become_null() {
+        let bytes = Codec::Json
+            .encode(&NonFiniteScalars {
+                nan: f64::NAN,
+                pos_inf: f64::INFINITY,
+                neg_inf: f64::NEG_INFINITY,
+            })
+            .unwrap();
+        let decoded: serde_json::Value = serde_json::from_slice(&bytes[..bytes.len() - 1]).unwrap();
+        assert_eq!(
+            decoded,
+            json!({
+                "nan": null,
+                "pos_inf": null,
+                "neg_inf": null
+            })
+        );
+    }
+
     // -- MsgPack roundtrips --
 
     #[test]
@@ -525,6 +622,52 @@ mod tests {
         assert_eq!(len, bytes.len() - 4);
         let decoded: Simple = Codec::MsgPack.decode(&bytes[4..]).unwrap();
         assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn msgpack_roundtrip_non_finite_floats_become_null() {
+        let bytes = Codec::MsgPack
+            .encode(&NonFiniteScalars {
+                nan: f64::NAN,
+                pos_inf: f64::INFINITY,
+                neg_inf: f64::NEG_INFINITY,
+            })
+            .unwrap();
+        let decoded: serde_json::Value = Codec::MsgPack.decode(&bytes[4..]).unwrap();
+        assert_eq!(
+            decoded,
+            json!({
+                "nan": null,
+                "pos_inf": null,
+                "neg_inf": null
+            })
+        );
+    }
+
+    #[test]
+    fn msgpack_encode_preserves_f32_wire_type() {
+        #[derive(Debug, Serialize)]
+        struct F32Value {
+            value: f32,
+        }
+
+        let bytes = Codec::MsgPack.encode(&F32Value { value: 1.25 }).unwrap();
+        let payload = &bytes[4..];
+        let decoded = rmpv::decode::read_value(&mut &payload[..]).unwrap();
+
+        match decoded {
+            rmpv::Value::Map(entries) => {
+                let value_entry = entries
+                    .into_iter()
+                    .find(|(key, _)| key == &rmpv::Value::String("value".into()))
+                    .expect("value field present");
+                match value_entry.1 {
+                    rmpv::Value::F32(value) => assert_eq!(value, 1.25),
+                    other => panic!("expected f32 wire value, got {other:?}"),
+                }
+            }
+            other => panic!("expected map, got {other:?}"),
+        }
     }
 
     #[test]
@@ -846,6 +989,22 @@ mod tests {
         ]);
         let result = rmpv_to_json(val).unwrap();
         assert_eq!(result, json!({"key": "val", "num": 42}));
+    }
+
+    #[test]
+    fn rmpv_to_json_non_finite_floats_become_null() {
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::F32(f32::NAN)).unwrap(),
+            json!(null)
+        );
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::F64(f64::INFINITY)).unwrap(),
+            json!(null)
+        );
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::F64(f64::NEG_INFINITY)).unwrap(),
+            json!(null)
+        );
     }
 
     // -- detect --
@@ -1279,6 +1438,36 @@ mod tests {
         assert_eq!(decoded["type"], "test");
         assert_eq!(decoded["count"], 42);
         assert_eq!(decoded["nested"]["a"][0], 1);
+    }
+
+    #[test]
+    fn external_msgpack_non_finite_float_decodes_to_null() {
+        let val = rmpv::Value::Map(vec![
+            (
+                rmpv::Value::String("nan".into()),
+                rmpv::Value::F64(f64::NAN),
+            ),
+            (
+                rmpv::Value::String("pos_inf".into()),
+                rmpv::Value::F64(f64::INFINITY),
+            ),
+            (
+                rmpv::Value::String("neg_inf".into()),
+                rmpv::Value::F64(f64::NEG_INFINITY),
+            ),
+        ]);
+        let mut bytes = Vec::new();
+        rmpv::encode::write_value(&mut bytes, &val).unwrap();
+
+        let decoded: serde_json::Value = Codec::MsgPack.decode(&bytes).unwrap();
+        assert_eq!(
+            decoded,
+            json!({
+                "nan": null,
+                "pos_inf": null,
+                "neg_inf": null
+            })
+        );
     }
 
     // -- Per-variant round-trip tests ----------------------------------------

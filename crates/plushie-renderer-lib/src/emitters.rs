@@ -14,7 +14,7 @@ use std::sync::{Arc, OnceLock};
 
 use parking_lot::Mutex;
 
-use plushie_widget_sdk::protocol::{DiagnosticMessage, OutgoingEvent};
+use plushie_widget_sdk::protocol::{DiagnosticMessage, OutgoingEvent, ScreenshotResponse};
 
 /// Alias for the sink mutex.
 ///
@@ -206,18 +206,17 @@ impl EventSink for WriterSink {
         height: u32,
         rgba_bytes: &[u8],
     ) -> io::Result<()> {
-        use serde_json::json;
-        let mut map = serde_json::Map::new();
-        map.insert("type".to_string(), json!("screenshot_response"));
-        // `session` is a write-path placeholder; the caller populates it via
-        // `with_session(...)` on the outgoing event path. Same pattern as
-        // `emit_query_response` above.
-        map.insert("session".to_string(), json!(""));
-        map.insert("id".to_string(), json!(id));
-        map.insert("name".to_string(), json!(name));
-        map.insert("hash".to_string(), json!(hash));
-        map.insert("width".to_string(), json!(width));
-        map.insert("height".to_string(), json!(height));
+        let response = ScreenshotResponse::new(
+            id.to_string(),
+            name.to_string(),
+            hash.to_string(),
+            width,
+            height,
+        );
+        let map = match serde_json::to_value(&response).map_err(io::Error::other)? {
+            serde_json::Value::Object(map) => map,
+            _ => unreachable!("ScreenshotResponse must serialize as a JSON object"),
+        };
 
         let binary = if rgba_bytes.is_empty() {
             None
@@ -401,6 +400,7 @@ pub fn install_panic_hook() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine as _;
     use std::sync::Arc;
     use std::sync::Mutex as StdMutex;
 
@@ -412,6 +412,20 @@ mod tests {
     #[derive(Default)]
     struct RecordingSink {
         events: Arc<StdMutex<Vec<OutgoingEvent>>>,
+    }
+
+    #[derive(Clone, Default)]
+    struct SharedBuffer(Arc<StdMutex<Vec<u8>>>);
+
+    impl std::io::Write for SharedBuffer {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
     }
 
     impl EventSink for RecordingSink {
@@ -530,5 +544,75 @@ mod tests {
             closed_value.get("reason").and_then(|v| v.as_str()),
             Some("panic"),
         );
+    }
+
+    #[test]
+    fn writer_sink_screenshot_response_json_includes_structured_fields_and_base64_rgba() {
+        let writer = SharedBuffer::default();
+        let output = writer.0.clone();
+        let mut sink = WriterSink::new(Box::new(writer), plushie_widget_sdk::runtime::Codec::Json);
+
+        sink.emit_screenshot_response("sc1", "homepage", "d4e5f6", 2, 3, &[0, 1, 2, 3])
+            .unwrap();
+
+        let bytes = output.lock().unwrap().clone();
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes[..bytes.len() - 1]).unwrap();
+        assert_eq!(parsed["type"], "screenshot_response");
+        assert_eq!(parsed["session"], "");
+        assert_eq!(parsed["id"], "sc1");
+        assert_eq!(parsed["name"], "homepage");
+        assert_eq!(parsed["hash"], "d4e5f6");
+        assert_eq!(parsed["width"], 2);
+        assert_eq!(parsed["height"], 3);
+
+        let rgba = parsed["rgba"].as_str().expect("rgba base64 string");
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(rgba)
+            .unwrap();
+        assert_eq!(decoded, vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn writer_sink_screenshot_response_omits_rgba_when_empty() {
+        let writer = SharedBuffer::default();
+        let output = writer.0.clone();
+        let mut sink = WriterSink::new(Box::new(writer), plushie_widget_sdk::runtime::Codec::Json);
+
+        sink.emit_screenshot_response("sc1", "mock", "", 0, 0, &[])
+            .unwrap();
+
+        let bytes = output.lock().unwrap().clone();
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes[..bytes.len() - 1]).unwrap();
+        assert_eq!(parsed["type"], "screenshot_response");
+        assert_eq!(parsed["hash"], "");
+        assert_eq!(parsed["width"], 0);
+        assert_eq!(parsed["height"], 0);
+        assert!(parsed.get("rgba").is_none());
+    }
+
+    #[test]
+    fn writer_sink_screenshot_response_msgpack_round_trips_rgba() {
+        let writer = SharedBuffer::default();
+        let output = writer.0.clone();
+        let mut sink = WriterSink::new(
+            Box::new(writer),
+            plushie_widget_sdk::runtime::Codec::MsgPack,
+        );
+
+        sink.emit_screenshot_response("sc1", "homepage", "d4e5f6", 2, 3, &[0, 1, 2, 3])
+            .unwrap();
+
+        let bytes = output.lock().unwrap().clone();
+        let parsed: serde_json::Value = plushie_widget_sdk::runtime::Codec::MsgPack
+            .decode(&bytes[4..])
+            .unwrap();
+        assert_eq!(parsed["type"], "screenshot_response");
+        assert_eq!(parsed["session"], "");
+        assert_eq!(parsed["id"], "sc1");
+        assert_eq!(parsed["name"], "homepage");
+        assert_eq!(parsed["hash"], "d4e5f6");
+        assert_eq!(parsed["width"], 2);
+        assert_eq!(parsed["height"], 3);
+        assert_eq!(parsed["rgba"], serde_json::json!([0, 1, 2, 3]));
     }
 }

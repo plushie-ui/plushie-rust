@@ -26,7 +26,8 @@ pub fn json_protocol_version(value: &serde_json::Value) -> Option<u32> {
 pub use incoming::IncomingMessage;
 pub use outgoing::{
     CoalesceHint, DiagnosticLevel, DiagnosticMessage, EffectResponse, EffectStubAck,
-    InteractResponse, KeyModifiers, OutgoingEvent, QueryResponse, ResetResponse, TreeHashResponse,
+    InteractResponse, KeyModifiers, OutgoingEvent, QueryResponse, ResetResponse,
+    ScreenshotResponse, TreeHashResponse,
 };
 pub use props::{PropMap, PropValue, Props};
 pub use types::{PatchOp, TreeNode};

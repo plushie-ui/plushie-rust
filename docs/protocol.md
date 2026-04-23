@@ -530,6 +530,7 @@ this kind so the host can route them.
 |-------|------|----------|-------------|
 | `kind` | string | Yes | Event category to subscribe to (see table below) |
 | `tag` | string | Yes | Tag included in events of this kind for routing |
+| `window_id` | string | No | Scope delivery to events associated with one window. Omit for all windows. If the subscribed event kind has no window association, a scoped subscription does not match. |
 | `max_rate` | integer | No | Maximum events per second. Omit for unlimited. Zero means "subscribe but never emit." |
 
 When `max_rate` is set, the renderer delivers at most that many events
@@ -537,6 +538,11 @@ per second for this subscription kind. Between deliveries, it coalesces
 buffered events (latest value wins, or delta accumulation for scroll
 events). Re-subscribing with a different `max_rate` updates the limit
 in place.
+
+When `window_id` is set, the renderer only delivers events whose source
+window matches that ID. This applies to both direct window subscriptions
+such as `on_window_event` and window-originated input subscriptions such
+as `on_key_press` or `on_pointer_move`.
 
 **Available subscription kinds:**
 
@@ -1686,7 +1692,10 @@ Response to a TreeHash message.
 
 ### screenshot_response
 
-Response to a Screenshot message.
+Response to a Screenshot message. The structured fields below are always
+present. The optional `rgba` payload is encoded as base64 in JSON mode
+and as native binary in MessagePack mode. In mock mode, `rgba` is
+omitted and the renderer returns the existing empty placeholders.
 
 ```json
 {
@@ -1709,7 +1718,7 @@ Response to a Screenshot message.
 | `hash` | string | SHA-256 hex hash of RGBA data (empty string in mock mode) |
 | `width` | number | Rendered width in pixels (0 in mock mode) |
 | `height` | number | Rendered height in pixels (0 in mock mode) |
-| `rgba` | binary | RGBA pixel data (base64 in JSON, native binary in msgpack). Absent in mock mode. |
+| `rgba` | binary | RGBA pixel data (base64 in JSON, native binary in MessagePack). Omitted when no pixel buffer is returned, including mock mode. |
 
 Maximum screenshot dimension: 16384 pixels (width and height are
 clamped to this limit).

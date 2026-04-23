@@ -31,7 +31,9 @@ use serde::Serialize;
 
 use plushie_widget_sdk::PlushieRenderer;
 use plushie_widget_sdk::image_registry::ImageRegistry;
-use plushie_widget_sdk::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
+use plushie_widget_sdk::protocol::{
+    IncomingMessage, OutgoingEvent, ScreenshotResponse, SessionMessage,
+};
 use plushie_widget_sdk::render_ctx::RenderCtx;
 use plushie_widget_sdk::runtime::Codec;
 use plushie_widget_sdk::runtime::Core;
@@ -938,7 +940,7 @@ fn handle_screenshot<R: PlushieRenderer>(
     height: u32,
 ) -> io::Result<()> {
     let emit_stub = |s: &Session<R>| {
-        let map = screenshot_map(session_id, &id, &name, "", 0, 0);
+        let map = screenshot_response_map(session_id, &id, &name, "", 0, 0);
         s.writer.emit_binary(map, None)
     };
 
@@ -1011,7 +1013,7 @@ fn handle_screenshot<R: PlushieRenderer>(
         format!("{:x}", hasher.finalize())
     };
 
-    let map = screenshot_map(session_id, &id, &name, &hash, width, height);
+    let map = screenshot_response_map(session_id, &id, &name, &hash, width, height);
     let binary = if rgba.is_empty() {
         None
     } else {
@@ -1020,8 +1022,8 @@ fn handle_screenshot<R: PlushieRenderer>(
     s.writer.emit_binary(map, binary)
 }
 
-/// Build the JSON map for a screenshot_response message.
-fn screenshot_map(
+/// Build the structured map for a screenshot_response message.
+fn screenshot_response_map(
     session: &str,
     id: &str,
     name: &str,
@@ -1029,16 +1031,18 @@ fn screenshot_map(
     width: u32,
     height: u32,
 ) -> serde_json::Map<String, serde_json::Value> {
-    use serde_json::json;
-    let mut map = serde_json::Map::new();
-    map.insert("type".to_string(), json!("screenshot_response"));
-    map.insert("session".to_string(), json!(session));
-    map.insert("id".to_string(), json!(id));
-    map.insert("name".to_string(), json!(name));
-    map.insert("hash".to_string(), json!(hash));
-    map.insert("width".to_string(), json!(width));
-    map.insert("height".to_string(), json!(height));
-    map
+    let response = ScreenshotResponse::new(
+        id.to_string(),
+        name.to_string(),
+        hash.to_string(),
+        width,
+        height,
+    )
+    .with_session(session);
+    match serde_json::to_value(response).expect("ScreenshotResponse must serialize") {
+        serde_json::Value::Object(map) => map,
+        _ => unreachable!("ScreenshotResponse must serialize as an object"),
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -1258,6 +1258,51 @@ impl TreeHashResponse {
     }
 }
 
+/// Response to a Screenshot message.
+///
+/// The structured fields are serialized here. The optional `rgba` payload is
+/// injected by the transport encoder so JSON can use base64 while MessagePack
+/// can use native binary.
+#[derive(Debug, Serialize)]
+pub struct ScreenshotResponse {
+    #[serde(rename = "type")]
+    /// Message type.
+    pub message_type: &'static str,
+    /// Session.
+    pub session: String,
+    /// Target widget ID.
+    pub id: String,
+    /// Identifier string.
+    pub name: String,
+    /// SHA-256 hex hash of RGBA data.
+    pub hash: String,
+    /// Rendered width in pixels.
+    pub width: u32,
+    /// Rendered height in pixels.
+    pub height: u32,
+}
+
+impl ScreenshotResponse {
+    /// Construct a new value.
+    pub fn new(id: String, name: String, hash: String, width: u32, height: u32) -> Self {
+        Self {
+            message_type: "screenshot_response",
+            session: String::new(),
+            id,
+            name,
+            hash,
+            width,
+            height,
+        }
+    }
+
+    /// Set the session ID for this response.
+    pub fn with_session(mut self, session: impl Into<String>) -> Self {
+        self.session = session.into();
+        self
+    }
+}
+
 /// Response to a Reset message.
 #[derive(Debug, Serialize)]
 pub struct ResetResponse {
@@ -1321,6 +1366,31 @@ mod tests {
                 "session": "s1",
                 "kind": "open_file",
                 "status": "unregistered",
+            })
+        );
+    }
+
+    #[test]
+    fn screenshot_response_serializes_structured_fields() {
+        let response = ScreenshotResponse::new(
+            "sc1".to_string(),
+            "homepage".to_string(),
+            "d4e5f6".to_string(),
+            1024,
+            768,
+        )
+        .with_session("s1");
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            json!({
+                "type": "screenshot_response",
+                "session": "s1",
+                "id": "sc1",
+                "name": "homepage",
+                "hash": "d4e5f6",
+                "width": 1024,
+                "height": 768,
             })
         );
     }

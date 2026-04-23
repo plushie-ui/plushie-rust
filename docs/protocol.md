@@ -820,8 +820,8 @@ Request a platform effect (file dialog, clipboard, notification).
 | `clipboard_read_html` | -- | html |
 | `clipboard_write_html` | html, alt_text (optional) | -- |
 | `clipboard_clear` | -- | -- |
-| `clipboard_read_primary` | -- | text (Linux only) |
-| `clipboard_write_primary` | text | text (Linux only) |
+| `clipboard_read_primary` | -- | text (Linux only; `unsupported` elsewhere) |
+| `clipboard_write_primary` | text | -- (Linux only; `unsupported` elsewhere) |
 | `notification` | title, body, icon, timeout, urgency, sound | -- |
 
 **Notification options.** The `notification` effect accepts optional fields

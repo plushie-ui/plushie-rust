@@ -401,7 +401,7 @@ fn handle_clipboard_clear(id: String) -> EffectResponse {
 }
 
 // Primary clipboard: uses the X11/Wayland primary selection on Linux.
-// On other platforms, falls back to the standard clipboard.
+// On other platforms, the protocol reports it as unsupported.
 
 #[cfg(target_os = "linux")]
 fn handle_clipboard_read_primary(id: String) -> EffectResponse {
@@ -445,15 +445,14 @@ fn handle_clipboard_write_primary(id: String, payload: &Value) -> EffectResponse
     })
 }
 
-// On non-Linux platforms, primary clipboard falls back to the standard clipboard.
 #[cfg(not(target_os = "linux"))]
 fn handle_clipboard_read_primary(id: String) -> EffectResponse {
-    handle_clipboard_read(id)
+    EffectResponse::unsupported(id)
 }
 
 #[cfg(not(target_os = "linux"))]
-fn handle_clipboard_write_primary(id: String, payload: &Value) -> EffectResponse {
-    handle_clipboard_write(id, payload)
+fn handle_clipboard_write_primary(id: String, _payload: &Value) -> EffectResponse {
+    EffectResponse::unsupported(id)
 }
 
 // ---------------------------------------------------------------------------
@@ -609,8 +608,20 @@ mod tests {
 
             assert_eq!(resp.id, id, "id mismatch for kind {kind}");
             assert_eq!(resp.message_type, "effect_response");
+            #[cfg(target_os = "linux")]
             assert!(
                 resp.status == "ok" || resp.status == "error" || resp.status == "cancelled",
+                "unexpected status '{}' for kind {kind}",
+                resp.status
+            );
+
+            #[cfg(not(target_os = "linux"))]
+            assert!(
+                resp.status == "ok"
+                    || resp.status == "error"
+                    || resp.status == "cancelled"
+                    || (resp.status == "unsupported"
+                        && matches!(*kind, "clipboard_read_primary" | "clipboard_write_primary")),
                 "unexpected status '{}' for kind {kind}",
                 resp.status
             );
@@ -651,6 +662,26 @@ mod tests {
             assert_eq!(resp.id, id);
             assert_eq!(resp.status, "unsupported");
         }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn primary_clipboard_effects_are_unsupported() {
+        let read = handle_effect(
+            "read-primary".to_string(),
+            "clipboard_read_primary",
+            &json!({}),
+        );
+        assert_eq!(read.status, "unsupported");
+        assert_eq!(read.id, "read-primary");
+
+        let write = handle_effect(
+            "write-primary".to_string(),
+            "clipboard_write_primary",
+            &json!({"text": "primary"}),
+        );
+        assert_eq!(write.status, "unsupported");
+        assert_eq!(write.id, "write-primary");
     }
 
     // -- is_async_effect ------------------------------------------------------

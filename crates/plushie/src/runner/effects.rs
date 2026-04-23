@@ -25,6 +25,7 @@ impl plushie_renderer_lib::EffectHandler for DirectEffectHandler {
         Some(match status.as_str() {
             "ok" => EffectResponse::ok(id.to_string(), result),
             "cancelled" => EffectResponse::cancelled(id.to_string()),
+            "unsupported" => EffectResponse::unsupported(id.to_string()),
             _ => EffectResponse::error(id.to_string(), status),
         })
     }
@@ -44,6 +45,7 @@ impl plushie_renderer_lib::EffectHandler for DirectEffectHandler {
             match status.as_str() {
                 "ok" => EffectResponse::ok(id, result),
                 "cancelled" => EffectResponse::cancelled(id),
+                "unsupported" => EffectResponse::unsupported(id),
                 _ => EffectResponse::error(id, status),
             }
         })
@@ -383,12 +385,12 @@ fn clipboard_write_primary(payload: &Value) -> (String, Value) {
 
 #[cfg(all(feature = "direct", not(target_os = "linux")))]
 fn clipboard_read_primary() -> (String, Value) {
-    clipboard_read()
+    ("unsupported".into(), json!(null))
 }
 
 #[cfg(all(feature = "direct", not(target_os = "linux")))]
-fn clipboard_write_primary(payload: &Value) -> (String, Value) {
-    clipboard_write(payload)
+fn clipboard_write_primary(_payload: &Value) -> (String, Value) {
+    ("unsupported".into(), json!(null))
 }
 
 // ---------------------------------------------------------------------------
@@ -429,5 +431,32 @@ fn notification(payload: &Value) -> (String, Value) {
     match n.show() {
         Ok(_) => ("ok".into(), json!(null)),
         Err(e) => ("error".into(), json!(format!("notification failed: {e}"))),
+    }
+}
+
+#[cfg(all(test, feature = "direct", not(target_os = "linux")))]
+mod tests {
+    use super::*;
+    use plushie_core::ops::EffectRequest;
+    use plushie_renderer_lib::EffectHandler;
+
+    #[test]
+    fn primary_clipboard_effects_are_unsupported_in_direct_mode() {
+        let handler = DirectEffectHandler;
+
+        let read = handler
+            .handle_sync("read-primary", &EffectRequest::ClipboardReadPrimary)
+            .expect("direct effect handler should return a response");
+        assert_eq!(read.status, "unsupported");
+        assert_eq!(read.id, "read-primary");
+
+        let write = handler
+            .handle_sync(
+                "write-primary",
+                &EffectRequest::ClipboardWritePrimary("hello".to_string()),
+            )
+            .expect("direct effect handler should return a response");
+        assert_eq!(write.status, "unsupported");
+        assert_eq!(write.id, "write-primary");
     }
 }

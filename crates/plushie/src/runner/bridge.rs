@@ -274,7 +274,7 @@ impl Bridge {
                 writer.flush()?;
             }
             Codec::MsgPack => {
-                let bytes = rmp_serde::to_vec(message)
+                let bytes = rmp_serde::to_vec_named(message)
                     .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
                 let len = (bytes.len() as u32).to_be_bytes();
                 writer.write_all(&len)?;
@@ -692,7 +692,25 @@ fn reader_loop(
 #[cfg(all(test, feature = "wire"))]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use std::io::{Cursor, Read};
+    use std::net::{TcpListener, TcpStream};
+
+    fn bridge_socket_pair() -> (SocketStream, TcpStream) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind loopback listener");
+        let addr = listener.local_addr().expect("listener address");
+        let client = TcpStream::connect(addr).expect("connect client");
+        let (server, _) = listener.accept().expect("accept server");
+        (SocketStream::Tcp(client), server)
+    }
+
+    fn read_msgpack_frame(reader: &mut impl Read) -> Vec<u8> {
+        let mut len_buf = [0u8; 4];
+        reader.read_exact(&mut len_buf).expect("read frame length");
+        let len = u32::from_be_bytes(len_buf) as usize;
+        let mut payload = vec![0u8; len];
+        reader.read_exact(&mut payload).expect("read frame payload");
+        payload
+    }
 
     /// Two JSON messages back-to-back through a single shared
     /// BufReader must both decode. The previous implementation
@@ -756,7 +774,7 @@ mod tests {
         use serde_json::json;
 
         fn frame(value: &Value) -> Vec<u8> {
-            let bytes = rmp_serde::to_vec(value).unwrap();
+            let bytes = rmp_serde::to_vec_named(value).unwrap();
             let mut buf = (bytes.len() as u32).to_be_bytes().to_vec();
             buf.extend_from_slice(&bytes);
             buf
@@ -770,5 +788,33 @@ mod tests {
         let second = read_one(&mut reader, Codec::MsgPack).expect("second decode");
         assert_eq!(first.get("n").and_then(|v| v.as_u64()), Some(1));
         assert_eq!(second.get("n").and_then(|v| v.as_u64()), Some(2));
+    }
+
+    #[test]
+    fn send_msgpack_uses_renderer_named_message_shape() {
+        use serde_json::json;
+
+        let (client, mut server) = bridge_socket_pair();
+        let mut bridge = Bridge::connect(client).expect("connect bridge");
+        bridge.set_codec(Codec::MsgPack);
+
+        let message = OutgoingMessage::Settings {
+            session: String::new(),
+            settings: json!({
+                "protocol_version": 1,
+                "app_id": "test",
+            }),
+        };
+        bridge.send(&message).expect("send message");
+
+        let payload = read_msgpack_frame(&mut server);
+        assert_eq!(payload, rmp_serde::to_vec_named(&message).unwrap());
+
+        let decoded: Value = rmp_serde::from_slice(&payload).expect("decode payload");
+        assert_eq!(
+            decoded.get("type").and_then(Value::as_str),
+            Some("settings")
+        );
+        assert!(decoded.get("settings").is_some());
     }
 }

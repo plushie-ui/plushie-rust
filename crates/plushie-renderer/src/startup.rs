@@ -351,3 +351,64 @@ fn message_variant_name(msg: &IncomingMessage) -> &'static str {
         IncomingMessage::UnregisterEffectStub { .. } => "unregister_effect_stub",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use plushie_widget_sdk::protocol::PROTOCOL_VERSION;
+    use serde_json::json;
+
+    use super::*;
+
+    fn settings_message() -> Value {
+        json!({
+            "session": "startup-test",
+            "type": "settings",
+            "settings": {
+                "protocol_version": PROTOCOL_VERSION,
+                "validate_props": true
+            }
+        })
+    }
+
+    #[test]
+    fn detects_framed_msgpack_settings_from_length_prefix() {
+        let frame = Codec::MsgPack.encode(&settings_message()).unwrap();
+        let payload_len = u32::from_be_bytes(frame[..4].try_into().unwrap()) as usize;
+
+        // Detection sees the length prefix, not the MessagePack payload.
+        assert_eq!(frame[0], 0);
+        assert_eq!(payload_len, frame.len() - 4);
+
+        let mut reader = Cursor::new(frame);
+        let codec = detect_codec(None, &mut reader).unwrap();
+        assert_eq!(codec, Codec::MsgPack);
+
+        let initial = read_required_settings(&codec, &mut reader).unwrap();
+        assert_eq!(initial.session, "startup-test");
+        assert_eq!(
+            initial.settings["protocol_version"],
+            json!(PROTOCOL_VERSION)
+        );
+        assert_eq!(initial.settings["validate_props"], json!(true));
+    }
+
+    #[test]
+    fn detects_json_settings_from_object_prefix() {
+        let frame = Codec::Json.encode(&settings_message()).unwrap();
+        assert_eq!(frame[0], b'{');
+
+        let mut reader = Cursor::new(frame);
+        let codec = detect_codec(None, &mut reader).unwrap();
+        assert_eq!(codec, Codec::Json);
+
+        let initial = read_required_settings(&codec, &mut reader).unwrap();
+        assert_eq!(initial.session, "startup-test");
+        assert_eq!(
+            initial.settings["protocol_version"],
+            json!(PROTOCOL_VERSION)
+        );
+        assert_eq!(initial.settings["validate_props"], json!(true));
+    }
+}

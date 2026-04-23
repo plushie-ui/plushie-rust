@@ -53,6 +53,41 @@ pub enum PropValue {
     Object(PropMap),
 }
 
+const I64_MIN_AS_F64: f64 = -9_223_372_036_854_775_808.0;
+const I64_MAX_PLUS_ONE_AS_F64: f64 = 9_223_372_036_854_775_808.0;
+const U64_MAX_PLUS_ONE_AS_F64: f64 = 18_446_744_073_709_551_616.0;
+
+fn exact_i64_to_f64(value: i64) -> Option<f64> {
+    let float = value as f64;
+
+    ((I64_MIN_AS_F64..I64_MAX_PLUS_ONE_AS_F64).contains(&float) && float as i64 == value)
+        .then_some(float)
+}
+
+fn exact_u64_to_f64(value: u64) -> Option<f64> {
+    let float = value as f64;
+
+    ((0.0..U64_MAX_PLUS_ONE_AS_F64).contains(&float) && float as u64 == value).then_some(float)
+}
+
+fn exact_f64_to_i64(value: f64) -> Option<i64> {
+    (value.is_finite()
+        && value.fract() == 0.0
+        && (I64_MIN_AS_F64..I64_MAX_PLUS_ONE_AS_F64).contains(&value))
+    .then_some(value as i64)
+}
+
+fn exact_f64_to_u64(value: f64) -> Option<u64> {
+    (value.is_finite() && value.fract() == 0.0 && (0.0..U64_MAX_PLUS_ONE_AS_F64).contains(&value))
+        .then_some(value as u64)
+}
+
+fn finite_f64_to_f32(value: f64) -> Option<f32> {
+    let narrowed = value as f32;
+
+    (value.is_finite() && narrowed.is_finite()).then_some(narrowed)
+}
+
 impl PropValue {
     /// Borrow the value as a str.
     pub fn as_str(&self) -> Option<&str> {
@@ -62,12 +97,12 @@ impl PropValue {
         }
     }
 
-    /// Borrow the value as an f64.
+    /// Return the value as an f64 when conversion is finite and exact.
     pub fn as_f64(&self) -> Option<f64> {
         match self {
-            Self::F64(v) => Some(*v),
-            Self::I64(v) => Some(*v as f64),
-            Self::U64(v) => Some(*v as f64),
+            Self::F64(v) => v.is_finite().then_some(*v),
+            Self::I64(v) => exact_i64_to_f64(*v),
+            Self::U64(v) => exact_u64_to_f64(*v),
             _ => None,
         }
     }
@@ -80,22 +115,22 @@ impl PropValue {
         }
     }
 
-    /// Borrow the value as an i64.
+    /// Return the value as an i64 when conversion is integral and in range.
     pub fn as_i64(&self) -> Option<i64> {
         match self {
             Self::I64(v) => Some(*v),
             Self::U64(v) => i64::try_from(*v).ok(),
-            Self::F64(v) => Some(*v as i64),
+            Self::F64(v) => exact_f64_to_i64(*v),
             _ => None,
         }
     }
 
-    /// Borrow the value as an unsigned 64-bit integer.
+    /// Return the value as a u64 when conversion is integral and in range.
     pub fn as_u64(&self) -> Option<u64> {
         match self {
             Self::U64(v) => Some(*v),
             Self::I64(v) => u64::try_from(*v).ok(),
-            Self::F64(v) if *v >= 0.0 => Some(*v as u64),
+            Self::F64(v) => exact_f64_to_u64(*v),
             _ => None,
         }
     }
@@ -183,8 +218,10 @@ impl From<Value> for PropValue {
                     Self::I64(i)
                 } else if let Some(u) = n.as_u64() {
                     Self::U64(u)
+                } else if let Some(f) = n.as_f64() {
+                    Self::F64(f)
                 } else {
-                    Self::F64(n.as_f64().unwrap_or(0.0))
+                    Self::Null
                 }
             }
             Value::String(s) => Self::Str(s),
@@ -366,14 +403,14 @@ impl Props {
         self.0.get(key)?.as_str()
     }
 
-    /// Get a numeric prop as f64.
+    /// Get a numeric prop as f64 when conversion is finite and exact.
     pub fn get_f64(&self, key: &str) -> Option<f64> {
         self.0.get(key)?.as_f64()
     }
 
-    /// Get a numeric prop as f32.
+    /// Get a numeric prop as f32 when conversion remains finite.
     pub fn get_f32(&self, key: &str) -> Option<f32> {
-        self.get_f64(key).map(|v| v as f32)
+        finite_f64_to_f32(self.get_f64(key)?)
     }
 
     /// Get a boolean prop.
@@ -381,12 +418,12 @@ impl Props {
         self.0.get(key)?.as_bool()
     }
 
-    /// Get an integer prop as i64.
+    /// Get an integer prop as i64 when conversion is integral and in range.
     pub fn get_i64(&self, key: &str) -> Option<i64> {
         self.0.get(key)?.as_i64()
     }
 
-    /// Get an unsigned integer prop as u64.
+    /// Get an unsigned integer prop as u64 when conversion is integral and in range.
     pub fn get_u64(&self, key: &str) -> Option<u64> {
         self.0.get(key)?.as_u64()
     }
@@ -613,8 +650,77 @@ mod tests {
     fn prop_value_numeric_coercion() {
         assert_eq!(PropValue::I64(42).as_f64(), Some(42.0));
         assert_eq!(PropValue::U64(42).as_f64(), Some(42.0));
+        assert_eq!(
+            PropValue::I64(9_007_199_254_740_994).as_f64(),
+            Some(9_007_199_254_740_994.0)
+        );
+        assert_eq!(
+            PropValue::U64(9_007_199_254_740_994).as_f64(),
+            Some(9_007_199_254_740_994.0)
+        );
         assert_eq!(PropValue::F64(42.0).as_i64(), Some(42));
+        assert_eq!(PropValue::F64(42.0).as_u64(), Some(42));
         assert_eq!(PropValue::I64(42).as_u64(), Some(42));
+    }
+
+    #[test]
+    fn prop_value_rejects_fractional_float_integer_access() {
+        let value = PropValue::F64(42.9);
+
+        assert_eq!(value.as_i64(), None);
+        assert_eq!(value.as_u64(), None);
+
+        let mut map = PropMap::new();
+        map.insert("value", value);
+        let props = Props::from(map);
+
+        assert_eq!(props.get_i64("value"), None);
+        assert_eq!(props.get_u64("value"), None);
+    }
+
+    #[test]
+    fn prop_value_rejects_non_finite_float_access() {
+        for value in [
+            PropValue::F64(f64::NAN),
+            PropValue::F64(f64::INFINITY),
+            PropValue::F64(f64::NEG_INFINITY),
+        ] {
+            assert_eq!(value.as_f64(), None);
+            assert_eq!(value.as_i64(), None);
+            assert_eq!(value.as_u64(), None);
+        }
+
+        let mut map = PropMap::new();
+        map.insert("value", PropValue::F64(f64::INFINITY));
+        let props = Props::from(map);
+
+        assert_eq!(props.get_f64("value"), None);
+        assert_eq!(props.get_f32("value"), None);
+    }
+
+    #[test]
+    fn prop_value_rejects_lossy_integer_float_access() {
+        assert_eq!(PropValue::I64(9_007_199_254_740_993).as_f64(), None);
+        assert_eq!(PropValue::I64(i64::MAX).as_f64(), None);
+        assert_eq!(PropValue::U64(9_007_199_254_740_993).as_f64(), None);
+        assert_eq!(PropValue::U64(u64::MAX).as_f64(), None);
+    }
+
+    #[test]
+    fn props_get_f32_accepts_finite_narrowing_and_rejects_overflow() {
+        let mut map = PropMap::new();
+        map.insert("exact_float", 1.5f64);
+        map.insert("from_f32", 1.1f32);
+        map.insert("lossy_float", 1.1f64);
+        map.insert("lossy_integer", 16_777_217_u64);
+        map.insert("too_large", f64::from(f32::MAX) * 2.0);
+        let props = Props::from(map);
+
+        assert_eq!(props.get_f32("exact_float"), Some(1.5));
+        assert_eq!(props.get_f32("from_f32"), Some(1.1f32));
+        assert_eq!(props.get_f32("lossy_float"), Some(1.1f32));
+        assert_eq!(props.get_f32("lossy_integer"), Some(16_777_216.0));
+        assert_eq!(props.get_f32("too_large"), None);
     }
 
     // ---------------------------------------------------------------------------

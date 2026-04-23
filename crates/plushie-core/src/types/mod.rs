@@ -282,3 +282,25 @@ pub trait WidgetEventEncode {
     /// Convert to wire format: (family_name, payload).
     fn to_wire(&self) -> (&'static str, PropValue);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::PropMap;
+
+    #[test]
+    fn primitive_extract_rejects_lossy_float_and_integer_access() {
+        let mut map = PropMap::new();
+        map.insert("exact_f64", 1.5f64);
+        map.insert("lossy_f64", 9_007_199_254_740_993_u64);
+        map.insert("fractional_integer", 42.9f64);
+        map.insert("lossy_f32", 16_777_217_u64);
+        let props = Props::from(map);
+
+        assert_eq!(f64::extract(&props, "exact_f64"), Some(1.5));
+        assert_eq!(f64::extract(&props, "lossy_f64"), None);
+        assert_eq!(i64::extract(&props, "fractional_integer"), None);
+        assert_eq!(u64::extract(&props, "fractional_integer"), None);
+        assert_eq!(f32::extract(&props, "lossy_f32"), Some(16_777_216.0));
+    }
+}

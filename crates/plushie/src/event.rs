@@ -1045,6 +1045,10 @@ pub enum SystemEventType {
     Diagnostic,
     /// Renderer failed to recover from an error.
     RecoveryFailed,
+    /// Renderer reported a session-level failure.
+    SessionError,
+    /// Renderer closed a session.
+    SessionClosed,
     /// Generic renderer-side error.
     Error,
 }

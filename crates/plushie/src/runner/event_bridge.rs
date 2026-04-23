@@ -83,6 +83,16 @@ fn outgoing_to_sdk_event(event: OutgoingEvent) -> Option<Event> {
         return tagged_event_to_sdk(family, tag, &event);
     }
 
+    if let Some(event_type) = bare_system_event_type(family) {
+        return Some(Event::System(SystemEvent {
+            event_type,
+            tag: None,
+            value: event.value,
+            id: None,
+            window_id: None,
+        }));
+    }
+
     // Widget events: parse canonical wire ID and map family to EventType.
     let sid = plushie_core::ScopedId::parse(&event.id);
     let event_type = family_to_event_type(family);
@@ -309,6 +319,14 @@ fn normalize_animation_frame_value(value: Option<Value>) -> Option<Value> {
     }
 }
 
+fn bare_system_event_type(family: &str) -> Option<SystemEventType> {
+    match family {
+        "session_error" => Some(SystemEventType::SessionError),
+        "session_closed" => Some(SystemEventType::SessionClosed),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,6 +507,46 @@ mod tests {
             Event::System(s) => {
                 assert_eq!(s.event_type, SystemEventType::AnimationFrame);
                 assert_eq!(s.value, Some(serde_json::json!({"timestamp": 16_000})));
+            }
+            _ => panic!("expected System event"),
+        }
+    }
+
+    #[test]
+    fn session_error_decodes_as_system_event() {
+        let event = OutgoingEvent::generic(
+            "session_error",
+            "",
+            Some(serde_json::json!({ "reason": "panic" })),
+        );
+
+        let sdk = outgoing_to_sdk_event(event).unwrap();
+
+        match sdk {
+            Event::System(s) => {
+                assert_eq!(s.event_type, SystemEventType::SessionError);
+                assert_eq!(s.tag, None);
+                assert_eq!(s.value, Some(serde_json::json!({ "reason": "panic" })));
+            }
+            _ => panic!("expected System event"),
+        }
+    }
+
+    #[test]
+    fn session_closed_decodes_as_system_event() {
+        let event = OutgoingEvent::generic(
+            "session_closed",
+            "",
+            Some(serde_json::json!({ "reason": "panic" })),
+        );
+
+        let sdk = outgoing_to_sdk_event(event).unwrap();
+
+        match sdk {
+            Event::System(s) => {
+                assert_eq!(s.event_type, SystemEventType::SessionClosed);
+                assert_eq!(s.tag, None);
+                assert_eq!(s.value, Some(serde_json::json!({ "reason": "panic" })));
             }
             _ => panic!("expected System event"),
         }

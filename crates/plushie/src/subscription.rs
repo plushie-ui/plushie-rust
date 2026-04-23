@@ -211,6 +211,9 @@ impl Subscription {
     /// [`Subscription::window_group`](Self::window_group).
     pub fn for_window(mut self, window_id: &str) -> Self {
         self.window_id = Some(window_id.to_string());
+        if !matches!(self.kind, SubscriptionKind::Every(_)) {
+            self.tag = format!("{window_id}#{}", self.kind.wire_str());
+        }
         self
     }
 
@@ -245,6 +248,8 @@ impl Subscription {
     ///
     /// Useful for inspecting the active subscription list in tests
     /// (see [`TestSession::active_subscriptions`](crate::test::TestSession::active_subscriptions)).
+    /// Window-scoped renderer subscriptions use a window-qualified tag
+    /// so per-window subscriptions do not collide with global ones.
     pub fn tag(&self) -> &str {
         &self.tag
     }
@@ -299,6 +304,7 @@ mod tests {
         assert_eq!(subs.len(), 2);
         for sub in &subs {
             assert_eq!(sub.window_id.as_deref(), Some("secondary"));
+            assert!(sub.tag.starts_with("secondary#"));
         }
     }
 
@@ -306,5 +312,13 @@ mod tests {
     fn for_window_chains_on_single_subscription() {
         let sub = Subscription::on_key_press().for_window("main");
         assert_eq!(sub.window_id.as_deref(), Some("main"));
+        assert_eq!(sub.tag(), "main#on_key_press");
+    }
+
+    #[test]
+    fn for_window_keeps_timer_tag() {
+        let sub = Subscription::every(Duration::from_millis(16), "tick").for_window("main");
+        assert_eq!(sub.window_id.as_deref(), Some("main"));
+        assert_eq!(sub.tag(), "tick");
     }
 }

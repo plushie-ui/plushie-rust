@@ -181,3 +181,37 @@ impl SubscriptionManager {
         ops
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subscription::Subscription;
+
+    #[test]
+    fn window_scoped_renderer_subscriptions_do_not_collide_with_global_ones() {
+        let mut manager = SubscriptionManager::new();
+
+        let ops = manager.sync(vec![
+            Subscription::on_key_press(),
+            Subscription::on_key_press().for_window("main"),
+        ]);
+
+        assert_eq!(
+            ops,
+            vec![
+                SubOp::Subscribe {
+                    kind: "on_key_press".to_string(),
+                    tag: "on_key_press".to_string(),
+                    max_rate: None,
+                    window_id: None,
+                },
+                SubOp::Subscribe {
+                    kind: "on_key_press".to_string(),
+                    tag: "main#on_key_press".to_string(),
+                    max_rate: None,
+                    window_id: Some("main".to_string()),
+                },
+            ]
+        );
+    }
+}

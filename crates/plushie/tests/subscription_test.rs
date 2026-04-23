@@ -205,7 +205,7 @@ fn max_rate_change_produces_inplace_resubscribe() {
 }
 
 #[test]
-fn window_id_change_produces_inplace_resubscribe() {
+fn window_id_change_replaces_window_scoped_subscription_identity() {
     let mut session = TestSession::<SubscribeApp>::start();
     session.model_mut().listen_keys = true;
     session.model_mut().key_window = Some("main".into());
@@ -215,6 +215,7 @@ fn window_id_change_produces_inplace_resubscribe() {
         Some("main"),
         "first advance should record window_id=main"
     );
+    assert_eq!(session.active_subscriptions()[0].tag(), "main#on_key_press");
 
     session.model_mut().key_window = Some("popup".into());
     session.advance_subscriptions();
@@ -222,10 +223,22 @@ fn window_id_change_produces_inplace_resubscribe() {
     let ops = session.last_subscription_ops();
     assert_eq!(
         ops.len(),
-        1,
-        "window_id change should re-send Subscribe in place, got: {ops:?}"
+        2,
+        "window_id change should replace the scoped identity, got: {ops:?}"
     );
-    assert!(matches!(&ops[0], SubOp::Subscribe { window_id: Some(w), .. } if w == "popup"));
+    assert!(
+        ops.iter()
+            .any(|op| is_unsubscribe(op, "on_key_press", "main#on_key_press"))
+    );
+    assert!(ops.iter().any(|op| matches!(
+        op,
+        SubOp::Subscribe {
+            kind,
+            tag,
+            window_id: Some(window_id),
+            ..
+        } if kind == "on_key_press" && tag == "popup#on_key_press" && window_id == "popup"
+    )));
 }
 
 #[test]

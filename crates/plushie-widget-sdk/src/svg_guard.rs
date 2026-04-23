@@ -34,11 +34,6 @@ pub enum DecodeOutcome {
 /// Interactive (windowed / native) decode budget.
 pub const INTERACTIVE_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// Headless / offline decode budget. Longer because batch runs can
-/// legitimately process larger SVG assets where a user isn't waiting
-/// on the frame.
-pub const HEADLESS_TIMEOUT: Duration = Duration::from_secs(5);
-
 const MAX_CONCURRENT_SVG_WORKERS: usize = 8;
 
 static ACTIVE_SVG_WORKERS: AtomicUsize = AtomicUsize::new(0);

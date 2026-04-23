@@ -264,12 +264,33 @@ fn hello_message_fields() {
     let hello = stdout.recv();
     assert_eq!(hello["type"], "hello");
 
-    // Protocol version must match the constant in plushie-core.
+    let protocol_version = serde_json::json!(plushie_widget_sdk::protocol::PROTOCOL_VERSION);
     assert_eq!(
-        hello["protocol"],
-        plushie_widget_sdk::protocol::PROTOCOL_VERSION,
-        "hello.protocol should match PROTOCOL_VERSION"
+        hello["protocol_version"], protocol_version,
+        "hello.protocol_version should match PROTOCOL_VERSION"
     );
+    assert_eq!(
+        hello["protocol"], protocol_version,
+        "hello.protocol should mirror hello.protocol_version"
+    );
+    assert_eq!(
+        hello["codec"], "json",
+        "hello.codec should confirm the JSON transport codec"
+    );
+    assert!(hello.get("extensions").is_none());
+
+    let native_widgets = hello["native_widgets"]
+        .as_array()
+        .expect("hello.native_widgets should be an array");
+    assert!(native_widgets.is_empty());
+
+    assert_eq!(hello["widget_sets"], serde_json::json!(["iced"]));
+
+    let widgets = hello["widgets"]
+        .as_array()
+        .expect("hello.widgets should be an array");
+    assert!(widgets.iter().any(|name| name.as_str() == Some("button")));
+    assert!(widgets.iter().any(|name| name.as_str() == Some("text")));
 
     // Mode: the test uses --mock.
     assert_eq!(

@@ -46,7 +46,7 @@ const FINAL_FLUSH_PAUSE: Duration = Duration::from_millis(100);
 /// 1. Locate the renderer binary via
 ///    [`wire_discovery::discover_renderer`].
 /// 2. Spawn the renderer, send Settings, read the hello message,
-///    negotiate the codec, start the reader thread.
+///    confirm the codec, start the reader thread.
 /// 3. Initialise a [`TestSession`] and send its current tree to the
 ///    renderer as the first snapshot so the user sees the initial
 ///    state before any instructions run.
@@ -185,16 +185,20 @@ fn execute_once<A: App>(
 
 fn verify_protocol_version(hello: &serde_json::Value) -> Result<(), Error> {
     let expected = plushie_core::protocol::PROTOCOL_VERSION;
-    let got = hello
-        .get("protocol")
-        .or_else(|| hello.get("protocol_version"))
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u32);
+    let got = hello_protocol_version(hello);
     if got == Some(expected) {
         Ok(())
     } else {
         Err(Error::ProtocolVersionMismatch { expected, got })
     }
+}
+
+fn hello_protocol_version(hello: &serde_json::Value) -> Option<u32> {
+    hello
+        .get("protocol_version")
+        .or_else(|| hello.get("protocol"))
+        .and_then(|v| v.as_u64())
+        .and_then(|v| u32::try_from(v).ok())
 }
 
 fn send_current_tree<A: App>(bridge: &mut Bridge, session: &TestSession<A>) -> PlushieResult {
@@ -226,4 +230,42 @@ fn build_automation_settings<A: App>() -> serde_json::Value {
         json["theme"] = serde_json::Value::from(theme.wire_encode());
     }
     json
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protocol_version_wins_over_legacy_protocol() {
+        let expected = plushie_core::protocol::PROTOCOL_VERSION;
+        let hello = serde_json::json!({
+            "protocol_version": expected,
+            "protocol": expected + 1,
+        });
+
+        assert_eq!(hello_protocol_version(&hello), Some(expected));
+        assert!(verify_protocol_version(&hello).is_ok());
+    }
+
+    #[test]
+    fn legacy_protocol_is_fallback() {
+        let expected = plushie_core::protocol::PROTOCOL_VERSION;
+        let hello = serde_json::json!({
+            "protocol": expected,
+        });
+
+        assert_eq!(hello_protocol_version(&hello), Some(expected));
+        assert!(verify_protocol_version(&hello).is_ok());
+    }
+
+    #[test]
+    fn out_of_range_protocol_is_rejected() {
+        let hello = serde_json::json!({
+            "protocol_version": u64::from(u32::MAX) + 1,
+        });
+
+        assert_eq!(hello_protocol_version(&hello), None);
+        assert!(verify_protocol_version(&hello).is_err());
+    }
 }

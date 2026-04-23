@@ -155,7 +155,9 @@ protocol version:
 {
   "type": "hello",
   "session": "",
+  "protocol_version": 1,
   "protocol": 1,
+  "codec": "json",
   "version": "0.6.1",
   "name": "plushie-renderer",
   "mode": "headless",
@@ -169,7 +171,9 @@ protocol version:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `protocol` | number | Protocol version (currently 1) |
+| `protocol_version` | number | Canonical protocol version (currently 1) |
+| `protocol` | number | Legacy alias for `protocol_version`, emitted temporarily for host SDK compatibility |
+| `codec` | string | Wire codec detected before hello: `"json"` or `"msgpack"`. This confirms the active codec; it is not negotiated in hello. |
 | `version` | string | Renderer build version |
 | `name` | string | Renderer name (always `"plushie-renderer"`) |
 | `mode` | string | Execution mode: `"windowed"`, `"headless"`, or `"mock"` |
@@ -179,7 +183,7 @@ protocol version:
 | `widget_sets` | array | Names of the widget-set groups that registered the built-in widgets (e.g. `"iced"`). Lets hosts detect the widget-provider groups compiled into the renderer without enumerating every widget type. |
 | `widgets` | array | All compiled widget type names (built-in + native), sorted alphabetically |
 
-All fields are required. The host should check that `protocol` matches the version it expects.
+All fields shown are emitted by the renderer. The host should check that `protocol_version` matches the version it expects.
 The `mode` field tells the SDK what capabilities are available (e.g.
 headless mode supports `interact_step` round-trips and real
 screenshots; mock mode returns stubs). The `session` field on

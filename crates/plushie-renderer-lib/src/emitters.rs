@@ -260,7 +260,9 @@ impl EventSink for WriterSink {
         let msg = serde_json::json!({
             "type": "hello",
             "session": "",
+            "protocol_version": plushie_widget_sdk::protocol::PROTOCOL_VERSION,
             "protocol": plushie_widget_sdk::protocol::PROTOCOL_VERSION,
+            "codec": self.codec.to_string(),
             "version": env!("CARGO_PKG_VERSION"),
             "name": "plushie-renderer",
             "mode": mode,

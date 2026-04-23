@@ -36,6 +36,15 @@ use crate::runtime::tree_diff;
 #[cfg(feature = "wire")]
 use crate::settings::ExitReason;
 
+#[cfg(feature = "wire")]
+fn hello_protocol_version(hello: &Value) -> Option<u32> {
+    hello
+        .get("protocol_version")
+        .or_else(|| hello.get("protocol"))
+        .and_then(|v| v.as_u64())
+        .and_then(|v| u32::try_from(v).ok())
+}
+
 /// Run the app in wire mode.
 ///
 /// Spawns the renderer binary at `binary_path` and communicates
@@ -208,11 +217,7 @@ fn run_session_single<A: App>(
     );
 
     let expected = plushie_core::protocol::PROTOCOL_VERSION;
-    let remote_protocol = hello
-        .get("protocol")
-        .or_else(|| hello.get("protocol_version"))
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u32);
+    let remote_protocol = hello_protocol_version(&hello);
     if remote_protocol != Some(expected) {
         log::error!(
             "protocol version mismatch: SDK expects {expected}, renderer advertised {remote_protocol:?}"
@@ -368,11 +373,7 @@ fn run_wire_inner<A: App>(
         // would lead to misparsed messages further down. Reap the
         // child before returning so we don't leave a zombie.
         let expected = plushie_core::protocol::PROTOCOL_VERSION;
-        let remote_protocol = hello
-            .get("protocol")
-            .or_else(|| hello.get("protocol_version"))
-            .and_then(|v| v.as_u64())
-            .map(|v| v as u32);
+        let remote_protocol = hello_protocol_version(&hello);
         if remote_protocol != Some(expected) {
             log::error!(
                 "protocol version mismatch: SDK expects {expected}, renderer advertised {remote_protocol:?}"
@@ -400,13 +401,8 @@ fn run_wire_inner<A: App>(
             );
         }
 
-        // Honour the renderer's declared codec if the hello message
-        // carries one. The SDK sends the settings in JSON; the renderer
-        // detects codec from the first byte and mirrors it today, so
-        // this path is effectively a no-op in the happy case. It
-        // remains here as the documented negotiation hook so a future
-        // renderer that selects a codec upstream is respected without
-        // an SDK change.
+        // Keep the bridge aligned with the renderer's codec confirmation.
+        // The renderer already knows the codec before emitting hello.
         if let Some(codec_str) = hello.get("codec").and_then(|v| v.as_str()) {
             let codec = match codec_str {
                 "msgpack" => super::bridge::Codec::MsgPack,
@@ -1775,5 +1771,40 @@ mod build_settings_tests {
             json.get("required_widgets").is_none(),
             "empty required_widgets should not appear on the wire; got: {json}"
         );
+    }
+}
+
+#[cfg(test)]
+mod hello_protocol_tests {
+    use super::*;
+
+    #[test]
+    fn protocol_version_wins_over_legacy_protocol() {
+        let expected = plushie_core::protocol::PROTOCOL_VERSION;
+        let hello = serde_json::json!({
+            "protocol_version": expected,
+            "protocol": expected + 1,
+        });
+
+        assert_eq!(hello_protocol_version(&hello), Some(expected));
+    }
+
+    #[test]
+    fn legacy_protocol_is_fallback() {
+        let expected = plushie_core::protocol::PROTOCOL_VERSION;
+        let hello = serde_json::json!({
+            "protocol": expected,
+        });
+
+        assert_eq!(hello_protocol_version(&hello), Some(expected));
+    }
+
+    #[test]
+    fn out_of_range_protocol_is_rejected() {
+        let hello = serde_json::json!({
+            "protocol_version": u64::from(u32::MAX) + 1,
+        });
+
+        assert_eq!(hello_protocol_version(&hello), None);
     }
 }

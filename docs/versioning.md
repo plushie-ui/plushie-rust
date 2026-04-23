@@ -88,8 +88,10 @@ newer plushie-rust.
 
 ## Wire protocol versioning
 
-The wire protocol has its own version (`protocol_version` in the
-handshake message) that is independent of `PLUSHIE_RUST_VERSION`.
+The wire protocol has its own version (`protocol_version` in hello
+and Settings) that is independent of `PLUSHIE_RUST_VERSION`. Hello
+currently also emits `protocol` as a legacy alias for host SDKs that
+still read the old field.
 The rules:
 
 - Intra-minor renderer releases (e.g. `0.6.1` to `0.6.2`) MUST NOT

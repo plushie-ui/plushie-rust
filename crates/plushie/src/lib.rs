@@ -84,15 +84,16 @@ pub(crate) mod runtime;
 ///
 /// - [`SubOp`] and [`SubscriptionManager`] back
 ///   [`test::TestSession::last_subscription_ops`].
-/// - [`diff_tree`] plus [`apply_patch`] let tree-diff proptests
-///   round-trip patches against arbitrary `TreeNode` pairs.
+/// - [`diff_tree`] plus [`apply_patch`] and [`try_apply_patch`] let
+///   tree-diff proptests round-trip patches against arbitrary
+///   `TreeNode` pairs.
 ///
 /// Everything here is `pub(crate)` in its original module; this
 /// re-export surface exists for tests, not for day-to-day SDK
 /// consumers. The regular SDK user should never need it.
 pub mod runtime_internals {
     pub use crate::runtime::subscriptions::{SubOp, SubscriptionManager};
-    pub use crate::runtime::tree_diff::{PatchOp, apply_patch, diff_tree};
+    pub use crate::runtime::tree_diff::{PatchOp, apply_patch, diff_tree, try_apply_patch};
 }
 
 /// Runtime tuning constants exposed to tests and advanced callers.

@@ -109,26 +109,42 @@ pub fn diff_tree(old: &TreeNode, new: &TreeNode) -> Vec<PatchOp> {
 /// `apply_patch(&mut t, &diff_tree(&t_prev, &t_new))`, `t` equals
 /// `t_new`. Used by the tree-diff property test to verify that the
 /// diff algorithm and the renderer's apply path stay consistent.
+///
+/// This compatibility wrapper stops at the first invalid op and
+/// leaves earlier ops applied. Use [`try_apply_patch`] when invalid
+/// patch details should be reported to the caller.
 pub fn apply_patch(tree: &mut TreeNode, ops: &[PatchOp]) {
-    for op in ops {
-        apply_one(tree, op);
-    }
+    let _ = try_apply_patch(tree, ops);
 }
 
-fn apply_one(tree: &mut TreeNode, op: &PatchOp) {
+/// Try to apply a patch sequence to a tree in place.
+///
+/// # Errors
+///
+/// Returns an error when an operation points to a node path that does
+/// not exist in the current tree shape, or when a patch node cannot be
+/// decoded. Operations before the failing op remain applied.
+pub fn try_apply_patch(tree: &mut TreeNode, ops: &[PatchOp]) -> Result<(), String> {
+    for op in ops {
+        apply_one(tree, op)?;
+    }
+    Ok(())
+}
+
+fn apply_one(tree: &mut TreeNode, op: &PatchOp) -> Result<(), String> {
     match op {
         PatchOp::ReplaceNode { path, node } => {
             let new_node: TreeNode = serde_json::from_value(node.clone())
-                .expect("TreeNode deserialization from diff output cannot fail");
+                .map_err(|e| format!("replace_node: invalid node: {e}"))?;
             if path.is_empty() {
                 *tree = new_node;
             } else {
-                let target = navigate_mut(tree, path);
+                let target = navigate_mut(tree, path)?;
                 *target = new_node;
             }
         }
         PatchOp::UpdateProps { path, props } => {
-            let target = navigate_mut(tree, path);
+            let target = navigate_mut(tree, path)?;
             // Merge-update: keys in `props` overwrite; keys absent
             // from the patch are preserved. Null values delete the
             // key, matching diff_props's removal encoding.
@@ -152,29 +168,40 @@ fn apply_one(tree: &mut TreeNode, op: &PatchOp) {
         }
         PatchOp::InsertChild { path, index, node } => {
             let new_node: TreeNode = serde_json::from_value(node.clone())
-                .expect("TreeNode deserialization from diff output cannot fail");
-            let target = navigate_mut(tree, path);
+                .map_err(|e| format!("insert_child: invalid node: {e}"))?;
+            let target = navigate_mut(tree, path)?;
             let idx = (*index).min(target.children.len());
             target.children.insert(idx, new_node);
         }
         PatchOp::RemoveChild { path, index } => {
-            let target = navigate_mut(tree, path);
+            let target = navigate_mut(tree, path)?;
             if *index < target.children.len() {
                 target.children.remove(*index);
+            } else {
+                return Err(format!(
+                    "remove_child: index {} out of bounds for node {:?} with {} children",
+                    index,
+                    target.id,
+                    target.children.len()
+                ));
             }
         }
     }
+    Ok(())
 }
 
-fn navigate_mut<'a>(tree: &'a mut TreeNode, path: &[usize]) -> &'a mut TreeNode {
+fn navigate_mut<'a>(tree: &'a mut TreeNode, path: &[usize]) -> Result<&'a mut TreeNode, String> {
     let mut cursor = tree;
-    for &i in path {
-        cursor = cursor
-            .children
-            .get_mut(i)
-            .expect("patch path must refer to an existing child");
+    for (depth, &i) in path.iter().enumerate() {
+        let child_count = cursor.children.len();
+        cursor = cursor.children.get_mut(i).ok_or_else(|| {
+            format!(
+                "invalid patch path {:?}: index {} at depth {} is out of bounds for node {:?} with {} children",
+                path, i, depth, cursor.id, child_count
+            )
+        })?;
     }
-    cursor
+    Ok(cursor)
 }
 
 /// Recursively diff two nodes at the given path.
@@ -763,7 +790,7 @@ mod tests {
         );
         let ops = diff_tree(&old, &new);
         let mut copy = old.clone();
-        apply_patch(&mut copy, &ops);
+        try_apply_patch(&mut copy, &ops).unwrap();
         assert_eq!(copy, new, "diff+apply must converge on a swap");
     }
 
@@ -1023,6 +1050,91 @@ mod tests {
     }
 
     #[test]
+    fn try_apply_patch_invalid_path_returns_error_without_panic() {
+        let mut tree = simple_node("root", "column", vec![simple_node("a", "text", vec![])]);
+        let original = tree.clone();
+        let ops = [PatchOp::UpdateProps {
+            path: vec![1, 0],
+            props: json!({"content": "nope"}),
+        }];
+
+        let result = try_apply_patch(&mut tree, &ops);
+        assert!(result.is_err());
+        let message = result.unwrap_err();
+        assert!(message.contains("invalid patch path"));
+        assert!(message.contains("path [1, 0]"));
+        assert!(message.contains("index 1"));
+        assert_eq!(tree, original);
+    }
+
+    #[test]
+    fn apply_patch_invalid_path_does_not_panic() {
+        let mut tree = simple_node("root", "column", vec![simple_node("a", "text", vec![])]);
+        let original = tree.clone();
+        let ops = [PatchOp::UpdateProps {
+            path: vec![1, 0],
+            props: json!({"content": "nope"}),
+        }];
+
+        apply_patch(&mut tree, &ops);
+
+        assert_eq!(tree, original);
+    }
+
+    #[test]
+    fn try_apply_patch_invalid_replace_node_payload_returns_error() {
+        let mut tree = simple_node("root", "column", vec![simple_node("a", "text", vec![])]);
+        let original = tree.clone();
+        let ops = [PatchOp::ReplaceNode {
+            path: vec![],
+            node: json!({"id": "broken"}),
+        }];
+
+        let result = try_apply_patch(&mut tree, &ops);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("replace_node: invalid node"));
+        assert_eq!(tree, original);
+    }
+
+    #[test]
+    fn try_apply_patch_invalid_insert_child_payload_returns_error() {
+        let mut tree = simple_node("root", "column", vec![]);
+        let original = tree.clone();
+        let ops = [PatchOp::InsertChild {
+            path: vec![],
+            index: 0,
+            node: json!({"id": "broken"}),
+        }];
+
+        let result = try_apply_patch(&mut tree, &ops);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("insert_child: invalid node"));
+        assert_eq!(tree, original);
+    }
+
+    #[test]
+    fn try_apply_patch_remove_child_out_of_bounds_returns_error() {
+        let mut tree = simple_node("root", "column", vec![simple_node("a", "text", vec![])]);
+        let original = tree.clone();
+        let ops = [PatchOp::RemoveChild {
+            path: vec![],
+            index: 3,
+        }];
+
+        let result = try_apply_patch(&mut tree, &ops);
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("remove_child: index 3 out of bounds")
+        );
+        assert_eq!(tree, original);
+    }
+
+    #[test]
     fn diff_apply_round_trips_when_new_has_null_valued_prop() {
         // {"a": null} is wire-equivalent to absent per the protocol.
         // Round-trip must hold in both directions even if one side
@@ -1032,12 +1144,12 @@ mod tests {
 
         let ops = diff_tree(&empty, &with_null);
         let mut copy = empty.clone();
-        apply_patch(&mut copy, &ops);
+        try_apply_patch(&mut copy, &ops).unwrap();
         assert_eq!(copy, with_null);
 
         let ops = diff_tree(&with_null, &empty);
         let mut copy = with_null.clone();
-        apply_patch(&mut copy, &ops);
+        try_apply_patch(&mut copy, &ops).unwrap();
         assert_eq!(copy, empty);
     }
 
@@ -1048,12 +1160,12 @@ mod tests {
 
         let ops = diff_tree(&with_value, &with_null);
         let mut copy = with_value.clone();
-        apply_patch(&mut copy, &ops);
+        try_apply_patch(&mut copy, &ops).unwrap();
         assert_eq!(copy, with_null);
 
         let ops = diff_tree(&with_null, &with_value);
         let mut copy = with_null.clone();
-        apply_patch(&mut copy, &ops);
+        try_apply_patch(&mut copy, &ops).unwrap();
         assert_eq!(copy, with_value);
     }
 

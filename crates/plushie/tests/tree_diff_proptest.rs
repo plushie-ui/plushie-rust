@@ -5,7 +5,7 @@
 //! the wire runner relies on, and the LIS path in particular has
 //! enough edge cases that shaped examples can miss a failure mode.
 
-use plushie::runtime_internals::{apply_patch, diff_tree};
+use plushie::runtime_internals::{diff_tree, try_apply_patch};
 use plushie_core::protocol::{Props, TreeNode};
 use proptest::prelude::*;
 use serde_json::{Value, json};
@@ -76,7 +76,8 @@ proptest! {
     ) {
         let ops = diff_tree(&a, &b);
         let mut a_copy = a.clone();
-        apply_patch(&mut a_copy, &ops);
+        let result = try_apply_patch(&mut a_copy, &ops);
+        prop_assert!(result.is_ok(), "patch apply failed: {:?}", result.err());
         prop_assert_eq!(&a_copy, &b);
     }
 
@@ -89,7 +90,8 @@ proptest! {
             ops.len()
         );
         let mut copy = t.clone();
-        apply_patch(&mut copy, &ops);
+        let result = try_apply_patch(&mut copy, &ops);
+        prop_assert!(result.is_ok(), "patch apply failed: {:?}", result.err());
         prop_assert_eq!(copy, t);
     }
 }

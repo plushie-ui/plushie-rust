@@ -22,7 +22,7 @@ use iced::{Point, Size, Task, window};
 use plushie_core::ops::{
     NotificationUrgency, SystemOp, SystemQuery, WindowLevel, WindowMode, WindowOp, WindowQuery,
 };
-use plushie_widget_sdk::message::Message;
+use plushie_widget_sdk::runtime::Message;
 
 use crate::App;
 

@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use iced::{Task, Theme, keyboard, window};
 
-use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::OutgoingEvent;
 use plushie_widget_sdk::registry::WidgetRegistry;
+use plushie_widget_sdk::runtime::Message;
 
 use crate::constants::*;
 use crate::effects::EffectHandler;
@@ -37,7 +37,7 @@ pub fn validate_scale_factor(sf: f32) -> f32 {
 /// state, widget registry, and all runtime state needed to translate
 /// between the wire protocol and iced's update/view cycle.
 pub struct App {
-    pub core: plushie_widget_sdk::engine::Core,
+    pub core: plushie_widget_sdk::runtime::Core,
     pub theme: Theme,
     /// Widget ops and effects return iced Tasks, but `apply()` doesn't
     /// return them. They accumulate here and are drained via `Task::batch`
@@ -73,7 +73,7 @@ pub struct App {
     pub current_modifiers: keyboard::Modifiers,
     /// Wire protocol codec. Used for encoding stub acks and scripting
     /// responses. Stored here so these paths don't need the global.
-    pub codec: plushie_widget_sdk::codec::Codec,
+    pub codec: plushie_widget_sdk::runtime::Codec,
 }
 
 impl App {
@@ -83,7 +83,7 @@ impl App {
         sink: Arc<SinkMutex>,
     ) -> Self {
         Self {
-            core: plushie_widget_sdk::engine::Core::new(),
+            core: plushie_widget_sdk::runtime::Core::new(),
             theme: DEFAULT_THEME,
             pending_tasks: Vec::new(),
             windows: window_map::WindowMap::new(),
@@ -97,13 +97,13 @@ impl App {
             effect_handler,
             transition_manager: plushie_widget_sdk::animation::TransitionManager::new(),
             current_modifiers: keyboard::Modifiers::default(),
-            codec: plushie_widget_sdk::codec::Codec::MsgPack,
+            codec: plushie_widget_sdk::runtime::Codec::MsgPack,
         }
     }
 
     /// Set the wire protocol codec. Called during startup after
     /// codec negotiation. Defaults to MsgPack.
-    pub fn set_codec(&mut self, codec: plushie_widget_sdk::codec::Codec) {
+    pub fn set_codec(&mut self, codec: plushie_widget_sdk::runtime::Codec) {
         self.codec = codec;
     }
 

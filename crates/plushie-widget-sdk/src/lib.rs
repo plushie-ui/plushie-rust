@@ -27,18 +27,23 @@
 //!
 //! ## Module guide
 //!
-//! **Widget SDK (stable API):**
+//! **Widget-author API:**
 //! - [`prelude`] - common re-exports for widget authors
 //! - [`registry`] - `PlushieWidget` trait, `WidgetRegistry`, `WidgetSet`,
 //!   `InitCtx`, `GenerationCounter`
 //! - [`app`] - `PlushieAppBuilder` for registering widgets
 //! - [`prop_helpers`] - public prop extraction helpers
-//! - [`render_ctx`] - `RenderCtx`, the core rendering context for all widgets
+//! - [`render_ctx`] - [`render_ctx::RenderCtx`], the core rendering context for all widgets
 //! - [`testing`] - test factory helpers
 //!
-//! **Internal modules** (used by the plushie binary, not part of the SDK):
-//! `engine`, `tree`, `message`, `widget`, `protocol`, `codec`,
-//! `theming`, `image_registry`
+//! **Renderer and direct-mode support API:**
+//! - [`runtime`] - renderer loop, messages, codec, built-in widget set,
+//!   theme resolution, validation flag, and canvas query helpers
+//! - [`protocol`] - wire protocol facade over `plushie-core`
+//! - [`image_registry`] - image handle cache used by [`render_ctx::RenderCtx`]
+//!
+//! **Private implementation modules:**
+//! `engine`, `tree`, `message`, `widget`, `codec`, and `theming`
 
 #![deny(missing_docs)]
 
@@ -76,26 +81,24 @@ pub mod shared_state;
 pub(crate) mod svg_guard;
 pub(crate) mod validate;
 
-// -- Internal modules used by the plushie binary --
-//
-// These are public so the binary crate can access them, but they are
-// NOT part of the stable widget SDK. Widget authors should use
-// the prelude and `plushie_widget_sdk::iced::*` instead.
-#[doc(hidden)]
-pub mod codec;
-#[doc(hidden)]
-pub mod engine;
+// -- Renderer and direct-mode support modules --
+pub mod runtime;
+
+// -- Private implementation modules --
+#[allow(missing_docs)]
+mod codec;
+#[allow(missing_docs)]
+mod engine;
 pub mod image_registry;
-#[doc(hidden)]
-pub mod message;
-#[doc(hidden)]
+#[allow(missing_docs)]
+mod message;
 pub mod protocol;
-#[doc(hidden)]
-pub mod theming;
-#[doc(hidden)]
-pub mod tree;
-#[doc(hidden)]
-pub mod widget;
+#[allow(missing_docs)]
+mod theming;
+#[allow(missing_docs)]
+mod tree;
+#[allow(missing_docs)]
+mod widget;
 
 // Re-export the widget derive macros for widget authors.
 //
@@ -165,4 +168,4 @@ mod sealed {
 /// real iced renderer can omit the parameter (`PlushieElement<'a>`)
 /// and get `iced::Renderer` as the default.
 pub type PlushieElement<'a, R = iced::Renderer> =
-    iced::Element<'a, crate::message::Message, iced::Theme, R>;
+    iced::Element<'a, crate::runtime::Message, iced::Theme, R>;

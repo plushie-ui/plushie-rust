@@ -54,7 +54,7 @@ the renderer's version. See the
 ```rust
 use plushie_widget_sdk::prelude::*;
 use plushie_widget_sdk::app::PlushieAppBuilder;
-use plushie_widget_sdk::widget::widget_set::iced_widget_set;
+use plushie_widget_sdk::runtime::iced_widget_set;
 
 #[derive(PlushieWidget)]
 #[plushie_widget(type_name = "my_gauge")]

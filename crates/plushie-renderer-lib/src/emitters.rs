@@ -145,14 +145,14 @@ fn with_sink<R>(f: impl FnOnce(&mut dyn EventSink) -> io::Result<R>) -> io::Resu
 /// encoded wire protocol messages to stdout or a channel.
 pub struct WriterSink {
     writer: Box<dyn std::io::Write + Send>,
-    codec: plushie_widget_sdk::codec::Codec,
+    codec: plushie_widget_sdk::runtime::Codec,
 }
 
 impl WriterSink {
     /// Create a WriterSink with an explicit codec.
     pub fn new(
         writer: Box<dyn std::io::Write + Send>,
-        codec: plushie_widget_sdk::codec::Codec,
+        codec: plushie_widget_sdk::runtime::Codec,
     ) -> Self {
         Self { writer, codec }
     }
@@ -240,7 +240,7 @@ impl EventSink for WriterSink {
         widget_set_names: &[&str],
         transport: &str,
     ) -> io::Result<()> {
-        let builtin = plushie_widget_sdk::widget::widget_set::IcedWidgetSet::type_names();
+        let builtin = plushie_widget_sdk::runtime::IcedWidgetSet::type_names();
         // Union of builtin + native widget type names, sorted alphabetically for
         // stable, predictable output. `native_widgets` itself is emitted sorted
         // to match.

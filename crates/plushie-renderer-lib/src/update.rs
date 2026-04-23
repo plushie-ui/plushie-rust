@@ -3,8 +3,8 @@
 
 use iced::{Task, Theme, window};
 
-use plushie_widget_sdk::message::{Message, StdinEvent};
 use plushie_widget_sdk::protocol::{IncomingMessage, OutgoingEvent};
+use plushie_widget_sdk::runtime::{Message, StdinEvent};
 
 use crate::App;
 use crate::constants::*;

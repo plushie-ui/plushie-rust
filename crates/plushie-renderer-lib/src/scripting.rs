@@ -20,11 +20,11 @@ use smol_str::SmolStr;
 
 use serde_json::Value;
 
-use plushie_widget_sdk::codec::Codec;
-use plushie_widget_sdk::engine::Core;
 use plushie_widget_sdk::protocol::{
     InteractResponse, OutgoingEvent, QueryResponse, ResetResponse, TreeHashResponse, TreeNode,
 };
+use plushie_widget_sdk::runtime::Codec;
+use plushie_widget_sdk::runtime::Core;
 
 /// Maximum tree search recursion depth (matches MAX_TREE_DEPTH in widgets.rs).
 const MAX_SEARCH_DEPTH: usize = 256;
@@ -731,7 +731,7 @@ pub fn build_interact_response(
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
                 if let Some(element_id) =
-                    plushie_widget_sdk::widget::canvas::canvas_hit_test(node, x, y)
+                    plushie_widget_sdk::runtime::canvas::canvas_hit_test(node, x, y)
                 {
                     vec![OutgoingEvent::generic(
                         "click",
@@ -740,7 +740,7 @@ pub fn build_interact_response(
                             "x": x, "y": y, "button": button,
                         })),
                     )]
-                } else if plushie_widget_sdk::widget::canvas::canvas_has_on_press(node) {
+                } else if plushie_widget_sdk::runtime::canvas::canvas_has_on_press(node) {
                     vec![OutgoingEvent::pointer_press(
                         wid, x, y, &button, "mouse", None, mods,
                     )]
@@ -764,7 +764,7 @@ pub fn build_interact_response(
             if let Some(node) = core.tree.root().and_then(|root| {
                 find_tree_node_by_id_with_window(root, &wid, Some(&window_id), None, 0)
             }) {
-                if plushie_widget_sdk::widget::canvas::canvas_has_on_press(node) {
+                if plushie_widget_sdk::runtime::canvas::canvas_has_on_press(node) {
                     vec![OutgoingEvent::pointer_release(
                         wid, x, y, &button, "mouse", None, mods,
                     )]
@@ -786,7 +786,7 @@ pub fn build_interact_response(
                 // Check for element enter/leave + raw move event
                 let mut events = Vec::new();
                 if let Some(element_id) =
-                    plushie_widget_sdk::widget::canvas::canvas_hit_test(node, x, y)
+                    plushie_widget_sdk::runtime::canvas::canvas_hit_test(node, x, y)
                 {
                     events.push(OutgoingEvent::generic(
                         "enter",
@@ -838,7 +838,7 @@ pub fn build_interact_response(
                 }
 
                 if let Some((node, _window_id, canvas_id, element_local)) = found_canvas {
-                    if plushie_widget_sdk::widget::canvas::canvas_find_element_by_id(
+                    if plushie_widget_sdk::runtime::canvas::canvas_find_element_by_id(
                         node,
                         element_local,
                     ) {

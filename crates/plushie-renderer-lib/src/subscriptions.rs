@@ -4,7 +4,7 @@
 
 use iced::{Subscription, event, system, window};
 
-use plushie_widget_sdk::message::{KeyEventData, Message};
+use plushie_widget_sdk::runtime::{KeyEventData, Message};
 
 use crate::App;
 use crate::constants::*;

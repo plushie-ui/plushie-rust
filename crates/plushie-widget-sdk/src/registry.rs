@@ -305,7 +305,7 @@ pub trait PlushieWidget<R: PlushieRenderer = iced::Renderer> {
     /// are not in the set. Stateless widgets can ignore this.
     ///
     /// Called by [`WidgetRegistry::prepare_walk`] after
-    /// [`SharedState::prune_shared`], so implementations only need to
+    /// [`crate::shared_state::SharedState::prune_shared`], so implementations only need to
     /// worry about their own keyed state. Canonical one-liner:
     ///
     /// ```ignore
@@ -943,7 +943,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         &'a self,
         node: &'a TreeNode,
         ctx: &crate::render_ctx::RenderCtx<'a, R>,
-    ) -> iced::Element<'a, crate::message::Message, iced::Theme, R> {
+    ) -> iced::Element<'a, crate::runtime::Message, iced::Theme, R> {
         let type_name = node.type_name.as_str();
         let Some(&idx) = self.type_index.get(type_name) else {
             log::warn!(
@@ -1169,8 +1169,8 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
 
     /// Drive prepare + animation-descriptor scan through one walk.
     ///
-    /// Composes [`PrepareTransform`] and
-    /// [`crate::animation::ScanTransform`] through the shared
+    /// Composes `PrepareTransform` and
+    /// `crate::animation::ScanTransform` through the shared
     /// [`plushie_core::tree_walk::walk`] driver so both passes share
     /// a single depth-first traversal. Post-walk cleanup (shared-
     /// state pruning, per-widget `cleanup_stale`, active-subscription

@@ -18,12 +18,6 @@ pub(crate) mod overlay;
 pub mod render;
 pub mod widget_set;
 
-// Re-export for backward compatibility (these types moved to crate root).
-pub use crate::shared_state::SharedState;
-pub use crate::validate::{is_validate_props_enabled, set_validate_props};
-pub use render::render;
-pub use widget_set::{IcedWidgetSet, iced_widget_set};
-
 // -- Widget modules ----------------------------------------------------------
 
 pub(crate) mod button_widget;

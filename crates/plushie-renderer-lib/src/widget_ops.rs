@@ -4,8 +4,8 @@
 
 use iced::Task;
 
-use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::OutgoingEvent;
+use plushie_widget_sdk::runtime::Message;
 
 use crate::App;
 

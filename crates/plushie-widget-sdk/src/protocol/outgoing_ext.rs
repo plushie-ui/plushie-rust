@@ -7,33 +7,36 @@ use plushie_core::protocol::OutgoingEvent;
 
 /// Extension trait for OutgoingEvent keyboard constructors.
 pub trait OutgoingEventKeyExt {
-    fn key_press(tag: String, data: &crate::message::KeyEventData) -> OutgoingEvent;
-    fn key_release(tag: String, data: &crate::message::KeyEventData) -> OutgoingEvent;
+    /// Build a key press event from iced key data.
+    fn key_press(tag: String, data: &crate::runtime::KeyEventData) -> OutgoingEvent;
+
+    /// Build a key release event from iced key data.
+    fn key_release(tag: String, data: &crate::runtime::KeyEventData) -> OutgoingEvent;
 }
 
 impl OutgoingEventKeyExt for OutgoingEvent {
-    fn key_press(tag: String, data: &crate::message::KeyEventData) -> OutgoingEvent {
+    fn key_press(tag: String, data: &crate::runtime::KeyEventData) -> OutgoingEvent {
         let mut event = OutgoingEvent::tagged("key_press", tag);
-        event.modifiers = Some(crate::message::serialize_modifiers(data.modifiers));
+        event.modifiers = Some(crate::runtime::serialize_modifiers(data.modifiers));
         event.value = Some(serde_json::json!({
-            "key": crate::message::serialize_key(&data.key),
-            "modified_key": crate::message::serialize_key(&data.modified_key),
-            "physical_key": crate::message::serialize_physical_key(&data.physical_key),
-            "location": crate::message::serialize_location(&data.location),
+            "key": crate::runtime::serialize_key(&data.key),
+            "modified_key": crate::runtime::serialize_key(&data.modified_key),
+            "physical_key": crate::runtime::serialize_physical_key(&data.physical_key),
+            "location": crate::runtime::serialize_location(&data.location),
             "text": data.text.as_deref(),
             "repeat": data.repeat,
         }));
         event
     }
 
-    fn key_release(tag: String, data: &crate::message::KeyEventData) -> OutgoingEvent {
+    fn key_release(tag: String, data: &crate::runtime::KeyEventData) -> OutgoingEvent {
         let mut event = OutgoingEvent::tagged("key_release", tag);
-        event.modifiers = Some(crate::message::serialize_modifiers(data.modifiers));
+        event.modifiers = Some(crate::runtime::serialize_modifiers(data.modifiers));
         event.value = Some(serde_json::json!({
-            "key": crate::message::serialize_key(&data.key),
-            "modified_key": crate::message::serialize_key(&data.modified_key),
-            "physical_key": crate::message::serialize_physical_key(&data.physical_key),
-            "location": crate::message::serialize_location(&data.location),
+            "key": crate::runtime::serialize_key(&data.key),
+            "modified_key": crate::runtime::serialize_key(&data.modified_key),
+            "physical_key": crate::runtime::serialize_physical_key(&data.physical_key),
+            "location": crate::runtime::serialize_location(&data.location),
         }));
         event
     }

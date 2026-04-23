@@ -16,10 +16,10 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use plushie_widget_sdk::iced::{Element, Task, Theme};
 
-use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::TreeNode;
 use plushie_widget_sdk::render_ctx::RenderCtx;
-use plushie_widget_sdk::widget::widget_set::iced_widget_set;
+use plushie_widget_sdk::runtime::Message;
+use plushie_widget_sdk::runtime::iced_widget_set;
 
 use crate::App;
 use crate::command::Command;
@@ -166,7 +166,7 @@ impl<A: App> DirectApp<A> {
                 window_id: "main",
                 scale_factor: self.renderer.scale_factor,
             };
-            plushie_widget_sdk::widget::render::render(tree, ctx)
+            plushie_widget_sdk::runtime::render(tree, ctx)
         } else {
             plushie_widget_sdk::iced::widget::text("No view").into()
         }
@@ -186,7 +186,7 @@ impl<A: App> DirectApp<A> {
         if let Some(node) = self.window_node_for(window_id)
             && let Some(theme_val) = node.props.get_value("theme")
         {
-            let resolved = plushie_widget_sdk::theming::resolve_theme(&theme_val);
+            let resolved = plushie_widget_sdk::runtime::resolve_theme(&theme_val);
             return resolved;
         }
         self.renderer.theme.clone()
@@ -729,7 +729,7 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
             }
             _ => {
                 let wire_val = serde_json::Value::from(theme.wire_encode());
-                renderer.theme = plushie_widget_sdk::theming::resolve_theme(&wire_val);
+                renderer.theme = plushie_widget_sdk::runtime::resolve_theme(&wire_val);
             }
         }
     }

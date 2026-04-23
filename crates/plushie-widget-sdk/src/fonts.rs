@@ -2,14 +2,13 @@
 //!
 //! Tracks font family names that have been registered with iced via
 //! runtime `LoadFont` commands. `default_font` resolution in
-//! [`crate::engine`] consults this registry before emitting a
+//! [`crate::runtime::Core`] consults this registry before emitting a
 //! `font_family_not_found` diagnostic so app-loaded fonts resolve
 //! without round-tripping through font-file metadata parsing.
 //!
-//! Names are stored as `&'static str` via the existing
-//! [`crate::widget::helpers`] interner so repeated lookups share one
-//! allocation and iced's `Family::Name(&'static str)` requirement is
-//! satisfied.
+//! Names are stored as `&'static str` via the widget SDK's font family
+//! interner so repeated lookups share one allocation and iced's
+//! `Family::Name(&'static str)` requirement is satisfied.
 
 use std::collections::HashSet;
 use std::sync::{LazyLock, RwLock};

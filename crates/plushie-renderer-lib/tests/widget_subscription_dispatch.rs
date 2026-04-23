@@ -17,12 +17,12 @@ use iced::{Element, Theme};
 use parking_lot::Mutex as PlMutex;
 
 use plushie_core::ops::EffectRequest;
-use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::{EffectResponse, OutgoingEvent, PropMap, Props, TreeNode};
 use plushie_widget_sdk::registry::{
     HandleResult, PlushieWidget, SubscribeCtx, WidgetRegistry, WidgetSubscription,
 };
 use plushie_widget_sdk::render_ctx::RenderCtx;
+use plushie_widget_sdk::runtime::Message;
 use plushie_widget_sdk::shared_state::SharedState;
 
 use plushie_renderer_lib::App;

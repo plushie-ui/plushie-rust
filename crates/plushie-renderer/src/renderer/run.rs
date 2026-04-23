@@ -5,9 +5,9 @@ use std::sync::Mutex;
 
 use iced::{Subscription, Task};
 
-use plushie_widget_sdk::codec::Codec;
-use plushie_widget_sdk::message::{Message, StdinEvent};
 use plushie_widget_sdk::protocol::IncomingMessage;
+use plushie_widget_sdk::runtime::Codec;
+use plushie_widget_sdk::runtime::{Message, StdinEvent};
 
 use plushie_renderer_lib::App;
 use plushie_renderer_lib::emitters::emit_hello;
@@ -244,7 +244,7 @@ fn run_inner(
                 .unwrap_or_else(|e| e.into_inner())
                 .take()
                 .expect("daemon init closure called more than once")
-                .widget_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
+                .widget_set(&plushie_widget_sdk::runtime::iced_widget_set());
             let registry = builder.build();
 
             let effect_handler = Box::new(crate::effects::NativeEffectHandler);
@@ -264,7 +264,7 @@ fn run_inner(
             // Apply initial settings to Core.
             let effects = app.core.apply(IncomingMessage::Settings { settings });
             for effect in effects {
-                use plushie_widget_sdk::engine::{CoreEffect, StateChange};
+                use plushie_widget_sdk::runtime::{CoreEffect, StateChange};
                 match effect {
                     CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
                         let ctx = plushie_widget_sdk::registry::InitCtx {

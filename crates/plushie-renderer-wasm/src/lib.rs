@@ -38,9 +38,9 @@ use std::sync::Mutex;
 
 use wasm_bindgen::prelude::*;
 
-use plushie_widget_sdk::codec::Codec;
-use plushie_widget_sdk::message::{Message, StdinEvent};
 use plushie_widget_sdk::protocol::IncomingMessage;
+use plushie_widget_sdk::runtime::Codec;
+use plushie_widget_sdk::runtime::{Message, StdinEvent};
 
 use plushie_renderer_lib::App;
 use plushie_renderer_lib::emitters::emit_hello;
@@ -203,8 +203,8 @@ impl PlushieApp {
                         .take()
                         .expect("daemon init closure called more than once");
 
-                    let builder = builder
-                        .widget_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
+                    let builder =
+                        builder.widget_set(&plushie_widget_sdk::runtime::iced_widget_set());
                     let registry = builder.build();
                     let effect_handler = Box::new(WebEffectHandler);
                     let sink = plushie_renderer_lib::emitters::sink_arc();
@@ -220,7 +220,7 @@ impl PlushieApp {
 
                     let effects = app.core.apply(IncomingMessage::Settings { settings });
                     for effect in effects {
-                        use plushie_widget_sdk::engine::{CoreEffect, StateChange};
+                        use plushie_widget_sdk::runtime::{CoreEffect, StateChange};
                         if let CoreEffect::StateChange(StateChange::WidgetConfig(config)) = effect {
                             let ctx = plushie_widget_sdk::registry::InitCtx {
                                 config: &config,

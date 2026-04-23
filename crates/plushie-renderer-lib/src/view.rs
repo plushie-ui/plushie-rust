@@ -4,7 +4,7 @@
 use iced::widget::{container, text};
 use iced::{Element, Fill, window};
 
-use plushie_widget_sdk::message::Message;
+use plushie_widget_sdk::runtime::Message;
 
 use crate::App;
 
@@ -37,7 +37,7 @@ impl App {
                     window_id,
                     scale_factor: self.scale_factor_for_window(iced_id),
                 };
-                plushie_widget_sdk::widget::render(window_node, ctx)
+                plushie_widget_sdk::runtime::render(window_node, ctx)
             }
             None => container(text("waiting for snapshot..."))
                 .width(Fill)

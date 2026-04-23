@@ -73,14 +73,14 @@ pub use crate::a11y::A11yOverrides;
 pub use crate::canvas_engine::CanvasEngine;
 
 // -- Wire protocol types --
-/// Internal iced Message used by the widget dispatcher.
-pub use crate::message::Message;
 /// Coalesce hint for outgoing events.
 pub use crate::protocol::CoalesceHint;
 /// Widget event emitted to the SDK over the wire.
 pub use crate::protocol::OutgoingEvent;
 /// Retained widget-tree node structure.
 pub use crate::protocol::TreeNode;
+/// Internal iced Message used by the widget dispatcher.
+pub use crate::runtime::Message;
 
 // -- Prop extraction helpers --
 /// Typed prop-extract helpers (color, length, font, a11y, ...).

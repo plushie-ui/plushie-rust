@@ -176,7 +176,7 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     /// Process a canvas message.
     ///
     /// Handles CanvasElementFocusChanged by splitting into blur + focus
-    /// events. Returns [`HandleResult::Fallthrough`] for all other
+    /// events. Returns [`crate::registry::HandleResult::Fallthrough`] for all other
     /// message types so the registry's default message-to-event
     /// conversion runs.
     pub fn handle_message(&mut self, msg: &Message) -> crate::registry::HandleResult {

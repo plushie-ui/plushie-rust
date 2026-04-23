@@ -8,7 +8,7 @@
 
 use plushie_core::BUILTIN_TYPE_NAMES as CORE_BUILTIN_TYPE_NAMES;
 use plushie_widget_sdk::BUILTIN_TYPE_NAMES;
-use plushie_widget_sdk::widget::widget_set::IcedWidgetSet;
+use plushie_widget_sdk::runtime::IcedWidgetSet;
 
 #[test]
 fn builtin_type_names_matches_iced_widget_set() {

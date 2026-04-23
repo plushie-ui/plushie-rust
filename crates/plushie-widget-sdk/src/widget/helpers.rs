@@ -3,7 +3,8 @@
 //! This module re-exports the public [`prop_helpers`](crate::prop_helpers)
 //! and provides functions for parsing complex prop types (padding, style
 //! maps) and applying style overrides to iced widget styles.
-//! Widget authors can access these via `plushie_widget_sdk::widget::helpers::*`.
+//! Widget authors can access public helpers through
+//! `plushie_widget_sdk::prelude::*`.
 
 use iced::widget::{
     button, checkbox, container, pick_list, progress_bar, rule, slider, text_editor, text_input,
@@ -155,7 +156,7 @@ pub struct StyleOverrides {
 pub fn get_style_overrides(
     node_id: &str,
     obj: &serde_json::Map<String, Value>,
-    caches: &super::SharedState,
+    caches: &crate::shared_state::SharedState,
 ) -> StyleOverrides {
     if let Some(cached) = crate::shared_state::cached_style_overrides(caches, node_id) {
         return cached.clone();
@@ -203,7 +204,7 @@ pub fn parse_style_overrides(obj: &serde_json::Map<String, Value>) -> StyleOverr
 pub fn style_overrides_from_style_map(
     node_id: &str,
     style_map: &plushie_core::types::StyleMap,
-    caches: &super::SharedState,
+    caches: &crate::shared_state::SharedState,
 ) -> StyleOverrides {
     let prop_value = style_map.wire_encode();
     let json_value: Value = prop_value.into();

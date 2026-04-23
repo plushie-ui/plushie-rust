@@ -101,7 +101,7 @@ mod tests {
     use crate::prop_helpers::prop_str;
     use crate::protocol::TreeNode;
     use crate::registry::WidgetRegistry;
-    use crate::widget::SharedState;
+    use crate::shared_state::SharedState;
     use crate::widget::widget_set::iced_widget_set;
 
     // -- Image registry handle lookup --

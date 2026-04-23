@@ -26,7 +26,8 @@ pub const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
 
 /// Wire codec for the stdin/stdout protocol.
 ///
-/// See the [module documentation](self) for format details.
+/// `Json` uses newline-delimited JSON. `MsgPack` uses a 4-byte
+/// big-endian length prefix followed by a MessagePack payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Codec {
     /// Newline-delimited JSON (JSONL).
@@ -54,6 +55,11 @@ impl Codec {
     /// per outgoing message (not per render frame), and the messages are
     /// small enough that the allocation is negligible relative to the
     /// I/O cost. Buffer reuse would add complexity for no measurable gain.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when serialization fails or when the encoded
+    /// payload exceeds the 4 GiB msgpack frame limit.
     pub fn encode<T: Serialize>(&self, value: &T) -> Result<Vec<u8>, String> {
         match self {
             Codec::Json => {
@@ -91,6 +97,11 @@ impl Codec {
     /// Use this instead of [`encode`](Self::encode) when the message
     /// contains raw byte data (e.g. pixel buffers) that should use
     /// native binary encoding over msgpack.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when JSON or msgpack serialization fails, or
+    /// when the encoded msgpack payload exceeds the 4 GiB frame limit.
     pub fn encode_binary_message(
         &self,
         mut map: serde_json::Map<String, serde_json::Value>,
@@ -154,6 +165,12 @@ impl Codec {
     /// can reconstruct into `Vec<u8>`. The `serde_json::Value` intermediate is
     /// still needed for tag dispatch (`#[serde(tag = "type")]`) which rmp-serde
     /// doesn't handle reliably for externally-produced msgpack.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the payload fails the msgpack depth check,
+    /// cannot be decoded from the selected wire format, or cannot be
+    /// deserialized into the requested target type.
     pub fn decode<T: DeserializeOwned>(&self, bytes: &[u8]) -> Result<T, String> {
         match self {
             Codec::Json => serde_json::from_slice(bytes).map_err(|e| format!("json decode: {e}")),
@@ -200,6 +217,12 @@ impl Codec {
     /// - MsgPack: reads a 4-byte BE u32 length, then reads that many bytes.
     ///
     /// Returns `Ok(None)` on EOF (clean shutdown).
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the reader fails, when a JSON line or
+    /// msgpack frame exceeds [`MAX_MESSAGE_SIZE`], or when msgpack
+    /// framing is truncated or otherwise malformed.
     pub fn read_message<R: BufRead>(&self, reader: &mut R) -> io::Result<Option<Vec<u8>>> {
         match self {
             Codec::Json => loop {

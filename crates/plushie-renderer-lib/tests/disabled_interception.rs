@@ -14,11 +14,11 @@ use parking_lot::Mutex as PlMutex;
 use serde_json::json;
 
 use plushie_core::ops::EffectRequest;
-use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::{
     EffectResponse, IncomingMessage, OutgoingEvent, PropMap, Props, TreeNode,
 };
 use plushie_widget_sdk::registry::WidgetRegistry;
+use plushie_widget_sdk::runtime::Message;
 
 use plushie_renderer_lib::App;
 use plushie_renderer_lib::effects::EffectHandler;

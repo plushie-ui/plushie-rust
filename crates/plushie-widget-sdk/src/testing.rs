@@ -169,7 +169,7 @@ impl TestEnv {
         widget: &'a mut W,
         node: &'a TreeNode,
         window_id: &str,
-    ) -> iced::Element<'a, crate::message::Message, iced::Theme, iced::Renderer>
+    ) -> iced::Element<'a, crate::runtime::Message, iced::Theme, iced::Renderer>
     where
         W: crate::registry::PlushieWidget<iced::Renderer>,
     {
@@ -190,7 +190,7 @@ impl TestEnv {
     pub fn handle_message_events<W>(
         &self,
         widget: &mut W,
-        msg: &crate::message::Message,
+        msg: &crate::runtime::Message,
     ) -> Vec<crate::protocol::OutgoingEvent>
     where
         W: crate::registry::PlushieWidget<iced::Renderer>,

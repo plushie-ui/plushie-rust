@@ -21,8 +21,8 @@
 
 use std::io::BufRead;
 
-use plushie_widget_sdk::codec::Codec;
 use plushie_widget_sdk::protocol::{IncomingMessage, SessionMessage};
+use plushie_widget_sdk::runtime::Codec;
 use serde_json::Value;
 
 /// Fatal startup failure.

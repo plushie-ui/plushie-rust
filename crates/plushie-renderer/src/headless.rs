@@ -8,7 +8,7 @@
 //! protocol-level testing from any language.
 //!
 //! Both modes read framed messages from stdin, process them through
-//! [`Core`](plushie_widget_sdk::engine::Core), and write responses to stdout.
+//! [`Core`](plushie_widget_sdk::runtime::Core), and write responses to stdout.
 //! No iced daemon, no windows, no GPU. Both modes maintain a persistent
 //! renderer and UI cache. Headless uses `iced::Renderer` (tiny-skia)
 //! for real screenshots, mock uses the null renderer `()` for speed.
@@ -30,12 +30,12 @@ use iced::{Event, Size, Theme};
 use serde::Serialize;
 
 use plushie_widget_sdk::PlushieRenderer;
-use plushie_widget_sdk::codec::Codec;
-use plushie_widget_sdk::engine::Core;
 use plushie_widget_sdk::image_registry::ImageRegistry;
-use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::{IncomingMessage, OutgoingEvent, SessionMessage};
 use plushie_widget_sdk::render_ctx::RenderCtx;
+use plushie_widget_sdk::runtime::Codec;
+use plushie_widget_sdk::runtime::Core;
+use plushie_widget_sdk::runtime::Message;
 
 use plushie_renderer_lib::scripting::{interaction_to_iced_events, resolve_widget_id};
 
@@ -168,7 +168,7 @@ impl<R: PlushieRenderer> Session<R> {
     /// Construct a new session with the default built-in iced widget set.
     fn new(mode: Mode, writer: WireWriter) -> Self {
         let mut registry = plushie_widget_sdk::registry::WidgetRegistry::new();
-        registry.register_set(&plushie_widget_sdk::widget::widget_set::iced_widget_set());
+        registry.register_set(&plushie_widget_sdk::runtime::iced_widget_set());
         Self::with_registry(mode, writer, registry)
     }
 
@@ -236,7 +236,7 @@ impl<R: PlushieRenderer> Session<R> {
         f: impl FnOnce(
             &mut iced_test::runtime::UserInterface<
                 '_,
-                plushie_widget_sdk::message::Message,
+                plushie_widget_sdk::runtime::Message,
                 Theme,
                 R,
             >,
@@ -256,7 +256,7 @@ impl<R: PlushieRenderer> Session<R> {
             window_id: "",
             scale_factor: 1.0,
         };
-        let element = plushie_widget_sdk::widget::render(root, ctx);
+        let element = plushie_widget_sdk::runtime::render(root, ctx);
 
         let cache = std::mem::take(&mut self.ui.ui_cache);
         let mut ui = iced_test::runtime::UserInterface::build(
@@ -420,7 +420,7 @@ impl<R: PlushieRenderer> Session<R> {
                     }
                     let effects = self.core.apply(msg);
                     for effect in effects {
-                        use plushie_widget_sdk::engine::{CoreEffect, StateChange};
+                        use plushie_widget_sdk::runtime::{CoreEffect, StateChange};
                         match effect {
                             CoreEffect::StateChange(StateChange::ThemeChanged(t)) => self.theme = t,
                             CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
@@ -536,7 +536,7 @@ fn handle_message<R: PlushieRenderer>(
             let effects = s.core.apply(msg);
 
             for effect in effects {
-                use plushie_widget_sdk::engine::{CoreEffect, Dispatch, Emit, StateChange};
+                use plushie_widget_sdk::runtime::{CoreEffect, Dispatch, Emit, StateChange};
                 match effect {
                     CoreEffect::Emit(Emit::Event(event)) => {
                         s.writer.emit(&event.with_session(session_id))?;
@@ -968,8 +968,8 @@ fn handle_screenshot<R: PlushieRenderer>(
         window_id: "",
         scale_factor: 1.0,
     };
-    let element: iced::Element<'_, plushie_widget_sdk::message::Message, Theme, R> =
-        plushie_widget_sdk::widget::render(root, ctx);
+    let element: iced::Element<'_, plushie_widget_sdk::runtime::Message, Theme, R> =
+        plushie_widget_sdk::runtime::render(root, ctx);
 
     let cache = std::mem::take(&mut s.ui.ui_cache);
     let mut ui = iced_test::runtime::UserInterface::build(

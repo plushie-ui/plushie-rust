@@ -1,14 +1,14 @@
 //! Application builder for registering widgets.
 //!
 //! Create a [`PlushieAppBuilder`], register widgets (via
-//! [`PlushieWidget`](crate::registry::PlushieWidget)), and pass it
+//! [`PlushieWidget`]), and pass it
 //! to `plushie::run()`.
 //!
 //! # Example
 //!
 //! ```ignore
 //! use plushie_widget_sdk::app::PlushieAppBuilder;
-//! use plushie_widget_sdk::widget::widget_set::iced_widget_set;
+//! use plushie_widget_sdk::runtime::iced_widget_set;
 //!
 //! fn main() -> iced::Result {
 //!     plushie::run(
@@ -74,7 +74,7 @@ impl<R: PlushieRenderer> PlushieAppBuilder<R> {
     ///
     /// The closure is invoked once per session thread. It must
     /// register every widget the app needs (including the built-in
-    /// iced set via [`iced_widget_set`](crate::widget::widget_set::iced_widget_set)
+    /// iced set via [`iced_widget_set`](crate::runtime::iced_widget_set)
     /// if the app uses them).
     ///
     /// Only consulted by `--max-sessions > 1` headless / mock modes.

@@ -3,8 +3,8 @@
 
 use std::io;
 
-use plushie_widget_sdk::engine::CoreEffect;
 use plushie_widget_sdk::protocol::IncomingMessage;
+use plushie_widget_sdk::runtime::CoreEffect;
 
 use crate::App;
 
@@ -78,7 +78,7 @@ impl App {
             }
         }
         for effect in effects {
-            use plushie_widget_sdk::engine::{Dispatch, Emit, StateChange};
+            use plushie_widget_sdk::runtime::{Dispatch, Emit, StateChange};
             match effect {
                 CoreEffect::Emit(Emit::Event(event)) => self.emitter.emit_event(event)?,
                 CoreEffect::Emit(Emit::EffectResponse(response)) => {
@@ -107,7 +107,7 @@ impl App {
                                     if let Err(e) = guard.emit_effect_response(response) {
                                         log::error!("effect response write error: {e}");
                                     }
-                                    plushie_widget_sdk::message::Message::NoOp
+                                    plushie_widget_sdk::runtime::Message::NoOp
                                 });
                             self.pending_tasks.push(task);
                         } else if let Some(response) =
@@ -189,7 +189,7 @@ impl App {
             for win_id in window_ids {
                 if let Some(node) = self.core.tree.find_window(&win_id)
                     && let Some(theme_val) = node.props.get_value("theme")
-                    && let Some(theme) = plushie_widget_sdk::theming::resolve_theme_only(&theme_val)
+                    && let Some(theme) = plushie_widget_sdk::runtime::resolve_theme_only(&theme_val)
                 {
                     self.windows.set_theme(&win_id, Some(theme));
                 }

@@ -8,7 +8,7 @@
 use iced::Task;
 
 use plushie_core::ops::*;
-use plushie_widget_sdk::message::Message;
+use plushie_widget_sdk::runtime::Message;
 
 use crate::App;
 

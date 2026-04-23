@@ -18,8 +18,8 @@ use iced::time::{Duration, Instant};
 
 use iced::Task;
 
-use plushie_widget_sdk::message::Message;
 use plushie_widget_sdk::protocol::{CoalesceHint, OutgoingEvent};
+use plushie_widget_sdk::runtime::Message;
 
 use crate::emitters::{EventSink, SinkMutex};
 

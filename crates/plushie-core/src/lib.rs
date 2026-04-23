@@ -34,3 +34,52 @@ pub use scoped_id::ScopedId;
 pub use selector::Selector;
 pub use spec::{CommandSpec, EventSpec, PayloadSpec, ValueType, WidgetCommandEncode};
 pub use widget_builder::WidgetBuilder;
+
+/// Sorted list of every built-in widget type name reserved by the
+/// stock renderer's iced widget set.
+///
+/// Tooling uses this list to detect native widgets that would shadow a
+/// built-in name without depending on `plushie-widget-sdk` or iced. The
+/// widget SDK has a drift-detection test that compares this list with
+/// the renderer's registered built-in widget set.
+pub const BUILTIN_TYPE_NAMES: &[&str] = &[
+    "button",
+    "canvas",
+    "checkbox",
+    "column",
+    "combo_box",
+    "container",
+    "float",
+    "grid",
+    "image",
+    "keyed_column",
+    "markdown",
+    "overlay",
+    "pane_grid",
+    "pick_list",
+    "pin",
+    "pointer_area",
+    "progress_bar",
+    "qr_code",
+    "radio",
+    "responsive",
+    "rich",
+    "rich_text",
+    "row",
+    "rule",
+    "scrollable",
+    "sensor",
+    "slider",
+    "space",
+    "stack",
+    "svg",
+    "table",
+    "text",
+    "text_editor",
+    "text_input",
+    "themer",
+    "toggler",
+    "tooltip",
+    "vertical_slider",
+    "window",
+];

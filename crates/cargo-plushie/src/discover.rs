@@ -106,8 +106,8 @@ pub fn check_type_name_collisions(widgets: &[WidgetMetadata]) -> Result<()> {
 /// Fail if any widget shadows a built-in name.
 ///
 /// `builtins` is the renderer's reserved list (usually
-/// `plushie_widget_sdk::BUILTIN_TYPE_NAMES`). The build tool accepts
-/// it as a slice so library consumers can inject a mock list in tests.
+/// `plushie_core::BUILTIN_TYPE_NAMES`). The build tool accepts it as a
+/// slice so library consumers can inject a mock list in tests.
 ///
 /// # Errors
 ///

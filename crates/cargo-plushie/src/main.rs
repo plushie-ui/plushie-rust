@@ -10,60 +10,9 @@ use cargo_plushie::{discover, doctor, download, generator, platform, scaffold};
 use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
-/// Built-in renderer widget type names. Populated at compile time by
-/// the plushie-widget-sdk const so the build tool and the renderer
-/// share a single source of truth.
-const BUILTIN_TYPE_NAMES: &[&str] = plushie_widget_sdk_builtin_names::LIST;
-
-/// Private module providing the constant indirectly so we avoid a
-/// direct `plushie-widget-sdk` dependency in the build tool (which
-/// would re-pull iced). The list is duplicated by the drift test in
-/// `plushie-widget-sdk/tests/builtin_type_names.rs`.
-mod plushie_widget_sdk_builtin_names {
-    /// Sorted list of built-in widget type names registered by the
-    /// stock renderer's iced widget set.
-    pub const LIST: &[&str] = &[
-        "button",
-        "canvas",
-        "checkbox",
-        "column",
-        "combo_box",
-        "container",
-        "float",
-        "grid",
-        "image",
-        "keyed_column",
-        "markdown",
-        "overlay",
-        "pane_grid",
-        "pick_list",
-        "pin",
-        "pointer_area",
-        "progress_bar",
-        "qr_code",
-        "radio",
-        "responsive",
-        "rich",
-        "rich_text",
-        "row",
-        "rule",
-        "scrollable",
-        "sensor",
-        "slider",
-        "space",
-        "stack",
-        "svg",
-        "table",
-        "text",
-        "text_editor",
-        "text_input",
-        "themer",
-        "toggler",
-        "tooltip",
-        "vertical_slider",
-        "window",
-    ];
-}
+/// Built-in renderer widget type names from `plushie-core`, shared
+/// with the widget SDK without pulling iced into this build tool.
+const BUILTIN_TYPE_NAMES: &[&str] = plushie_core::BUILTIN_TYPE_NAMES;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -823,4 +772,17 @@ fn run_with_cargo_watch(
         return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BUILTIN_TYPE_NAMES;
+
+    #[test]
+    fn builtin_type_names_come_from_core() {
+        assert!(std::ptr::eq(
+            BUILTIN_TYPE_NAMES.as_ptr(),
+            plushie_core::BUILTIN_TYPE_NAMES.as_ptr()
+        ));
+    }
 }

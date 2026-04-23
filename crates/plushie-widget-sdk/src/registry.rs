@@ -205,24 +205,6 @@ impl Default for GenerationCounter {
     }
 }
 
-/// Check if panic isolation is disabled via the PLUSHIE_NO_CATCH_UNWIND env var.
-/// When true, widget panics propagate normally, preserving stack traces for
-/// debugging. Only use during development. In production, catch_unwind
-/// prevents one widget from crashing the entire renderer.
-fn catch_unwind_enabled() -> bool {
-    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            std::env::var("PLUSHIE_NO_CATCH_UNWIND").is_err()
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            true
-        }
-    })
-}
-
 // ---------------------------------------------------------------------------
 // PlushieWidget trait
 // ---------------------------------------------------------------------------
@@ -860,8 +842,6 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// Untrusted widgets run `f` inside `catch_unwind`. If the call
     /// panics, a diagnostic is logged and `fallback` is returned.
     ///
-    /// `PLUSHIE_NO_CATCH_UNWIND=1` disables the wrapping for debugging
-    /// so panics propagate with full stack traces.
     fn call_widget<T>(
         &self,
         type_name: &str,
@@ -875,7 +855,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         };
         let widget = self.impls[idx].as_ref();
 
-        if self.is_trusted(type_name) || !catch_unwind_enabled() {
+        if self.is_trusted(type_name) {
             return f(widget);
         }
 
@@ -912,7 +892,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             return fallback();
         };
 
-        if trusted || !catch_unwind_enabled() {
+        if trusted {
             return f(&mut self.impls[idx]);
         }
 
@@ -954,7 +934,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             return iced::widget::container(iced::widget::Space::new()).into();
         };
 
-        if self.is_trusted(type_name) || !catch_unwind_enabled() {
+        if self.is_trusted(type_name) {
             self.impls[idx].render(node, ctx)
         } else {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -2497,7 +2477,7 @@ mod tests {
     }
 
     #[test]
-    fn prepare_panic_does_not_crash_registry() {
+    fn untrusted_prepare_panic_does_not_crash_registry() {
         let mut registry = WidgetRegistry::<()>::new();
         registry.register(Box::new(PanickingInPrepare));
 
@@ -2507,8 +2487,51 @@ mod tests {
         registry.prepare_walk(&mut tree, &mut shared, &Theme::Dark);
     }
 
+    struct PanickingInHandleMessage;
+
+    impl PlushieWidget<()> for PanickingInHandleMessage {
+        fn type_names(&self) -> &[&str] {
+            &["message_panic"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("noop").into()
+        }
+
+        fn handle_message(&mut self, _msg: &Message) -> HandleResult {
+            panic!("intentional handle_message panic");
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(PanickingInHandleMessage)
+        }
+    }
+
     #[test]
-    fn widget_override_panic_is_contained_in_render() {
+    fn untrusted_handle_message_panic_falls_through_without_unwinding() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(PanickingInHandleMessage));
+        let idx = registry.index_for_type("message_panic").unwrap();
+        registry.map_node("m1".to_string(), idx);
+
+        let events = registry.process_message(&Message::Event {
+            window_id: String::new(),
+            id: "m1".to_string(),
+            value: Value::Null,
+            family: "click".to_string(),
+        });
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].family, "click");
+        assert_eq!(events[0].id, "m1");
+    }
+
+    #[test]
+    fn untrusted_widget_override_panic_is_contained_in_render() {
         let mut registry = WidgetRegistry::<iced::Renderer>::new();
         registry.register_set(&crate::widget::widget_set::iced_widget_set());
         registry.register(Box::new(PanickingButton));

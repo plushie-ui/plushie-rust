@@ -237,11 +237,11 @@ __GLX_        PLUSHIE_
 VK_
 ```
 
-`PLUSHIE_` is a plushie-reserved catch-all for renderer-side debug and
-diagnostic toggles (for example `PLUSHIE_NO_CATCH_UNWIND`). Adding a
-new plushie toggle with the `PLUSHIE_` prefix propagates automatically
-without updating per-SDK whitelists. No legitimate secret should use
-this prefix.
+`PLUSHIE_` is a plushie-reserved catch-all for renderer-side controls
+such as diagnostics and test snapshot updates. Adding a new plushie
+control with the `PLUSHIE_` prefix propagates automatically without
+updating per-SDK whitelists. No legitimate secret should use this
+prefix.
 
 ### Rationale
 
@@ -2171,22 +2171,6 @@ then remaining fields override individual properties:
   }
 }
 ```
-
----
-
-## Debugging
-
-### PLUSHIE_NO_CATCH_UNWIND
-
-Set `PLUSHIE_NO_CATCH_UNWIND=1` on the renderer process to disable
-panic isolation for custom widgets. When set, widget panics
-propagate normally instead of being caught by `catch_unwind`, which
-preserves full stack traces and allows debuggers (gdb, lldb) to
-break at the panic site.
-
-**Use this only during development.** In production, `catch_unwind`
-prevents one misbehaving widget from crashing the entire renderer.
-With the env var set, any widget panic takes down the process.
 
 ---
 

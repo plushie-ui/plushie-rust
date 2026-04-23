@@ -9,17 +9,16 @@
 //!
 //! [`renderer_env`] returns only the variables the renderer actually
 //! needs. The list is the canonical whitelist shared across every host
-//! SDK (Elixir, Gleam, Python, Ruby, TypeScript): Elixir's 21 exact
-//! names + 8 prefix classes, plus a dedicated `PLUSHIE_*` prefix for
-//! plushie-reserved debug toggles. Anything not on the list is
+//! SDK (Elixir, Gleam, Python, Ruby, TypeScript): Elixir's exact names
+//! and prefix classes, plus a dedicated `PLUSHIE_*` prefix for
+//! plushie-reserved renderer controls. Anything not on the list is
 //! stripped.
 //!
-//! The `PLUSHIE_*` prefix covers runtime debug toggles the renderer
-//! reads (currently `PLUSHIE_NO_CATCH_UNWIND`, `PLUSHIE_TOKEN`,
-//! `PLUSHIE_SOCKET`, `PLUSHIE_UPDATE_SNAPSHOTS`). Adding new toggles
-//! no longer requires teaching every SDK about the individual name;
-//! the prefix is reserved for plushie internals, so there is no
-//! plausible secret stored under it.
+//! The `PLUSHIE_*` prefix covers renderer controls the renderer reads
+//! (currently `PLUSHIE_TOKEN`, `PLUSHIE_SOCKET`,
+//! `PLUSHIE_UPDATE_SNAPSHOTS`). Adding new controls no longer requires
+//! teaching every SDK about the individual name; the prefix is reserved
+//! for plushie internals, so there is no plausible secret stored under it.
 
 /// Variables passed through to the renderer subprocess unchanged when
 /// they are set in the host's environment. Matches the canonical list
@@ -58,7 +57,7 @@ const EXACT: &[&str] = &[
 /// prefixes passes through. The prefixes cover locale (LC_*), the
 /// Mesa / GLX / Vulkan / Gallium graphics stack, accessibility bridge
 /// settings, fontconfig, and the plushie-reserved PLUSHIE_* namespace
-/// for renderer debug toggles.
+/// for renderer controls.
 const PREFIXES: &[&str] = &[
     "LC_",
     "MESA_",
@@ -125,7 +124,6 @@ mod tests {
 
     #[test]
     fn plushie_prefix_allowed() {
-        assert!(is_allowed("PLUSHIE_NO_CATCH_UNWIND"));
         assert!(is_allowed("PLUSHIE_UPDATE_SNAPSHOTS"));
         assert!(is_allowed("PLUSHIE_TOKEN"));
         assert!(is_allowed("PLUSHIE_SOCKET"));

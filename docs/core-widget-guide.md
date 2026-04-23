@@ -809,9 +809,8 @@ individually (via `.widget()` on the builder or `.register()` on
 the registry) is untrusted even if its `type_name` shadows a
 built-in.
 
-**Debug escape hatch.** Set `PLUSHIE_NO_CATCH_UNWIND=1` to disable
-wrapping and let panics propagate. Useful when debugging a widget;
-never set it in production.
+There is no runtime environment switch to disable panic isolation for
+untrusted widgets.
 
 ## Name collisions
 

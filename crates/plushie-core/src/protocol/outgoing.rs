@@ -537,7 +537,7 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     /// Set or construct `animation_frame`.
-    pub fn animation_frame(tag: String, timestamp_millis: u128) -> Self {
+    pub fn animation_frame(tag: String, timestamp_millis: u64) -> Self {
         Self {
             value: Some(serde_json::json!({"timestamp": timestamp_millis})),
             coalesce: Some(CoalesceHint::Replace),
@@ -1391,6 +1391,25 @@ mod tests {
                 "hash": "d4e5f6",
                 "width": 1024,
                 "height": 768,
+            })
+        );
+    }
+
+    #[test]
+    fn animation_frame_serializes_timestamp_object() {
+        let event = OutgoingEvent::animation_frame("anim".to_string(), 16_000).with_session("s1");
+
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            json!({
+                "type": "event",
+                "session": "s1",
+                "family": "animation_frame",
+                "id": "",
+                "tag": "anim",
+                "value": {
+                    "timestamp": 16_000,
+                },
             })
         );
     }

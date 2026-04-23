@@ -552,6 +552,49 @@ fn headless_interact_step_round_trip() {
     child.wait().unwrap();
 }
 
+#[test]
+fn headless_advance_frame_emits_timestamp_object() {
+    let (mut child, _stderr) = spawn_renderer(&["--headless", "--json"]);
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = LineReceiver::new(child.stdout.take().unwrap());
+
+    send(
+        &mut stdin,
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
+    );
+    let _hello = stdout.recv();
+
+    send(
+        &mut stdin,
+        &serde_json::json!({
+            "session": "s1",
+            "type": "subscribe",
+            "kind": "on_animation_frame",
+            "tag": "anim",
+        }),
+    );
+
+    send(
+        &mut stdin,
+        &serde_json::json!({
+            "session": "s1",
+            "type": "advance_frame",
+            "timestamp": 16_000,
+        }),
+    );
+
+    let msg = stdout.recv_skip_status();
+    assert_eq!(msg["type"], "event");
+    assert_eq!(msg["session"], "s1");
+    assert_eq!(msg["family"], "animation_frame");
+    assert_eq!(msg["tag"], "anim");
+    assert_eq!(msg["value"], serde_json::json!({"timestamp": 16_000}));
+
+    drop(stdin);
+    child.wait().unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // Widget render, concurrent session, and validate_props tests below
 // use the LineReceiver defined at the top of this file.

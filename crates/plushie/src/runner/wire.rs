@@ -944,7 +944,14 @@ enum IncomingRendererMessage {
         tag: String,
         data: Value,
     },
+    InteractStep {
+        #[allow(dead_code)]
+        id: String,
+        events: Vec<Value>,
+    },
     InteractResponse {
+        #[allow(dead_code)]
+        id: String,
         events: Vec<Value>,
     },
     /// Message type the SDK doesn't recognise. Preserves the type
@@ -1017,13 +1024,31 @@ fn decode_incoming(msg: &Value) -> Option<IncomingRendererMessage> {
                 .unwrap_or(Value::Null);
             IncomingRendererMessage::QueryResponse { kind, tag, data }
         }
-        "interact_response" => {
+        "interact_step" => {
+            let id = msg
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let events = msg
                 .get("events")
                 .and_then(|v| v.as_array())
                 .cloned()
                 .unwrap_or_default();
-            IncomingRendererMessage::InteractResponse { events }
+            IncomingRendererMessage::InteractStep { id, events }
+        }
+        "interact_response" => {
+            let id = msg
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let events = msg
+                .get("events")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            IncomingRendererMessage::InteractResponse { id, events }
         }
         other => IncomingRendererMessage::Unknown {
             msg_type: other.to_string(),
@@ -1060,7 +1085,8 @@ fn wire_to_sdk_events(
     };
 
     let sink_event = match decoded {
-        IncomingRendererMessage::InteractResponse { events } => {
+        IncomingRendererMessage::InteractStep { id: _, events }
+        | IncomingRendererMessage::InteractResponse { id: _, events } => {
             // Interact responses contain multiple events that each
             // need a full MVU cycle. Recursively convert each one.
             return events
@@ -1583,9 +1609,10 @@ fn execute_wire_renderer_op(
         RendererOp::FindFocused { tag } => {
             bridge.send_widget_op("find_focused", &json!({"tag": tag}))
         }
-        RendererOp::AdvanceFrame { timestamp } => {
-            bridge.send_widget_op("advance_frame", &json!({"timestamp": timestamp}))
-        }
+        RendererOp::AdvanceFrame { timestamp } => bridge.send(&OutgoingMessage::AdvanceFrame {
+            session: String::new(),
+            timestamp: *timestamp,
+        }),
         // RendererOp is #[non_exhaustive]; any variant added after this
         // match was written is an unknown op in wire mode and is
         // skipped with a warning rather than silently dropped.
@@ -1823,5 +1850,66 @@ mod hello_protocol_tests {
         });
 
         assert_eq!(hello_protocol_version(&hello), Some(u32::MAX));
+    }
+}
+
+#[cfg(all(test, feature = "wire"))]
+mod wire_contract_tests {
+    use super::*;
+
+    #[test]
+    fn decode_incoming_recognizes_interact_step() {
+        let raw = serde_json::json!({
+            "type": "interact_step",
+            "session": "s1",
+            "id": "i1",
+            "events": [
+                {
+                    "type": "event",
+                    "session": "s1",
+                    "family": "click",
+                    "id": "btn1",
+                }
+            ],
+        });
+
+        match decode_incoming(&raw).expect("message should decode") {
+            IncomingRendererMessage::InteractStep { id, events } => {
+                assert_eq!(id, "i1");
+                assert_eq!(events.len(), 1);
+                assert_eq!(events[0]["family"], "click");
+            }
+            other => panic!("expected interact_step, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wire_to_sdk_events_unwraps_interact_step_events() {
+        let raw = serde_json::json!({
+            "type": "interact_step",
+            "session": "s1",
+            "id": "i1",
+            "events": [
+                {
+                    "type": "event",
+                    "session": "s1",
+                    "family": "click",
+                    "id": "btn1",
+                }
+            ],
+        });
+
+        let mut effect_tracker = EffectTracker::new();
+        let mut async_mgr = AsyncTaskManager::new(None);
+        let events = wire_to_sdk_events(&raw, &mut effect_tracker, &mut async_mgr);
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            Event::Widget(widget) => {
+                assert_eq!(widget.event_type, plushie_core::EventType::Click);
+                assert_eq!(widget.scoped_id.id, "btn1");
+            }
+            other => panic!("expected widget event, got {other:?}"),
+        }
     }
 }

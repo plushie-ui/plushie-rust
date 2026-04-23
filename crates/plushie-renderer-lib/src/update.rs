@@ -228,7 +228,8 @@ impl App {
                 let entries = self.core.matching_entries(SUB_ANIMATION_FRAME, None);
                 if let Some(entry) = entries.first() {
                     let epoch = *self.animation_epoch.get_or_insert(instant);
-                    let millis = instant.duration_since(epoch).as_millis();
+                    let millis = u64::try_from(instant.duration_since(epoch).as_millis())
+                        .unwrap_or(u64::MAX);
                     let event = OutgoingEvent::animation_frame(entry.tag.clone(), millis);
                     self.emitter.coalesce(
                         CoalesceKey::Subscription(SUB_ANIMATION_FRAME.to_string()),

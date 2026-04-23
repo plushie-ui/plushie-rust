@@ -142,6 +142,13 @@ pub enum OutgoingMessage {
         /// Target widget ID.
         id: String,
     },
+    /// Advance the animation clock by one frame in headless/mock mode.
+    AdvanceFrame {
+        /// Session.
+        session: String,
+        /// Timestamp in milliseconds, forwarded to `animation_frame`.
+        timestamp: u64,
+    },
     /// Register Effect Stub.
     RegisterEffectStub {
         /// Session.
@@ -185,4 +192,27 @@ pub enum OutgoingMessage {
         /// Payload.
         payload: Value,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OutgoingMessage;
+    use serde_json::json;
+
+    #[test]
+    fn advance_frame_serializes_as_top_level_message() {
+        let msg = OutgoingMessage::AdvanceFrame {
+            session: "s1".to_string(),
+            timestamp: 16_000,
+        };
+
+        assert_eq!(
+            serde_json::to_value(msg).unwrap(),
+            json!({
+                "type": "advance_frame",
+                "session": "s1",
+                "timestamp": 16_000,
+            })
+        );
+    }
 }

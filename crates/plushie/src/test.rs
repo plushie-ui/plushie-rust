@@ -673,7 +673,7 @@ impl<A: App> TestSession<A> {
         self.dispatch(Event::System(crate::event::SystemEvent {
             event_type: crate::event::SystemEventType::AnimationFrame,
             tag: None,
-            value: Some(serde_json::json!(timestamp)),
+            value: Some(serde_json::json!({ "timestamp": timestamp })),
             id: None,
             window_id: None,
         }));

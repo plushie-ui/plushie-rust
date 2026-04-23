@@ -916,7 +916,7 @@ fn handle_message<R: PlushieRenderer>(
                 s.writer.emit(
                     &plushie_widget_sdk::protocol::OutgoingEvent::animation_frame(
                         entry.tag.clone(),
-                        timestamp as u128,
+                        timestamp,
                     )
                     .with_session(session_id),
                 )?;

@@ -146,7 +146,7 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
         "animation_frame" => Some(Event::System(SystemEvent {
             event_type: SystemEventType::AnimationFrame,
             tag: Some(tag.to_string()),
-            value: event.value.clone(),
+            value: normalize_animation_frame_value(event.value.clone()),
             id: None,
             window_id: None,
         })),
@@ -300,6 +300,13 @@ fn json_str(value: &Value, key: &str) -> String {
 
 fn json_str_opt(value: &Value, key: &str) -> Option<String> {
     value[key].as_str().map(|s| s.to_string())
+}
+
+fn normalize_animation_frame_value(value: Option<Value>) -> Option<Value> {
+    match value {
+        Some(Value::Number(timestamp)) => Some(serde_json::json!({ "timestamp": timestamp })),
+        other => other,
+    }
 }
 
 #[cfg(test)]
@@ -459,12 +466,29 @@ mod tests {
     #[test]
     fn animation_frame_event() {
         let mut event = make_tagged("animation_frame", "anim");
-        event.value = Some(serde_json::json!(16.67));
+        event.value = Some(serde_json::json!({"timestamp": 16_000}));
         let sdk = outgoing_to_sdk_event(event).unwrap();
         match sdk {
             Event::System(s) => {
                 assert_eq!(s.event_type, SystemEventType::AnimationFrame);
                 assert_eq!(s.tag, Some("anim".to_string()));
+                assert_eq!(s.value, Some(serde_json::json!({"timestamp": 16_000})));
+            }
+            _ => panic!("expected System event"),
+        }
+    }
+
+    #[test]
+    fn animation_frame_event_normalizes_legacy_numeric_payload() {
+        let mut event = make_tagged("animation_frame", "anim");
+        event.value = Some(serde_json::json!(16_000));
+
+        let sdk = outgoing_to_sdk_event(event).unwrap();
+
+        match sdk {
+            Event::System(s) => {
+                assert_eq!(s.event_type, SystemEventType::AnimationFrame);
+                assert_eq!(s.value, Some(serde_json::json!({"timestamp": 16_000})));
             }
             _ => panic!("expected System event"),
         }

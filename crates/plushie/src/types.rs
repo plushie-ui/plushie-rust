@@ -58,6 +58,9 @@ pub use plushie_core::types::{
     // Style
     Style,
     StyleMap,
+    TextAlignment,
+    TextDirection,
+    TextMotion,
     Theme,
     // Untyped props escape hatch
     UntypedProps,
@@ -99,6 +102,16 @@ pub enum Align {
     Center,
     /// Align to the end (right or bottom).
     End,
+}
+
+impl From<Align> for TextAlignment {
+    fn from(value: Align) -> Self {
+        match value {
+            Align::Start => Self::Left,
+            Align::Center => Self::Center,
+            Align::End => Self::Right,
+        }
+    }
 }
 
 // -------------------------------------------------------------------------

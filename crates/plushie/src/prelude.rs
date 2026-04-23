@@ -157,6 +157,12 @@ pub use crate::types::SortOrder;
 pub use crate::types::Style;
 /// Map of widget-type to style presets.
 pub use crate::types::StyleMap;
+/// Text-specific horizontal alignment.
+pub use crate::types::TextAlignment;
+/// Text layout direction.
+pub use crate::types::TextDirection;
+/// Text-editor cursor movement direction.
+pub use crate::types::TextMotion;
 /// Theme variant (system / named / custom).
 pub use crate::types::Theme;
 /// Passthrough prop type that keeps untyped JSON.

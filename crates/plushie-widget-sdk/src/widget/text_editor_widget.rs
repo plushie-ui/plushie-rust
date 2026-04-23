@@ -12,35 +12,69 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Color, Font, InputPurpose, Length, LineHeight, PlushieType, Style as CoreStyle, Wrapping,
+    Color, Font, InputPurpose, Length, LineHeight, PlushieType, Style as CoreStyle, TextDirection,
+    TextMotion, Wrapping,
 };
 
 // ---------------------------------------------------------------------------
 // Key binding helpers
 // ---------------------------------------------------------------------------
 
-/// Parse a JSON motion string into an iced Motion.
-fn parse_motion(s: &str) -> Option<text_editor::Motion> {
+/// Convert a logical text motion into an iced Motion.
+fn text_motion(motion: TextMotion, direction: TextDirection) -> text_editor::Motion {
     use text_editor::Motion;
+
+    match motion {
+        TextMotion::Backward => match direction {
+            TextDirection::Rtl => Motion::Right,
+            TextDirection::Auto | TextDirection::Ltr => Motion::Left,
+        },
+        TextMotion::Forward => match direction {
+            TextDirection::Rtl => Motion::Left,
+            TextDirection::Auto | TextDirection::Ltr => Motion::Right,
+        },
+        TextMotion::Up => Motion::Up,
+        TextMotion::Down => Motion::Down,
+        TextMotion::WordBackward => match direction {
+            TextDirection::Rtl => Motion::WordRight,
+            TextDirection::Auto | TextDirection::Ltr => Motion::WordLeft,
+        },
+        TextMotion::WordForward => match direction {
+            TextDirection::Rtl => Motion::WordLeft,
+            TextDirection::Auto | TextDirection::Ltr => Motion::WordRight,
+        },
+        TextMotion::LineStart => Motion::Home,
+        TextMotion::LineEnd => Motion::End,
+        TextMotion::PageUp => Motion::PageUp,
+        TextMotion::PageDown => Motion::PageDown,
+        TextMotion::DocumentStart => Motion::DocumentStart,
+        TextMotion::DocumentEnd => Motion::DocumentEnd,
+    }
+}
+
+/// Parse a JSON motion string into an iced Motion.
+fn parse_motion(s: &str, direction: TextDirection) -> Option<text_editor::Motion> {
+    use text_editor::Motion;
+
     match s {
         "left" => Some(Motion::Left),
         "right" => Some(Motion::Right),
-        "up" => Some(Motion::Up),
-        "down" => Some(Motion::Down),
         "word_left" => Some(Motion::WordLeft),
         "word_right" => Some(Motion::WordRight),
         "home" => Some(Motion::Home),
         "end" => Some(Motion::End),
-        "page_up" => Some(Motion::PageUp),
-        "page_down" => Some(Motion::PageDown),
-        "document_start" => Some(Motion::DocumentStart),
-        "document_end" => Some(Motion::DocumentEnd),
-        _ => None,
+        _ => TextMotion::wire_decode(&Value::String(s.to_owned()))
+            .map(|motion| text_motion(motion, direction)),
     }
 }
 
 /// Parse a JSON binding value into an iced Binding.
-fn parse_binding(val: &Value, id: &str, window_id: &str) -> Option<text_editor::Binding<Message>> {
+fn parse_binding(
+    val: &Value,
+    id: &str,
+    window_id: &str,
+    direction: TextDirection,
+) -> Option<text_editor::Binding<Message>> {
     use text_editor::Binding;
     match val {
         Value::String(s) => match s.as_str() {
@@ -61,14 +95,14 @@ fn parse_binding(val: &Value, id: &str, window_id: &str) -> Option<text_editor::
             if let Some(m) = obj
                 .get("move")
                 .and_then(|v| v.as_str())
-                .and_then(parse_motion)
+                .and_then(|s| parse_motion(s, direction))
             {
                 return Some(Binding::Move(m));
             }
             if let Some(m) = obj
                 .get("select")
                 .and_then(|v| v.as_str())
-                .and_then(parse_motion)
+                .and_then(|s| parse_motion(s, direction))
             {
                 return Some(Binding::Select(m));
             }
@@ -91,7 +125,7 @@ fn parse_binding(val: &Value, id: &str, window_id: &str) -> Option<text_editor::
             if let Some(seq) = obj.get("sequence").and_then(|v| v.as_array()) {
                 let bindings: Vec<_> = seq
                     .iter()
-                    .filter_map(|v| parse_binding(v, id, window_id))
+                    .filter_map(|v| parse_binding(v, id, window_id, direction))
                     .collect();
                 if !bindings.is_empty() {
                     return Some(Binding::Sequence(bindings));
@@ -289,6 +323,7 @@ struct TextEditorProps {
     line_height: Option<LineHeight>,
     padding: Option<f32>,
     wrapping: Option<Wrapping>,
+    text_direction: Option<TextDirection>,
     input_purpose: Option<InputPurpose>,
     highlight_syntax: Option<String>,
     highlight_theme: Option<String>,
@@ -311,6 +346,7 @@ impl TextEditorProps {
             line_height: LineHeight::extract(p, "line_height"),
             padding: f32::extract(p, "padding"),
             wrapping: Wrapping::extract(p, "wrapping"),
+            text_direction: TextDirection::extract(p, "text_direction"),
             input_purpose: InputPurpose::extract(p, "input_purpose")
                 .or_else(|| InputPurpose::extract(p, "ime_purpose")),
             highlight_syntax: String::extract(p, "highlight_syntax"),
@@ -337,6 +373,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
         .map(iced_convert::length)
         .unwrap_or(iced::Length::Shrink);
     let placeholder = tp.placeholder.unwrap_or_default();
+    let text_direction = tp.text_direction.unwrap_or(TextDirection::Auto);
     let id = node.id.clone();
 
     let editor_id = id;
@@ -461,7 +498,12 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                     }
 
                     // Parse the specific binding
-                    return parse_binding(&rule.binding_val, &editor_id, ctx.window_id);
+                    return parse_binding(
+                        &rule.binding_val,
+                        &editor_id,
+                        ctx.window_id,
+                        text_direction,
+                    );
                 }
                 // No rule matched: no binding
                 None
@@ -614,5 +656,62 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
         }
         te = te.id(wid);
         te.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_motion_aliases_stay_physical_in_rtl() {
+        assert_eq!(
+            parse_motion("left", TextDirection::Rtl),
+            Some(text_editor::Motion::Left)
+        );
+        assert_eq!(
+            parse_motion("right", TextDirection::Rtl),
+            Some(text_editor::Motion::Right)
+        );
+        assert_eq!(
+            parse_motion("word_left", TextDirection::Rtl),
+            Some(text_editor::Motion::WordLeft)
+        );
+        assert_eq!(
+            parse_motion("word_right", TextDirection::Rtl),
+            Some(text_editor::Motion::WordRight)
+        );
+    }
+
+    #[test]
+    fn text_motion_logical_values_map_with_rtl_direction() {
+        assert_eq!(
+            parse_motion("backward", TextDirection::Rtl),
+            Some(text_editor::Motion::Right)
+        );
+        assert_eq!(
+            parse_motion("forward", TextDirection::Rtl),
+            Some(text_editor::Motion::Left)
+        );
+        assert_eq!(
+            parse_motion("word_backward", TextDirection::Rtl),
+            Some(text_editor::Motion::WordRight)
+        );
+        assert_eq!(
+            parse_motion("word_forward", TextDirection::Rtl),
+            Some(text_editor::Motion::WordLeft)
+        );
+    }
+
+    #[test]
+    fn text_motion_logical_values_use_ltr_for_auto() {
+        assert_eq!(
+            parse_motion("backward", TextDirection::Auto),
+            Some(text_editor::Motion::Left)
+        );
+        assert_eq!(
+            parse_motion("forward", TextDirection::Auto),
+            Some(text_editor::Motion::Right)
+        );
     }
 }

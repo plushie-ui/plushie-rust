@@ -392,6 +392,31 @@ pub fn horizontal_alignment(a: types::HorizontalAlignment) -> iced::alignment::H
 }
 
 // -------------------------------------------------------------------------
+// TextAlignment
+// -------------------------------------------------------------------------
+
+/// Convert a plushie-core TextAlignment to an iced text alignment.
+pub fn text_alignment(a: types::TextAlignment, direction: types::TextDirection) -> text::Alignment {
+    match a {
+        types::TextAlignment::Default => text::Alignment::Default,
+        types::TextAlignment::Left => text::Alignment::Left,
+        types::TextAlignment::Center => text::Alignment::Center,
+        types::TextAlignment::Right => text::Alignment::Right,
+        types::TextAlignment::Start => match direction {
+            types::TextDirection::Auto => text::Alignment::Default,
+            types::TextDirection::Ltr => text::Alignment::Left,
+            types::TextDirection::Rtl => text::Alignment::Right,
+        },
+        types::TextAlignment::End => match direction {
+            types::TextDirection::Auto => text::Alignment::Right,
+            types::TextDirection::Ltr => text::Alignment::Right,
+            types::TextDirection::Rtl => text::Alignment::Left,
+        },
+        types::TextAlignment::Justified => text::Alignment::Justified,
+    }
+}
+
+// -------------------------------------------------------------------------
 // VerticalAlignment
 // -------------------------------------------------------------------------
 
@@ -860,6 +885,62 @@ mod tests {
         assert_eq!(
             cursor_style(types::CursorStyle::ZoomIn),
             iced::mouse::Interaction::ZoomIn
+        );
+    }
+
+    #[test]
+    fn text_alignment_maps_physical_values() {
+        assert_eq!(
+            text_alignment(types::TextAlignment::Default, types::TextDirection::Auto),
+            text::Alignment::Default
+        );
+        assert_eq!(
+            text_alignment(types::TextAlignment::Left, types::TextDirection::Rtl),
+            text::Alignment::Left
+        );
+        assert_eq!(
+            text_alignment(types::TextAlignment::Center, types::TextDirection::Auto),
+            text::Alignment::Center
+        );
+        assert_eq!(
+            text_alignment(types::TextAlignment::Right, types::TextDirection::Ltr),
+            text::Alignment::Right
+        );
+    }
+
+    #[test]
+    fn text_alignment_maps_logical_values_by_direction() {
+        assert_eq!(
+            text_alignment(types::TextAlignment::Start, types::TextDirection::Ltr),
+            text::Alignment::Left
+        );
+        assert_eq!(
+            text_alignment(types::TextAlignment::End, types::TextDirection::Ltr),
+            text::Alignment::Right
+        );
+        assert_eq!(
+            text_alignment(types::TextAlignment::Start, types::TextDirection::Rtl),
+            text::Alignment::Right
+        );
+        assert_eq!(
+            text_alignment(types::TextAlignment::End, types::TextDirection::Rtl),
+            text::Alignment::Left
+        );
+    }
+
+    #[test]
+    fn text_alignment_maps_auto_and_justified() {
+        assert_eq!(
+            text_alignment(types::TextAlignment::Start, types::TextDirection::Auto),
+            text::Alignment::Default
+        );
+        assert_eq!(
+            text_alignment(types::TextAlignment::End, types::TextDirection::Auto),
+            text::Alignment::Right
+        );
+        assert_eq!(
+            text_alignment(types::TextAlignment::Justified, types::TextDirection::Rtl),
+            text::Alignment::Justified
         );
     }
 

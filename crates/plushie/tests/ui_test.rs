@@ -5,7 +5,7 @@
 
 use plushie::View;
 use plushie::prelude::*;
-use plushie::types::Direction;
+use plushie::types::{Direction, TextAlignment, TextDirection};
 use serde_json::Value;
 
 /// Extract the JSON value from a View for inspection.
@@ -146,6 +146,23 @@ fn text_with_size_and_color() {
 }
 
 #[test]
+fn text_with_text_alignment_and_direction() {
+    let v = view_json(
+        text("Hello")
+            .align_x(TextAlignment::Justified)
+            .text_direction(TextDirection::Rtl),
+    );
+    assert_eq!(get_prop(&v, "align_x").as_str(), Some("justified"));
+    assert_eq!(get_prop(&v, "text_direction").as_str(), Some("rtl"));
+}
+
+#[test]
+fn text_align_x_still_accepts_align() {
+    let v = view_json(text("Hello").align_x(Align::Start));
+    assert_eq!(get_prop(&v, "align_x").as_str(), Some("left"));
+}
+
+#[test]
 fn space_is_minimal() {
     let v = view_json(space());
     assert_eq!(get_type(&v), "space");
@@ -198,6 +215,14 @@ fn text_input_with_placeholder() {
     assert_eq!(get_id(&v), "email");
     assert_eq!(get_prop(&v, "value").as_str(), Some("user@example.com"));
     assert_eq!(get_prop(&v, "placeholder").as_str(), Some("Enter email"));
+}
+
+#[test]
+fn text_editor_with_direction() {
+    let v = view_json(text_editor("notes", "Hello").text_direction(TextDirection::Rtl));
+    assert_eq!(get_type(&v), "text_editor");
+    assert_eq!(get_id(&v), "notes");
+    assert_eq!(get_prop(&v, "text_direction").as_str(), Some("rtl"));
 }
 
 #[test]

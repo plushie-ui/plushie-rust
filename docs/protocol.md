@@ -2046,12 +2046,15 @@ props.
 
 | Widget | Prop | Type | Description |
 |--------|------|------|-------------|
+| `text` | `align_x` | string | Text alignment: `"default"`, `"left"`, `"center"`, `"right"`, `"start"`, `"end"`, `"justified"` |
+| `text` | `text_direction` | string | Text direction for logical alignment: `"auto"`, `"ltr"`, `"rtl"` |
 | `text` | `ellipsis` | string | Text overflow: `"none"`, `"start"`, `"middle"`, `"end"` |
 | `rich_text` | `wrapping` | string | Text wrapping mode |
 | `rich_text` | `ellipsis` | string | Text overflow: `"none"`, `"start"`, `"middle"`, `"end"` |
 | `text_input` | `placeholder_color` | hex color | Placeholder text colour |
 | `text_input` | `selection_color` | hex color | Text selection highlight |
 | `text_input` | `ime_purpose` | string | IME hint: `"normal"`, `"secure"`, `"terminal"` |
+| `text_editor` | `text_direction` | string | Text direction for logical key-binding motions: `"auto"`, `"ltr"`, `"rtl"` |
 | `text_editor` | `placeholder_color` | hex color | Placeholder text colour |
 | `text_editor` | `selection_color` | hex color | Text selection highlight |
 | `text_editor` | `ime_purpose` | string | IME hint: `"normal"`, `"secure"`, `"terminal"` |
@@ -2073,6 +2076,54 @@ props.
 | `pane_grid` | `divider_width` | number | Pane divider thickness |
 | `markdown` | `link_color` | hex color | Hyperlink colour |
 | `markdown` | `code_theme` | string | Syntax highlighting theme for code blocks |
+
+### Text alignment and direction
+
+Layout props that use horizontal alignment remain physical:
+`"left"`, `"center"`, and `"right"`. Text widgets use the separate
+text alignment vocabulary because text can be direction-aware and can be
+justified.
+
+`text.align_x` accepts:
+
+| Value | Meaning |
+|-------|---------|
+| `"default"` | Renderer default. Left-to-right text aligns left and right-to-left text aligns right. |
+| `"left"` | Physical left |
+| `"center"` | Center |
+| `"right"` | Physical right |
+| `"start"` | Logical start, resolved using `text_direction` |
+| `"end"` | Logical end, resolved using `text_direction` |
+| `"justified"` | Justified text |
+
+`text_direction` accepts `"auto"`, `"ltr"`, and `"rtl"`. For
+`text.align_x`, `"start"` with `"auto"` uses the renderer default.
+`"end"` with `"auto"` falls back to physical right because iced cannot
+represent direction-aware end alignment.
+
+### Text editor motion names
+
+Text editor `key_bindings` can use logical motion names in `move` and
+`select` binding objects:
+
+```json
+{"move": "backward"}
+```
+
+The canonical motion names are `"backward"`, `"forward"`, `"up"`,
+`"down"`, `"word_backward"`, `"word_forward"`, `"line_start"`,
+`"line_end"`, `"page_up"`, `"page_down"`, `"document_start"`, and
+`"document_end"`.
+
+With `text_direction: "rtl"`, `"backward"` maps to a physical right
+move and `"forward"` maps to a physical left move. Word motions follow
+the same rule. With `"auto"`, logical backward and forward use
+left-to-right behavior.
+
+The old physical motion strings remain valid aliases in key bindings:
+`"left"`, `"right"`, `"word_left"`, `"word_right"`, `"home"`, and
+`"end"`. These aliases keep their physical behavior even when
+`text_direction` is `"rtl"`.
 
 **Table rows.** Tables use children-based rows. The `table` node's
 children are `table_row` nodes, each containing `table_cell`

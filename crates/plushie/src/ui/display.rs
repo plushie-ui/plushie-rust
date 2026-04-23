@@ -67,8 +67,13 @@ impl TextBuilder {
         self
     }
     /// Set the horizontal alignment within the text bounding box.
-    pub fn align_x(mut self, a: Align) -> Self {
-        super::set_prop(&mut self.props, "align_x", super::halign_to_value(a));
+    pub fn align_x(mut self, a: impl Into<TextAlignment>) -> Self {
+        super::set_prop(&mut self.props, "align_x", a.into().wire_encode());
+        self
+    }
+    /// Set the text direction used by logical text alignment.
+    pub fn text_direction(mut self, d: TextDirection) -> Self {
+        super::set_prop(&mut self.props, "text_direction", d.wire_encode());
         self
     }
     /// Set the vertical alignment within the text bounding box.

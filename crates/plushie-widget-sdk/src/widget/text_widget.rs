@@ -11,7 +11,7 @@ use crate::widget::helpers::*;
 
 use plushie_core::types::{
     Color, Ellipsis, Font, HorizontalAlignment, Length, LineHeight, PlushieType, Shaping,
-    Style as CoreStyle, VerticalAlignment, Wrapping,
+    Style as CoreStyle, TextAlignment, TextDirection, VerticalAlignment, Wrapping,
 };
 
 struct TextProps {
@@ -22,7 +22,8 @@ struct TextProps {
     width: Option<Length>,
     height: Option<Length>,
     line_height: Option<LineHeight>,
-    align_x: Option<HorizontalAlignment>,
+    align_x: Option<TextAlignment>,
+    text_direction: Option<TextDirection>,
     align_y: Option<VerticalAlignment>,
     wrapping: Option<Wrapping>,
     shaping: Option<Shaping>,
@@ -41,7 +42,9 @@ impl TextProps {
             width: Length::extract(p, "width"),
             height: Length::extract(p, "height"),
             line_height: LineHeight::extract(p, "line_height"),
-            align_x: HorizontalAlignment::extract(p, "align_x"),
+            align_x: TextAlignment::extract(p, "align_x")
+                .or_else(|| HorizontalAlignment::extract(p, "align_x").map(TextAlignment::from)),
+            text_direction: TextDirection::extract(p, "text_direction"),
             align_y: VerticalAlignment::extract(p, "align_y"),
             wrapping: Wrapping::extract(p, "wrapping"),
             shaping: Shaping::extract(p, "shaping"),
@@ -96,7 +99,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
             t = t.line_height(iced_convert::line_height(*lh));
         }
         if let Some(ax) = tp.align_x {
-            t = t.align_x(iced_convert::horizontal_alignment(ax));
+            t = t.align_x(iced_convert::text_alignment(
+                ax,
+                tp.text_direction.unwrap_or(TextDirection::Auto),
+            ));
         }
         if let Some(ay) = tp.align_y {
             t = t.align_y(iced_convert::vertical_alignment(ay));

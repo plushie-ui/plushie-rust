@@ -222,6 +222,11 @@ impl TextEditorBuilder {
         super::set_prop(&mut self.props, "wrapping", w.wire_encode());
         self
     }
+    /// Direction used for logical editor operations.
+    pub fn text_direction(mut self, direction: TextDirection) -> Self {
+        super::set_prop(&mut self.props, "text_direction", direction.wire_encode());
+        self
+    }
     /// Input purpose hint for the text editor.
     pub fn input_purpose(mut self, purpose: InputPurpose) -> Self {
         super::set_prop(&mut self.props, "input_purpose", purpose.wire_encode());

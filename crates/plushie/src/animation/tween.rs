@@ -317,7 +317,17 @@ impl Tween {
     ///
     /// The animation finishes when the spring settles (velocity and
     /// position error are both negligible). Duration is implicit.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `config.mass` is zero, negative, NaN, or infinite.
     pub fn spring(from: f64, to: f64, config: SpringConfig) -> Self {
+        assert!(
+            config.mass.is_finite() && config.mass > 0.0,
+            "spring mass must be a positive finite number, got {}",
+            config.mass
+        );
+
         let velocity = config.initial_velocity;
         Self {
             from,
@@ -519,6 +529,13 @@ impl Tween {
             let acc = force / config.mass;
             vel += acc * dt;
             pos += vel * dt;
+
+            if !pos.is_finite() || !vel.is_finite() {
+                pos = self.to;
+                vel = 0.0;
+                self.finished = true;
+                break;
+            }
         }
 
         // Convergence: spring has settled when both velocity and
@@ -986,6 +1003,30 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "spring mass must be a positive finite number")]
+    fn spring_rejects_zero_mass() {
+        let _ = Tween::spring(0.0, 100.0, SpringConfig::default().mass(0.0));
+    }
+
+    #[test]
+    #[should_panic(expected = "spring mass must be a positive finite number")]
+    fn spring_rejects_negative_mass() {
+        let _ = Tween::spring(0.0, 100.0, SpringConfig::default().mass(-1.0));
+    }
+
+    #[test]
+    #[should_panic(expected = "spring mass must be a positive finite number")]
+    fn spring_rejects_infinite_mass() {
+        let _ = Tween::spring(0.0, 100.0, SpringConfig::default().mass(f64::INFINITY));
+    }
+
+    #[test]
+    #[should_panic(expected = "spring mass must be a positive finite number")]
+    fn spring_rejects_nan_mass() {
+        let _ = Tween::spring(0.0, 100.0, SpringConfig::default().mass(f64::NAN));
+    }
+
+    #[test]
     fn spring_is_spring() {
         let tween = Tween::spring(0.0, 100.0, SpringConfig::default());
         assert!(tween.is_spring());
@@ -1071,5 +1112,19 @@ mod tests {
             "value should be finite after large delta: {}",
             v
         );
+    }
+
+    #[test]
+    fn spring_overflow_stops_with_finite_value() {
+        let config = SpringConfig::default()
+            .stiffness(f64::MAX)
+            .damping(0.0)
+            .mass(f64::MIN_POSITIVE);
+        let mut tween = Tween::spring(0.0, 100.0, config);
+        tween.start(0);
+        tween.advance(1);
+
+        assert!(tween.finished());
+        assert_eq!(tween.value(), Some(100.0));
     }
 }

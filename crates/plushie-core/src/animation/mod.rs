@@ -333,7 +333,13 @@ impl<T: PlushieType> PlushieType for Spring<T> {
         let to = T::wire_decode(to_val)?;
         let stiffness = obj.get("stiffness")?.as_f64()?;
         let damping = obj.get("damping")?.as_f64()?;
-        let mass = obj.get("mass").and_then(|v| v.as_f64()).unwrap_or(1.0);
+        let mass = match obj.get("mass") {
+            Some(value) => {
+                let mass = value.as_f64()?;
+                (mass.is_finite() && mass > 0.0).then_some(mass)?
+            }
+            None => 1.0,
+        };
         let velocity = obj.get("velocity").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let from = obj.get("from").and_then(T::wire_decode);
         let on_complete = obj
@@ -601,6 +607,45 @@ mod tests {
         assert_eq!(decoded.velocity, 0.5);
         assert!(decoded.from.is_some());
         assert_eq!(decoded.on_complete.as_deref(), Some("bounce_done"));
+    }
+
+    #[test]
+    fn spring_wire_decode_defaults_missing_mass() {
+        let json = serde_json::json!({
+            "type": "spring",
+            "to": 1.0,
+            "stiffness": 100.0,
+            "damping": 10.0
+        });
+
+        let decoded = Spring::<f64>::wire_decode(&json).unwrap();
+        assert_eq!(decoded.mass, 1.0);
+    }
+
+    #[test]
+    fn spring_wire_decode_rejects_zero_mass() {
+        let json = serde_json::json!({
+            "type": "spring",
+            "to": 1.0,
+            "stiffness": 100.0,
+            "damping": 10.0,
+            "mass": 0.0
+        });
+
+        assert!(Spring::<f64>::wire_decode(&json).is_none());
+    }
+
+    #[test]
+    fn spring_wire_decode_rejects_negative_mass() {
+        let json = serde_json::json!({
+            "type": "spring",
+            "to": 1.0,
+            "stiffness": 100.0,
+            "damping": 10.0,
+            "mass": -1.0
+        });
+
+        assert!(Spring::<f64>::wire_decode(&json).is_none());
     }
 
     #[test]

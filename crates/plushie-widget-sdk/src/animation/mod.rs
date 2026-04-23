@@ -698,7 +698,7 @@ fn parse_spring(
         .and_then(|v| v.as_f64())
         .unwrap_or(100.0) as f32;
     let damping = obj.get("damping").and_then(|v| v.as_f64()).unwrap_or(10.0) as f32;
-    let mass = obj.get("mass").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+    let mass = parse_spring_mass(obj)?;
     let velocity = obj.get("velocity").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
     let from = obj
         .get("from")
@@ -725,6 +725,16 @@ fn parse_spring(
         on_complete,
         finished: false,
     }))
+}
+
+fn parse_spring_mass(obj: &serde_json::Map<String, Value>) -> Option<f32> {
+    match obj.get("mass") {
+        Some(value) => {
+            let mass = value.as_f64()? as f32;
+            (mass.is_finite() && mass > 0.0).then_some(mass)
+        }
+        None => Some(1.0),
+    }
 }
 
 fn parse_sequence(
@@ -768,4 +778,61 @@ fn parse_sequence(
         current_step: 0,
         on_complete,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn spring_with_zero_mass_is_rejected() {
+        let descriptor = json!({
+            "type": "spring",
+            "to": 10.0,
+            "stiffness": 100.0,
+            "damping": 10.0,
+            "mass": 0.0
+        });
+
+        assert!(parse_descriptor(&descriptor, Some(0.0)).is_none());
+    }
+
+    #[test]
+    fn spring_with_negative_mass_is_rejected() {
+        let descriptor = json!({
+            "type": "spring",
+            "to": 10.0,
+            "stiffness": 100.0,
+            "damping": 10.0,
+            "mass": -1.0
+        });
+
+        assert!(parse_descriptor(&descriptor, Some(0.0)).is_none());
+    }
+
+    #[test]
+    fn spring_with_out_of_range_mass_is_rejected() {
+        let descriptor = json!({
+            "type": "spring",
+            "to": 10.0,
+            "stiffness": 100.0,
+            "damping": 10.0,
+            "mass": f64::MAX
+        });
+
+        assert!(parse_descriptor(&descriptor, Some(0.0)).is_none());
+    }
+
+    #[test]
+    fn spring_without_mass_uses_default() {
+        let descriptor = json!({
+            "type": "spring",
+            "to": 10.0,
+            "stiffness": 100.0,
+            "damping": 10.0
+        });
+
+        assert!(parse_descriptor(&descriptor, Some(0.0)).is_some());
+    }
 }

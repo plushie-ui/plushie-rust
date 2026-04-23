@@ -396,7 +396,7 @@ fn derive_widget_event_impl(input: &DeriveInput) -> syn::Result<proc_macro2::Tok
         }
     });
 
-    let spec_arms = generate_spec_arms(variants, "EventSpec");
+    let spec_arms = generate_spec_arms(variants, "EventSpec", "WidgetEvent")?;
 
     Ok(quote! {
         impl ::plushie_core::types::WidgetEventEncode for #enum_name {
@@ -534,7 +534,7 @@ fn derive_widget_command_impl(input: &DeriveInput) -> syn::Result<proc_macro2::T
         }
     });
 
-    let spec_arms = generate_spec_arms(variants, "CommandSpec");
+    let spec_arms = generate_spec_arms(variants, "CommandSpec", "WidgetCommand")?;
 
     Ok(quote! {
         impl ::plushie_core::spec::WidgetCommandEncode for #enum_name {
@@ -562,7 +562,8 @@ fn derive_widget_command_impl(input: &DeriveInput) -> syn::Result<proc_macro2::T
 fn generate_spec_arms<'a>(
     variants: impl IntoIterator<Item = &'a syn::Variant>,
     spec_type: &str,
-) -> Vec<proc_macro2::TokenStream> {
+    derive_name: &str,
+) -> syn::Result<Vec<proc_macro2::TokenStream>> {
     let spec_ident = format_ident!("{}", spec_type);
     let name_field = format_ident!("family");
 
@@ -577,7 +578,7 @@ fn generate_spec_arms<'a>(
                 }
                 Fields::Unnamed(fields) => {
                     let ty = &fields.unnamed.first().unwrap().ty;
-                    let vt = rust_type_to_value_type(ty);
+                    let vt = rust_type_to_value_type(ty, derive_name)?;
                     quote! { ::plushie_core::spec::PayloadSpec::Value(#vt) }
                 }
                 Fields::Named(fields) => {
@@ -586,10 +587,10 @@ fn generate_spec_arms<'a>(
                         .iter()
                         .map(|f| {
                             let fname = f.ident.as_ref().unwrap().to_string();
-                            let vt = rust_type_to_value_type(&f.ty);
-                            quote! { (#fname.to_string(), #vt) }
+                            let vt = rust_type_to_value_type(&f.ty, derive_name)?;
+                            Ok(quote! { (#fname.to_string(), #vt) })
                         })
-                        .collect();
+                        .collect::<syn::Result<_>>()?;
                     let required: Vec<_> = fields
                         .named
                         .iter()
@@ -604,28 +605,76 @@ fn generate_spec_arms<'a>(
                 }
             };
 
-            quote! {
+            Ok(quote! {
                 ::plushie_core::spec::#spec_ident {
                     #name_field: #name.to_string(),
                     payload: #payload,
                 }
-            }
+            })
         })
         .collect()
 }
 
 /// Map a Rust type to a ValueType for spec generation.
-fn rust_type_to_value_type(ty: &syn::Type) -> proc_macro2::TokenStream {
-    let type_str = quote!(#ty).to_string().replace(' ', "");
-    match type_str.as_str() {
-        "f32" | "f64" => quote! { ::plushie_core::spec::ValueType::Float },
-        "i32" | "i64" | "u32" | "u64" | "usize" | "isize" => {
-            quote! { ::plushie_core::spec::ValueType::Integer }
-        }
-        "bool" => quote! { ::plushie_core::spec::ValueType::Bool },
-        "String" | "&str" => quote! { ::plushie_core::spec::ValueType::String },
-        _ => quote! { ::plushie_core::spec::ValueType::Any },
+fn rust_type_to_value_type(
+    ty: &syn::Type,
+    derive_name: &str,
+) -> syn::Result<proc_macro2::TokenStream> {
+    if path_matches(ty, &["f32"]) || path_matches(ty, &["f64"]) {
+        return Ok(quote! { ::plushie_core::spec::ValueType::Float });
     }
+    if path_matches(ty, &["i32"])
+        || path_matches(ty, &["i64"])
+        || path_matches(ty, &["u32"])
+        || path_matches(ty, &["u64"])
+    {
+        return Ok(quote! { ::plushie_core::spec::ValueType::Integer });
+    }
+    if path_matches(ty, &["bool"]) {
+        return Ok(quote! { ::plushie_core::spec::ValueType::Bool });
+    }
+    if path_matches(ty, &["String"])
+        || path_matches(ty, &["std", "string", "String"])
+        || path_matches(ty, &["alloc", "string", "String"])
+    {
+        return Ok(quote! { ::plushie_core::spec::ValueType::String });
+    }
+    if path_matches(ty, &["PropValue"])
+        || path_matches(ty, &["plushie_core", "protocol", "PropValue"])
+    {
+        return Ok(quote! { ::plushie_core::spec::ValueType::Any });
+    }
+
+    Err(syn::Error::new_spanned(
+        ty,
+        format!(
+            "unsupported {derive_name} payload type `{}`; supported payload types are f32, f64, i32, i64, u32, u64, bool, String, std::string::String, alloc::string::String, and plushie_core::protocol::PropValue",
+            quote!(#ty)
+        ),
+    ))
+}
+
+fn path_matches(ty: &syn::Type, expected: &[&str]) -> bool {
+    let syn::Type::Path(type_path) = ty else {
+        return false;
+    };
+    if type_path.qself.is_some() {
+        return false;
+    }
+
+    let mut segments = type_path.path.segments.iter();
+    for expected_ident in expected {
+        let Some(segment) = segments.next() else {
+            return false;
+        };
+        if segment.ident != expected_ident {
+            return false;
+        }
+        if !matches!(segment.arguments, syn::PathArguments::None) {
+            return false;
+        }
+    }
+    segments.next().is_none()
 }
 
 // ---------------------------------------------------------------------------
@@ -1676,6 +1725,53 @@ mod tests {
             }
         };
         assert!(derive_widget_event_impl(&input).is_err());
+    }
+
+    #[test]
+    fn widget_event_specs_map_qualified_string_types() {
+        let input: DeriveInput = parse_quote! {
+            enum TestEvent {
+                Owned(String),
+                Std(std::string::String),
+                Alloc(alloc::string::String),
+            }
+        };
+        let output = derive_widget_event_impl(&input).unwrap();
+        let output_str = output.to_string();
+
+        assert!(output_str.contains("\"owned\""));
+        assert!(output_str.contains("\"std\""));
+        assert!(output_str.contains("\"alloc\""));
+        assert_eq!(output_str.matches("ValueType :: String").count(), 3);
+        assert!(!output_str.contains("ValueType :: Any"));
+    }
+
+    #[test]
+    fn widget_event_specs_reject_unsupported_payload_type() {
+        let input: DeriveInput = parse_quote! {
+            enum BadEvent {
+                Count(u8),
+            }
+        };
+        let err = derive_widget_event_impl(&input).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unsupported WidgetEvent payload type")
+        );
+    }
+
+    #[test]
+    fn widget_command_specs_reject_unsupported_field_type() {
+        let input: DeriveInput = parse_quote! {
+            enum BadCommand {
+                Set { count: usize },
+            }
+        };
+        let err = derive_widget_command_impl(&input).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unsupported WidgetCommand payload type")
+        );
     }
 
     // -- WidgetProps tests --

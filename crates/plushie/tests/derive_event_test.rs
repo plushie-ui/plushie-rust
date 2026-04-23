@@ -196,6 +196,51 @@ fn event_spec_struct_variant_has_fields() {
     }
 }
 
+#[derive(WidgetEvent)]
+#[allow(dead_code)]
+enum SupportedSpecEvent {
+    Float32(f32),
+    Float64(f64),
+    Signed32(i32),
+    Signed64(i64),
+    Unsigned32(u32),
+    Unsigned64(u64),
+    Flag(bool),
+    OwnedString(String),
+    StdString(std::string::String),
+    Raw(PropValue),
+    CoreRaw(plushie_core::protocol::PropValue),
+    AbsoluteRaw(::plushie_core::protocol::PropValue),
+}
+
+#[test]
+fn event_specs_map_supported_payload_types() {
+    let specs = SupportedSpecEvent::event_specs();
+    let payload_type = |family: &str| {
+        specs
+            .iter()
+            .find(|spec| spec.family == family)
+            .map(|spec| match spec.payload {
+                PayloadSpec::Value(value_type) => value_type,
+                _ => panic!("expected value payload for {family}"),
+            })
+            .unwrap()
+    };
+
+    assert_eq!(payload_type("float32"), ValueType::Float);
+    assert_eq!(payload_type("float64"), ValueType::Float);
+    assert_eq!(payload_type("signed32"), ValueType::Integer);
+    assert_eq!(payload_type("signed64"), ValueType::Integer);
+    assert_eq!(payload_type("unsigned32"), ValueType::Integer);
+    assert_eq!(payload_type("unsigned64"), ValueType::Integer);
+    assert_eq!(payload_type("flag"), ValueType::Bool);
+    assert_eq!(payload_type("owned_string"), ValueType::String);
+    assert_eq!(payload_type("std_string"), ValueType::String);
+    assert_eq!(payload_type("raw"), ValueType::Any);
+    assert_eq!(payload_type("core_raw"), ValueType::Any);
+    assert_eq!(payload_type("absolute_raw"), ValueType::Any);
+}
+
 // ---------------------------------------------------------------------------
 // WidgetCommand derive
 // ---------------------------------------------------------------------------
@@ -270,4 +315,33 @@ fn command_spec_validates_correct_payload() {
     let reset_spec = &specs[1];
     assert!(reset_spec.payload.validate(&serde_json::Value::Null));
     assert!(!reset_spec.payload.validate(&serde_json::json!(42)));
+}
+
+#[derive(WidgetCommand)]
+#[allow(dead_code)]
+enum UntypedCommand {
+    Send(PropValue),
+    SendQualified(::plushie_core::protocol::PropValue),
+    SendFields { payload: PropValue },
+}
+
+#[test]
+fn command_specs_map_prop_value_to_any() {
+    let specs = UntypedCommand::command_specs();
+    assert!(matches!(
+        specs[0].payload,
+        PayloadSpec::Value(ValueType::Any)
+    ));
+    assert!(matches!(
+        specs[1].payload,
+        PayloadSpec::Value(ValueType::Any)
+    ));
+
+    match &specs[2].payload {
+        PayloadSpec::Fields { fields, required } => {
+            assert_eq!(fields[0], ("payload".to_string(), ValueType::Any));
+            assert_eq!(required, &["payload"]);
+        }
+        other => panic!("expected Fields, got {other:?}"),
+    }
 }

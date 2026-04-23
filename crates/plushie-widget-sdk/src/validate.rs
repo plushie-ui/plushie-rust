@@ -48,6 +48,7 @@ enum PropType {
     Array,
     Color,
     Length,
+    OneOf(&'static [&'static str]),
     Any,
 }
 
@@ -59,9 +60,145 @@ fn prop_type_matches(val: &Value, expected: PropType) -> bool {
         PropType::Array => val.is_array(),
         PropType::Color => val.is_string() || val.is_object(),
         PropType::Length => val.is_string() || val.is_number(),
+        PropType::OneOf(values) => val.as_str().is_some_and(|s| values.contains(&s)),
         PropType::Any => true,
     }
 }
+
+fn prop_type_expected_debug(expected: PropType) -> String {
+    match expected {
+        PropType::Str => "string".to_string(),
+        PropType::Number => "number".to_string(),
+        PropType::Bool => "boolean".to_string(),
+        PropType::Array => "array".to_string(),
+        PropType::Color => "string or object color".to_string(),
+        PropType::Length => "string or number length".to_string(),
+        PropType::OneOf(values) => format!("one of {values:?}"),
+        PropType::Any => "any".to_string(),
+    }
+}
+
+const WINDOW_LEVEL_VALUES: &[&str] = &["normal", "always_on_top", "always_on_bottom"];
+const TEXT_ALIGNMENT_VALUES: &[&str] = &[
+    "default",
+    "left",
+    "center",
+    "right",
+    "start",
+    "end",
+    "justified",
+];
+const HORIZONTAL_ALIGNMENT_VALUES: &[&str] = &["left", "center", "right"];
+const VERTICAL_ALIGNMENT_VALUES: &[&str] = &["top", "center", "bottom"];
+const TEXT_DIRECTION_VALUES: &[&str] = &["auto", "ltr", "rtl"];
+const WRAPPING_VALUES: &[&str] = &["none", "word", "glyph", "word_or_glyph"];
+const SHAPING_VALUES: &[&str] = &["basic", "advanced", "auto"];
+const ELLIPSIS_VALUES: &[&str] = &["none", "start", "middle", "end"];
+const INPUT_PURPOSE_VALUES: &[&str] = &[
+    "normal", "secure", "terminal", "number", "decimal", "phone", "email", "url", "search",
+];
+const CONTENT_FIT_VALUES: &[&str] = &["contain", "cover", "fill", "scale_down", "none"];
+const FILTER_METHOD_VALUES: &[&str] = &["nearest", "linear"];
+const DIRECTION_VALUES: &[&str] = &["horizontal", "vertical", "both"];
+const ANCHOR_VALUES: &[&str] = &["start", "end"];
+const TOOLTIP_POSITION_VALUES: &[&str] =
+    &["top", "bottom", "left", "right", "follow", "follow_cursor"];
+const CURSOR_STYLE_VALUES: &[&str] = &[
+    "pointer",
+    "grab",
+    "grabbing",
+    "crosshair",
+    "text",
+    "move",
+    "not_allowed",
+    "progress",
+    "wait",
+    "help",
+    "cell",
+    "copy",
+    "alias",
+    "no_drop",
+    "all_scroll",
+    "zoom_in",
+    "zoom_out",
+    "context_menu",
+    "resizing_horizontally",
+    "resizing_vertically",
+    "resizing_diagonally_up",
+    "resizing_diagonally_down",
+    "resizing_column",
+    "resizing_row",
+];
+const RULE_DIRECTION_VALUES: &[&str] = &["horizontal", "vertical"];
+const POSITION_VALUES: &[&str] = &["below", "above", "left", "right"];
+const OVERLAY_ALIGN_VALUES: &[&str] = &["start", "center", "end"];
+const SORT_ORDER_VALUES: &[&str] = &["asc", "desc"];
+const SPLIT_AXIS_VALUES: &[&str] = &["horizontal", "vertical"];
+const ERROR_CORRECTION_VALUES: &[&str] = &["low", "medium", "quartile", "high"];
+const ARROW_MODE_VALUES: &[&str] = &["wrap", "clamp", "linear", "none"];
+const HIGHLIGHT_THEME_VALUES: &[&str] = &[
+    "base16_mocha",
+    "base16_ocean",
+    "base16_eighties",
+    "solarized_dark",
+    "inspired_github",
+];
+const ROLE_VALUES: &[&str] = &[
+    "alert",
+    "alert_dialog",
+    "button",
+    "canvas",
+    "check_box",
+    "cell",
+    "table_cell",
+    "column_header",
+    "combo_box",
+    "dialog",
+    "document",
+    "container",
+    "generic",
+    "generic_container",
+    "group",
+    "heading",
+    "image",
+    "label",
+    "link",
+    "list",
+    "list_item",
+    "menu",
+    "menu_bar",
+    "menu_item",
+    "meter",
+    "text_editor",
+    "multiline_text_input",
+    "navigation",
+    "progress_bar",
+    "progress_indicator",
+    "radio",
+    "radio_button",
+    "radio_group",
+    "region",
+    "row",
+    "table_row",
+    "scroll_bar",
+    "scroll_view",
+    "search",
+    "separator",
+    "slider",
+    "static_text",
+    "status",
+    "switch",
+    "tab",
+    "tab_list",
+    "tab_panel",
+    "table",
+    "text_input",
+    "toolbar",
+    "tooltip",
+    "tree",
+    "tree_item",
+    "window",
+];
 
 /// Numeric range constraint applied to a prop value. `None` on either
 /// end means unbounded in that direction.
@@ -265,7 +402,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("decorations", Bool),
             ("transparent", Bool),
             ("blur", Bool),
-            ("level", Str),
+            ("level", OneOf(WINDOW_LEVEL_VALUES)),
             ("exit_on_close_request", Bool),
             ("size", Any),
         ],
@@ -287,13 +424,13 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("font", Any),
             ("width", Length),
             ("height", Length),
-            ("align_x", Str),
-            ("align_y", Str),
-            ("text_direction", Str),
+            ("align_x", OneOf(TEXT_ALIGNMENT_VALUES)),
+            ("align_y", OneOf(VERTICAL_ALIGNMENT_VALUES)),
+            ("text_direction", OneOf(TEXT_DIRECTION_VALUES)),
             ("line_height", Number),
-            ("shaping", Str),
-            ("wrapping", Str),
-            ("ellipsis", Str),
+            ("shaping", OneOf(SHAPING_VALUES)),
+            ("wrapping", OneOf(WRAPPING_VALUES)),
+            ("ellipsis", OneOf(ELLIPSIS_VALUES)),
             ("style", Str),
         ],
         "column" => &[
@@ -302,7 +439,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("width", Length),
             ("height", Length),
             ("max_width", Number),
-            ("align_x", Str),
+            ("align_x", OneOf(HORIZONTAL_ALIGNMENT_VALUES)),
             ("clip", Bool),
             ("wrap", Bool),
         ],
@@ -313,7 +450,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("height", Length),
             ("max_width", Number),
             ("max_height", Number),
-            ("align_y", Str),
+            ("align_y", OneOf(VERTICAL_ALIGNMENT_VALUES)),
             ("clip", Bool),
             ("wrap", Bool),
         ],
@@ -324,8 +461,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("max_width", Number),
             ("max_height", Number),
             ("center", Bool),
-            ("align_x", Str),
-            ("align_y", Str),
+            ("align_x", OneOf(HORIZONTAL_ALIGNMENT_VALUES)),
+            ("align_y", OneOf(VERTICAL_ALIGNMENT_VALUES)),
             ("clip", Bool),
             ("style", Any),
             ("background", Any),
@@ -347,11 +484,11 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("disabled", Bool),
             ("on_submit", Bool),
             ("on_paste", Bool),
-            ("align_x", Str),
+            ("align_x", OneOf(HORIZONTAL_ALIGNMENT_VALUES)),
             ("placeholder_color", Color),
             ("selection_color", Color),
-            ("input_purpose", Str),
-            ("ime_purpose", Str),
+            ("input_purpose", OneOf(INPUT_PURPOSE_VALUES)),
+            ("ime_purpose", OneOf(INPUT_PURPOSE_VALUES)),
         ],
         "slider" => &[
             ("value", Number),
@@ -380,8 +517,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("icon", Any),
             ("disabled", Bool),
             ("line_height", Number),
-            ("wrapping", Str),
-            ("shaping", Str),
+            ("wrapping", OneOf(WRAPPING_VALUES)),
+            ("shaping", OneOf(SHAPING_VALUES)),
         ],
         "toggler" => &[
             ("label", Str),
@@ -394,9 +531,9 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("style", Any),
             ("disabled", Bool),
             ("line_height", Number),
-            ("wrapping", Str),
-            ("shaping", Str),
-            ("text_alignment", Str),
+            ("wrapping", OneOf(WRAPPING_VALUES)),
+            ("shaping", OneOf(SHAPING_VALUES)),
+            ("text_alignment", OneOf(HORIZONTAL_ALIGNMENT_VALUES)),
         ],
         "progress_bar" => &[
             ("value", Number),
@@ -411,8 +548,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("source", Any),
             ("width", Length),
             ("height", Length),
-            ("content_fit", Str),
-            ("filter_method", Str),
+            ("content_fit", OneOf(CONTENT_FIT_VALUES)),
+            ("filter_method", OneOf(FILTER_METHOD_VALUES)),
             ("rotation", Any),
             ("opacity", Number),
             ("border_radius", Number),
@@ -427,7 +564,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("source", Str),
             ("width", Length),
             ("height", Length),
-            ("content_fit", Str),
+            ("content_fit", OneOf(CONTENT_FIT_VALUES)),
             ("rotation", Any),
             ("opacity", Number),
             ("color", Color),
@@ -438,9 +575,9 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
         "scrollable" => &[
             ("width", Length),
             ("height", Length),
-            ("direction", Str),
+            ("direction", OneOf(DIRECTION_VALUES)),
             ("style", Any),
-            ("anchor", Str),
+            ("anchor", OneOf(ANCHOR_VALUES)),
             ("spacing", Number),
             ("scrollbar_width", Number),
             ("scrollbar_margin", Number),
@@ -471,12 +608,12 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("width", Length),
             ("style", Any),
             ("line_height", Number),
-            ("wrapping", Str),
-            ("shaping", Str),
+            ("wrapping", OneOf(WRAPPING_VALUES)),
+            ("shaping", OneOf(SHAPING_VALUES)),
         ],
         "tooltip" => &[
             ("tip", Str),
-            ("position", Str),
+            ("position", OneOf(TOOLTIP_POSITION_VALUES)),
             ("gap", Number),
             ("padding", Number),
             ("snap_within_viewport", Bool),
@@ -484,7 +621,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("style", Any),
         ],
         "pointer_area" => &[
-            ("cursor", Str),
+            ("cursor", OneOf(CURSOR_STYLE_VALUES)),
             ("on_press", Bool),
             ("on_release", Bool),
             ("on_right_press", Bool),
@@ -504,7 +641,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
         ],
         "space" => &[("width", Length), ("height", Length)],
         "rule" => &[
-            ("direction", Str),
+            ("direction", OneOf(RULE_DIRECTION_VALUES)),
             ("width", Number),
             ("height", Number),
             ("thickness", Number),
@@ -520,9 +657,9 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("font", Any),
             ("menu_height", Number),
             ("line_height", Number),
-            ("shaping", Str),
+            ("shaping", OneOf(SHAPING_VALUES)),
             ("handle", Any),
-            ("ellipsis", Str),
+            ("ellipsis", OneOf(ELLIPSIS_VALUES)),
             ("menu_style", Any),
             ("style", Any),
             ("on_open", Bool),
@@ -537,14 +674,14 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("size", Number),
             ("font", Any),
             ("line_height", Number),
-            ("shaping", Str),
+            ("shaping", OneOf(SHAPING_VALUES)),
             ("menu_height", Number),
             ("icon", Any),
             ("on_option_hovered", Bool),
             ("on_open", Bool),
             ("on_close", Bool),
             ("on_submit", Bool),
-            ("ellipsis", Str),
+            ("ellipsis", OneOf(ELLIPSIS_VALUES)),
             ("menu_style", Any),
             ("style", Any),
         ],
@@ -559,24 +696,24 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("font", Any),
             ("line_height", Number),
             ("padding", Any),
-            ("wrapping", Str),
-            ("text_direction", Str),
+            ("wrapping", OneOf(WRAPPING_VALUES)),
+            ("text_direction", OneOf(TEXT_DIRECTION_VALUES)),
             ("key_bindings", Array),
             ("style", Any),
             ("highlight_syntax", Str),
-            ("highlight_theme", Str),
+            ("highlight_theme", OneOf(HIGHLIGHT_THEME_VALUES)),
             ("placeholder_color", Color),
             ("selection_color", Color),
-            ("input_purpose", Str),
-            ("ime_purpose", Str),
+            ("input_purpose", OneOf(INPUT_PURPOSE_VALUES)),
+            ("ime_purpose", OneOf(INPUT_PURPOSE_VALUES)),
         ],
         "overlay" => &[
-            ("position", Str),
+            ("position", OneOf(POSITION_VALUES)),
             ("gap", Number),
             ("offset_x", Number),
             ("offset_y", Number),
             ("flip", Bool),
-            ("align", Str),
+            ("align", OneOf(OVERLAY_ALIGN_VALUES)),
             ("width", Length),
         ],
         "themer" => &[("theme", Any)],
@@ -605,7 +742,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("width", Length),
             ("height", Length),
             ("max_width", Number),
-            ("align_x", Str),
+            ("align_x", OneOf(HORIZONTAL_ALIGNMENT_VALUES)),
         ],
         "responsive" => &[("width", Length), ("height", Length)],
         "rich_text" => &[
@@ -616,8 +753,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("width", Length),
             ("height", Length),
             ("line_height", Number),
-            ("wrapping", Str),
-            ("ellipsis", Str),
+            ("wrapping", OneOf(WRAPPING_VALUES)),
+            ("ellipsis", OneOf(ELLIPSIS_VALUES)),
         ],
         "vertical_slider" => &[
             ("value", Number),
@@ -641,7 +778,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("separator", Bool),
             ("padding", Any),
             ("sort_by", Str),
-            ("sort_order", Str),
+            ("sort_order", OneOf(SORT_ORDER_VALUES)),
             ("header_text_size", Number),
             ("row_text_size", Number),
             ("cell_spacing", Number),
@@ -657,7 +794,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("leeway", Number),
             ("divider_color", Color),
             ("divider_width", Number),
-            ("split_axis", Str),
+            ("split_axis", OneOf(SPLIT_AXIS_VALUES)),
         ],
         "markdown" => &[
             ("content", Str),
@@ -669,7 +806,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("spacing", Number),
             ("width", Length),
             ("link_color", Color),
-            ("code_theme", Str),
+            ("code_theme", OneOf(HIGHLIGHT_THEME_VALUES)),
             ("style", Any),
         ],
         "canvas" => &[
@@ -685,8 +822,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("on_scroll", Bool),
             ("alt", Str),
             ("description", Str),
-            ("role", Str),
-            ("arrow_mode", Any),
+            ("role", OneOf(ROLE_VALUES)),
+            ("arrow_mode", OneOf(ARROW_MODE_VALUES)),
             ("event_rate", Number),
             ("a11y", Any),
         ],
@@ -694,7 +831,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("data", Str),
             ("cell_size", Number),
             ("total_size", Number),
-            ("error_correction", Str),
+            ("error_correction", OneOf(ERROR_CORRECTION_VALUES)),
             ("cell_color", Color),
             ("background", Color),
             ("alt", Str),
@@ -726,7 +863,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
                         type_name: node.type_name.clone(),
                         prop: key.clone(),
                         value_debug: format!("{val:?}"),
-                        expected_debug: format!("{expected_type:?}"),
+                        expected_debug: prop_type_expected_debug(*expected_type),
                     };
                     warnings.push(diag.to_string());
                 }
@@ -886,6 +1023,74 @@ mod tests {
         let node = make_node("button", json!({"label": "ok"}));
         let warnings = collect_prop_warnings(&node);
         assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
+    }
+
+    #[test]
+    fn invalid_enum_literal_emits_allowed_values() {
+        let node = make_node("text", json!({"content": "Hello", "align_x": "sideways"}));
+        let warnings = collect_prop_warnings(&node);
+
+        assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+        assert!(warnings[0].contains("prop_type_mismatch"));
+        assert!(warnings[0].contains("align_x"));
+        assert!(warnings[0].contains("\"sideways\""));
+        assert!(warnings[0].contains("\"justified\""));
+    }
+
+    #[test]
+    fn valid_enum_literal_produces_no_warnings() {
+        let node = make_node(
+            "text",
+            json!({"content": "Hello", "align_x": "start", "text_direction": "rtl"}),
+        );
+        let warnings = collect_prop_warnings(&node);
+        assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn enum_like_any_prop_is_validated() {
+        let node = make_node("canvas", json!({"arrow_mode": "diagonal"}));
+        let warnings = collect_prop_warnings(&node);
+
+        assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+        assert!(warnings[0].contains("prop_type_mismatch"));
+        assert!(warnings[0].contains("arrow_mode"));
+        assert!(warnings[0].contains("\"wrap\""));
+    }
+
+    #[test]
+    fn canvas_role_alias_is_accepted() {
+        let node = make_node("canvas", json!({"role": "radio"}));
+        let warnings = collect_prop_warnings(&node);
+        assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn invalid_highlight_theme_emits_allowed_values() {
+        let node = make_node(
+            "text_editor",
+            json!({"content": "fn main() {}", "highlight_theme": "neon"}),
+        );
+        let warnings = collect_prop_warnings(&node);
+
+        assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+        assert!(warnings[0].contains("prop_type_mismatch"));
+        assert!(warnings[0].contains("highlight_theme"));
+        assert!(warnings[0].contains("\"solarized_dark\""));
+    }
+
+    #[test]
+    fn invalid_markdown_code_theme_emits_allowed_values() {
+        let node = make_node(
+            "markdown",
+            json!({"content": "# Title", "code_theme": "neon"}),
+        );
+        let warnings = collect_prop_warnings(&node);
+
+        assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+        assert!(warnings[0].contains("prop_type_mismatch"));
+        assert!(warnings[0].contains("code_theme"));
+        assert!(warnings[0].contains("\"inspired_github\""));
     }
 
     #[test]

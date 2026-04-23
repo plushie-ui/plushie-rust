@@ -10,6 +10,8 @@ use plushie_core::BUILTIN_TYPE_NAMES as CORE_BUILTIN_TYPE_NAMES;
 use plushie_widget_sdk::BUILTIN_TYPE_NAMES;
 use plushie_widget_sdk::runtime::IcedWidgetSet;
 
+const COMPATIBILITY_ALIASES: &[(&str, &str)] = &[("floating", "float")];
+
 #[test]
 fn builtin_type_names_matches_iced_widget_set() {
     let mut from_set = IcedWidgetSet::type_names();
@@ -26,6 +28,22 @@ fn builtin_type_names_matches_iced_widget_set() {
          Expected (from the iced widget set): {from_set:#?}\n\
          Got (from the const): {from_const:#?}"
     );
+}
+
+#[test]
+fn compatibility_aliases_remain_registered() {
+    let from_set = IcedWidgetSet::type_names();
+
+    for (canonical, alias) in COMPATIBILITY_ALIASES {
+        assert!(
+            from_set.iter().any(|name| name == canonical),
+            "missing canonical built-in widget name {canonical:?}"
+        );
+        assert!(
+            from_set.iter().any(|name| name == alias),
+            "missing compatibility alias {alias:?}"
+        );
+    }
 }
 
 #[test]

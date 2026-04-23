@@ -31,7 +31,7 @@ pub(crate) struct FloatWidget;
 
 impl<R: PlushieRenderer> PlushieWidget<R> for FloatWidget {
     fn type_names(&self) -> &[&str] {
-        &["float"]
+        &["floating", "float"]
     }
 
     fn render<'a>(

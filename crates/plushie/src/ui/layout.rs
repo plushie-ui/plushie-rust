@@ -984,8 +984,6 @@ impl From<KeyedColumnBuilder> for View {
 // ---------------------------------------------------------------------------
 
 /// Builder for a floating overlay container.
-///
-/// The constructor is named `floating()` to avoid the Rust `float` keyword.
 pub struct FloatingBuilder {
     id: String,
     props: PropMap,
@@ -993,12 +991,10 @@ pub struct FloatingBuilder {
 }
 
 /// Create a floating container with an auto-generated ID.
-///
-/// Named `floating` to avoid the Rust `float` keyword.
 #[track_caller]
 pub fn floating() -> FloatingBuilder {
     FloatingBuilder {
-        id: super::auto_id("float"),
+        id: super::auto_id("floating"),
         props: PropMap::new(),
         child: None,
     }
@@ -1063,7 +1059,7 @@ impl FloatingBuilder {
 impl From<FloatingBuilder> for View {
     fn from(b: FloatingBuilder) -> Self {
         let children = b.child.into_iter().collect();
-        super::view_node(b.id, "float", b.props, children)
+        super::view_node(b.id, "floating", b.props, children)
     }
 }
 

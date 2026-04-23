@@ -39,9 +39,12 @@ pub use widget_builder::WidgetBuilder;
 /// stock renderer's iced widget set.
 ///
 /// Tooling uses this list to detect native widgets that would shadow a
-/// built-in name without depending on `plushie-widget-sdk` or iced. The
-/// widget SDK has a drift-detection test that compares this list with
-/// the renderer's registered built-in widget set.
+/// built-in name without depending on `plushie-widget-sdk` or iced.
+/// Compatibility aliases accepted by the renderer are included here so
+/// reserved-name checks stay strict even when older wire emitters are
+/// still in use. Public Rust builders emit the canonical names.
+/// The widget SDK has a drift-detection test that compares this list
+/// with the renderer's registered built-in widget set.
 pub const BUILTIN_TYPE_NAMES: &[&str] = &[
     "button",
     "canvas",
@@ -50,6 +53,7 @@ pub const BUILTIN_TYPE_NAMES: &[&str] = &[
     "combo_box",
     "container",
     "float",
+    "floating",
     "grid",
     "image",
     "keyed_column",

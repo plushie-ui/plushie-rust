@@ -120,6 +120,14 @@ fn grid_num_columns_sets_wire_prop() {
     assert_eq!(get_prop(&v, "num_columns"), &serde_json::json!(3));
 }
 
+#[test]
+fn floating_builder_uses_canonical_type_name() {
+    let v = view_json(floating().child(text("overlay")));
+    assert_eq!(get_type(&v), "floating");
+    assert!(get_id(&v).starts_with("auto:floating:"));
+    assert_eq!(child_count(&v), 1);
+}
+
 // ---------------------------------------------------------------------------
 // Display builders
 // ---------------------------------------------------------------------------

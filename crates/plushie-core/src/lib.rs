@@ -31,7 +31,7 @@ pub use diagnostic::{Diagnostic, DiagnosticKind};
 pub use event_type::EventType;
 pub use key::{EffectKind, InteractAction, Key, KeyPress, MouseButton, PointerKind};
 pub use scoped_id::ScopedId;
-pub use selector::Selector;
+pub use selector::{MAX_SELECTOR_SEARCH_DEPTH, Selector};
 pub use spec::{CommandSpec, EventSpec, PayloadSpec, ValueType, WidgetCommandEncode};
 pub use widget_builder::WidgetBuilder;
 

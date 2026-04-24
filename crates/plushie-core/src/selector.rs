@@ -207,8 +207,8 @@ impl fmt::Display for Selector {
 // Tree search
 // ---------------------------------------------------------------------------
 
-/// Maximum recursion depth for tree traversal.
-const MAX_SEARCH_DEPTH: usize = 256;
+/// Maximum recursion depth for selector tree traversal.
+pub const MAX_SELECTOR_SEARCH_DEPTH: usize = 256;
 
 impl Selector {
     /// Find the first matching node in the tree.
@@ -259,7 +259,7 @@ fn search<'a>(
     depth: usize,
     predicate: &dyn Fn(&TreeNode) -> bool,
 ) -> Option<&'a TreeNode> {
-    if depth > MAX_SEARCH_DEPTH {
+    if depth > MAX_SELECTOR_SEARCH_DEPTH {
         return None;
     }
     if predicate(node) {
@@ -276,7 +276,7 @@ fn search_all<'a>(
     predicate: &dyn Fn(&TreeNode) -> bool,
     results: &mut Vec<&'a TreeNode>,
 ) {
-    if depth > MAX_SEARCH_DEPTH {
+    if depth > MAX_SELECTOR_SEARCH_DEPTH {
         return;
     }
     if predicate(node) {
@@ -310,7 +310,7 @@ fn find_by_id<'a>(
     current_window: Option<&'a str>,
     depth: usize,
 ) -> Option<&'a TreeNode> {
-    if depth > MAX_SEARCH_DEPTH {
+    if depth > MAX_SELECTOR_SEARCH_DEPTH {
         return None;
     }
 
@@ -422,6 +422,17 @@ mod tests {
         }
     }
 
+    fn text_node_at_depth(depth: usize, text: &str) -> TreeNode {
+        let mut target = node("target", "text");
+        target.props = Props::from_json(serde_json::json!({"content": text}));
+
+        for level in (0..depth).rev() {
+            target = node_with_children(&format!("level-{level}"), "column", vec![target]);
+        }
+
+        target
+    }
+
     #[test]
     fn find_by_id_matches_exact_id() {
         let root = node_with_children(
@@ -522,5 +533,14 @@ mod tests {
             sel.find(&root).is_none(),
             "suffix match must respect segment boundaries"
         );
+    }
+
+    #[test]
+    fn selector_search_stops_after_max_depth() {
+        let at_limit = text_node_at_depth(MAX_SELECTOR_SEARCH_DEPTH, "needle");
+        assert!(Selector::text("needle").find(&at_limit).is_some());
+
+        let past_limit = text_node_at_depth(MAX_SELECTOR_SEARCH_DEPTH + 1, "needle");
+        assert!(Selector::text("needle").find(&past_limit).is_none());
     }
 }

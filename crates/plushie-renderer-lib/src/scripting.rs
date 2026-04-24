@@ -26,14 +26,11 @@ use plushie_widget_sdk::protocol::{
 use plushie_widget_sdk::runtime::Codec;
 use plushie_widget_sdk::runtime::Core;
 
-/// Maximum tree search recursion depth (matches MAX_TREE_DEPTH in widgets.rs).
-const MAX_SEARCH_DEPTH: usize = 256;
-
 // ---------------------------------------------------------------------------
 // Selector (re-exported from plushie-core)
 // ---------------------------------------------------------------------------
 
-pub use plushie_core::Selector;
+pub use plushie_core::{MAX_SELECTOR_SEARCH_DEPTH, Selector};
 
 /// Parse a selector from wire protocol JSON.
 ///
@@ -410,7 +407,7 @@ fn search_tree<R>(
     predicate: &dyn Fn(&TreeNode) -> bool,
     extract: &dyn Fn(&TreeNode) -> R,
 ) -> Option<R> {
-    if depth > MAX_SEARCH_DEPTH {
+    if depth > MAX_SELECTOR_SEARCH_DEPTH {
         return None;
     }
     if predicate(node) {
@@ -921,7 +918,7 @@ fn find_tree_node_by_id_with_window<'a>(
     current_window_id: Option<&'a str>,
     depth: usize,
 ) -> Option<&'a plushie_widget_sdk::protocol::TreeNode> {
-    if depth > MAX_SEARCH_DEPTH {
+    if depth > MAX_SELECTOR_SEARCH_DEPTH {
         return None;
     }
 
@@ -1103,6 +1100,20 @@ mod tests {
         node_with_props(id, "text", json!({"content": content}))
     }
 
+    fn text_node_at_depth(depth: usize, content: &str) -> plushie_widget_sdk::protocol::TreeNode {
+        let mut target = make_text_node("target", content);
+
+        for level in (0..depth).rev() {
+            target = plushie_widget_sdk::testing::node_with_children(
+                &format!("level-{level}"),
+                "column",
+                vec![target],
+            );
+        }
+
+        target
+    }
+
     // -- parse_selector --
 
     #[test]
@@ -1155,6 +1166,34 @@ mod tests {
         assert!(parse_selector(&json!({})).is_none());
         assert!(parse_selector(&json!({"by": "id"})).is_none());
         assert!(parse_selector(&Value::Null).is_none());
+    }
+
+    #[test]
+    fn search_tree_uses_core_selector_depth_limit() {
+        let at_limit = text_node_at_depth(MAX_SELECTOR_SEARCH_DEPTH, "needle");
+        assert!(
+            search_tree(&at_limit, 0, &|n| matches_text(n, "needle"), &node_to_value).is_some()
+        );
+        assert!(
+            find_tree_node_by_id_with_window(&at_limit, "target", None, None, 0).is_some(),
+            "production ID lookup should include nodes at the shared depth limit"
+        );
+
+        let past_limit = text_node_at_depth(MAX_SELECTOR_SEARCH_DEPTH + 1, "needle");
+        assert!(
+            search_tree(
+                &past_limit,
+                0,
+                &|n| matches_text(n, "needle"),
+                &node_to_value
+            )
+            .is_none()
+        );
+        assert!(
+            find_tree_node_by_id_with_window(&past_limit, "target", None, None, 0).is_none(),
+            "production ID lookup should stop after the shared depth limit"
+        );
+        assert!(Selector::text("needle").find(&past_limit).is_none());
     }
 
     // -- parse_key_and_modifiers --

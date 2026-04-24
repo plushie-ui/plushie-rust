@@ -74,6 +74,12 @@ The constructor validates the protocol version, emits the hello
 handshake, and starts the iced daemon in the background. Messages
 sent via `send_message()` are processed on the next event loop tick.
 
+The WASM entry point assumes the standard single-threaded
+`wasm32-unknown-unknown` target. At startup, `PlushieApp` inspects the
+module memory and rejects shared-memory wasm modules because the
+JavaScript callback output path is not thread-safe. Real wasm thread
+support needs a redesigned output path.
+
 ## Custom builds with widgets
 
 Widgets are Rust code compiled into the WASM binary. Create a

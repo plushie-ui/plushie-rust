@@ -30,6 +30,10 @@
 //! - Platform effects (file dialogs, clipboard, notifications) are
 //!   stubbed as unsupported. Web API implementations can be added in
 //!   a future iteration.
+//! - The WASM entry point assumes standard single-threaded
+//!   `wasm32-unknown-unknown`. Shared-memory wasm modules are rejected
+//!   at runtime because the JavaScript callback output path is not
+//!   thread-safe.
 
 mod effects;
 mod output;
@@ -74,6 +78,12 @@ fn validate_protocol_version(settings: &serde_json::Value) -> Result<(), String>
 /// starts the iced daemon in the background. The host sends messages
 /// (Snapshots, Patches, etc.) via [`send_message`](PlushieApp::send_message)
 /// and receives events via the `on_event` callback.
+///
+/// This WASM entry point assumes the standard single-threaded
+/// `wasm32-unknown-unknown` target. The renderer stores the JavaScript
+/// `on_event` callback in its output sink, so construction fails when
+/// the module uses shared memory. Real wasm thread support needs a
+/// redesigned output path.
 #[wasm_bindgen]
 pub struct PlushieApp {
     sender: futures::channel::mpsc::UnboundedSender<String>,
@@ -103,6 +113,9 @@ impl PlushieApp {
     /// The message is parsed as an [`IncomingMessage`] and processed
     /// by the iced daemon on the next event loop tick. This is the
     /// WASM equivalent of writing to stdin on native.
+    ///
+    /// This method is intended for the same non-shared-memory
+    /// `wasm32-unknown-unknown` entry point as [`PlushieApp`].
     ///
     /// Accepts any valid protocol message: Snapshot, Patch, Settings,
     /// Subscribe, Unsubscribe, WidgetOp, WindowOp, Effect,
@@ -143,7 +156,7 @@ impl PlushieApp {
         validate_protocol_version(&settings).map_err(|e| JsValue::from_str(&e))?;
 
         // Settings validated. Safe to initialise the output sink now.
-        let writer = WebOutputWriter::new(on_event);
+        let writer = WebOutputWriter::try_new(on_event)?;
         let codec = Codec::Json;
         let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), codec);
         plushie_renderer_lib::emitters::init_sink(Box::new(sink));

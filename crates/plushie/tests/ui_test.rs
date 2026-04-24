@@ -5,6 +5,7 @@
 
 use plushie::View;
 use plushie::prelude::*;
+use plushie::selection::{Selection, SelectionMode};
 use plushie::types::{Direction, TextAlignment, TextDirection};
 use serde_json::Value;
 
@@ -269,6 +270,106 @@ fn pick_list_with_options() {
     let v = view_json(pick_list("lang", &["Rust", "Elixir"], Some("Rust")));
     assert_eq!(get_type(&v), "pick_list");
     assert_eq!(get_id(&v), "lang");
+    assert_eq!(get_prop(&v, "selected").as_str(), Some("Rust"));
+}
+
+#[test]
+fn checkbox_for_selection_sets_checked_from_item_id() {
+    let mut selection = Selection::new(SelectionMode::Multi, vec!["n1".into(), "n2".into()]);
+    selection.select_extend("n2");
+
+    let checked = view_json(checkbox_for_selection("select_n2", "n2", &selection));
+    let unchecked = view_json(checkbox_for_selection("select_n1", "n1", &selection));
+
+    assert_eq!(get_prop(&checked, "checked"), &serde_json::json!(true));
+    assert_eq!(get_prop(&unchecked, "checked"), &serde_json::json!(false));
+}
+
+#[test]
+fn radio_for_selection_uses_single_selected_value() {
+    let mut selection = Selection::new(SelectionMode::Single, vec!["small".into(), "large".into()]);
+    selection.select("large");
+
+    let v = view_json(radio_for_selection("size_large", "large", &selection));
+
+    assert_eq!(get_type(&v), "radio");
+    assert_eq!(get_prop(&v, "value").as_str(), Some("large"));
+    assert_eq!(get_prop(&v, "selected").as_str(), Some("large"));
+}
+
+#[test]
+fn pick_list_for_selection_omits_selected_when_empty() {
+    let selection = Selection::new(SelectionMode::Single, vec!["Rust".into(), "Elixir".into()]);
+
+    let v = view_json(pick_list_for_selection(
+        "lang",
+        &["Rust", "Elixir"],
+        &selection,
+    ));
+
+    assert_eq!(get_type(&v), "pick_list");
+    assert!(get_prop(&v, "selected").is_null());
+}
+
+#[test]
+fn pick_list_for_selection_omits_selected_when_multiple_items_are_selected() {
+    let mut selection = Selection::new(SelectionMode::Multi, vec!["Rust".into(), "Elixir".into()]);
+    selection.select_extend("Rust");
+    selection.select_extend("Elixir");
+
+    let v = view_json(pick_list_for_selection(
+        "lang",
+        &["Rust", "Elixir"],
+        &selection,
+    ));
+
+    assert_eq!(get_type(&v), "pick_list");
+    assert!(get_prop(&v, "selected").is_null());
+}
+
+#[test]
+fn pick_list_for_selection_sets_selected_when_single_item_is_selected() {
+    let mut selection = Selection::new(SelectionMode::Single, vec!["Rust".into(), "Elixir".into()]);
+    selection.select("Rust");
+
+    let v = view_json(pick_list_for_selection(
+        "lang",
+        &["Rust", "Elixir"],
+        &selection,
+    ));
+
+    assert_eq!(get_type(&v), "pick_list");
+    assert_eq!(get_prop(&v, "selected").as_str(), Some("Rust"));
+}
+
+#[test]
+fn combo_box_for_selection_omits_selected_when_multiple_items_are_selected() {
+    let mut selection = Selection::new(SelectionMode::Multi, vec!["Rust".into(), "Elixir".into()]);
+    selection.select_extend("Rust");
+    selection.select_extend("Elixir");
+
+    let v = view_json(combo_box_for_selection(
+        "lang_search",
+        &["Rust", "Elixir"],
+        &selection,
+    ));
+
+    assert_eq!(get_type(&v), "combo_box");
+    assert!(get_prop(&v, "selected").is_null());
+}
+
+#[test]
+fn combo_box_for_selection_sets_selected_when_single_item_is_selected() {
+    let mut selection = Selection::new(SelectionMode::Single, vec!["Rust".into(), "Elixir".into()]);
+    selection.select("Rust");
+
+    let v = view_json(combo_box_for_selection(
+        "lang_search",
+        &["Rust", "Elixir"],
+        &selection,
+    ));
+
+    assert_eq!(get_type(&v), "combo_box");
     assert_eq!(get_prop(&v, "selected").as_str(), Some("Rust"));
 }
 

@@ -126,6 +126,18 @@ impl Selection {
         &self.selected
     }
 
+    /// The selected item ID when exactly one item is selected.
+    ///
+    /// Returns `None` for empty and multi-item selections so callers do
+    /// not accidentally choose an arbitrary item.
+    pub fn selected_value(&self) -> Option<&str> {
+        if self.selected.len() == 1 {
+            self.selected.iter().next().map(String::as_str)
+        } else {
+            None
+        }
+    }
+
     /// Whether a specific item is selected.
     pub fn is_selected(&self, id: &str) -> bool {
         self.selected.contains(id)

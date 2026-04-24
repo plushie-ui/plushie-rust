@@ -8,6 +8,7 @@ use super::{PropMap, PropValue};
 
 use crate::View;
 use crate::derive_support::PlushieType;
+use crate::selection::Selection;
 use crate::types::*;
 
 // ---------------------------------------------------------------------------
@@ -320,6 +321,13 @@ pub fn checkbox(id: &str, checked: bool) -> CheckboxBuilder {
     }
 }
 
+/// Create a checkbox whose checked state comes from a [`Selection`].
+///
+/// The checkbox is checked when `item_id` is selected.
+pub fn checkbox_for_selection(id: &str, item_id: &str, selection: &Selection) -> CheckboxBuilder {
+    checkbox(id, selection.is_selected(item_id))
+}
+
 impl CheckboxBuilder {
     /// Set the accessible or displayed label.
     pub fn label(mut self, l: &str) -> Self {
@@ -552,6 +560,13 @@ pub fn radio(id: &str, value: &str, selected: Option<&str>) -> RadioBuilder {
         id: id.to_string(),
         props,
     }
+}
+
+/// Create a radio button whose selected value comes from a [`Selection`].
+///
+/// Empty and multi-item selections leave the radio group unselected.
+pub fn radio_for_selection(id: &str, value: &str, selection: &Selection) -> RadioBuilder {
+    radio(id, value, selection.selected_value())
 }
 
 impl RadioBuilder {
@@ -883,6 +898,17 @@ pub fn pick_list(id: &str, options: &[&str], selected: Option<&str>) -> PickList
     }
 }
 
+/// Create a pick list whose selected value comes from a [`Selection`].
+///
+/// Empty and multi-item selections leave the pick list unselected.
+pub fn pick_list_for_selection(
+    id: &str,
+    options: &[&str],
+    selection: &Selection,
+) -> PickListBuilder {
+    pick_list(id, options, selection.selected_value())
+}
+
 impl PickListBuilder {
     /// Set the placeholder text shown when empty.
     pub fn placeholder(mut self, p: &str) -> Self {
@@ -1008,17 +1034,36 @@ pub struct ComboBoxBuilder {
 ///     .placeholder("Search languages...")
 /// ```
 pub fn combo_box(id: &str, options: &[&str], value: &str) -> ComboBoxBuilder {
+    combo_box_with_selected(id, options, Some(value))
+}
+
+fn combo_box_with_selected(id: &str, options: &[&str], selected: Option<&str>) -> ComboBoxBuilder {
     let mut props = PropMap::new();
     let opts: Vec<PropValue> = options
         .iter()
         .map(|s| PropValue::Str(s.to_string()))
         .collect();
     super::set_prop(&mut props, "options", PropValue::Array(opts));
-    super::set_prop(&mut props, "selected", value);
+    super::set_opt(
+        &mut props,
+        "selected",
+        selected.map(|s| PropValue::Str(s.to_string())),
+    );
     ComboBoxBuilder {
         id: id.to_string(),
         props,
     }
+}
+
+/// Create a combo box whose current value comes from a [`Selection`].
+///
+/// Empty and multi-item selections leave the combo box unselected.
+pub fn combo_box_for_selection(
+    id: &str,
+    options: &[&str],
+    selection: &Selection,
+) -> ComboBoxBuilder {
+    combo_box_with_selected(id, options, selection.selected_value())
 }
 
 impl ComboBoxBuilder {

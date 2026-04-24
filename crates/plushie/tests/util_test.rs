@@ -128,6 +128,18 @@ fn is_selected_returns_correct_state() {
 }
 
 #[test]
+fn selected_value_only_returns_unambiguous_selection() {
+    let mut sel = Selection::new(SelectionMode::Multi, item_ids());
+    assert_eq!(sel.selected_value(), None);
+
+    sel.select_extend("a");
+    assert_eq!(sel.selected_value(), Some("a"));
+
+    sel.select_extend("b");
+    assert_eq!(sel.selected_value(), None);
+}
+
+#[test]
 fn deselect_removes_specific_item() {
     let mut sel = Selection::new(SelectionMode::Multi, item_ids());
     sel.select_extend("a");

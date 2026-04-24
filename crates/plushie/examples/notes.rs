@@ -191,9 +191,10 @@ fn view_list(model: &Notes) -> View {
                 .spacing(8.0)
                 .width(Fill)
                 .child(
-                    checkbox(
+                    checkbox_for_selection(
                         &format!("note_select:{}", note.id),
-                        model.selection.is_selected(&id_str),
+                        &id_str,
+                        &model.selection,
                     )
                     .label(label),
                 )

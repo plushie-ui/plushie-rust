@@ -214,4 +214,86 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn on_event_subscribes_to_catch_all_kind() {
+        let mut manager = SubscriptionManager::new();
+
+        let ops = manager.sync(vec![Subscription::on_event()]);
+
+        assert_eq!(
+            ops,
+            vec![SubOp::Subscribe {
+                kind: "on_event".to_string(),
+                tag: "on_event".to_string(),
+                max_rate: None,
+                window_id: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn renderer_subscription_max_rate_change_resubscribes_existing_key() {
+        let mut manager = SubscriptionManager::new();
+
+        manager.sync(vec![Subscription::on_pointer_move().max_rate(30)]);
+        let ops = manager.sync(vec![Subscription::on_pointer_move().max_rate(60)]);
+
+        assert_eq!(
+            ops,
+            vec![SubOp::Subscribe {
+                kind: "on_pointer_move".to_string(),
+                tag: "on_pointer_move".to_string(),
+                max_rate: Some(60),
+                window_id: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn renderer_subscription_same_key_window_change_resubscribes() {
+        let mut manager = SubscriptionManager::new();
+        let mut scoped = Subscription::on_pointer_move();
+        scoped.window_id = Some("main".to_string());
+
+        manager.sync(vec![Subscription::on_pointer_move()]);
+        let ops = manager.sync(vec![scoped]);
+
+        assert_eq!(
+            ops,
+            vec![SubOp::Subscribe {
+                kind: "on_pointer_move".to_string(),
+                tag: "on_pointer_move".to_string(),
+                max_rate: None,
+                window_id: Some("main".to_string()),
+            }]
+        );
+    }
+
+    #[test]
+    fn timer_interval_change_restarts_timer() {
+        let mut manager = SubscriptionManager::new();
+
+        manager.sync(vec![Subscription::every(
+            std::time::Duration::from_millis(16),
+            "tick",
+        )]);
+        let ops = manager.sync(vec![Subscription::every(
+            std::time::Duration::from_millis(33),
+            "tick",
+        )]);
+
+        assert_eq!(
+            ops,
+            vec![
+                SubOp::StopTimer {
+                    tag: "tick".to_string(),
+                },
+                SubOp::StartTimer {
+                    tag: "tick".to_string(),
+                    interval: std::time::Duration::from_millis(33),
+                },
+            ]
+        );
+    }
 }

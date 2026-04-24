@@ -117,6 +117,8 @@ impl App {
                     window_id,
                     max_rate,
                 });
+                self.sync_subscription_rates();
+                self.cleanup_subscription_rates();
                 Task::none()
             }
             RendererOp::Unsubscribe { kind, tag } => {
@@ -125,6 +127,8 @@ impl App {
                     kind,
                     tag: Some(tag),
                 });
+                self.sync_subscription_rates();
+                self.cleanup_subscription_rates();
                 Task::none()
             }
 
@@ -269,5 +273,155 @@ impl App {
                 Task::none()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::Arc;
+
+    use parking_lot::Mutex;
+    use plushie_core::ops::EffectRequest;
+    use plushie_widget_sdk::protocol::{DiagnosticMessage, EffectResponse, OutgoingEvent};
+
+    struct NullEffectHandler;
+
+    impl crate::effects::EffectHandler for NullEffectHandler {
+        fn handle_sync(&self, _: &str, _: &EffectRequest) -> Option<EffectResponse> {
+            None
+        }
+
+        fn handle_async(
+            &self,
+            _: String,
+            _: EffectRequest,
+        ) -> Pin<Box<dyn Future<Output = EffectResponse> + Send>> {
+            Box::pin(async { unreachable!() })
+        }
+
+        fn is_async(&self, _: &EffectRequest) -> bool {
+            false
+        }
+    }
+
+    struct NullSink;
+
+    impl crate::emitters::EventSink for NullSink {
+        fn emit_event(&mut self, _: OutgoingEvent) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn emit_effect_response(&mut self, _: EffectResponse) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn emit_query_response(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &serde_json::Value,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn emit_screenshot_response(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: &[u8],
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn emit_hello(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &[&str],
+            _: &[&str],
+            _: &str,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn emit_diagnostic(&mut self, _: DiagnosticMessage) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn test_app() -> App {
+        let sink = Arc::new(Mutex::new(
+            Box::new(NullSink) as Box<dyn crate::emitters::EventSink>
+        ));
+        App::new(
+            plushie_widget_sdk::registry::WidgetRegistry::new(),
+            Box::new(NullEffectHandler),
+            sink,
+        )
+    }
+
+    #[test]
+    fn execute_subscribe_updates_emitter_rate() {
+        let mut app = test_app();
+
+        let _ = app.execute(RendererOp::Subscribe {
+            kind: "on_pointer_move".to_string(),
+            tag: "on_pointer_move".to_string(),
+            max_rate: Some(30),
+            window_id: None,
+        });
+
+        assert_eq!(
+            app.emitter.subscription_rate_for("on_pointer_move"),
+            Some(30)
+        );
+    }
+
+    #[test]
+    fn execute_unsubscribe_removes_emitter_rate() {
+        let mut app = test_app();
+
+        let _ = app.execute(RendererOp::Subscribe {
+            kind: "on_pointer_move".to_string(),
+            tag: "on_pointer_move".to_string(),
+            max_rate: Some(30),
+            window_id: None,
+        });
+        let _ = app.execute(RendererOp::Unsubscribe {
+            kind: "on_pointer_move".to_string(),
+            tag: "on_pointer_move".to_string(),
+        });
+
+        assert_eq!(app.emitter.subscription_rate_for("on_pointer_move"), None);
+    }
+
+    #[test]
+    fn execute_subscribe_without_rate_removes_existing_rate() {
+        let mut app = test_app();
+
+        let _ = app.execute(RendererOp::Subscribe {
+            kind: "on_pointer_move".to_string(),
+            tag: "on_pointer_move".to_string(),
+            max_rate: Some(30),
+            window_id: None,
+        });
+        let _ = app.execute(RendererOp::Subscribe {
+            kind: "on_pointer_move".to_string(),
+            tag: "on_pointer_move".to_string(),
+            max_rate: None,
+            window_id: None,
+        });
+
+        assert_eq!(app.emitter.subscription_rate_for("on_pointer_move"), None);
     }
 }

@@ -261,6 +261,11 @@ impl EventEmitter {
         self.subscription_rates.keys().map(|s| s.as_str())
     }
 
+    #[cfg(test)]
+    pub(crate) fn subscription_rate_for(&self, tag: &str) -> Option<u32> {
+        self.subscription_rates.get(tag).copied()
+    }
+
     /// Resolve the effective rate for a given key, following the
     /// priority hierarchy: widget > subscription > global default.
     fn effective_rate(&self, key: &CoalesceKey) -> Option<u32> {

@@ -52,30 +52,10 @@ impl App {
         let effects = self.core.apply(message);
 
         if is_subscribe || is_settings {
-            self.emitter.set_default_rate(self.core.default_event_rate);
-            for (tag, rate) in self.core.subscription_rates() {
-                self.emitter.set_subscription_rate(tag, rate);
-            }
+            self.sync_subscription_rates();
         }
         if is_subscribe || is_unsubscribe {
-            // Collect tags that still have rates
-            let active_rate_tags: std::collections::HashSet<String> = self
-                .core
-                .subscription_rate_tags()
-                .map(|s| s.to_string())
-                .collect();
-            let emitter_keys: Vec<String> = self
-                .emitter
-                .subscription_rate_keys()
-                .map(|s| s.to_string())
-                .collect();
-            for key in emitter_keys {
-                if !active_rate_tags.contains(&key) {
-                    self.emitter.remove_subscription_rate(&key);
-                    self.emitter
-                        .flush_key(&crate::emitter::CoalesceKey::Subscription(key));
-                }
-            }
+            self.cleanup_subscription_rates();
         }
         for effect in effects {
             use plushie_widget_sdk::runtime::{Dispatch, Emit, StateChange};
@@ -229,5 +209,32 @@ impl App {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn sync_subscription_rates(&mut self) {
+        self.emitter.set_default_rate(self.core.default_event_rate);
+        for (tag, rate) in self.core.subscription_rates() {
+            self.emitter.set_subscription_rate(tag, rate);
+        }
+    }
+
+    pub(crate) fn cleanup_subscription_rates(&mut self) {
+        let active_rate_tags: std::collections::HashSet<String> = self
+            .core
+            .subscription_rate_tags()
+            .map(|s| s.to_string())
+            .collect();
+        let emitter_keys: Vec<String> = self
+            .emitter
+            .subscription_rate_keys()
+            .map(|s| s.to_string())
+            .collect();
+        for key in emitter_keys {
+            if !active_rate_tags.contains(&key) {
+                self.emitter.remove_subscription_rate(&key);
+                self.emitter
+                    .flush_key(&crate::emitter::CoalesceKey::Subscription(key));
+            }
+        }
     }
 }

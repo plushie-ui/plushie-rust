@@ -228,6 +228,8 @@ pub enum EventResult {
 impl EventResult {
     /// Create an Emit result from a family string and untyped value.
     pub fn emit(family: &str, value: impl Into<Value>) -> Self {
+        plushie_core::EventType::assert_custom_family(family);
+
         Self::Emit {
             family: family.to_string(),
             value: value.into(),
@@ -244,10 +246,11 @@ impl EventResult {
     /// enum MyEvent { Select(u64) }
     ///
     /// EventResult::emit_event(MyEvent::Select(5))
-    /// // equivalent to: EventResult::emit("select", 5u64)
+    /// // emits family "select" with payload 5
     /// ```
     pub fn emit_event(event: impl plushie_core::types::WidgetEventEncode) -> Self {
         let (family, value) = event.to_wire();
+
         Self::Emit {
             family: family.to_string(),
             value: serde_json::Value::from(value),

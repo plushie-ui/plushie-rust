@@ -592,11 +592,11 @@ mod tests {
     }
 
     fn make_event(family: &str, id: &str) -> OutgoingEvent {
-        OutgoingEvent::widget_event(family, id, None)
+        OutgoingEvent::generic(family, id, None)
     }
 
     fn make_event_with_data(family: &str, id: &str, data: serde_json::Value) -> OutgoingEvent {
-        OutgoingEvent::widget_event(family, id, Some(data))
+        OutgoingEvent::generic(family, id, Some(data))
     }
 
     // -- effective_rate hierarchy --

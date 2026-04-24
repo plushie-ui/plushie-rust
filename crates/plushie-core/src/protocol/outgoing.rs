@@ -127,11 +127,11 @@ impl OutgoingEvent {
     ///
     /// For built-in widget events, `value` carries the widget's primary
     /// datum (input text, slider position, selected option). Widget
-    /// authors wrapping built-in widgets can use this to emit events
-    /// compatible with the built-in shape:
+    /// code wrapping built-in widgets can use this to emit events compatible
+    /// with the built-in shape:
     ///
     /// ```ignore
-    /// OutgoingEvent::widget_event("input", id, value)
+    /// OutgoingEvent::generic("input", id, value)
     ///     .with_value(serde_json::Value::String(text))
     /// ```
     pub fn with_value(mut self, value: Value) -> Self {
@@ -199,7 +199,7 @@ impl OutgoingEvent {
     }
 
     /// Generic widget event with a family string and optional value payload.
-    /// Used for on_open, on_close, sort, and other events.
+    /// Used for built-in renderer events such as on_open, on_close, and sort.
     pub fn generic(family: impl Into<String>, id: impl Into<String>, value: Option<Value>) -> Self {
         Self {
             value,
@@ -207,15 +207,18 @@ impl OutgoingEvent {
         }
     }
 
-    /// Convenience constructor for widget-emitted events.
+    /// Convenience constructor for custom widget-emitted events.
     ///
-    /// Identical to [`generic`](Self::generic); exists for discoverability
-    /// so widget authors searching docs for "widget" find it.
+    /// Custom widget families must not reuse built-in family strings such
+    /// as `"click"` or `"select"`, because SDK event parsing reserves those
+    /// names for built-in events.
     pub fn widget_event(
         family: impl Into<String>,
         id: impl Into<String>,
         value: Option<Value>,
     ) -> Self {
+        let family = family.into();
+        crate::EventType::assert_custom_family(&family);
         Self::generic(family, id, value)
     }
 
@@ -1462,5 +1465,30 @@ mod tests {
                 },
             })
         );
+    }
+
+    #[test]
+    fn widget_event_accepts_custom_family() {
+        let event =
+            OutgoingEvent::widget_event("star_rating:select", "rating", Some(json!({"value": 5})));
+
+        assert_eq!(event.family, "star_rating:select");
+        assert_eq!(event.id, "rating");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "custom event family \"click\" collides with a built-in event family"
+    )]
+    fn widget_event_rejects_builtin_family() {
+        let _ = OutgoingEvent::widget_event("click", "button", None);
+    }
+
+    #[test]
+    fn generic_allows_builtin_renderer_events() {
+        let event = OutgoingEvent::generic("click", "button", None);
+
+        assert_eq!(event.family, "click");
+        assert_eq!(event.id, "button");
     }
 }

@@ -1108,7 +1108,7 @@ fn wire_to_sdk_events(
             modifiers,
             captured,
         } => {
-            let mut event = OutgoingEvent::widget_event(family, id, value);
+            let mut event = OutgoingEvent::generic(family, id, value);
             event.tag = tag;
             event.modifiers = modifiers;
             event.captured = captured;

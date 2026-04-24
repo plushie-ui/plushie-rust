@@ -332,7 +332,7 @@ mod tests {
     use super::*;
 
     fn make_event(family: &str, id: &str) -> OutgoingEvent {
-        OutgoingEvent::widget_event(family, id, None)
+        OutgoingEvent::generic(family, id, None)
     }
 
     fn make_tagged(family: &str, tag: &str) -> OutgoingEvent {

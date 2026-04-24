@@ -4,10 +4,82 @@
 //! to typed event kinds. Shared between the SDK (event parsing) and
 //! renderer (event construction).
 //!
-//! The variant list and the variant <-> family-string mapping are
+//! The variant list and the variant to family-string mapping are
 //! expressed once via the [`event_types!`] macro; adding a variant
 //! means adding one line, and the enum definition, `from_family`,
 //! and `as_family` stay in lock-step.
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+#[derive(Debug, Clone)]
+struct BuiltinEventType {
+    event_type: EventType,
+    family: &'static str,
+}
+
+#[derive(Debug)]
+struct EventTypeMap {
+    builtin: Vec<EventType>,
+    by_family: HashMap<&'static str, EventType>,
+}
+
+impl EventTypeMap {
+    fn new(entries: Vec<BuiltinEventType>) -> Self {
+        if let Err(duplicate) = validate_builtin_event_types(&entries) {
+            panic!(
+                "duplicate built-in event family {:?}: {:?} and {:?}",
+                duplicate.family, duplicate.first, duplicate.second
+            );
+        }
+
+        let builtin = entries
+            .iter()
+            .map(|entry| entry.event_type.clone())
+            .collect();
+        let by_family = entries
+            .iter()
+            .map(|entry| (entry.family, entry.event_type.clone()))
+            .collect();
+
+        Self { builtin, by_family }
+    }
+
+    fn event_for_family(&self, family: &str) -> EventType {
+        self.by_family
+            .get(family)
+            .cloned()
+            .unwrap_or_else(|| EventType::Custom(family.to_string()))
+    }
+
+    fn is_builtin_family(&self, family: &str) -> bool {
+        self.by_family.contains_key(family)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct DuplicateEventFamily {
+    family: &'static str,
+    first: EventType,
+    second: EventType,
+}
+
+fn validate_builtin_event_types(entries: &[BuiltinEventType]) -> Result<(), DuplicateEventFamily> {
+    let mut seen: HashMap<&'static str, EventType> = HashMap::new();
+
+    for entry in entries {
+        if let Some(first) = seen.get(entry.family) {
+            return Err(DuplicateEventFamily {
+                family: entry.family,
+                first: (*first).clone(),
+                second: entry.event_type.clone(),
+            });
+        }
+
+        seen.insert(entry.family, entry.event_type.clone());
+    }
+
+    Ok(())
+}
 
 /// Declare the full set of built-in event types in one place.
 ///
@@ -34,6 +106,20 @@ macro_rules! event_types {
         }
 
         impl EventType {
+            fn map() -> &'static EventTypeMap {
+                static MAP: OnceLock<EventTypeMap> = OnceLock::new();
+                MAP.get_or_init(|| {
+                    EventTypeMap::new(vec![
+                        $(
+                            BuiltinEventType {
+                                event_type: EventType::$variant,
+                                family: $family,
+                            },
+                        )*
+                    ])
+                })
+            }
+
             /// Convert a wire protocol family string to an EventType.
             ///
             /// This is the single source of truth for the family-to-type
@@ -41,17 +127,34 @@ macro_rules! event_types {
             /// event bridge) should call this instead of duplicating the
             /// match.
             pub fn from_family(family: &str) -> Self {
-                match family {
-                    $( $family => Self::$variant, )*
-                    _ => Self::Custom(family.to_string()),
-                }
+                Self::map().event_for_family(family)
+            }
+
+            /// Whether `family` is reserved by a built-in event type.
+            pub fn is_builtin_family(family: &str) -> bool {
+                Self::map().is_builtin_family(family)
+            }
+
+            /// Panic if `family` collides with a built-in event type.
+            ///
+            /// Custom widget events must use their own family names so
+            /// built-in events can keep round-tripping canonically.
+            pub fn assert_custom_family(family: &str) {
+                assert!(
+                    !Self::is_builtin_family(family),
+                    "custom event family {family:?} collides with a built-in event family"
+                );
             }
 
             /// The wire protocol family string for this event type.
             pub fn as_family(&self) -> &str {
+                let _ = Self::map();
                 match self {
                     $( Self::$variant => $family, )*
-                    Self::Custom(family) => family,
+                    Self::Custom(family) => {
+                        Self::assert_custom_family(family);
+                        family
+                    }
                 }
             }
 
@@ -61,11 +164,7 @@ macro_rules! event_types {
             /// Excludes [`Custom`](Self::Custom) by design: custom
             /// families are open-ended and not part of the fixed set.
             pub fn builtin() -> &'static [EventType] {
-                static VARIANTS: std::sync::OnceLock<Vec<EventType>> =
-                    std::sync::OnceLock::new();
-                VARIANTS
-                    .get_or_init(|| vec![ $( EventType::$variant, )* ])
-                    .as_slice()
+                Self::map().builtin.as_slice()
             }
         }
     };
@@ -192,6 +291,22 @@ mod tests {
     }
 
     #[test]
+    fn builtin_family_detection_matches_canonical_mapping() {
+        assert!(EventType::is_builtin_family("click"));
+        assert!(EventType::is_builtin_family("key_press"));
+        assert!(!EventType::is_builtin_family("star_rating:select"));
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "custom event family \"click\" collides with a built-in event family"
+    )]
+    fn custom_variant_panics_when_family_collides_with_builtin() {
+        let custom = EventType::Custom("click".into());
+        let _ = custom.as_family();
+    }
+
+    #[test]
     fn builtin_family_strings_are_unique() {
         let mut seen = std::collections::HashSet::new();
         for variant in EventType::builtin() {
@@ -201,5 +316,43 @@ mod tests {
                 "duplicate family string {family:?} across built-in variants"
             );
         }
+    }
+
+    #[test]
+    fn validation_rejects_duplicate_builtin_family_strings() {
+        let entries = vec![
+            BuiltinEventType {
+                event_type: EventType::Click,
+                family: "click",
+            },
+            BuiltinEventType {
+                event_type: EventType::DoubleClick,
+                family: "click",
+            },
+        ];
+
+        assert_eq!(
+            validate_builtin_event_types(&entries),
+            Err(DuplicateEventFamily {
+                family: "click",
+                first: EventType::Click,
+                second: EventType::DoubleClick,
+            })
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate built-in event family")]
+    fn map_initialization_panics_on_duplicate_builtin_family_strings() {
+        let _ = EventTypeMap::new(vec![
+            BuiltinEventType {
+                event_type: EventType::Click,
+                family: "click",
+            },
+            BuiltinEventType {
+                event_type: EventType::DoubleClick,
+                family: "click",
+            },
+        ]);
     }
 }

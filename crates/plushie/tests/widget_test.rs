@@ -85,6 +85,24 @@ fn event_result_emit_carries_family_and_value() {
 }
 
 #[test]
+fn event_result_emit_accepts_namespaced_custom_family() {
+    let result = EventResult::emit("star_rating:select", 42);
+    match result {
+        EventResult::Emit { family, value } => {
+            assert_eq!(family, "star_rating:select");
+            assert_eq!(value, json!(42));
+        }
+        other => panic!("expected Emit, got {other:?}"),
+    }
+}
+
+#[test]
+#[should_panic(expected = "custom event family \"click\" collides with a built-in event family")]
+fn event_result_emit_rejects_builtin_family() {
+    let _ = EventResult::emit("click", 42);
+}
+
+#[test]
 fn event_result_consumed_is_constructible() {
     let result = EventResult::Consumed;
     assert!(matches!(result, EventResult::Consumed));
@@ -189,6 +207,7 @@ fn widget_view_reflects_pressed_state() {
 #[derive(WidgetEvent)]
 enum TestWidgetEvent {
     Selected(u64),
+    Select(u64),
     Toggled(bool),
     Cleared,
 }
@@ -199,6 +218,18 @@ fn emit_event_typed_u64() {
     match result {
         EventResult::Emit { family, value } => {
             assert_eq!(family, "selected");
+            assert_eq!(value, json!(42));
+        }
+        other => panic!("expected Emit, got {other:?}"),
+    }
+}
+
+#[test]
+fn emit_event_allows_typed_builtin_family_name() {
+    let result = EventResult::emit_event(TestWidgetEvent::Select(42));
+    match result {
+        EventResult::Emit { family, value } => {
+            assert_eq!(family, "select");
             assert_eq!(value, json!(42));
         }
         other => panic!("expected Emit, got {other:?}"),

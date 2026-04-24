@@ -314,6 +314,9 @@ pub enum Diagnostic {
     UnknownPatchOp {
         /// The unrecognised patch operation name.
         op: String,
+        /// Full patch operation payload as received on the wire.
+        #[serde(default)]
+        payload: serde_json::Value,
     },
     /// The runtime's command dispatch chain exceeded the configured
     /// depth limit, indicating an `update` loop that keeps returning a
@@ -547,10 +550,10 @@ impl std::fmt::Display for Diagnostic {
                 "unknown_message_type: unrecognised renderer message type `{msg_type}`; \
                  likely a host or renderer version skew"
             ),
-            Self::UnknownPatchOp { op } => write!(
+            Self::UnknownPatchOp { op, payload } => write!(
                 f,
-                "unknown_patch_op: unrecognized patch operation `{op}`; likely a host or \
-                 renderer version skew"
+                "unknown_patch_op: unrecognized patch operation `{op}` with payload {payload}; \
+                 likely a host or renderer version skew"
             ),
             Self::DispatchLoopExceeded { depth, limit } => write!(
                 f,
@@ -625,18 +628,45 @@ mod tests {
     fn unknown_patch_op_display_kind_and_serde() {
         let d = Diagnostic::UnknownPatchOp {
             op: "frobnicate".into(),
+            payload: serde_json::json!({
+                "op": "frobnicate",
+                "path": [1, 2],
+                "value": {"answer": 42}
+            }),
         };
         assert_eq!(d.kind(), DiagnosticKind::UnknownPatchOp);
         assert_eq!(
             d.to_string(),
-            "unknown_patch_op: unrecognized patch operation `frobnicate`; likely a host or \
-             renderer version skew"
+            "unknown_patch_op: unrecognized patch operation `frobnicate` with payload \
+             {\"op\":\"frobnicate\",\"path\":[1,2],\"value\":{\"answer\":42}}; likely a host \
+             or renderer version skew"
         );
 
         let json = serde_json::to_value(&d).unwrap();
         assert_eq!(json["kind"], serde_json::json!("unknown_patch_op"));
+        assert_eq!(
+            json["payload"],
+            serde_json::json!({
+                "op": "frobnicate",
+                "path": [1, 2],
+                "value": {"answer": 42}
+            })
+        );
         let back: Diagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(back, d);
+
+        let legacy: Diagnostic = serde_json::from_value(serde_json::json!({
+            "kind": "unknown_patch_op",
+            "op": "frobnicate"
+        }))
+        .unwrap();
+        assert_eq!(
+            legacy,
+            Diagnostic::UnknownPatchOp {
+                op: "frobnicate".into(),
+                payload: serde_json::Value::Null,
+            }
+        );
     }
 
     #[test]

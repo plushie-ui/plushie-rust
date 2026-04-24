@@ -121,47 +121,53 @@ impl Tree {
                 }
             }
             if let Err(e) = self.apply_op(&op) {
-                log::error!("failed to apply patch op {:?}: {}", op.op, e);
+                if matches!(e, PatchApplyError::NoTree) {
+                    log::debug!("failed to apply patch op {:?}: {}", op.op, e);
+                } else {
+                    log::warn!("failed to apply patch op {:?}: {}", op.op, e);
+                }
             }
         }
         exit_nodes
     }
 
-    fn apply_op(&mut self, op: &PatchOp) -> Result<(), String> {
-        let root = self.root.as_mut().ok_or("no tree to patch")?;
+    fn apply_op(&mut self, op: &PatchOp) -> Result<(), PatchApplyError> {
+        let root = self.root.as_mut().ok_or(PatchApplyError::NoTree)?;
 
         match op.op.as_str() {
             "replace_node" => {
-                let node = op
-                    .rest
-                    .get("node")
-                    .ok_or("replace_node: missing 'node' field")?;
-                let new_node: TreeNode = serde_json::from_value(node.clone())
-                    .map_err(|e| format!("replace_node: invalid node: {e}"))?;
+                let node = op.rest.get("node").ok_or_else(|| {
+                    PatchApplyError::invalid("replace_node: missing 'node' field")
+                })?;
+                let new_node: TreeNode = serde_json::from_value(node.clone()).map_err(|e| {
+                    PatchApplyError::invalid(format!("replace_node: invalid node: {e}"))
+                })?;
 
                 if op.path.is_empty() {
                     // Replace root
                     *root = new_node;
                 } else {
-                    let parent = navigate_mut(root, &op.path[..op.path.len() - 1])?;
+                    let parent = navigate_mut(root, &op.path[..op.path.len() - 1])
+                        .map_err(PatchApplyError::invalid)?;
                     let idx = *op.path.last().unwrap();
                     if idx < parent.children.len() {
                         parent.children[idx] = new_node;
                     } else {
-                        return Err(format!("replace_node: index {idx} out of bounds"));
+                        return Err(PatchApplyError::invalid(format!(
+                            "replace_node: index {idx} out of bounds"
+                        )));
                     }
                 }
                 Ok(())
             }
             "update_props" => {
-                let target = navigate_mut(root, &op.path)?;
-                let props = op
-                    .rest
-                    .get("props")
-                    .ok_or("update_props: missing 'props' field")?;
+                let target = navigate_mut(root, &op.path).map_err(PatchApplyError::invalid)?;
+                let props = op.rest.get("props").ok_or_else(|| {
+                    PatchApplyError::invalid("update_props: missing 'props' field")
+                })?;
 
                 if !props.is_object() {
-                    log::error!("update_props: patch props is not an object: {}", props);
+                    log::warn!("update_props: patch props is not an object: {}", props);
                     return Ok(());
                 }
                 let target_map = target.props.as_prop_map_mut();
@@ -179,24 +185,25 @@ impl Tree {
                 Ok(())
             }
             "insert_child" => {
-                let parent = navigate_mut(root, &op.path)?;
+                let parent = navigate_mut(root, &op.path).map_err(PatchApplyError::invalid)?;
                 let index = op
                     .rest
                     .get("index")
                     .and_then(|v| v.as_u64())
-                    .ok_or("insert_child: missing or invalid 'index'")?
-                    as usize;
-                let node = op
-                    .rest
-                    .get("node")
-                    .ok_or("insert_child: missing 'node' field")?;
-                let new_node: TreeNode = serde_json::from_value(node.clone())
-                    .map_err(|e| format!("insert_child: invalid node: {e}"))?;
+                    .ok_or_else(|| {
+                        PatchApplyError::invalid("insert_child: missing or invalid 'index'")
+                    })? as usize;
+                let node = op.rest.get("node").ok_or_else(|| {
+                    PatchApplyError::invalid("insert_child: missing 'node' field")
+                })?;
+                let new_node: TreeNode = serde_json::from_value(node.clone()).map_err(|e| {
+                    PatchApplyError::invalid(format!("insert_child: invalid node: {e}"))
+                })?;
 
                 if index <= parent.children.len() {
                     parent.children.insert(index, new_node);
                 } else {
-                    log::error!(
+                    log::warn!(
                         "insert_child: index {index} is beyond children length {}, appending instead",
                         parent.children.len()
                     );
@@ -205,32 +212,65 @@ impl Tree {
                 Ok(())
             }
             "remove_child" => {
-                let parent = navigate_mut(root, &op.path)?;
+                let parent = navigate_mut(root, &op.path).map_err(PatchApplyError::invalid)?;
                 let index = op
                     .rest
                     .get("index")
                     .and_then(|v| v.as_u64())
-                    .ok_or("remove_child: missing or invalid 'index'")?
-                    as usize;
+                    .ok_or_else(|| {
+                        PatchApplyError::invalid("remove_child: missing or invalid 'index'")
+                    })? as usize;
 
                 if index < parent.children.len() {
                     parent.children.remove(index);
                     Ok(())
                 } else {
-                    Err(format!(
+                    Err(PatchApplyError::invalid(format!(
                         "remove_child: index {index} out of bounds (len={})",
                         parent.children.len()
-                    ))
+                    )))
                 }
             }
             other => {
                 crate::diagnostics::warn(plushie_core::Diagnostic::UnknownPatchOp {
                     op: other.to_string(),
+                    payload: patch_op_payload(op),
                 });
                 Ok(())
             }
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PatchApplyError {
+    NoTree,
+    Invalid(String),
+}
+
+impl PatchApplyError {
+    fn invalid(message: impl Into<String>) -> Self {
+        Self::Invalid(message.into())
+    }
+}
+
+impl std::fmt::Display for PatchApplyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoTree => f.write_str("no tree to patch"),
+            Self::Invalid(message) => f.write_str(message),
+        }
+    }
+}
+
+fn patch_op_payload(op: &PatchOp) -> serde_json::Value {
+    serde_json::to_value(op).unwrap_or_else(|_| {
+        serde_json::json!({
+            "op": op.op,
+            "path": op.path,
+            "rest": op.rest
+        })
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -847,7 +887,7 @@ mod tests {
                 "node": {"id": "x", "type": "text", "props": {}, "children": []}
             }),
         );
-        // Should print an error to stderr but not panic
+        // Should report the malformed op but not panic.
         tree.apply_patch(vec![op]);
         // Root is unchanged
         assert_eq!(tree.root().unwrap().id, "root");
@@ -1091,7 +1131,7 @@ mod tests {
         let mut tree = Tree::new();
         let _ = tree.snapshot(node("root", "column"));
         let op = make_patch_op("remove_child", vec![], json!({"index": 0}));
-        // Should log error, not panic
+        // Should report the malformed op but not panic.
         tree.apply_patch(vec![op]);
         assert!(tree.root().unwrap().children.is_empty());
     }
@@ -1122,6 +1162,25 @@ mod tests {
         assert_eq!(tree.root().unwrap().children.len(), 2);
         assert_eq!(tree.root().unwrap().children[0].id, "existing");
         assert_eq!(tree.root().unwrap().children[1].id, "child");
+    }
+
+    #[test]
+    fn unknown_patch_payload_preserves_flattened_fields() {
+        let unknown = make_patch_op(
+            "frobnicate",
+            vec![1, 2],
+            json!({
+                "index": 3,
+                "extra": {"answer": 42}
+            }),
+        );
+
+        let payload = patch_op_payload(&unknown);
+
+        assert_eq!(payload["op"], "frobnicate");
+        assert_eq!(payload["path"], json!([1, 2]));
+        assert_eq!(payload["index"], 3);
+        assert_eq!(payload["extra"], json!({"answer": 42}));
     }
 
     // -----------------------------------------------------------------------

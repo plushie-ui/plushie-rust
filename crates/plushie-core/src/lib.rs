@@ -7,7 +7,7 @@
 
 extern crate self as plushie_core;
 
-pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent, widget};
+pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent, WidgetProps, widget};
 
 pub mod animation;
 pub mod codec_safety;
@@ -33,6 +33,7 @@ pub use key::{EffectKind, InteractAction, Key, KeyPress, MouseButton, PointerKin
 pub use scoped_id::ScopedId;
 pub use selector::{MAX_SELECTOR_SEARCH_DEPTH, Selector};
 pub use spec::{CommandSpec, EventSpec, PayloadSpec, ValueType, WidgetCommandEncode};
+pub use types::{FromNode, PlushieType, WidgetEventEncode};
 pub use widget_builder::WidgetBuilder;
 
 /// Sorted list of every built-in widget type name reserved by the

@@ -6,7 +6,7 @@
 
 use plushie_core::protocol::{PropValue, TreeNode};
 use plushie_core::types::Color;
-use plushie_core::widget;
+use plushie_core::{FromNode, PlushieType, WidgetEventEncode, WidgetProps, widget};
 
 widget! {
     /// A gauge widget used only in tests.
@@ -22,6 +22,14 @@ widget! {
         ValueChanged(f32),
         Cleared,
     }
+}
+
+#[derive(WidgetProps)]
+#[widget(name = "test_gauge")]
+#[allow(dead_code)]
+struct GaugePropsSource {
+    pub value: f32,
+    pub color: Color,
 }
 
 #[test]
@@ -72,7 +80,6 @@ fn events_block_generates_enum() {
     // The events block expands to a `GaugeEvent` enum with the
     // WidgetEvent derive applied. Build a variant and round-trip it
     // through the wire encoder.
-    use plushie_core::types::WidgetEventEncode;
     let (family, payload) = GaugeEvent::ValueChanged(1.5).to_wire();
     assert_eq!(family, "value_changed");
     assert!(matches!(payload, PropValue::F64(_)));
@@ -80,4 +87,21 @@ fn events_block_generates_enum() {
     let (family, payload) = GaugeEvent::Cleared.to_wire();
     assert_eq!(family, "cleared");
     assert!(matches!(payload, PropValue::Null));
+}
+
+#[test]
+fn crate_root_exports_macro_support_surface() {
+    assert!(matches!(
+        <f32 as PlushieType>::wire_encode(&0.5),
+        PropValue::F64(_)
+    ));
+
+    let node: TreeNode = Gauge::new("gauge-props")
+        .value(0.25)
+        .color(Color::rgb(0.4, 0.5, 0.6))
+        .into();
+
+    let props = <GaugePropsSourceProps as FromNode>::from_node(&node);
+    assert_eq!(props.value, Some(0.25));
+    assert!(props.color.is_some());
 }

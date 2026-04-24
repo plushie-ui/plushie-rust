@@ -6,7 +6,7 @@
 //! during `view()` to produce iced widgets; the host mutates it by
 //! sending Snapshot and Patch messages.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::protocol::{PatchOp, TreeNode};
 use crate::shared_state::MAX_TREE_DEPTH;
@@ -81,15 +81,24 @@ impl Tree {
         self.find_by_id(node_id).map(|n| n.type_name.as_str())
     }
 
+    /// Validate protocol ordering for a sequence of patch operations.
+    ///
+    /// The wire protocol orders structural ops so indices stay meaningful:
+    /// removes first, updates/replacements next, inserts last. Removes and
+    /// inserts are ordered only within the same parent path.
+    pub fn validate_patch_order(ops: &[PatchOp]) -> Result<(), String> {
+        validate_patch_order(ops)
+    }
+
     /// Apply a sequence of patch operations to the tree.
     ///
-    /// Operations are applied sequentially. If one operation fails, it is
-    /// skipped with a warning and subsequent operations are still applied.
-    /// This means a partial failure can leave the tree in an intermediate
-    /// state. The host should treat patch sequences as best-effort and
-    /// use Snapshot for full-state recovery when needed.
-    /// Applies patch operations and returns any removed nodes that had
-    /// an "exit" prop (for exit animation ghost promotion).
+    /// The caller is responsible for validating protocol ordering before
+    /// applying renderer-owned patch sequences. Operations are applied
+    /// sequentially. If one operation fails, it is skipped with a warning
+    /// and subsequent operations are still applied. This preserves existing
+    /// best-effort handling for malformed or stale individual ops.
+    /// Applies patch operations and returns any removed nodes that had an
+    /// "exit" prop (for exit animation ghost promotion).
     pub fn apply_patch(&mut self, ops: Vec<PatchOp>) -> Vec<(String, usize, TreeNode)> {
         log::debug!("applying patch: {} ops", ops.len());
         let mut exit_nodes = Vec::new();
@@ -219,6 +228,130 @@ impl Tree {
                 Ok(())
             }
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum PatchPhase {
+    Remove,
+    Middle,
+    Insert,
+}
+
+enum PatchOrderOp<'a> {
+    Remove { path: &'a [usize], index: usize },
+    Middle { parent_path: &'a [usize] },
+    Insert { path: &'a [usize], index: usize },
+}
+
+#[derive(Debug)]
+struct ParentPatchOrder {
+    phase: PatchPhase,
+    last_remove: Option<usize>,
+    last_insert: Option<usize>,
+}
+
+impl Default for ParentPatchOrder {
+    fn default() -> Self {
+        Self {
+            phase: PatchPhase::Remove,
+            last_remove: None,
+            last_insert: None,
+        }
+    }
+}
+
+fn validate_patch_order(ops: &[PatchOp]) -> Result<(), String> {
+    let mut parent_orders: HashMap<Vec<usize>, ParentPatchOrder> = HashMap::new();
+
+    for (op_index, op) in ops.iter().enumerate() {
+        let Some(order_op) = classify_patch_order_op(op) else {
+            continue;
+        };
+
+        match order_op {
+            PatchOrderOp::Remove { path, index } => {
+                let order = parent_orders.entry(path.to_vec()).or_default();
+                if order.phase > PatchPhase::Remove {
+                    return Err(format!(
+                        "patch op at index {op_index} is remove_child, but removes must appear before update_props, replace_node, and insert_child"
+                    ));
+                }
+                if let Some(previous) = order.last_remove
+                    && index > previous
+                {
+                    return Err(format!(
+                        "patch op at index {op_index} removes child {index} from parent path {path:?}, but remove_child ops for the same parent must not increase child indices"
+                    ));
+                }
+                order.last_remove = Some(index);
+            }
+            PatchOrderOp::Middle { parent_path } => {
+                let order = parent_orders.entry(parent_path.to_vec()).or_default();
+                if order.phase == PatchPhase::Insert {
+                    return Err(format!(
+                        "patch op at index {op_index} is update_props or replace_node, but updates and replacements must appear before insert_child"
+                    ));
+                }
+                order.phase = PatchPhase::Middle;
+            }
+            PatchOrderOp::Insert { path, index } => {
+                let order = parent_orders.entry(path.to_vec()).or_default();
+                order.phase = PatchPhase::Insert;
+                if let Some(previous) = order.last_insert
+                    && index < previous
+                {
+                    return Err(format!(
+                        "patch op at index {op_index} inserts child {index} into parent path {path:?}, but insert_child ops for the same parent must not decrease child indices"
+                    ));
+                }
+                order.last_insert = Some(index);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn classify_patch_order_op(op: &PatchOp) -> Option<PatchOrderOp<'_>> {
+    match op.op.as_str() {
+        "remove_child" => op
+            .rest
+            .get("index")
+            .and_then(|value| value.as_u64())
+            .map(|index| PatchOrderOp::Remove {
+                path: &op.path,
+                index: index as usize,
+            }),
+        "update_props" if op.rest.get("props").is_some_and(|props| props.is_object()) => op
+            .path
+            .split_last()
+            .map(|(_, parent_path)| PatchOrderOp::Middle { parent_path }),
+        "replace_node"
+            if op
+                .rest
+                .get("node")
+                .is_some_and(|node| serde_json::from_value::<TreeNode>(node.clone()).is_ok()) =>
+        {
+            op.path
+                .split_last()
+                .map(|(_, parent_path)| PatchOrderOp::Middle { parent_path })
+        }
+        "insert_child" => op
+            .rest
+            .get("index")
+            .and_then(|value| value.as_u64())
+            .and_then(|index| {
+                op.rest.get("node").and_then(|node| {
+                    serde_json::from_value::<TreeNode>(node.clone())
+                        .is_ok()
+                        .then_some(PatchOrderOp::Insert {
+                            path: &op.path,
+                            index: index as usize,
+                        })
+                })
+            }),
+        _ => None,
     }
 }
 

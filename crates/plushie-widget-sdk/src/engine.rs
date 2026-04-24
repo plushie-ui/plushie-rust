@@ -375,6 +375,17 @@ impl Core {
             }
             IncomingMessage::Patch { ops } => {
                 log::debug!("patch received ({} ops)", ops.len());
+                if let Err(error) = Tree::validate_patch_order(&ops) {
+                    log::error!("invalid patch order: {error}");
+                    effects.push(CoreEffect::Emit(Emit::Event(OutgoingEvent::generic(
+                        "error",
+                        "patch_order",
+                        Some(serde_json::json!({
+                            "error": error,
+                        })),
+                    ))));
+                    return effects;
+                }
                 let exit_nodes = self.tree.apply_patch(ops);
                 if !exit_nodes.is_empty() {
                     effects.push(CoreEffect::StateChange(StateChange::ExitNodes(exit_nodes)));
@@ -747,8 +758,49 @@ fn validate_wire_settings(settings: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{IncomingMessage, TreeNode};
-    use crate::testing::{node as make_node, node_with_props as make_node_with_props};
+    use crate::protocol::{IncomingMessage, PatchOp, TreeNode};
+    use crate::testing::{
+        node as make_node, node_with_children as make_node_with_children,
+        node_with_props as make_node_with_props,
+    };
+
+    fn make_patch_op(op: &str, path: Vec<usize>, rest: serde_json::Value) -> PatchOp {
+        let mut obj = serde_json::Map::new();
+        obj.insert("op".to_string(), serde_json::json!(op));
+        obj.insert("path".to_string(), serde_json::json!(path));
+        if let Some(map) = rest.as_object() {
+            for (key, value) in map {
+                obj.insert(key.clone(), value.clone());
+            }
+        }
+        serde_json::from_value(serde_json::Value::Object(obj)).unwrap()
+    }
+
+    fn child_ids(core: &Core) -> Vec<String> {
+        core.tree
+            .root()
+            .unwrap()
+            .children
+            .iter()
+            .map(|child| child.id.clone())
+            .collect()
+    }
+
+    fn has_sync_windows(effects: &[CoreEffect]) -> bool {
+        effects
+            .iter()
+            .any(|effect| matches!(effect, CoreEffect::StateChange(StateChange::SyncWindows)))
+    }
+
+    fn has_patch_order_error(effects: &[CoreEffect]) -> bool {
+        effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CoreEffect::Emit(Emit::Event(event))
+                    if event.family == "error" && event.id == "patch_order"
+            )
+        })
+    }
 
     // -- Core::new() --
 
@@ -834,10 +886,323 @@ mod tests {
 
         let patch_msg = IncomingMessage::Patch { ops: vec![] };
         let effects = core.apply(patch_msg);
-        let has_sync = effects
-            .iter()
-            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::SyncWindows)));
-        assert!(has_sync);
+        assert!(has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn patch_rejects_insert_before_remove_without_mutating_tree() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children(
+                "root",
+                "column",
+                vec![
+                    make_node("a", "text"),
+                    make_node("b", "text"),
+                    make_node("c", "text"),
+                ],
+            ),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op(
+                    "insert_child",
+                    vec![],
+                    serde_json::json!({
+                        "index": 3,
+                        "node": {"id": "d", "type": "text", "props": {}, "children": []}
+                    }),
+                ),
+                make_patch_op("remove_child", vec![], serde_json::json!({"index": 0})),
+            ],
+        });
+
+        assert_eq!(child_ids(&core), vec!["a", "b", "c"]);
+        assert!(has_patch_order_error(&effects));
+        assert!(!has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn patch_rejects_remove_same_parent_ascending_without_mutating_tree() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children(
+                "root",
+                "column",
+                vec![
+                    make_node("a", "text"),
+                    make_node("b", "text"),
+                    make_node("c", "text"),
+                ],
+            ),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op("remove_child", vec![], serde_json::json!({"index": 0})),
+                make_patch_op("remove_child", vec![], serde_json::json!({"index": 1})),
+            ],
+        });
+
+        assert_eq!(child_ids(&core), vec!["a", "b", "c"]);
+        assert!(has_patch_order_error(&effects));
+        assert!(!has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn patch_rejects_insert_same_parent_descending_without_mutating_tree() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children("root", "column", vec![make_node("a", "text")]),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op(
+                    "insert_child",
+                    vec![],
+                    serde_json::json!({
+                        "index": 1,
+                        "node": {"id": "b", "type": "text", "props": {}, "children": []}
+                    }),
+                ),
+                make_patch_op(
+                    "insert_child",
+                    vec![],
+                    serde_json::json!({
+                        "index": 0,
+                        "node": {"id": "c", "type": "text", "props": {}, "children": []}
+                    }),
+                ),
+            ],
+        });
+
+        assert_eq!(child_ids(&core), vec!["a"]);
+        assert!(has_patch_order_error(&effects));
+        assert!(!has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn patch_valid_remove_update_insert_sequence_applies() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children(
+                "root",
+                "column",
+                vec![
+                    make_node_with_props("a", "text", serde_json::json!({"content": "old"})),
+                    make_node("b", "text"),
+                    make_node("c", "text"),
+                ],
+            ),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op("remove_child", vec![], serde_json::json!({"index": 2})),
+                make_patch_op(
+                    "update_props",
+                    vec![0],
+                    serde_json::json!({"props": {"content": "new"}}),
+                ),
+                make_patch_op(
+                    "insert_child",
+                    vec![],
+                    serde_json::json!({
+                        "index": 1,
+                        "node": {"id": "d", "type": "text", "props": {}, "children": []}
+                    }),
+                ),
+            ],
+        });
+
+        assert_eq!(child_ids(&core), vec!["a", "d", "b"]);
+        assert_eq!(
+            core.tree.root().unwrap().children[0].props.to_value()["content"],
+            "new"
+        );
+        assert!(!has_patch_order_error(&effects));
+        assert!(has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn patch_allows_parent_update_before_child_remove() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children(
+                "root",
+                "column",
+                vec![make_node("a", "text"), make_node("b", "text")],
+            ),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op(
+                    "update_props",
+                    vec![],
+                    serde_json::json!({"props": {"spacing": 8}}),
+                ),
+                make_patch_op("remove_child", vec![], serde_json::json!({"index": 1})),
+            ],
+        });
+
+        assert_eq!(child_ids(&core), vec!["a"]);
+        assert_eq!(core.tree.root().unwrap().props.to_value()["spacing"], 8);
+        assert!(!has_patch_order_error(&effects));
+        assert!(has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn patch_allows_insert_in_one_subtree_before_update_in_another() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children(
+                "root",
+                "column",
+                vec![
+                    make_node_with_children("left", "column", vec![]),
+                    make_node_with_props("right", "text", serde_json::json!({"content": "old"})),
+                ],
+            ),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op(
+                    "insert_child",
+                    vec![0],
+                    serde_json::json!({
+                        "index": 0,
+                        "node": {"id": "left-child", "type": "text", "props": {}, "children": []}
+                    }),
+                ),
+                make_patch_op(
+                    "update_props",
+                    vec![1],
+                    serde_json::json!({"props": {"content": "new"}}),
+                ),
+            ],
+        });
+
+        let root = core.tree.root().unwrap();
+        assert_eq!(root.children[0].children[0].id, "left-child");
+        assert_eq!(root.children[1].props.to_value()["content"], "new");
+        assert!(!has_patch_order_error(&effects));
+        assert!(has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn malformed_insert_still_uses_existing_per_op_error_handling() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children(
+                "root",
+                "column",
+                vec![make_node_with_props(
+                    "a",
+                    "text",
+                    serde_json::json!({"content": "old"}),
+                )],
+            ),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op("insert_child", vec![], serde_json::json!({"index": 0})),
+                make_patch_op(
+                    "update_props",
+                    vec![0],
+                    serde_json::json!({"props": {"content": "new"}}),
+                ),
+            ],
+        });
+
+        assert_eq!(child_ids(&core), vec!["a"]);
+        assert_eq!(
+            core.tree.root().unwrap().children[0].props.to_value()["content"],
+            "new"
+        );
+        assert!(!has_patch_order_error(&effects));
+        assert!(has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn invalid_insert_node_still_uses_existing_per_op_error_handling() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children(
+                "root",
+                "column",
+                vec![make_node_with_props(
+                    "a",
+                    "text",
+                    serde_json::json!({"content": "old"}),
+                )],
+            ),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op(
+                    "insert_child",
+                    vec![],
+                    serde_json::json!({"index": 0, "node": {"garbage": true}}),
+                ),
+                make_patch_op(
+                    "update_props",
+                    vec![0],
+                    serde_json::json!({"props": {"content": "new"}}),
+                ),
+            ],
+        });
+
+        assert_eq!(child_ids(&core), vec!["a"]);
+        assert_eq!(
+            core.tree.root().unwrap().children[0].props.to_value()["content"],
+            "new"
+        );
+        assert!(!has_patch_order_error(&effects));
+        assert!(has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn non_object_update_props_still_uses_existing_per_op_error_handling() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_children(
+                "root",
+                "column",
+                vec![make_node_with_props(
+                    "a",
+                    "text",
+                    serde_json::json!({"content": "old"}),
+                )],
+            ),
+        });
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![
+                make_patch_op(
+                    "insert_child",
+                    vec![],
+                    serde_json::json!({
+                        "index": 1,
+                        "node": {"id": "b", "type": "text", "props": {}, "children": []}
+                    }),
+                ),
+                make_patch_op("update_props", vec![0], serde_json::json!({"props": false})),
+            ],
+        });
+
+        assert_eq!(child_ids(&core), vec!["a", "b"]);
+        assert_eq!(
+            core.tree.root().unwrap().children[0].props.to_value()["content"],
+            "old"
+        );
+        assert!(!has_patch_order_error(&effects));
+        assert!(has_sync_windows(&effects));
     }
 
     // -- Settings --

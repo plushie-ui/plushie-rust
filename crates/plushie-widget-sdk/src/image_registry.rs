@@ -1,10 +1,13 @@
 //! In-memory image handle storage.
 //!
-//! The host creates images by sending encoded bytes (PNG, JPEG, etc.)
-//! or raw RGBA pixel data via `image_op` messages. Each image is stored
-//! as an iced [`image::Handle`] keyed by a host-chosen name. Widget
-//! nodes reference images by name through the `source` prop, and the
-//! renderer resolves them through [`ImageRegistry::get`].
+//! The renderer owns this registry. Hosts create images by sending
+//! encoded bytes (PNG, JPEG, etc.) or raw RGBA pixel data via
+//! `image_op` messages, which the renderer applies through mutable
+//! registry methods. Each image is stored as an iced [`image::Handle`]
+//! keyed by a host-chosen name. Widget nodes reference images by name
+//! through the `source` prop, and render code receives a shared
+//! [`ImageRegistry`] reference to resolve them through
+//! [`ImageRegistry::get`].
 
 use std::{
     collections::HashMap,
@@ -48,6 +51,12 @@ fn sniff_image_format(data: &[u8]) -> Option<&'static str> {
 ///
 /// Enforces per-image size limits and aggregate limits (count and total bytes)
 /// to prevent unbounded memory growth from a misbehaving host.
+///
+/// This is a renderer-owned store, not a generally thread-safe shared
+/// container. Mutation APIs require `&mut self`. Render-time lookups use
+/// `&self`; those lookups update only the internal LRU list under a small
+/// lock, which is not a guarantee that callers may mutate the registry
+/// concurrently.
 pub struct ImageRegistry {
     handles: HashMap<String, image::Handle>,
     /// Per-image byte size tracking (parallel to `handles`).
@@ -339,6 +348,10 @@ impl ImageRegistry {
     }
 
     /// Look up a named image handle.
+    ///
+    /// This takes `&self` so widgets can resolve images during render.
+    /// A successful lookup records LRU usage under an internal lock; it
+    /// does not make registry mutation safe from shared references.
     pub fn get(&self, name: &str) -> Option<&image::Handle> {
         let handle = self.handles.get(name);
         if handle.is_some() {

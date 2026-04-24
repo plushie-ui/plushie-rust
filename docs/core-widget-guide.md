@@ -906,11 +906,12 @@ Patterns to follow:
 - **Cap heavy caches.** Large tile sets or rendered glyph atlases
   should use an LRU or explicit size cap. The renderer does not
   GC widget state.
-- **Use the shared `ImageRegistry`.** `RenderCtx::images` is an
-  `&ImageRegistry` populated by the host via `image_op` messages.
-  It enforces a 4096-image count and 1 GiB byte cap. Widgets that
-  render images read from it rather than allocating per-instance
-  image handles.
+- **Use `RenderCtx::images` for image lookup.** The renderer owns the
+  `ImageRegistry` and applies host `image_op` messages through its
+  mutable APIs. Widgets receive an `&ImageRegistry` during render and
+  use it to look up handles by name. It enforces a 4096-image count
+  and 1 GiB byte cap. Widgets that render images read from it rather
+  than allocating per-instance image handles.
 - **Do not touch `SharedState` internals.** Only
   `interpolated_props` is intended for third-party reads
   (animation interp). Everything else is an internal cache; treat

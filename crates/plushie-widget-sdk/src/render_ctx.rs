@@ -25,7 +25,11 @@ use crate::theming::ThemeChrome;
 pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
     /// Shared renderer-side caches (style hashes, override memoization).
     pub caches: &'a SharedState,
-    /// Image handles registered with the renderer.
+    /// Renderer-owned image handles available for render-time lookup.
+    ///
+    /// Widgets receive this as a shared read handle. Host image operations
+    /// are applied by the renderer owner through mutable
+    /// [`ImageRegistry`] methods.
     pub images: &'a ImageRegistry,
     /// Active iced theme for this window.
     pub theme: &'a Theme,

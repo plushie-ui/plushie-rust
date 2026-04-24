@@ -268,15 +268,6 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         }
     }
 
-    /// Remove all state for a canvas instance.
-    #[allow(dead_code)]
-    pub fn cleanup(&mut self, node_id: &str, window_id: &str) {
-        let key = (window_id.to_string(), node_id.to_string());
-        self.layer_caches.remove(&key);
-        self.interactions.remove(&key);
-        self.pending_focus.remove(&key);
-    }
-
     /// Prune per-instance state for canvas nodes that have left the tree.
     ///
     /// Paired with [`crate::registry::PlushieWidget::prune_stale`].
@@ -298,6 +289,46 @@ impl<R: PlushieRenderer> Default for CanvasEngine<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{Props, TreeNode};
+    use serde_json::{Value, json};
+
+    fn node(id: &str, type_name: &str, props: Value, children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props: Props::from_json(props),
+            children,
+        }
+    }
+
+    fn canvas_node(id: &str) -> TreeNode {
+        node(
+            id,
+            "canvas",
+            json!({}),
+            vec![node(
+                &format!("{id}-button"),
+                "group",
+                json!({
+                    "on_click": true,
+                    "focusable": true,
+                    "a11y": {
+                        "role": "button",
+                        "label": "Button"
+                    }
+                }),
+                vec![node(
+                    &format!("{id}-button-hitbox"),
+                    "rect",
+                    json!({
+                        "width": 20,
+                        "height": 20
+                    }),
+                    vec![],
+                )],
+            )],
+        )
+    }
 
     #[test]
     fn canvas_theme_hash_changes_with_palette_colors() {
@@ -321,5 +352,40 @@ mod tests {
 
         cache.ensure_theme_hash(20);
         assert_eq!(cache.theme_hash.get(), 20);
+    }
+
+    #[test]
+    fn prune_stale_removes_cached_state_for_missing_canvas_nodes() {
+        let mut engine = CanvasEngine::<iced::Renderer>::new();
+        let stale = canvas_node("canvas-stale");
+        let live = canvas_node("canvas-live");
+        let stale_key = ("window-a".to_string(), stale.id.clone());
+        let live_key = ("window-a".to_string(), live.id.clone());
+
+        engine.prepare(&stale, "window-a");
+        engine.prepare(&live, "window-a");
+        engine.set_pending_focus("canvas-stale-button");
+        engine.set_pending_focus("canvas-live-button");
+
+        assert!(engine.layer_caches.contains_key(&stale_key));
+        assert!(engine.layer_caches.contains_key(&live_key));
+        assert!(!engine.interactions[&stale_key].is_empty());
+        assert!(!engine.interactions[&live_key].is_empty());
+        assert_eq!(
+            engine.pending_focus.get(&stale_key),
+            Some(&"canvas-stale-button".to_string())
+        );
+
+        engine.prune_stale(&std::collections::HashSet::from([live_key.clone()]));
+
+        assert!(!engine.layer_caches.contains_key(&stale_key));
+        assert!(!engine.interactions.contains_key(&stale_key));
+        assert!(!engine.pending_focus.contains_key(&stale_key));
+        assert!(engine.layer_caches.contains_key(&live_key));
+        assert!(!engine.interactions[&live_key].is_empty());
+        assert_eq!(
+            engine.pending_focus.get(&live_key),
+            Some(&"canvas-live-button".to_string())
+        );
     }
 }

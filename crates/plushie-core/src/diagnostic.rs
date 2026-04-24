@@ -308,6 +308,13 @@ pub enum Diagnostic {
         /// when the message had no `type` field.
         msg_type: String,
     },
+    /// A patch operation carried an operation name this renderer does
+    /// not recognise. The operation is ignored and later operations
+    /// in the same patch are still attempted.
+    UnknownPatchOp {
+        /// The unrecognised patch operation name.
+        op: String,
+    },
     /// The runtime's command dispatch chain exceeded the configured
     /// depth limit, indicating an `update` loop that keeps returning a
     /// command whose delivered event produces another command. The
@@ -540,6 +547,11 @@ impl std::fmt::Display for Diagnostic {
                 "unknown_message_type: unrecognised renderer message type `{msg_type}`; \
                  likely a host or renderer version skew"
             ),
+            Self::UnknownPatchOp { op } => write!(
+                f,
+                "unknown_patch_op: unrecognized patch operation `{op}`; likely a host or \
+                 renderer version skew"
+            ),
             Self::DispatchLoopExceeded { depth, limit } => write!(
                 f,
                 "dispatch_loop_exceeded: command chain reached depth {depth} \
@@ -607,6 +619,24 @@ mod tests {
         assert_eq!(json, serde_json::json!("emitter_coalesce_cap_exceeded"));
         let back: DiagnosticKind = serde_json::from_value(json).unwrap();
         assert_eq!(back, kind);
+    }
+
+    #[test]
+    fn unknown_patch_op_display_kind_and_serde() {
+        let d = Diagnostic::UnknownPatchOp {
+            op: "frobnicate".into(),
+        };
+        assert_eq!(d.kind(), DiagnosticKind::UnknownPatchOp);
+        assert_eq!(
+            d.to_string(),
+            "unknown_patch_op: unrecognized patch operation `frobnicate`; likely a host or \
+             renderer version skew"
+        );
+
+        let json = serde_json::to_value(&d).unwrap();
+        assert_eq!(json["kind"], serde_json::json!("unknown_patch_op"));
+        let back: Diagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(back, d);
     }
 
     #[test]

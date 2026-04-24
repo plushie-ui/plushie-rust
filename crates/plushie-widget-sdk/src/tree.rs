@@ -224,7 +224,9 @@ impl Tree {
                 }
             }
             other => {
-                log::warn!("unknown patch op: {other}");
+                crate::diagnostics::warn(plushie_core::Diagnostic::UnknownPatchOp {
+                    op: other.to_string(),
+                });
                 Ok(())
             }
         }
@@ -1101,11 +1103,25 @@ mod tests {
     #[test]
     fn patch_unknown_op_does_not_panic() {
         let mut tree = Tree::new();
-        let _ = tree.snapshot(node("root", "column"));
-        let op = make_patch_op("frobnicate", vec![], json!({}));
-        tree.apply_patch(vec![op]);
-        // Tree should be unchanged
+        let mut root = node("root", "column");
+        root.children.push(node("existing", "text"));
+        let _ = tree.snapshot(root);
+        let unknown = make_patch_op("frobnicate", vec![], json!({}));
+        let valid = make_patch_op(
+            "insert_child",
+            vec![],
+            json!({
+                "index": 1,
+                "node": node("child", "text")
+            }),
+        );
+
+        tree.apply_patch(vec![unknown, valid]);
+
         assert_eq!(tree.root().unwrap().id, "root");
+        assert_eq!(tree.root().unwrap().children.len(), 2);
+        assert_eq!(tree.root().unwrap().children[0].id, "existing");
+        assert_eq!(tree.root().unwrap().children[1].id, "child");
     }
 
     // -----------------------------------------------------------------------

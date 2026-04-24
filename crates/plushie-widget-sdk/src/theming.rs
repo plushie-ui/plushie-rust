@@ -37,6 +37,17 @@ pub struct ThemeChrome {
     pub scroller_color: Option<Color>,
 }
 
+/// Result of resolving a theme value for renderer state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThemeResolution {
+    /// Use the platform's current theme preference.
+    System,
+    /// Use a concrete theme and renderer chrome values.
+    Theme(Theme, ThemeChrome),
+    /// The value did not name a supported theme.
+    Invalid,
+}
+
 impl ThemeChrome {
     pub fn is_empty(self) -> bool {
         self.cursor_color.is_none()
@@ -47,34 +58,56 @@ impl ThemeChrome {
 
 /// Resolve a JSON value into an iced [`Theme`] plus renderer chrome tokens.
 pub fn resolve_theme_with_chrome(value: &Value) -> (Theme, ThemeChrome) {
+    match resolve_theme_resolution(value) {
+        ThemeResolution::Theme(theme, chrome) => (theme, chrome),
+        ThemeResolution::System | ThemeResolution::Invalid => (Theme::Dark, ThemeChrome::default()),
+    }
+}
+
+/// Resolve a theme value into renderer state without collapsing
+/// system and invalid values into a concrete fallback.
+pub fn resolve_theme_resolution(value: &Value) -> ThemeResolution {
     match CoreTheme::wire_decode(value) {
-        Some(CoreTheme::System) => (Theme::Dark, ThemeChrome::default()),
-        Some(CoreTheme::Named(name)) => (resolve_builtin(&name), ThemeChrome::default()),
+        Some(CoreTheme::System) => ThemeResolution::System,
+        Some(CoreTheme::Named(name)) => {
+            if name.eq_ignore_ascii_case("system") {
+                ThemeResolution::System
+            } else {
+                match resolve_builtin(&name) {
+                    Some(theme) => ThemeResolution::Theme(theme, ThemeChrome::default()),
+                    None => {
+                        log::warn!("unknown theme {name:?}; ignoring theme value");
+                        ThemeResolution::Invalid
+                    }
+                }
+            }
+        }
         Some(CoreTheme::Custom(c)) => {
             let chrome = ThemeChrome {
                 cursor_color: c.colors.get("cursor_color").map(iced_convert::color),
                 scrollbar_color: c.colors.get("scrollbar_color").map(iced_convert::color),
                 scroller_color: c.colors.get("scroller_color").map(iced_convert::color),
             };
-            (iced_convert::custom_theme(&c), chrome)
+            ThemeResolution::Theme(iced_convert::custom_theme(&c), chrome)
         }
-        None => (Theme::Dark, ThemeChrome::default()),
+        None => {
+            log::warn!("invalid theme value; ignoring theme value");
+            ThemeResolution::Invalid
+        }
     }
 }
 
-/// Resolve a theme value, returning `None` for `"system"` (follow OS preference).
+/// Resolve a theme value, returning `None` for system or invalid values.
 pub fn resolve_theme_only(value: &Value) -> Option<Theme> {
     resolve_theme_and_chrome_only(value).map(|(theme, _)| theme)
 }
 
-/// Resolve a theme value with chrome, returning `None` for `"system"`.
+/// Resolve a theme value with chrome, returning `None` for system or invalid values.
 pub fn resolve_theme_and_chrome_only(value: &Value) -> Option<(Theme, ThemeChrome)> {
-    if let Some(s) = value.as_str()
-        && s.eq_ignore_ascii_case("system")
-    {
-        return None;
+    match resolve_theme_resolution(value) {
+        ThemeResolution::Theme(theme, chrome) => Some((theme, chrome)),
+        ThemeResolution::System | ThemeResolution::Invalid => None,
     }
-    Some(resolve_theme_with_chrome(value))
 }
 
 // ---------------------------------------------------------------------------
@@ -82,31 +115,31 @@ pub fn resolve_theme_and_chrome_only(value: &Value) -> Option<(Theme, ThemeChrom
 // ---------------------------------------------------------------------------
 
 /// Map a string name to a built-in iced theme variant.
-pub(crate) fn resolve_builtin(s: &str) -> Theme {
+pub(crate) fn resolve_builtin(s: &str) -> Option<Theme> {
     match s.to_ascii_lowercase().as_str() {
-        "light" => Theme::Light,
-        "dark" => Theme::Dark,
-        "dracula" => Theme::Dracula,
-        "nord" => Theme::Nord,
-        "solarized_light" => Theme::SolarizedLight,
-        "solarized_dark" => Theme::SolarizedDark,
-        "gruvbox_light" => Theme::GruvboxLight,
-        "gruvbox_dark" => Theme::GruvboxDark,
-        "catppuccin_latte" => Theme::CatppuccinLatte,
-        "catppuccin_frappe" => Theme::CatppuccinFrappe,
-        "catppuccin_macchiato" => Theme::CatppuccinMacchiato,
-        "catppuccin_mocha" => Theme::CatppuccinMocha,
-        "tokyo_night" => Theme::TokyoNight,
-        "tokyo_night_storm" => Theme::TokyoNightStorm,
-        "tokyo_night_light" => Theme::TokyoNightLight,
-        "kanagawa_wave" => Theme::KanagawaWave,
-        "kanagawa_dragon" => Theme::KanagawaDragon,
-        "kanagawa_lotus" => Theme::KanagawaLotus,
-        "moonfly" => Theme::Moonfly,
-        "nightfly" => Theme::Nightfly,
-        "oxocarbon" => Theme::Oxocarbon,
-        "ferra" => Theme::Ferra,
-        _ => Theme::Dark,
+        "light" => Some(Theme::Light),
+        "dark" => Some(Theme::Dark),
+        "dracula" => Some(Theme::Dracula),
+        "nord" => Some(Theme::Nord),
+        "solarized_light" => Some(Theme::SolarizedLight),
+        "solarized_dark" => Some(Theme::SolarizedDark),
+        "gruvbox_light" => Some(Theme::GruvboxLight),
+        "gruvbox_dark" => Some(Theme::GruvboxDark),
+        "catppuccin_latte" => Some(Theme::CatppuccinLatte),
+        "catppuccin_frappe" => Some(Theme::CatppuccinFrappe),
+        "catppuccin_macchiato" => Some(Theme::CatppuccinMacchiato),
+        "catppuccin_mocha" => Some(Theme::CatppuccinMocha),
+        "tokyo_night" => Some(Theme::TokyoNight),
+        "tokyo_night_storm" => Some(Theme::TokyoNightStorm),
+        "tokyo_night_light" => Some(Theme::TokyoNightLight),
+        "kanagawa_wave" => Some(Theme::KanagawaWave),
+        "kanagawa_dragon" => Some(Theme::KanagawaDragon),
+        "kanagawa_lotus" => Some(Theme::KanagawaLotus),
+        "moonfly" => Some(Theme::Moonfly),
+        "nightfly" => Some(Theme::Nightfly),
+        "oxocarbon" => Some(Theme::Oxocarbon),
+        "ferra" => Some(Theme::Ferra),
+        _ => None,
     }
 }
 
@@ -128,6 +161,26 @@ mod tests {
     }
 
     #[test]
+    fn resolver_distinguishes_system_unknown_and_named_themes() {
+        assert!(matches!(
+            resolve_theme_resolution(&json!("system")),
+            ThemeResolution::System
+        ));
+        assert!(matches!(
+            resolve_theme_resolution(&json!("System")),
+            ThemeResolution::System
+        ));
+        assert!(matches!(
+            resolve_theme_resolution(&json!("dark")),
+            ThemeResolution::Theme(Theme::Dark, _)
+        ));
+        assert!(matches!(
+            resolve_theme_resolution(&json!("neon_pink")),
+            ThemeResolution::Invalid
+        ));
+    }
+
+    #[test]
     fn system_theme_returns_none() {
         assert!(resolve_theme_only(&json!("system")).is_none());
         assert!(resolve_theme_only(&json!("System")).is_none());
@@ -142,6 +195,12 @@ mod tests {
     #[test]
     fn unknown_string_falls_back_to_dark() {
         assert!(matches!(resolve_theme(&json!("neon_pink")), Theme::Dark));
+    }
+
+    #[test]
+    fn unknown_string_is_not_concrete_for_stateful_resolution() {
+        assert!(resolve_theme_only(&json!("neon_pink")).is_none());
+        assert!(resolve_theme_and_chrome_only(&json!("neon_pink")).is_none());
     }
 
     #[test]
@@ -188,6 +247,16 @@ mod tests {
         // Background should come from Nord's seed.
         let nord_bg = Theme::Nord.seed().background;
         assert_eq!(seed.background, nord_bg);
+    }
+
+    #[test]
+    fn custom_theme_with_unknown_base_defaults_to_dark() {
+        let val = json!({"base": "neon_pink", "primary": "#88c0d0"});
+        let result = resolve_theme(&val);
+        let seed = result.seed();
+
+        assert_eq!(seed.primary, Color::from_rgb8(0x88, 0xc0, 0xd0));
+        assert_eq!(seed.background, Theme::Dark.seed().background);
     }
 
     #[test]

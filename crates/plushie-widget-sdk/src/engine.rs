@@ -333,20 +333,22 @@ impl Core {
             // Theme prop unchanged, skip resolution.
             return;
         }
-        self.cached_theme_hash = Some(hash);
-        match theming::resolve_theme_and_chrome_only(theme_val) {
-            Some((theme, chrome)) => {
+        match theming::resolve_theme_resolution(theme_val) {
+            theming::ThemeResolution::Theme(theme, chrome) => {
+                self.cached_theme_hash = Some(hash);
                 self.cached_theme = Some(theme.clone());
                 self.cached_theme_chrome = chrome;
                 effects.push(CoreEffect::StateChange(StateChange::ThemeChanged(
                     theme, chrome,
                 )));
             }
-            None => {
+            theming::ThemeResolution::System => {
+                self.cached_theme_hash = Some(hash);
                 self.cached_theme = None;
                 self.cached_theme_chrome = crate::theming::ThemeChrome::default();
                 effects.push(CoreEffect::StateChange(StateChange::ThemeFollowsSystem));
             }
+            theming::ThemeResolution::Invalid => self.clear_cached_theme(effects),
         }
     }
 
@@ -901,6 +903,65 @@ mod tests {
             .iter()
             .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_, _))));
         assert!(has_theme);
+    }
+
+    #[test]
+    fn snapshot_with_unknown_theme_does_not_apply_dark_or_system() {
+        let mut core: Core = Core::new();
+        let effects = core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_props("root", "column", serde_json::json!({"theme": "neon_pink"})),
+        });
+
+        assert!(
+            !effects
+                .iter()
+                .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_, _))))
+        );
+        assert!(!has_theme_follows_system(&effects));
+        assert!(core.cached_theme.is_none());
+    }
+
+    #[test]
+    fn unknown_theme_clears_previous_resolved_theme() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_props("root", "column", serde_json::json!({"theme": "nord"})),
+        });
+        assert!(matches!(
+            core.cached_theme.as_ref(),
+            Some(iced::Theme::Nord)
+        ));
+
+        let effects = core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_props("root", "column", serde_json::json!({"theme": "neon_pink"})),
+        });
+
+        assert!(
+            !effects
+                .iter()
+                .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_, _))))
+        );
+        assert!(has_theme_follows_system(&effects));
+        assert!(core.cached_theme.is_none());
+    }
+
+    #[test]
+    fn removing_unknown_theme_after_clear_does_not_emit_again() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_props("root", "column", serde_json::json!({"theme": "nord"})),
+        });
+        let effects = core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_props("root", "column", serde_json::json!({"theme": "neon_pink"})),
+        });
+        assert!(has_theme_follows_system(&effects));
+
+        let effects = core.apply(IncomingMessage::Snapshot {
+            tree: make_node("root", "column"),
+        });
+
+        assert!(!has_theme_follows_system(&effects));
+        assert!(core.cached_theme_hash.is_none());
     }
 
     #[test]

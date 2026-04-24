@@ -38,7 +38,7 @@ plushie-widget-sdk = { workspace = true }
 plushie-renderer-lib = { workspace = true }
 env_logger = "0.11"
 log = { workspace = true }
-iced = { version = "0.8", package = "plushie-iced", features = ["tokio", "advanced", "sysinfo", "a11y"] }
+iced = { version = "0.8", package = "plushie-iced", features = ["tokio", "advanced", "sysinfo", "a11y", "linux-theme-detection"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 base64 = { workspace = true }

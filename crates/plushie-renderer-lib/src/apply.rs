@@ -183,10 +183,16 @@ impl App {
             for win_id in window_ids {
                 if let Some(node) = self.core.tree.find_window(&win_id)
                     && let Some(theme_val) = node.props.get_value("theme")
-                    && let Some((theme, chrome)) =
-                        plushie_widget_sdk::runtime::resolve_theme_and_chrome_only(&theme_val)
                 {
-                    self.windows.set_theme(&win_id, Some(theme), chrome);
+                    match plushie_widget_sdk::runtime::resolve_theme_resolution(&theme_val) {
+                        plushie_widget_sdk::runtime::ThemeResolution::Theme(theme, chrome) => {
+                            self.windows.set_theme(&win_id, theme, chrome);
+                        }
+                        plushie_widget_sdk::runtime::ThemeResolution::System => {
+                            self.windows.set_theme_follows_system(&win_id);
+                        }
+                        plushie_widget_sdk::runtime::ThemeResolution::Invalid => {}
+                    }
                 }
             }
 

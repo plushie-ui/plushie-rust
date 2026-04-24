@@ -357,8 +357,11 @@ impl App {
     }
 
     fn system_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
-        // Track system theme changes when theme follows system OR when subscribed
-        if self.theme_follows_system || self.has_host_or_widget_subscription(SUB_THEME_CHANGE) {
+        // Track system theme changes when any active theme follows system.
+        if self.theme_follows_system
+            || self.windows.any_theme_follows_system()
+            || self.has_host_or_widget_subscription(SUB_THEME_CHANGE)
+        {
             subs.push(system::theme_changes().map(Message::ThemeChanged));
         }
     }

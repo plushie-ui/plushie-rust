@@ -184,16 +184,24 @@ impl<A: App> DirectApp<A> {
 
     fn theme_for_window(&self, window_id: plushie_widget_sdk::iced::window::Id) -> Theme {
         // Per-window theme override lands here when the `theme` prop
-        // on the window node resolves to a renderer-recognised theme
-        // string. Unrecognised or absent: fall back to the global
-        // renderer theme so app-level `Settings::theme` still wins.
+        // on the window node resolves to a renderer-recognised theme.
+        // Unrecognised or absent values fall back to the app theme.
         if let Some(node) = self.window_node_for(window_id)
             && let Some(theme_val) = node.props.get_value("theme")
         {
-            let resolved = plushie_widget_sdk::runtime::resolve_theme(&theme_val);
-            return resolved;
+            match plushie_widget_sdk::runtime::resolve_theme_resolution(&theme_val) {
+                plushie_widget_sdk::runtime::ThemeResolution::Theme(theme, _) => return theme,
+                plushie_widget_sdk::runtime::ThemeResolution::System => {
+                    return self.renderer.system_theme.clone();
+                }
+                plushie_widget_sdk::runtime::ThemeResolution::Invalid => {}
+            }
         }
-        self.renderer.theme.clone()
+        if self.renderer.theme_follows_system {
+            self.renderer.system_theme.clone()
+        } else {
+            self.renderer.theme.clone()
+        }
     }
 
     fn scale_factor_for_window(&self, window_id: plushie_widget_sdk::iced::window::Id) -> f32 {
@@ -443,6 +451,7 @@ impl<A: App> DirectApp<A> {
             };
             tasks.push(self.renderer.dispatch_window_op(typed));
         }
+        sync_direct_window_theme_state(&mut self.renderer.windows, tree);
         if tasks.is_empty() {
             Task::none()
         } else {
@@ -794,6 +803,36 @@ fn find_window_node<'a>(tree: &'a TreeNode, window_id: &str) -> Option<&'a TreeN
     None
 }
 
+fn sync_direct_window_theme_state(
+    windows: &mut plushie_renderer_lib::window_map::WindowMap,
+    tree: &TreeNode,
+) {
+    windows.clear_theme_cache();
+    sync_direct_window_theme_node(windows, tree);
+}
+
+fn sync_direct_window_theme_node(
+    windows: &mut plushie_renderer_lib::window_map::WindowMap,
+    node: &TreeNode,
+) {
+    if node.type_name == "window"
+        && let Some(theme_val) = node.props.get_value("theme")
+    {
+        match plushie_widget_sdk::runtime::resolve_theme_resolution(&theme_val) {
+            plushie_widget_sdk::runtime::ThemeResolution::Theme(theme, chrome) => {
+                windows.set_theme(&node.id, theme, chrome);
+            }
+            plushie_widget_sdk::runtime::ThemeResolution::System => {
+                windows.set_theme_follows_system(&node.id);
+            }
+            plushie_widget_sdk::runtime::ThemeResolution::Invalid => {}
+        }
+    }
+    for child in &node.children {
+        sync_direct_window_theme_node(windows, child);
+    }
+}
+
 /// Build the base window-settings object handed to `WindowSync` in
 /// direct mode. Mirrors the per-window props that `apply_settings`
 /// applied globally so a tree node without its own overrides
@@ -823,5 +862,62 @@ fn placeholder_tree() -> TreeNode {
             plushie_widget_sdk::protocol::PropMap::new(),
         ),
         children: vec![],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie_widget_sdk::protocol::{PropMap, Props};
+    use serde_json::json;
+
+    fn window(id: &str, props: serde_json::Value) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: "window".to_string(),
+            props: Props::from_json(props),
+            children: vec![],
+        }
+    }
+
+    fn container(children: Vec<TreeNode>) -> TreeNode {
+        TreeNode {
+            id: "root".to_string(),
+            type_name: "container".to_string(),
+            props: Props::from(PropMap::new()),
+            children,
+        }
+    }
+
+    #[test]
+    fn direct_window_system_theme_updates_renderer_subscription_state() {
+        let mut windows = plushie_renderer_lib::window_map::WindowMap::new();
+        windows.insert(
+            "main".to_string(),
+            plushie_widget_sdk::iced::window::Id::unique(),
+        );
+        let tree = container(vec![window("main", json!({"theme": "system"}))]);
+
+        sync_direct_window_theme_state(&mut windows, &tree);
+
+        assert!(windows.theme_follows_system("main"));
+        assert!(windows.any_theme_follows_system());
+    }
+
+    #[test]
+    fn direct_window_theme_state_clears_when_tree_no_longer_follows_system() {
+        let mut windows = plushie_renderer_lib::window_map::WindowMap::new();
+        windows.insert(
+            "main".to_string(),
+            plushie_widget_sdk::iced::window::Id::unique(),
+        );
+        let tree = container(vec![window("main", json!({"theme": "system"}))]);
+        sync_direct_window_theme_state(&mut windows, &tree);
+
+        let tree = container(vec![window("main", json!({"theme": "dark"}))]);
+        sync_direct_window_theme_state(&mut windows, &tree);
+
+        assert!(!windows.theme_follows_system("main"));
+        assert!(!windows.any_theme_follows_system());
     }
 }

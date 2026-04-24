@@ -15,8 +15,9 @@ struct WindowState {
     /// so we track the boolean to avoid toggling when already correct.
     decorated: bool,
     /// Resolved theme for this window, if set via the tree's theme prop.
-    /// None means "use app theme" (system or global).
+    /// None means "use app theme" unless theme_follows_system is set.
     theme: Option<Theme>,
+    theme_follows_system: bool,
     theme_chrome: ThemeChrome,
     /// Per-window scale factor override. None means "use global default".
     scale_factor: Option<f32>,
@@ -27,6 +28,7 @@ impl Default for WindowState {
         Self {
             decorated: true,
             theme: None,
+            theme_follows_system: false,
             theme_chrome: ThemeChrome::default(),
             scale_factor: None,
         }
@@ -145,22 +147,44 @@ impl WindowMap {
             .and_then(|(_, s)| s.theme.as_ref())
     }
 
+    pub fn theme_follows_system(&self, window_id: &str) -> bool {
+        self.forward
+            .get(window_id)
+            .is_some_and(|(_, s)| s.theme_follows_system)
+    }
+
+    pub fn any_theme_follows_system(&self) -> bool {
+        self.forward
+            .values()
+            .any(|(_, state)| state.theme_follows_system)
+    }
+
     pub fn cached_theme_chrome(&self, window_id: &str) -> Option<ThemeChrome> {
         self.forward
             .get(window_id)
             .and_then(|(_, s)| s.theme.as_ref().map(|_| s.theme_chrome))
     }
 
-    pub fn set_theme(&mut self, window_id: &str, theme: Option<Theme>, chrome: ThemeChrome) {
+    pub fn set_theme(&mut self, window_id: &str, theme: Theme, chrome: ThemeChrome) {
         if let Some((_, state)) = self.forward.get_mut(window_id) {
-            state.theme = theme;
+            state.theme = Some(theme);
+            state.theme_follows_system = false;
             state.theme_chrome = chrome;
+        }
+    }
+
+    pub fn set_theme_follows_system(&mut self, window_id: &str) {
+        if let Some((_, state)) = self.forward.get_mut(window_id) {
+            state.theme = None;
+            state.theme_follows_system = true;
+            state.theme_chrome = ThemeChrome::default();
         }
     }
 
     pub fn clear_theme_cache(&mut self) {
         for (_, state) in self.forward.values_mut() {
             state.theme = None;
+            state.theme_follows_system = false;
             state.theme_chrome = ThemeChrome::default();
         }
     }
@@ -177,5 +201,35 @@ impl WindowMap {
         if let Some((_, state)) = self.forward.get_mut(window_id) {
             state.scale_factor = scale_factor;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn system_theme_is_distinct_from_missing_and_cached_theme() {
+        let mut map = WindowMap::new();
+        map.insert("main".to_string(), window::Id::unique());
+
+        assert!(!map.theme_follows_system("main"));
+        assert!(!map.any_theme_follows_system());
+        assert!(map.cached_theme("main").is_none());
+
+        map.set_theme("main", Theme::Light, ThemeChrome::default());
+        assert!(!map.theme_follows_system("main"));
+        assert!(!map.any_theme_follows_system());
+        assert!(matches!(map.cached_theme("main"), Some(Theme::Light)));
+
+        map.set_theme_follows_system("main");
+        assert!(map.theme_follows_system("main"));
+        assert!(map.any_theme_follows_system());
+        assert!(map.cached_theme("main").is_none());
+
+        map.clear_theme_cache();
+        assert!(!map.theme_follows_system("main"));
+        assert!(!map.any_theme_follows_system());
+        assert!(map.cached_theme("main").is_none());
     }
 }

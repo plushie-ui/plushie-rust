@@ -74,7 +74,12 @@ pub fn custom_theme(c: &types::CustomTheme) -> iced::Theme {
     let base_theme = c
         .base
         .as_deref()
-        .map(resolve_builtin)
+        .map(|base| {
+            resolve_builtin(base).unwrap_or_else(|| {
+                log::warn!("unknown custom theme base {base:?}; using dark base");
+                iced::Theme::Dark
+            })
+        })
         .unwrap_or(iced::Theme::Dark);
 
     let mut seed = base_theme.seed();

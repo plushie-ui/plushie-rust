@@ -38,12 +38,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
         let theme_val = plushie_core::types::Theme::extract(&node.props, "theme");
         if let Some(ref t) = theme_val {
             let wire = serde_json::Value::from(t.wire_encode());
-            if let Some((resolved, chrome)) = crate::theming::resolve_theme_and_chrome_only(&wire) {
-                self.themes.insert(key.clone(), resolved);
-                self.chromes.insert(key, chrome);
-            } else {
-                self.themes.remove(&key);
-                self.chromes.remove(&key);
+            match crate::theming::resolve_theme_resolution(&wire) {
+                crate::theming::ThemeResolution::Theme(resolved, chrome) => {
+                    self.themes.insert(key.clone(), resolved);
+                    self.chromes.insert(key, chrome);
+                }
+                crate::theming::ThemeResolution::System
+                | crate::theming::ThemeResolution::Invalid => {
+                    self.themes.remove(&key);
+                    self.chromes.remove(&key);
+                }
             }
         } else {
             self.themes.remove(&key);

@@ -13,8 +13,8 @@ pub use crate::message::{
 };
 pub use crate::shared_state::SharedState;
 pub use crate::theming::{
-    ThemeChrome, resolve_theme, resolve_theme_and_chrome_only, resolve_theme_only,
-    resolve_theme_with_chrome,
+    ThemeChrome, ThemeResolution, resolve_theme, resolve_theme_and_chrome_only, resolve_theme_only,
+    resolve_theme_resolution, resolve_theme_with_chrome,
 };
 pub use crate::validate::{is_validate_props_enabled, set_validate_props};
 pub use crate::widget::render::render;

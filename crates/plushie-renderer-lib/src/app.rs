@@ -125,6 +125,11 @@ impl App {
 
     pub fn theme_ref_for_window(&self, iced_id: window::Id) -> &Theme {
         if let Some(window_id) = self.windows.get_window_id(&iced_id)
+            && self.windows.theme_follows_system(window_id)
+        {
+            return &self.system_theme;
+        }
+        if let Some(window_id) = self.windows.get_window_id(&iced_id)
             && let Some(cached) = self.windows.cached_theme(window_id)
         {
             return cached;
@@ -137,6 +142,11 @@ impl App {
     }
 
     pub fn theme_chrome_for_window(&self, iced_id: window::Id) -> ThemeChrome {
+        if let Some(window_id) = self.windows.get_window_id(&iced_id)
+            && self.windows.theme_follows_system(window_id)
+        {
+            return ThemeChrome::default();
+        }
         if let Some(window_id) = self.windows.get_window_id(&iced_id)
             && let Some(chrome) = self.windows.cached_theme_chrome(window_id)
         {

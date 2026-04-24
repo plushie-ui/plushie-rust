@@ -143,54 +143,148 @@ fn parse_binding(
 /// no extra modifiers may be active. This prevents a rule for `["shift"]`
 /// from firing on `shift+ctrl+A`.
 fn match_modifiers(mods: &keyboard::Modifiers, required: &[String]) -> bool {
-    let want_shift = required.iter().any(|m| m == "shift");
-    let want_ctrl = required.iter().any(|m| m == "ctrl");
-    let want_alt = required.iter().any(|m| m == "alt");
-    let want_logo = required.iter().any(|m| m == "logo");
-    let want_command = required.iter().any(|m| m == "command");
-    let want_jump = required.iter().any(|m| m == "jump");
+    let mut expected = keyboard::Modifiers::empty();
 
-    mods.shift() == want_shift
-        && mods.control() == want_ctrl
-        && mods.alt() == want_alt
-        && mods.logo() == want_logo
-        && mods.command() == want_command
-        && mods.jump() == want_jump
+    for modifier in required {
+        match modifier.as_str() {
+            "shift" => expected |= keyboard::Modifiers::SHIFT,
+            "ctrl" => expected |= keyboard::Modifiers::CTRL,
+            "alt" => expected |= keyboard::Modifiers::ALT,
+            "logo" => expected |= keyboard::Modifiers::LOGO,
+            _ => return false,
+        }
+    }
+
+    mods.shift() == expected.shift()
+        && mods.control() == expected.control()
+        && mods.alt() == expected.alt()
+        && mods.logo() == expected.logo()
+}
+
+fn named_key_target(named_key: &str) -> Option<keyboard::key::Named> {
+    use keyboard::key::Named;
+
+    match named_key {
+        "Enter" => Some(Named::Enter),
+        "Backspace" => Some(Named::Backspace),
+        "Delete" => Some(Named::Delete),
+        "Escape" => Some(Named::Escape),
+        "Tab" => Some(Named::Tab),
+        "Space" => Some(Named::Space),
+        "ArrowLeft" => Some(Named::ArrowLeft),
+        "ArrowRight" => Some(Named::ArrowRight),
+        "ArrowUp" => Some(Named::ArrowUp),
+        "ArrowDown" => Some(Named::ArrowDown),
+        "Home" => Some(Named::Home),
+        "End" => Some(Named::End),
+        "PageUp" => Some(Named::PageUp),
+        "PageDown" => Some(Named::PageDown),
+        "F1" => Some(Named::F1),
+        "F2" => Some(Named::F2),
+        "F3" => Some(Named::F3),
+        "F4" => Some(Named::F4),
+        "F5" => Some(Named::F5),
+        "F6" => Some(Named::F6),
+        "F7" => Some(Named::F7),
+        "F8" => Some(Named::F8),
+        "F9" => Some(Named::F9),
+        "F10" => Some(Named::F10),
+        "F11" => Some(Named::F11),
+        "F12" => Some(Named::F12),
+        _ => None,
+    }
 }
 
 /// Match a named key string against a KeyPress key.
+///
+/// Character keys must use the `key` rule field, which matches through
+/// `Key::to_latin`.
 fn match_named_key(named_key: &str, key: &keyboard::Key) -> bool {
-    use keyboard::key::Named;
-    let target = match named_key {
-        "Enter" => Named::Enter,
-        "Backspace" => Named::Backspace,
-        "Delete" => Named::Delete,
-        "Escape" => Named::Escape,
-        "Tab" => Named::Tab,
-        "Space" => Named::Space,
-        "ArrowLeft" => Named::ArrowLeft,
-        "ArrowRight" => Named::ArrowRight,
-        "ArrowUp" => Named::ArrowUp,
-        "ArrowDown" => Named::ArrowDown,
-        "Home" => Named::Home,
-        "End" => Named::End,
-        "PageUp" => Named::PageUp,
-        "PageDown" => Named::PageDown,
-        "F1" => Named::F1,
-        "F2" => Named::F2,
-        "F3" => Named::F3,
-        "F4" => Named::F4,
-        "F5" => Named::F5,
-        "F6" => Named::F6,
-        "F7" => Named::F7,
-        "F8" => Named::F8,
-        "F9" => Named::F9,
-        "F10" => Named::F10,
-        "F11" => Named::F11,
-        "F12" => Named::F12,
-        _ => return false,
+    let Some(target) = named_key_target(named_key) else {
+        return false;
     };
+
     matches!(key, keyboard::Key::Named(n) if *n == target)
+}
+
+fn warn_key_rule_issues(rule: &KeyRule, node_id: &str) {
+    for modifier in &rule.modifiers {
+        match modifier.as_str() {
+            "shift" | "ctrl" | "alt" | "logo" => {}
+            "command" | "jump" => {
+                log::warn!(
+                    "text_editor key_binding modifier {:?} is unsupported because it maps to \
+                     different physical keys by platform, use `ctrl`, `alt`, `logo`, or \
+                     `shift` [id={}]",
+                    modifier,
+                    node_id
+                );
+            }
+            other => {
+                log::warn!(
+                    "text_editor key_binding modifier {:?} is unsupported [id={}]",
+                    other,
+                    node_id
+                );
+            }
+        }
+    }
+
+    if let Some(named_key) = &rule.named
+        && named_key_target(named_key).is_none()
+    {
+        log::warn!(
+            "text_editor key_binding named key {:?} is unsupported, `named` only matches named \
+             keys like Enter or ArrowLeft, use `key` for character keys [id={}]",
+            named_key,
+            node_id
+        );
+    }
+}
+
+fn parse_modifier_names(value: Option<&Value>, node_id: &str) -> Vec<String> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+
+    let Some(arr) = value.as_array() else {
+        log::warn!(
+            "text_editor key_binding modifiers value {:?} is unsupported, expected an array \
+             of modifier names [id={}]",
+            value,
+            node_id
+        );
+        return vec![String::new()];
+    };
+
+    arr.iter()
+        .map(|modifier| {
+            modifier.as_str().map(str::to_owned).unwrap_or_else(|| {
+                log::warn!(
+                    "text_editor key_binding modifier value {:?} is unsupported, modifier names \
+                     must be strings [id={}]",
+                    modifier,
+                    node_id
+                );
+                String::new()
+            })
+        })
+        .collect()
+}
+
+fn key_rule_matches(rule: &KeyRule, key_press: &text_editor::KeyPress) -> bool {
+    if !match_modifiers(&key_press.modifiers, &rule.modifiers) {
+        return false;
+    }
+
+    if let Some(ref key_char) = rule.key {
+        let latin = key_press.key.to_latin(key_press.physical_key);
+        matches!(latin, Some(c) if c.to_string() == *key_char)
+    } else if let Some(ref named_key) = rule.named {
+        match_named_key(named_key, &key_press.key)
+    } else {
+        true
+    }
 }
 
 /// Pre-parsed key binding rule for closure capture.
@@ -423,15 +517,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                 let obj = rule.as_object()?;
                 let key = obj.get("key").and_then(|v| v.as_str()).map(str::to_owned);
                 let named = obj.get("named").and_then(|v| v.as_str()).map(str::to_owned);
-                let modifiers: Vec<String> = obj
-                    .get("modifiers")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(str::to_owned))
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let modifiers = parse_modifier_names(obj.get("modifiers"), &node.id);
                 if key.is_none() && named.is_none() {
                     // Catch-all rules (no key/named) are valid but log a
                     // hint if it looks accidental (has modifiers but no key).
@@ -459,38 +545,24 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                         }
                     }
                 }
-                Some(KeyRule {
+                let rule = KeyRule {
                     key,
                     named,
                     modifiers,
                     binding_val,
                     is_default,
-                })
+                };
+                warn_key_rule_issues(&rule, &node.id);
+                Some(rule)
             })
             .collect();
 
         if !parsed_rules.is_empty() {
             te = te.key_binding(move |key_press: text_editor::KeyPress| {
                 for rule in &parsed_rules {
-                    // Check modifiers first
-                    if !match_modifiers(&key_press.modifiers, &rule.modifiers) {
+                    if !key_rule_matches(rule, &key_press) {
                         continue;
                     }
-
-                    // Check key match
-                    if let Some(ref key_char) = rule.key {
-                        // Match via to_latin for layout-independent character matching
-                        let latin = key_press.key.to_latin(key_press.physical_key);
-                        match latin {
-                            Some(c) if c.to_string() == *key_char => {}
-                            _ => continue,
-                        }
-                    } else if let Some(ref named_key) = rule.named
-                        && !match_named_key(named_key, &key_press.key)
-                    {
-                        continue;
-                    }
-                    // else: no key/named constraint, matches any key (catch-all rule)
 
                     // Default binding: delegate to iced's built-in handler
                     if rule.is_default {
@@ -663,6 +735,35 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
 mod tests {
     use super::*;
 
+    fn modifier_names(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn key_rule(key: Option<&str>, named: Option<&str>, modifiers: &[&str]) -> KeyRule {
+        KeyRule {
+            key: key.map(str::to_owned),
+            named: named.map(str::to_owned),
+            modifiers: modifier_names(modifiers),
+            binding_val: Value::Null,
+            is_default: false,
+        }
+    }
+
+    fn key_press(
+        key: keyboard::Key,
+        physical_key: keyboard::key::Physical,
+        modifiers: keyboard::Modifiers,
+    ) -> text_editor::KeyPress {
+        text_editor::KeyPress {
+            key: key.clone(),
+            modified_key: key,
+            physical_key,
+            modifiers,
+            text: None,
+            status: text_editor::Status::Active,
+        }
+    }
+
     #[test]
     fn text_motion_aliases_stay_physical_in_rtl() {
         assert_eq!(
@@ -713,5 +814,126 @@ mod tests {
             parse_motion("forward", TextDirection::Auto),
             Some(text_editor::Motion::Right)
         );
+    }
+
+    #[test]
+    fn modifier_matching_requires_exact_physical_modifiers() {
+        assert!(match_modifiers(
+            &keyboard::Modifiers::SHIFT,
+            &modifier_names(&["shift"])
+        ));
+        assert!(!match_modifiers(
+            &(keyboard::Modifiers::SHIFT | keyboard::Modifiers::CTRL),
+            &modifier_names(&["shift"])
+        ));
+        assert!(!match_modifiers(
+            &keyboard::Modifiers::SHIFT,
+            &modifier_names(&["ctrl"])
+        ));
+        assert!(match_modifiers(
+            &(keyboard::Modifiers::SHIFT | keyboard::Modifiers::ALT),
+            &modifier_names(&["shift", "alt"])
+        ));
+    }
+
+    #[test]
+    fn platform_modifier_aliases_never_match() {
+        assert!(!match_modifiers(
+            &keyboard::Modifiers::COMMAND,
+            &modifier_names(&["command"])
+        ));
+        assert!(!match_modifiers(
+            &keyboard::Modifiers::ALT,
+            &modifier_names(&["command"])
+        ));
+        assert!(!match_modifiers(
+            &keyboard::Modifiers::ALT,
+            &modifier_names(&["jump"])
+        ));
+        assert!(!match_modifiers(
+            &keyboard::Modifiers::CTRL,
+            &modifier_names(&["jump"])
+        ));
+        assert!(!match_modifiers(
+            &keyboard::Modifiers::empty(),
+            &modifier_names(&["bogus"])
+        ));
+    }
+
+    #[test]
+    fn malformed_modifier_values_never_match() {
+        let modifiers = parse_modifier_names(
+            Some(&serde_json::json!(["ctrl", 123])),
+            "editor-with-bad-binding",
+        );
+
+        assert!(!match_modifiers(&keyboard::Modifiers::CTRL, &modifiers));
+    }
+
+    #[test]
+    fn malformed_modifier_lists_never_match() {
+        let modifiers =
+            parse_modifier_names(Some(&serde_json::json!(123)), "editor-with-bad-binding");
+
+        assert!(!match_modifiers(&keyboard::Modifiers::empty(), &modifiers));
+    }
+
+    #[test]
+    fn named_key_matching_only_accepts_named_keys() {
+        assert!(match_named_key(
+            "Enter",
+            &keyboard::Key::Named(keyboard::key::Named::Enter)
+        ));
+        assert!(match_named_key(
+            "ArrowLeft",
+            &keyboard::Key::Named(keyboard::key::Named::ArrowLeft)
+        ));
+        assert!(!match_named_key("A", &keyboard::Key::Character("A".into())));
+        assert!(!match_named_key(
+            "Enter",
+            &keyboard::Key::Character("Enter".into())
+        ));
+    }
+
+    #[test]
+    fn character_key_rules_match_through_key_field() {
+        let rule = key_rule(Some("A"), None, &[]);
+        let press = key_press(
+            keyboard::Key::Character("A".into()),
+            keyboard::key::Physical::Unidentified(keyboard::key::NativeCode::Unidentified),
+            keyboard::Modifiers::empty(),
+        );
+
+        assert!(key_rule_matches(&rule, &press));
+    }
+
+    #[test]
+    fn named_character_rules_do_not_match_character_keys() {
+        let rule = key_rule(None, Some("A"), &[]);
+        let press = key_press(
+            keyboard::Key::Character("A".into()),
+            keyboard::key::Physical::Unidentified(keyboard::key::NativeCode::Unidentified),
+            keyboard::Modifiers::empty(),
+        );
+
+        assert!(!key_rule_matches(&rule, &press));
+    }
+
+    #[test]
+    fn key_rule_matching_respects_modifiers_and_named_keys() {
+        let rule = key_rule(None, Some("ArrowLeft"), &["shift"]);
+        let matching_press = key_press(
+            keyboard::Key::Named(keyboard::key::Named::ArrowLeft),
+            keyboard::key::Physical::Code(keyboard::key::Code::ArrowLeft),
+            keyboard::Modifiers::SHIFT,
+        );
+        let extra_modifier_press = key_press(
+            keyboard::Key::Named(keyboard::key::Named::ArrowLeft),
+            keyboard::key::Physical::Code(keyboard::key::Code::ArrowLeft),
+            keyboard::Modifiers::SHIFT | keyboard::Modifiers::CTRL,
+        );
+
+        assert!(key_rule_matches(&rule, &matching_press));
+        assert!(!key_rule_matches(&rule, &extra_modifier_press));
     }
 }

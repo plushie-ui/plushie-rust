@@ -24,6 +24,7 @@ use std::io::BufRead;
 use plushie_widget_sdk::protocol::{IncomingMessage, SessionMessage};
 use plushie_widget_sdk::runtime::Codec;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 /// Fatal startup failure.
 ///
@@ -219,8 +220,9 @@ pub(crate) fn read_required_settings(
 ///   fatal: running with mismatched protocols leads to subtle,
 ///   hard-to-debug failures.
 /// - **Token** (listen mode): if `expected_token` is `Some`, the
-///   settings must contain a matching `token` field. Comparison uses
-///   constant-time equality to prevent timing attacks.
+///   settings must contain either a matching `token` field or a
+///   matching `token_sha256` field. Comparison uses constant-time
+///   equality to prevent timing attacks.
 ///
 /// On success, applies the prop validation flag via `OnceLock`, and
 /// emits a `required_widgets_missing` diagnostic if any names declared
@@ -253,18 +255,17 @@ pub(crate) fn validate_settings(
 
     // Token verification (listen mode).
     if let Some(expected_tok) = expected_token {
-        match settings.get("token").and_then(|v| v.as_str()) {
-            Some(tok) if constant_time_eq(tok.as_bytes(), expected_tok.as_bytes()) => {
-                log::info!("token verified");
-            }
-            Some(_) => {
-                return Err(StartupError::new("token mismatch: connection rejected"));
-            }
-            None => {
-                return Err(StartupError::new(
-                    "missing token in Settings: connection rejected",
-                ));
-            }
+        let token = settings.get("token").and_then(|v| v.as_str());
+        let token_sha256 = settings.get("token_sha256").and_then(|v| v.as_str());
+
+        if token_matches(expected_tok, token, token_sha256) {
+            log::info!("token credential verified");
+        } else if token.is_some() || token_sha256.is_some() {
+            return Err(StartupError::new("token mismatch: connection rejected"));
+        } else {
+            return Err(StartupError::new(
+                "missing token credential: connection rejected",
+            ));
         }
     }
 
@@ -325,6 +326,22 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         diff |= x ^ y;
     }
     diff == 0
+}
+
+fn token_matches(expected: &str, token: Option<&str>, token_sha256: Option<&str>) -> bool {
+    if token
+        .map(|tok| constant_time_eq(tok.as_bytes(), expected.as_bytes()))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    let Some(provided_sha256) = token_sha256 else {
+        return false;
+    };
+
+    let expected_sha256 = format!("{:x}", Sha256::digest(expected.as_bytes()));
+    constant_time_eq(provided_sha256.as_bytes(), expected_sha256.as_bytes())
 }
 
 /// Human-readable name for an [`IncomingMessage`] variant, for error
@@ -439,5 +456,36 @@ mod tests {
             err.to_string()
                 .contains("missing or invalid protocol_version")
         );
+    }
+
+    #[test]
+    fn validate_settings_accepts_plaintext_token() {
+        let settings = json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "token": "listen-token",
+        });
+
+        validate_settings(&settings, Some("listen-token"), &[]).unwrap();
+    }
+
+    #[test]
+    fn validate_settings_accepts_token_sha256() {
+        let settings = json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "token_sha256": "af84a4f1a6d2ff0ec31b6cae05bca90736ddc3b8d925661db8bd19ecf37a6cab",
+        });
+
+        validate_settings(&settings, Some("listen-token"), &[]).unwrap();
+    }
+
+    #[test]
+    fn validate_settings_rejects_token_sha256_mismatch() {
+        let settings = json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "token_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        });
+
+        let err = validate_settings(&settings, Some("listen-token"), &[]).unwrap_err();
+        assert!(err.to_string().contains("token mismatch"));
     }
 }

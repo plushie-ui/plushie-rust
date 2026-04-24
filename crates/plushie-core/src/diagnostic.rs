@@ -49,11 +49,11 @@ pub enum Diagnostic {
         /// Widget type name (e.g. `"container"`).
         type_name: String,
     },
-    /// The top level of the view tree holds more than one `window`
-    /// child. Elixir / other SDKs tolerate this as peer windows, but
-    /// the Rust SDK's idiomatic shape is one root window plus
-    /// auxiliary windows opened via `Command::open_window`. This
-    /// diagnostic flags the shape at render time.
+    /// The app returned multiple top-level windows on a target that
+    /// cannot host peer OS windows. Native transports accept
+    /// multi-window views directly; WASM targets (which have no
+    /// OS-level multi-window capability) emit this diagnostic and
+    /// typically collapse the list to a single visible window.
     MultipleTopLevelWindows {
         /// IDs of the peer windows observed at the top level.
         window_ids: Vec<String>,

@@ -81,24 +81,6 @@ pub fn normalize(tree: &TreeNode) -> (TreeNode, Vec<Diagnostic>) {
     let mut transform = NormalizeTransform::new();
     let mut ctx = WalkCtx::default();
 
-    // Top-level shape check: more than one `window` child directly
-    // under the root is supported by other host SDKs as peer windows,
-    // but the Rust SDK's idiomatic shape is one root window plus
-    // others opened via `Command::open_window`. Flag the shape here
-    // before the walk so the diagnostic is surfaced alongside the
-    // rest and the render pipeline still treats the tree uniformly.
-    let peer_windows: Vec<String> = tree
-        .children
-        .iter()
-        .filter(|c| c.type_name == "window" && !c.id.is_empty())
-        .map(|c| c.id.clone())
-        .collect();
-    if peer_windows.len() > 1 {
-        ctx.warnings.push(Diagnostic::MultipleTopLevelWindows {
-            window_ids: peer_windows,
-        });
-    }
-
     walk(&mut result, &mut [&mut transform], &mut ctx);
     let (warnings, _ctx) = finalize_a11y(&mut result, ctx);
     (result, warnings)
@@ -1480,28 +1462,6 @@ mod tests {
                 .iter()
                 .any(|w| matches!(w, Diagnostic::EmptyId { .. })),
             "expected empty_id diagnostic, got {warnings:?}"
-        );
-    }
-
-    #[test]
-    fn multiple_top_level_windows_emits_diagnostic() {
-        // Tree with two window children at the root triggers the
-        // peer-windows shape diagnostic regardless of nested scopes.
-        let tree = TreeNode {
-            id: "auto:col:1".to_string(),
-            type_name: "column".to_string(),
-            props: plushie_core::protocol::Props::from(plushie_core::protocol::PropMap::new()),
-            children: vec![
-                node("main", "window", vec![]),
-                node("secondary", "window", vec![]),
-            ],
-        };
-        let (_, warnings) = normalize(&tree);
-        assert!(
-            warnings
-                .iter()
-                .any(|w| matches!(w, Diagnostic::MultipleTopLevelWindows { .. })),
-            "expected multiple_top_level_windows diagnostic, got {warnings:?}"
         );
     }
 

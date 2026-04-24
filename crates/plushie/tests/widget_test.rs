@@ -287,16 +287,14 @@ impl App for CachedApp {
         Command::none()
     }
 
-    fn view(model: &Self::Model, widgets: &mut WidgetRegistrar) -> Option<View> {
-        Some(
-            window("main")
-                .child(
-                    plushie::widget::WidgetView::<CountingWidget>::new("counter")
-                        .prop("label", model.label)
-                        .register(widgets),
-                )
-                .into(),
-        )
+    fn view(model: &Self::Model, widgets: &mut WidgetRegistrar) -> ViewList {
+        window("main")
+            .child(
+                plushie::widget::WidgetView::<CountingWidget>::new("counter")
+                    .prop("label", model.label)
+                    .register(widgets),
+            )
+            .into()
     }
 }
 
@@ -376,14 +374,10 @@ fn widget_without_cache_key_always_re_runs_view() {
             Command::none()
         }
 
-        fn view(_model: &Self::Model, widgets: &mut WidgetRegistrar) -> Option<View> {
-            Some(
-                window("main")
-                    .child(
-                        plushie::widget::WidgetView::<NoCacheWidget>::new("nc").register(widgets),
-                    )
-                    .into(),
-            )
+        fn view(_model: &Self::Model, widgets: &mut WidgetRegistrar) -> ViewList {
+            window("main")
+                .child(plushie::widget::WidgetView::<NoCacheWidget>::new("nc").register(widgets))
+                .into()
         }
     }
 

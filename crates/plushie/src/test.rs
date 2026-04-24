@@ -1306,6 +1306,12 @@ pub fn assert_tree_hash<A: App>(session: &TestSession<A>, name: &str, golden_dir
         .unwrap_or_else(|e| panic!("failed to read golden file {path}: {e}"));
     let expected = stored.trim();
 
+    if hash != expected {
+        eprintln!(
+            "[debug] tree for {name}:\n{}",
+            serde_json::to_string_pretty(&session.tree).unwrap_or_default()
+        );
+    }
     assert_eq!(
         hash, expected,
         "tree hash mismatch for \"{name}\" (run with PLUSHIE_UPDATE_SNAPSHOTS=1 to update)"
@@ -1494,7 +1500,7 @@ impl<W: crate::widget::Widget> App for WidgetHarness<W> {
         Command::None
     }
 
-    fn view(model: &Self, widgets: &mut crate::widget::WidgetRegistrar) -> Option<crate::View> {
+    fn view(model: &Self, widgets: &mut crate::widget::WidgetRegistrar) -> crate::ViewList {
         use crate::ui::*;
 
         let mut wv = crate::widget::WidgetView::<W>::new(&model.widget_id);
@@ -1502,11 +1508,9 @@ impl<W: crate::widget::Widget> App for WidgetHarness<W> {
             wv = wv.prop(key, value.clone());
         }
 
-        Some(
-            window("main")
-                .child(column().child(wv.register(widgets)))
-                .into(),
-        )
+        window("main")
+            .child(column().child(wv.register(widgets)))
+            .into()
     }
 }
 

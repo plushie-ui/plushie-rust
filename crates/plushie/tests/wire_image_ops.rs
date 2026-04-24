@@ -161,8 +161,8 @@ impl App for ImageApp {
         Command::none()
     }
 
-    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
-        Some(window("main").child(text("image ops").id("display")).into())
+    fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+        window("main").child(text("image ops").id("display")).into()
     }
 
     fn restart_policy() -> plushie::settings::RestartPolicy {

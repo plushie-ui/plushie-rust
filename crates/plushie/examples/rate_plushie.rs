@@ -250,40 +250,38 @@ impl App for RatePlushie {
         Command::none()
     }
 
-    fn view(model: &Self, widgets: &mut WidgetRegistrar) -> Option<View> {
+    fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {
         let p: f64 = if model.dark_mode { 1.0 } else { 0.0 };
         let t = theme(p);
 
-        Some(
-            window("main")
-                .title("Rate Plushie")
-                .child(
-                    scrollable().child(
-                        column()
-                            .id("page")
-                            .spacing(24.0)
-                            .padding(Padding::new(32.0, 24.0, 32.0, 24.0))
-                            .width(Fill)
-                            .child(
-                                text("Rate Plushie")
-                                    .id("heading")
-                                    .size(28.0)
-                                    .color(Color::hex(&t.text))
-                                    .a11y(&A11y::new().role(Role::Heading).level(1)),
-                            )
-                            .child(rating_card(model, &t, widgets))
-                            .child(
-                                text("Reviews")
-                                    .id("reviews-heading")
-                                    .size(20.0)
-                                    .color(Color::hex(&t.text))
-                                    .a11y(&A11y::new().role(Role::Heading).level(2)),
-                            )
-                            .child(reviews_list(&model.reviews, &t)),
-                    ),
-                )
-                .into(),
-        )
+        window("main")
+            .title("Rate Plushie")
+            .child(
+                scrollable().child(
+                    column()
+                        .id("page")
+                        .spacing(24.0)
+                        .padding(Padding::new(32.0, 24.0, 32.0, 24.0))
+                        .width(Fill)
+                        .child(
+                            text("Rate Plushie")
+                                .id("heading")
+                                .size(28.0)
+                                .color(Color::hex(&t.text))
+                                .a11y(&A11y::new().role(Role::Heading).level(1)),
+                        )
+                        .child(rating_card(model, &t, widgets))
+                        .child(
+                            text("Reviews")
+                                .id("reviews-heading")
+                                .size(20.0)
+                                .color(Color::hex(&t.text))
+                                .a11y(&A11y::new().role(Role::Heading).level(2)),
+                        )
+                        .child(reviews_list(&model.reviews, &t)),
+                ),
+            )
+            .into()
     }
 }
 

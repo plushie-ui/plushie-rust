@@ -85,7 +85,7 @@ impl App for TodoApp {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
         let filtered: Vec<&TodoItem> = model
             .todos
             .iter()
@@ -96,35 +96,33 @@ impl App for TodoApp {
             })
             .collect();
 
-        Some(
-            window("main")
-                .title("Todos")
-                .child(
-                    column()
-                        .id("app")
-                        .padding(20)
-                        .spacing(12.0)
-                        .width(Fill)
-                        .child(text("My Todos").id("title").size(24.0))
-                        .child(
-                            text_input("new_todo", &model.input)
-                                .placeholder("What needs doing?")
-                                .on_submit(true),
-                        )
-                        .child(row().spacing(8.0).children([
-                            button("filter_all", "All"),
-                            button("filter_active", "Active"),
-                            button("filter_done", "Done"),
-                        ]))
-                        .child(
-                            column()
-                                .id("list")
-                                .spacing(4.0)
-                                .children(filtered.iter().map(|item| todo_row(item))),
-                        ),
-                )
-                .into(),
-        )
+        window("main")
+            .title("Todos")
+            .child(
+                column()
+                    .id("app")
+                    .padding(20)
+                    .spacing(12.0)
+                    .width(Fill)
+                    .child(text("My Todos").id("title").size(24.0))
+                    .child(
+                        text_input("new_todo", &model.input)
+                            .placeholder("What needs doing?")
+                            .on_submit(true),
+                    )
+                    .child(row().spacing(8.0).children([
+                        button("filter_all", "All"),
+                        button("filter_active", "Active"),
+                        button("filter_done", "Done"),
+                    ]))
+                    .child(
+                        column()
+                            .id("list")
+                            .spacing(4.0)
+                            .children(filtered.iter().map(|item| todo_row(item))),
+                    ),
+            )
+            .into()
     }
 }
 

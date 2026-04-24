@@ -427,7 +427,7 @@ the widget's builder:
 use plushie::prelude::*;
 use my_gauge::MyGauge;
 
-fn view(model: &Model, _widgets: &mut WidgetRegistrar) -> View {
+fn view(model: &Model, _widgets: &mut WidgetRegistrar) -> ViewList {
     window("main")
         .child(MyGauge::new("battery").value(model.battery).max(1.0))
         .into()

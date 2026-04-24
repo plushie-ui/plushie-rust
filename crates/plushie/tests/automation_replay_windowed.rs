@@ -86,16 +86,14 @@ impl App for Counter {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
-        Some(
-            window("main")
-                .child(
-                    column()
-                        .child(text(&format!("{}", model.count)).id("display"))
-                        .child(button("inc", "+")),
-                )
-                .into(),
-        )
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+        window("main")
+            .child(
+                column()
+                    .child(text(&format!("{}", model.count)).id("display"))
+                    .child(button("inc", "+")),
+            )
+            .into()
     }
 }
 

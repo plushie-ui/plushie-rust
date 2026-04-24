@@ -57,12 +57,11 @@ pub fn prepare_tree<A: App>(
     widget_view_cache: &mut WidgetViewCache,
 ) -> (TreeNode, Vec<plushie_core::Diagnostic>) {
     let mut registrar = crate::widget::WidgetRegistrar::new();
-    // view() returning None is a valid "no UI" signal (loading,
-    // transition, error state). Fall back to an empty tree so the
-    // renderer still has a structurally valid snapshot to diff.
-    let mut tree = A::view(model, &mut registrar)
-        .unwrap_or_else(crate::View::empty)
-        .into_tree_node();
+    // view() returns a ViewList of top-level windows. An empty list is
+    // a valid "no UI" signal (loading, transition, error state);
+    // multi-window lists wrap under a synthetic root container so the
+    // diff pipeline sees a uniform tree shape.
+    let mut tree: TreeNode = A::view(model, &mut registrar).into_tree_node();
 
     // Merge newly-registered widget expanders into the store before
     // walking so the expand transform has up-to-date state.

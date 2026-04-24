@@ -39,6 +39,8 @@ pub use crate::widget::WidgetRegistrar;
 // View
 /// Return type for [`App::view`]: a retained UI tree node.
 pub use crate::View;
+/// Collection of top-level windows yielded by [`App::view`].
+pub use crate::ViewList;
 
 // Events
 /// Top-level event enum delivered to `update`.

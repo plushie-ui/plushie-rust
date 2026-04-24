@@ -51,7 +51,7 @@ impl App for TwoWindowApp {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
         let mut views: Vec<View> = vec![
             window("main")
                 .title("Main")
@@ -77,7 +77,7 @@ impl App for TwoWindowApp {
         // Wrap both windows in a synthetic container so normalize can
         // walk the tree uniformly; the renderer splits top-level
         // windows out in the real runner.
-        Some(row().children(views).into())
+        row().children(views).into()
     }
 }
 

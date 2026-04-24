@@ -124,56 +124,53 @@ impl App for ColorPickerApp {
         Command::none()
     }
 
-    fn view(model: &Self, widgets: &mut WidgetRegistrar) -> Option<View> {
+    fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {
         let hex = hsv_to_hex(model.hue, model.saturation, model.value);
         let is_initial = model.hue == 0.0 && model.saturation == 1.0 && model.value == 1.0;
 
-        Some(
-            window("color_picker")
-                .title("Color Picker")
-                .child(
-                    column()
-                        .spacing(16.0)
-                        .padding(20)
-                        .align_x(Align::Center)
-                        .child(WidgetView::<ColorPickerWidget>::new("picker").register(widgets))
-                        .child(
-                            row()
-                                .spacing(16.0)
-                                .align_y(Align::Center)
-                                .child(
-                                    container()
-                                        .id("swatch")
-                                        .width(48.0)
-                                        .height(48.0)
-                                        .background(Color::hex(&hex))
-                                        .border(
-                                            Border::new().color("#cccccc").width(1.0).radius(4.0),
-                                        )
-                                        .a11y(
-                                            &A11y::new()
-                                                .role(Role::Image)
-                                                .label(format!("Selected color: {hex}")),
-                                        ),
-                                )
-                                .child(
-                                    column()
-                                        .spacing(4.0)
-                                        .child(
-                                            text(&hex).id("hex_display").size(18.0).a11y(
-                                                &A11y::new().live(Live::Polite).busy(is_initial),
-                                            ),
-                                        )
-                                        .child(
-                                            text(&hsv_label(model))
-                                                .id("hsv_display")
-                                                .a11y(&A11y::new().live(Live::Polite)),
-                                        ),
-                                ),
-                        ),
-                )
-                .into(),
-        )
+        window("color_picker")
+            .title("Color Picker")
+            .child(
+                column()
+                    .spacing(16.0)
+                    .padding(20)
+                    .align_x(Align::Center)
+                    .child(WidgetView::<ColorPickerWidget>::new("picker").register(widgets))
+                    .child(
+                        row()
+                            .spacing(16.0)
+                            .align_y(Align::Center)
+                            .child(
+                                container()
+                                    .id("swatch")
+                                    .width(48.0)
+                                    .height(48.0)
+                                    .background(Color::hex(&hex))
+                                    .border(Border::new().color("#cccccc").width(1.0).radius(4.0))
+                                    .a11y(
+                                        &A11y::new()
+                                            .role(Role::Image)
+                                            .label(format!("Selected color: {hex}")),
+                                    ),
+                            )
+                            .child(
+                                column()
+                                    .spacing(4.0)
+                                    .child(
+                                        text(&hex)
+                                            .id("hex_display")
+                                            .size(18.0)
+                                            .a11y(&A11y::new().live(Live::Polite).busy(is_initial)),
+                                    )
+                                    .child(
+                                        text(&hsv_label(model))
+                                            .id("hsv_display")
+                                            .a11y(&A11y::new().live(Live::Polite)),
+                                    ),
+                            ),
+                    ),
+            )
+            .into()
     }
 }
 

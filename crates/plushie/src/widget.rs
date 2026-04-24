@@ -75,7 +75,7 @@
 //!
 //! ```ignore
 //! // Untyped API (any prop name/value):
-//! fn view(model: &Self, widgets: &mut WidgetRegistrar) -> Option<View> {
+//! fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {
 //!     window("main").child(
 //!         WidgetView::<StarRating>::new("rating")
 //!             .prop("rating", model.rating)
@@ -84,7 +84,7 @@
 //! }
 //!
 //! // Typed API (compile-time checked props):
-//! fn view(model: &Self, widgets: &mut WidgetRegistrar) -> Option<View> {
+//! fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {
 //!     window("main").child(
 //!         WidgetView::<StarRating>::from_builder(
 //!             StarRating::builder("rating").rating(model.rating).0
@@ -349,7 +349,7 @@ impl<W: Widget> WidgetView<W> {
     /// the view tree:
     ///
     /// ```ignore
-    /// fn view(model: &Self::Model, widgets: &mut WidgetRegistrar) -> Option<View> {
+    /// fn view(model: &Self::Model, widgets: &mut WidgetRegistrar) -> ViewList {
     ///     window("main").child(
     ///         WidgetView::<StarRating>::new("rating")
     ///             .prop("rating", model.rating)

@@ -1747,8 +1747,8 @@ mod build_settings_tests {
         fn update(_model: &mut Self::Model, _event: Event) -> crate::Command {
             crate::Command::none()
         }
-        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> Option<crate::View> {
-            Some(crate::ui::window("main").into())
+        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::ViewList {
+            crate::ui::window("main").into()
         }
         fn subscribe(_model: &Self::Model) -> Vec<Subscription> {
             vec![]
@@ -1770,8 +1770,8 @@ mod build_settings_tests {
         fn update(_model: &mut Self::Model, _event: Event) -> crate::Command {
             crate::Command::none()
         }
-        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> Option<crate::View> {
-            Some(crate::ui::window("main").into())
+        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::ViewList {
+            crate::ui::window("main").into()
         }
         fn subscribe(_model: &Self::Model) -> Vec<Subscription> {
             vec![]

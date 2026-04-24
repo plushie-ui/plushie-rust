@@ -27,8 +27,8 @@
 //!         Command::none()
 //!     }
 //!
-//!     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
-//!         Some(window("main").title("Counter").child(
+//!     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> impl Into<ViewList> {
+//!         window("main").title("Counter").child(
 //!             column().spacing(8).padding(16).children([
 //!                 text(&format!("Count: {}", model.count)),
 //!                 row().spacing(8).children([
@@ -36,7 +36,7 @@
 //!                     button("dec", "-"),
 //!                 ]),
 //!             ])
-//!         ).into())
+//!         ).into()
 //!     }
 //! }
 //!
@@ -225,6 +225,101 @@ impl View {
     }
 }
 
+/// The list of top-level windows returned from [`App::view`].
+///
+/// `view` returns `impl Into<ViewList>`, so implementors can yield a
+/// bare [`View`] (single window), a `Vec<View>` (peer windows on
+/// native targets), an array `[w1, w2]`, or `()` for "no windows"
+/// (loading, transition, or error screens where there is nothing to
+/// display yet).
+///
+/// The runtime collapses the list into a single tree root at the
+/// boundary: a single entry is promoted to the root, multiple entries
+/// wrap under a synthetic `"root"` container, and an empty list
+/// renders an empty container. Apps never construct the synthetic
+/// root by hand.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ViewList(Vec<View>);
+
+impl ViewList {
+    /// Create a new empty list (renders an empty tree).
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    /// Returns the windows as a slice.
+    pub fn windows(&self) -> &[View] {
+        &self.0
+    }
+
+    /// Consumes the list and returns the underlying `Vec<View>`.
+    pub fn into_windows(self) -> Vec<View> {
+        self.0
+    }
+
+    /// Returns `true` if the list contains no windows.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Collapse the list into a single wire-level tree root.
+    ///
+    /// `[]` becomes an empty container, `[single]` promotes the view
+    /// to the root directly, and multiple entries wrap under a
+    /// synthetic `"root"` container so the diff pipeline can treat
+    /// the tree uniformly.
+    pub(crate) fn into_tree_node(self) -> plushie_core::protocol::TreeNode {
+        match self.0.len() {
+            0 => View::empty().into_tree_node(),
+            1 => {
+                let mut windows = self.0;
+                windows.remove(0).into_tree_node()
+            }
+            _ => plushie_core::protocol::TreeNode {
+                id: "root".to_string(),
+                type_name: "container".to_string(),
+                props: plushie_core::protocol::Props::default(),
+                children: self.0.into_iter().map(View::into_tree_node).collect(),
+            },
+        }
+    }
+}
+
+// Any builder or node that converts into a `View` (the `ui::*`
+// builders, as well as `View` itself) can return directly from
+// `App::view` for single-window apps - the runtime wraps the single
+// entry for them. For multi-window, return `Vec<View>` or `[View; N]`
+// instead; those have their own explicit impls below.
+impl<T: Into<View>> From<T> for ViewList {
+    fn from(view: T) -> Self {
+        Self(vec![view.into()])
+    }
+}
+
+impl From<Vec<View>> for ViewList {
+    fn from(views: Vec<View>) -> Self {
+        Self(views)
+    }
+}
+
+impl From<Option<View>> for ViewList {
+    fn from(view: Option<View>) -> Self {
+        Self(view.into_iter().collect())
+    }
+}
+
+impl<const N: usize> From<[View; N]> for ViewList {
+    fn from(views: [View; N]) -> Self {
+        Self(views.into())
+    }
+}
+
+impl From<()> for ViewList {
+    fn from(_: ()) -> Self {
+        Self::new()
+    }
+}
+
 /// The core trait for plushie applications.
 ///
 /// Implement `init`, `update`, and `view` to create an app.
@@ -257,28 +352,44 @@ pub trait App: Send + 'static {
     fn update(model: &mut Self::Model, event: Event) -> Command;
 
     /// Build the view tree from the current model. Called after
-    /// every update. Return a tree built from UI builder functions
-    /// (`window`, `column`, `button`, `text`, etc.).
+    /// every update. Returns the list of top-level windows to
+    /// render, built from UI builder functions (`window`, `column`,
+    /// `button`, `text`, etc.).
     ///
-    /// Returning `Option<View>` is also accepted; `None` renders
-    /// an empty tree, useful for loading, transition, or error
-    /// screens where the app has nothing to display yet. The
-    /// runtime replaces the UI with an empty container and the
-    /// next `Some(...)` restores normal rendering.
+    /// [`ViewList`] has `From` impls that cover the common shapes,
+    /// so a trailing `.into()` is enough in each case:
+    ///
+    /// - Single window: return a window builder or [`View`].
+    ///   ```ignore
+    ///   fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+    ///       window("main").child(main_content(model)).into()
+    ///   }
+    ///   ```
+    /// - Multiple peer windows: return a `Vec<View>`.
+    ///   ```ignore
+    ///   fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+    ///       vec![
+    ///           window("main").child(main_content(model)).into(),
+    ///           window("detail").child(detail_content(model)).into(),
+    ///       ].into()
+    ///   }
+    ///   ```
+    /// - Nothing to show (loading, transition, error state): return an empty list.
+    ///   ```ignore
+    ///   fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+    ///       ViewList::new()
+    ///   }
+    ///   ```
     ///
     /// Use `widgets` to register composite widgets:
     /// ```ignore
-    /// fn view(model: &Self, widgets: &mut WidgetRegistrar) -> Option<View> {
-    ///     Some(window("main").child(
+    /// fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {
+    ///     window("main").child(
     ///         WidgetView::<MyWidget>::new("w1").register(widgets)
-    ///     ).into())
+    ///     ).into()
     /// }
     /// ```
-    ///
-    /// Return `None` to render an empty tree (loading, transition,
-    /// or error states).
-    ///
-    fn view(model: &Self::Model, widgets: &mut widget::WidgetRegistrar) -> Option<View>;
+    fn view(model: &Self::Model, widgets: &mut widget::WidgetRegistrar) -> ViewList;
 
     /// Active subscriptions. Called after every update. The runtime
     /// diffs the returned list and starts/stops subscriptions as

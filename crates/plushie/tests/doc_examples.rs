@@ -45,24 +45,22 @@ impl App for Counter {
         Command::none()
     }
 
-    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> Option<View> {
-        Some(
-            window("main")
-                .title("Counter")
-                .child(
-                    column()
-                        .spacing(8.0)
-                        .padding(16)
-                        .child(text(&format!("Count: {}", model.count)))
-                        .child(
-                            row()
-                                .spacing(8.0)
-                                .child(button("inc", "+"))
-                                .child(button("dec", "-")),
-                        ),
-                )
-                .into(),
-        )
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+        window("main")
+            .title("Counter")
+            .child(
+                column()
+                    .spacing(8.0)
+                    .padding(16)
+                    .child(text(&format!("Count: {}", model.count)))
+                    .child(
+                        row()
+                            .spacing(8.0)
+                            .child(button("inc", "+"))
+                            .child(button("dec", "-")),
+                    ),
+            )
+            .into()
     }
 }
 
@@ -213,16 +211,14 @@ impl App for WrappedApp {
         Command::none()
     }
 
-    fn view(_model: &(), widgets: &mut WidgetRegistrar) -> Option<View> {
-        Some(
-            window("main")
-                .child(
-                    WidgetView::<StarRating>::new("rating")
-                        .prop("rating", 3i64)
-                        .register(widgets),
-                )
-                .into(),
-        )
+    fn view(_model: &(), widgets: &mut WidgetRegistrar) -> ViewList {
+        window("main")
+            .child(
+                WidgetView::<StarRating>::new("rating")
+                    .prop("rating", 3i64)
+                    .register(widgets),
+            )
+            .into()
     }
 }
 

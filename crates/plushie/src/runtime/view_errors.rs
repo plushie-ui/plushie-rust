@@ -170,11 +170,10 @@ pub fn run_guarded_view_wire<A: App>(
 ) -> ViewOutcome {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut registrar = WidgetRegistrar::new();
-        // None from view() means "render an empty tree"; normalize
-        // the sentinel so wire-mode diff still sees a valid root.
-        let view = A::view(model, &mut registrar)
-            .unwrap_or_else(crate::View::empty)
-            .into_tree_node();
+        // view() returns a ViewList; collapse it to a single root
+        // (empty container, single window, or synthetic multi-window
+        // container) so wire-mode diff still sees a valid shape.
+        let view = A::view(model, &mut registrar).into_tree_node();
         crate::runtime::normalize::normalize(&view)
     }));
     match result {
@@ -439,8 +438,8 @@ mod tests {
             Command::None
         }
 
-        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> Option<crate::View> {
-            Some(crate::View::empty())
+        fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::ViewList {
+            crate::View::empty().into()
         }
     }
 

@@ -847,4 +847,26 @@ mod tests {
 
         assert!(parse_descriptor(&descriptor, Some(0.0)).is_some());
     }
+
+    #[test]
+    fn transition_manager_spring_survives_large_headless_delta() {
+        let descriptor = json!({
+            "type": "spring",
+            "to": 100.0,
+            "stiffness": 4000.0,
+            "damping": 80.0,
+            "mass": 1.0
+        });
+        let animation = parse_descriptor(&descriptor, Some(0.0)).unwrap();
+        let mut manager = TransitionManager::new();
+        manager.start_animation("panel".to_string(), "width".to_string(), animation);
+        let mut props = HashMap::new();
+
+        manager.advance_with_timestamp(0, &mut props);
+        manager.advance_with_timestamp(100, &mut props);
+
+        let value = props["panel"]["width"].as_f64().unwrap();
+        assert!(value.is_finite());
+        assert!((0.0..=150.0).contains(&value));
+    }
 }

@@ -1205,10 +1205,11 @@ thread creates a replacement.
 
 ### AdvanceFrame
 
-Advance the animation clock by one frame. If `on_animation_frame`
-is subscribed, emits an `animation_frame` event with the given
-timestamp. Used for deterministic animation testing in headless/mock
-mode.
+Advance the animation clock by one frame in headless/mock mode. If
+`on_animation_frame` is subscribed, emits an `animation_frame` event
+with the given timestamp. Used for deterministic animation testing.
+Windowed mode is driven by iced frame ticks, so the renderer ignores
+`AdvanceFrame` there and logs a warning.
 
 ```json
 {

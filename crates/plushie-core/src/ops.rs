@@ -213,9 +213,13 @@ pub enum RendererOp {
         /// Correlation tag used for matching responses.
         tag: String,
     },
-    /// Advance the animation frame to the given timestamp.
+    /// Advance renderer-side animation to the given timestamp in
+    /// headless/mock wire testing.
+    ///
+    /// Windowed daemon mode is driven by iced frame ticks instead and
+    /// ignores this operation.
     AdvanceFrame {
-        /// Timestamp in milliseconds since the Unix epoch.
+        /// Timestamp in milliseconds.
         timestamp: u64,
     },
 }

@@ -972,7 +972,11 @@ impl Command {
         })
     }
 
-    /// Advance the animation frame to the given timestamp.
+    /// Advance renderer-side animation to the given timestamp in
+    /// headless/mock wire testing.
+    ///
+    /// Windowed daemon mode is driven by iced frame ticks instead; the
+    /// renderer ignores this command there and logs a warning.
     pub fn advance_frame(timestamp: u64) -> Self {
         Self::Renderer(RendererOp::AdvanceFrame { timestamp })
     }

@@ -190,10 +190,10 @@ pub enum IncomingMessage {
         /// Path command list.
         commands: Vec<WidgetCommand>,
     },
-    /// Advance the animation clock by one frame (headless/test mode).
+    /// Advance the animation clock by one frame in headless/mock mode.
     /// Emits an `animation_frame` event if `on_animation_frame` is subscribed.
     AdvanceFrame {
-        /// Timestamp in milliseconds since the Unix epoch.
+        /// Timestamp in milliseconds, forwarded to `animation_frame`.
         timestamp: u64,
     },
     /// Register a stub response for an effect kind. When an effect of

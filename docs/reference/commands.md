@@ -249,8 +249,8 @@ to be bundled or have notification entitlements.
   variants cover runner teardown, unimplemented effects, and
   responses that outlived their tracker entries respectively.
 
-For tests, `TestSession::stub_effect(kind, result)` intercepts
-effects before they reach the runner. See
+For tests, `TestSession::register_effect_stub(kind, response)`
+intercepts effects before they reach the runner. See
 [Testing](testing.md).
 
 ## Focus
@@ -467,7 +467,7 @@ fn update(model: &mut Self, event: Event) -> Command {
 ```
 
 This keeps every asynchronous hop visible in `update` and
-testable with `TestSession::drain_async_results`.
+testable with `TestSession::await_async`.
 
 ### Lifting values into the loop
 

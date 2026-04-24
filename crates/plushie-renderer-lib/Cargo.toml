@@ -34,7 +34,7 @@ missing_panics_doc = "allow"
 [dependencies]
 plushie-core = { workspace = true }
 plushie-widget-sdk = { workspace = true }
-iced = { version = "0.8", package = "plushie-iced", features = ["advanced", "canvas", "a11y"] }
+iced = { version = "0.8", package = "plushie-iced", default-features = false, features = ["advanced", "canvas", "a11y"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 smol_str = "0.2"
@@ -44,7 +44,7 @@ base64 = { workspace = true }
 parking_lot = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-iced = { version = "0.8", package = "plushie-iced", features = ["sysinfo", "linux-theme-detection"] }
+iced = { version = "0.8", package = "plushie-iced", default-features = false, features = ["thread-pool", "tiny-skia", "x11", "wayland", "sysinfo", "linux-theme-detection"] }
 tokio = { workspace = true, features = ["time"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

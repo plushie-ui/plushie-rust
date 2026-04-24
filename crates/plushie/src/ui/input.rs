@@ -376,6 +376,15 @@ impl CheckboxBuilder {
         super::set_prop(&mut self.props, "disabled", d);
         self
     }
+    /// Set the Alt-key mnemonic used to toggle this checkbox.
+    pub fn mnemonic(mut self, mnemonic: char) -> Self {
+        super::set_prop(&mut self.props, "mnemonic", mnemonic.to_string());
+        self
+    }
+    /// Alias for [`Self::mnemonic`].
+    pub fn access_key(self, access_key: char) -> Self {
+        self.mnemonic(access_key)
+    }
     /// Apply a named or custom style.
     pub fn style(mut self, s: impl Into<Style>) -> Self {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
@@ -601,6 +610,15 @@ impl RadioBuilder {
         super::set_prop(&mut self.props, "style", super::style_to_value(&s.into()));
         self
     }
+    /// Set the Alt-key mnemonic used to select this radio button.
+    pub fn mnemonic(mut self, mnemonic: char) -> Self {
+        super::set_prop(&mut self.props, "mnemonic", mnemonic.to_string());
+        self
+    }
+    /// Alias for [`Self::mnemonic`].
+    pub fn access_key(self, access_key: char) -> Self {
+        self.mnemonic(access_key)
+    }
     /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
@@ -655,6 +673,11 @@ impl SliderBuilder {
     /// Set the value adjustment step.
     pub fn step(mut self, s: f32) -> Self {
         super::set_prop(&mut self.props, "step", s);
+        self
+    }
+    /// Override the base step used for keyboard movement and snapping.
+    pub fn keyboard_step(mut self, s: f32) -> Self {
+        super::set_prop(&mut self.props, "keyboard_step", s);
         self
     }
     /// Set the preferred width.
@@ -761,6 +784,11 @@ impl VerticalSliderBuilder {
     /// Set the value adjustment step.
     pub fn step(mut self, s: f32) -> Self {
         super::set_prop(&mut self.props, "step", s);
+        self
+    }
+    /// Override the base step used for keyboard movement and snapping.
+    pub fn keyboard_step(mut self, s: f32) -> Self {
+        super::set_prop(&mut self.props, "keyboard_step", s);
         self
     }
     /// Set the preferred width.
@@ -1103,5 +1131,64 @@ impl ComboBoxBuilder {
 impl From<ComboBoxBuilder> for View {
     fn from(b: ComboBoxBuilder) -> View {
         super::view_leaf(b.id, "combo_box", b.props)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checkbox_mnemonic_builder_sets_wire_prop() {
+        let view: View = checkbox("agree", false).mnemonic('A').into();
+
+        assert_eq!(view.type_name(), "checkbox");
+        assert_eq!(view.props().get_str("mnemonic"), Some("A"));
+    }
+
+    #[test]
+    fn checkbox_access_key_builder_uses_mnemonic_wire_prop() {
+        let view: View = checkbox("agree", false).access_key('A').into();
+
+        assert_eq!(view.props().get_str("mnemonic"), Some("A"));
+    }
+
+    #[test]
+    fn radio_mnemonic_builder_sets_wire_prop() {
+        let view: View = radio("small", "small", None).mnemonic('S').into();
+
+        assert_eq!(view.type_name(), "radio");
+        assert_eq!(view.props().get_str("mnemonic"), Some("S"));
+    }
+
+    #[test]
+    fn radio_access_key_builder_uses_mnemonic_wire_prop() {
+        let view: View = radio("large", "large", None).access_key('L').into();
+
+        assert_eq!(view.props().get_str("mnemonic"), Some("L"));
+    }
+
+    #[test]
+    fn slider_keyboard_step_builder_sets_wire_prop() {
+        let view: View = slider("volume", (0.0, 100.0), 40.0)
+            .step(1.0)
+            .keyboard_step(5.0)
+            .into();
+
+        assert_eq!(view.type_name(), "slider");
+        assert_eq!(view.props().get_f64("step"), Some(1.0));
+        assert_eq!(view.props().get_f64("keyboard_step"), Some(5.0));
+    }
+
+    #[test]
+    fn vertical_slider_keyboard_step_builder_sets_wire_prop() {
+        let view: View = vertical_slider("volume", (0.0, 100.0), 40.0)
+            .step(1.0)
+            .keyboard_step(5.0)
+            .into();
+
+        assert_eq!(view.type_name(), "vertical_slider");
+        assert_eq!(view.props().get_f64("step"), Some(1.0));
+        assert_eq!(view.props().get_f64("keyboard_step"), Some(5.0));
     }
 }

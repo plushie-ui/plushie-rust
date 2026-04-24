@@ -98,7 +98,6 @@ pub fn render<'a, R: PlushieRenderer>(
 mod tests {
     use super::*;
     use crate::image_registry::ImageRegistry;
-    use crate::prop_helpers::prop_str;
     use crate::protocol::TreeNode;
     use crate::registry::WidgetRegistry;
     use crate::shared_state::SharedState;
@@ -313,14 +312,8 @@ mod tests {
     /// without actually rendering (avoids needing image handles etc.).
     fn infer_a11y_overrides(node: &TreeNode) -> Option<crate::a11y::A11yOverrides> {
         let props = &node.props;
-        let inferred = match node.type_name.as_str() {
-            // Image and SVG use iced's native .alt()/.description() methods
-            // directly, so no A11yOverride wrapping needed for those.
-            "text_input" | "text_editor" | "combo_box" => {
-                prop_str(props, "placeholder").map(crate::a11y::A11yOverrides::with_description)
-            }
-            _ => None,
-        };
+        let registry = smoke_registry();
+        let inferred = registry.infer_a11y_for_node(node);
         let explicit = crate::a11y::A11yOverrides::from_props(props);
         match (inferred, explicit) {
             (Some(inf), Some(exp)) => Some(crate::a11y::A11yOverrides::merge(&inf, &exp)),
@@ -482,5 +475,57 @@ mod tests {
             Some("Search..."),
             "inferred description should survive merge"
         );
+    }
+
+    #[test]
+    fn a11y_auto_infer_button_mnemonic() {
+        let node = smoke_node(
+            "save",
+            "button",
+            serde_json::json!({"label": "Save", "mnemonic": "S"}),
+        );
+        let overrides = infer_a11y_overrides(&node).expect("should infer mnemonic");
+
+        assert_eq!(overrides.core().mnemonic, Some('S'));
+    }
+
+    #[test]
+    fn a11y_auto_infer_access_key_alias() {
+        let node = smoke_node(
+            "remember",
+            "checkbox",
+            serde_json::json!({"label": "Remember me", "access_key": "R"}),
+        );
+        let overrides = infer_a11y_overrides(&node).expect("should infer access key");
+
+        assert_eq!(overrides.core().mnemonic, Some('R'));
+    }
+
+    #[test]
+    fn a11y_top_level_mnemonic_wins_over_access_key() {
+        let node = smoke_node(
+            "choice",
+            "radio",
+            serde_json::json!({"value": "yes", "mnemonic": "Y", "access_key": "N"}),
+        );
+        let overrides = infer_a11y_overrides(&node).expect("should infer mnemonic");
+
+        assert_eq!(overrides.core().mnemonic, Some('Y'));
+    }
+
+    #[test]
+    fn a11y_explicit_mnemonic_wins_over_top_level_prop() {
+        let node = smoke_node(
+            "save",
+            "button",
+            serde_json::json!({
+                "label": "Save",
+                "mnemonic": "S",
+                "a11y": {"mnemonic": "V"}
+            }),
+        );
+        let overrides = infer_a11y_overrides(&node).expect("should merge mnemonic overrides");
+
+        assert_eq!(overrides.core().mnemonic, Some('V'));
     }
 }

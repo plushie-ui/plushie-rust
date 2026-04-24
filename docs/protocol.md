@@ -2053,6 +2053,12 @@ into accessibility output.
 
 | Widget | Prop | Type | Description |
 |--------|------|------|-------------|
+| `button` | `mnemonic` | string | Alt-key mnemonic. First character is used. Explicit `a11y.mnemonic` takes priority. |
+| `button` | `access_key` | string | Alias for `mnemonic` |
+| `checkbox` | `mnemonic` | string | Alt-key mnemonic. First character is used. Explicit `a11y.mnemonic` takes priority. |
+| `checkbox` | `access_key` | string | Alias for `mnemonic` |
+| `radio` | `mnemonic` | string | Alt-key mnemonic. First character is used. Explicit `a11y.mnemonic` takes priority. |
+| `radio` | `access_key` | string | Alias for `mnemonic` |
 | `image` | `alt` | string | Accessible label (auto-populates `a11y.label`) |
 | `image` | `description` | string | Extended accessible description |
 | `image` | `decorative` | bool | When true, hides the image from assistive technology. Use for purely visual images that don't convey information. |
@@ -2060,7 +2066,9 @@ into accessibility output.
 | `svg` | `description` | string | Extended accessible description |
 | `svg` | `decorative` | bool | When true, hides the SVG from assistive technology. Use for purely visual images that don't convey information. |
 | `slider` | `label` | string | Accessible label (e.g. `"Volume"`). Without this, screen readers announce the value without context. |
+| `slider` | `keyboard_step` | number | Overrides the base step used for keyboard movement and pointer snapping. `shift_step` still controls Shift-modified adjustment. |
 | `vertical_slider` | `label` | string | Accessible label (e.g. `"Volume"`). Without this, screen readers announce the value without context. |
+| `vertical_slider` | `keyboard_step` | number | Overrides the base step used for keyboard movement and pointer snapping. `shift_step` still controls Shift-modified adjustment. |
 | `progress_bar` | `label` | string | Accessible label (e.g. `"Upload progress"`). |
 | `qr_code` | `alt` | string | Accessible label for the QR code |
 | `qr_code` | `description` | string | Extended description |

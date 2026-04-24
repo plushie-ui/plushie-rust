@@ -82,6 +82,17 @@ impl ButtonBuilder {
         self
     }
 
+    /// Set the Alt-key mnemonic used to activate this button.
+    pub fn mnemonic(mut self, mnemonic: char) -> Self {
+        super::set_prop(&mut self.props, "mnemonic", mnemonic.to_string());
+        self
+    }
+
+    /// Alias for [`Self::mnemonic`].
+    pub fn access_key(self, access_key: char) -> Self {
+        self.mnemonic(access_key)
+    }
+
     /// Maximum events per second (0 = unbounded).
     pub fn event_rate(mut self, rate: u32) -> Self {
         super::set_prop(&mut self.props, "event_rate", rate);
@@ -533,5 +544,25 @@ impl OverlayBuilder {
 impl From<OverlayBuilder> for View {
     fn from(b: OverlayBuilder) -> Self {
         super::view_node(b.id, "overlay", b.props, b.children)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn button_mnemonic_builder_sets_wire_prop() {
+        let view: View = button("save", "Save").mnemonic('S').into();
+
+        assert_eq!(view.type_name(), "button");
+        assert_eq!(view.props().get_str("mnemonic"), Some("S"));
+    }
+
+    #[test]
+    fn button_access_key_builder_uses_mnemonic_wire_prop() {
+        let view: View = button("open", "Open").access_key('O').into();
+
+        assert_eq!(view.props().get_str("mnemonic"), Some("O"));
     }
 }

@@ -211,6 +211,20 @@ impl A11yOverrides {
         Self::from_core(&A11y::with_description(description))
     }
 
+    /// Create overrides with just a mnemonic.
+    pub(crate) fn with_mnemonic(mnemonic: char) -> Self {
+        Self::from_core(&A11y::new().mnemonic(mnemonic))
+    }
+
+    /// Create mnemonic overrides from top-level `mnemonic` or `access_key`.
+    pub(crate) fn from_mnemonic_props(props: &plushie_core::protocol::Props) -> Option<Self> {
+        props
+            .get_str("mnemonic")
+            .or_else(|| props.get_str("access_key"))
+            .and_then(|s| s.chars().next())
+            .map(Self::with_mnemonic)
+    }
+
     /// Create overrides with a specific role set.
     pub(crate) fn with_role(role: Role) -> Self {
         Self::from_core(&A11y::new().role(role))

@@ -3,6 +3,7 @@ use iced::{Element, Theme, widget};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
+use crate::a11y::A11yOverrides;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
@@ -171,6 +172,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
         }
 
         container(b).id(widget::Id::from(node.id.clone())).into()
+    }
+
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        A11yOverrides::from_mnemonic_props(&node.props)
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {

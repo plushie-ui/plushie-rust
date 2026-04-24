@@ -4,6 +4,7 @@ use iced::{Element, Font, Pixels, Theme, widget};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
+use crate::a11y::A11yOverrides;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
@@ -64,6 +65,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CheckboxWidget {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         render_checkbox(node, *ctx)
+    }
+
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        A11yOverrides::from_mnemonic_props(&node.props)
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {

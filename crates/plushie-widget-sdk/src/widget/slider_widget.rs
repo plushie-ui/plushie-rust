@@ -67,6 +67,10 @@ fn handle_slider_message(
     }
 }
 
+fn effective_slider_step(step: Option<f64>, keyboard_step: Option<f64>) -> Option<f64> {
+    keyboard_step.or(step).map(|step| step.max(f64::EPSILON))
+}
+
 // ---------------------------------------------------------------------------
 // SliderWidget (stateful)
 // ---------------------------------------------------------------------------
@@ -161,6 +165,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
 struct SliderProps {
     value: Option<f64>,
     step: Option<f64>,
+    keyboard_step: Option<f64>,
     width: Option<Length>,
     default: Option<f64>,
     shift_step: Option<f64>,
@@ -175,6 +180,7 @@ impl SliderProps {
         Self {
             value: f64::extract(p, "value"),
             step: f64::extract(p, "step"),
+            keyboard_step: f64::extract(p, "keyboard_step"),
             width: Length::extract(p, "width"),
             default: f64::extract(p, "default"),
             shift_step: f64::extract(p, "shift_step"),
@@ -217,10 +223,11 @@ fn render_slider<'a, R: PlushieRenderer>(
     })
     .width(width);
 
-    if let Some(st) = sp.step {
-        // Clamp step to a small positive minimum to prevent division by
-        // zero or infinite loops in iced's slider internals.
-        s = s.step(st.max(f64::EPSILON));
+    if let Some(st) = effective_slider_step(sp.step, sp.keyboard_step) {
+        // iced uses the base step for keyboard movement and pointer snapping.
+        // `keyboard_step` deliberately overrides `step` until iced exposes a
+        // keyboard-only step.
+        s = s.step(st);
     }
     if let Some(d) = sp.default {
         s = s.default(d);
@@ -319,6 +326,7 @@ fn render_slider<'a, R: PlushieRenderer>(
 struct VerticalSliderProps {
     value: Option<f64>,
     step: Option<f64>,
+    keyboard_step: Option<f64>,
     height: Option<Length>,
     default: Option<f64>,
     shift_step: Option<f64>,
@@ -333,6 +341,7 @@ impl VerticalSliderProps {
         Self {
             value: f64::extract(p, "value"),
             step: f64::extract(p, "step"),
+            keyboard_step: f64::extract(p, "keyboard_step"),
             height: Length::extract(p, "height"),
             default: f64::extract(p, "default"),
             shift_step: f64::extract(p, "shift_step"),
@@ -380,8 +389,8 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
         s = s.width(w);
     }
 
-    if let Some(st) = vp.step {
-        s = s.step(st.max(f64::EPSILON));
+    if let Some(st) = effective_slider_step(vp.step, vp.keyboard_step) {
+        s = s.step(st);
     }
     if let Some(d) = vp.default {
         s = s.default(d);
@@ -473,4 +482,31 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     }
 
     container(s).id(widget::Id::from(node.id.clone())).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::effective_slider_step;
+
+    #[test]
+    fn keyboard_step_overrides_base_step() {
+        assert_eq!(effective_slider_step(Some(1.0), Some(5.0)), Some(5.0));
+    }
+
+    #[test]
+    fn keyboard_step_clamps_to_positive_step() {
+        assert_eq!(
+            effective_slider_step(Some(1.0), Some(0.0)),
+            Some(f64::EPSILON)
+        );
+        assert_eq!(
+            effective_slider_step(Some(1.0), Some(-1.0)),
+            Some(f64::EPSILON)
+        );
+    }
+
+    #[test]
+    fn base_step_is_used_without_keyboard_step() {
+        assert_eq!(effective_slider_step(Some(2.0), None), Some(2.0));
+    }
 }

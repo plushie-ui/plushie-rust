@@ -416,6 +416,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("clip", Bool),
             ("disabled", Bool),
             ("enabled", Bool),
+            ("mnemonic", Str),
+            ("access_key", Str),
         ],
         "text" => &[
             ("content", Str),
@@ -494,6 +496,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("value", Number),
             ("range", Array),
             ("step", Number),
+            ("keyboard_step", Number),
             ("width", Length),
             ("height", Number),
             ("style", Any),
@@ -516,6 +519,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("style", Any),
             ("icon", Any),
             ("disabled", Bool),
+            ("mnemonic", Str),
+            ("access_key", Str),
             ("line_height", Number),
             ("wrapping", OneOf(WRAPPING_VALUES)),
             ("shaping", OneOf(SHAPING_VALUES)),
@@ -607,6 +612,8 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("spacing", Number),
             ("width", Length),
             ("style", Any),
+            ("mnemonic", Str),
+            ("access_key", Str),
             ("line_height", Number),
             ("wrapping", OneOf(WRAPPING_VALUES)),
             ("shaping", OneOf(SHAPING_VALUES)),
@@ -760,6 +767,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("value", Number),
             ("range", Array),
             ("step", Number),
+            ("keyboard_step", Number),
             ("width", Number),
             ("height", Length),
             ("style", Any),
@@ -1020,7 +1028,38 @@ mod tests {
 
     #[test]
     fn valid_props_produce_no_warnings() {
-        let node = make_node("button", json!({"label": "ok"}));
+        let node = make_node(
+            "button",
+            json!({"label": "ok", "mnemonic": "O", "access_key": "K"}),
+        );
+        let warnings = collect_prop_warnings(&node);
+        assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
+
+        let node = make_node(
+            "slider",
+            json!({"value": 5, "range": [0, 10], "step": 1, "keyboard_step": 2}),
+        );
+        let warnings = collect_prop_warnings(&node);
+        assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
+
+        let node = make_node(
+            "checkbox",
+            json!({"label": "ok", "mnemonic": "O", "access_key": "K"}),
+        );
+        let warnings = collect_prop_warnings(&node);
+        assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
+
+        let node = make_node(
+            "radio",
+            json!({"value": "ok", "mnemonic": "O", "access_key": "K"}),
+        );
+        let warnings = collect_prop_warnings(&node);
+        assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
+
+        let node = make_node(
+            "vertical_slider",
+            json!({"value": 5, "range": [0, 10], "step": 1, "keyboard_step": 2}),
+        );
         let warnings = collect_prop_warnings(&node);
         assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     }

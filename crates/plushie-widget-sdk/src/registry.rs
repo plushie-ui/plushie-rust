@@ -399,9 +399,10 @@ pub trait PlushieWidget<R: PlushieRenderer = iced::Renderer> {
 
     /// A11y auto-inference for this widget type.
     ///
-    /// Called when the node has no explicit `a11y` prop. Return
-    /// `Some(overrides)` to inject accessibility annotations
-    /// (e.g., using placeholder text as a description).
+    /// Called before explicit `a11y` props are merged. Return
+    /// `Some(overrides)` to provide accessibility defaults
+    /// (e.g., using placeholder text as a description). Explicit
+    /// `a11y` fields on the node override inferred fields.
     fn infer_a11y(&self, _node: &TreeNode) -> Option<A11yOverrides> {
         None
     }

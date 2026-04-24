@@ -7,6 +7,7 @@
 use std::fmt;
 use std::time::Duration;
 
+use serde_json::Map;
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
@@ -1011,6 +1012,81 @@ impl EffectRequest {
     }
 }
 
+/// Returns true if `kind` is a built-in effect request kind.
+pub fn is_known_effect_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "file_open"
+            | "file_open_multiple"
+            | "file_save"
+            | "directory_select"
+            | "directory_select_multiple"
+            | "clipboard_read"
+            | "clipboard_write"
+            | "clipboard_read_html"
+            | "clipboard_write_html"
+            | "clipboard_clear"
+            | "clipboard_read_primary"
+            | "clipboard_write_primary"
+            | "notification"
+    )
+}
+
+/// Why a wire effect request could not be parsed safely.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectRequestValidationError {
+    /// The effect kind is not built in.
+    UnknownKind { kind: String },
+    /// The payload is not a JSON object.
+    InvalidPayload {
+        kind: String,
+        expected: &'static str,
+    },
+    /// A required field was absent.
+    MissingField { kind: String, field: &'static str },
+    /// A field was present with the wrong JSON type.
+    InvalidFieldType {
+        kind: String,
+        field: &'static str,
+        expected: &'static str,
+    },
+    /// A field had the right JSON type but not an accepted value.
+    InvalidFieldValue {
+        kind: String,
+        field: &'static str,
+        detail: String,
+    },
+}
+
+impl fmt::Display for EffectRequestValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownKind { kind } => write!(f, "unknown effect kind: {kind}"),
+            Self::InvalidPayload { kind, expected } => {
+                write!(f, "invalid payload for {kind}: expected {expected}")
+            }
+            Self::MissingField { kind, field } => {
+                write!(f, "missing required field for {kind}: {field}")
+            }
+            Self::InvalidFieldType {
+                kind,
+                field,
+                expected,
+            } => write!(
+                f,
+                "invalid field type for {kind}.{field}: expected {expected}"
+            ),
+            Self::InvalidFieldValue {
+                kind,
+                field,
+                detail,
+            } => write!(f, "invalid field value for {kind}.{field}: {detail}"),
+        }
+    }
+}
+
+impl std::error::Error for EffectRequestValidationError {}
+
 /// Options for file and directory dialogs.
 #[derive(Debug, Default)]
 pub struct FileDialogOpts {
@@ -1278,84 +1354,77 @@ fn file_dialog_opts_to_value(opts: &FileDialogOpts) -> Value {
     payload
 }
 
-/// Convert wire format `(kind, payload)` to an [`EffectRequest`].
+/// Convert wire format `(kind, payload)` to an [`EffectRequest`],
+/// rejecting unknown kinds and malformed payloads.
 ///
-/// Returns `None` for unrecognized kinds.
-pub fn effect_request_from_wire(kind: &str, payload: &Value) -> Option<EffectRequest> {
+/// # Errors
+///
+/// Returns [`EffectRequestValidationError`] when the kind is unknown,
+/// the payload is not an object, or required fields are missing or
+/// malformed.
+pub fn validate_effect_request_from_wire(
+    kind: &str,
+    payload: &Value,
+) -> Result<EffectRequest, EffectRequestValidationError> {
+    if !is_known_effect_kind(kind) {
+        return Err(EffectRequestValidationError::UnknownKind {
+            kind: kind.to_string(),
+        });
+    }
+    let fields = payload_fields(kind, payload)?;
     match kind {
-        "file_open" => Some(EffectRequest::FileOpen(file_dialog_opts_from_value(
-            payload,
-        ))),
-        "file_open_multiple" => Some(EffectRequest::FileOpenMultiple(
-            file_dialog_opts_from_value(payload),
+        "file_open" => Ok(EffectRequest::FileOpen(file_dialog_opts_from_fields(
+            kind, fields,
+        )?)),
+        "file_open_multiple" => Ok(EffectRequest::FileOpenMultiple(
+            file_dialog_opts_from_fields(kind, fields)?,
         )),
-        "file_save" => Some(EffectRequest::FileSave(file_dialog_opts_from_value(
-            payload,
-        ))),
-        "directory_select" => Some(EffectRequest::DirectorySelect(file_dialog_opts_from_value(
-            payload,
-        ))),
-        "directory_select_multiple" => Some(EffectRequest::DirectorySelectMultiple(
-            file_dialog_opts_from_value(payload),
+        "file_save" => Ok(EffectRequest::FileSave(file_dialog_opts_from_fields(
+            kind, fields,
+        )?)),
+        "directory_select" => Ok(EffectRequest::DirectorySelect(
+            file_dialog_opts_from_fields(kind, fields)?,
         )),
-        "clipboard_read" => Some(EffectRequest::ClipboardRead),
+        "directory_select_multiple" => Ok(EffectRequest::DirectorySelectMultiple(
+            file_dialog_opts_from_fields(kind, fields)?,
+        )),
+        "clipboard_read" => Ok(EffectRequest::ClipboardRead),
         "clipboard_write" => {
-            let text = payload
-                .get("text")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            Some(EffectRequest::ClipboardWrite(text.to_string()))
+            let text = required_string_field(kind, fields, "text")?;
+            Ok(EffectRequest::ClipboardWrite(text))
         }
-        "clipboard_read_html" => Some(EffectRequest::ClipboardReadHtml),
+        "clipboard_read_html" => Ok(EffectRequest::ClipboardReadHtml),
         "clipboard_write_html" => {
-            let html = payload
-                .get("html")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let alt_text = payload
-                .get("alt_text")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            Some(EffectRequest::ClipboardWriteHtml { html, alt_text })
+            let html = required_string_field(kind, fields, "html")?;
+            let alt_text = optional_string_field(kind, fields, "alt_text")?;
+            Ok(EffectRequest::ClipboardWriteHtml { html, alt_text })
         }
-        "clipboard_clear" => Some(EffectRequest::ClipboardClear),
-        "clipboard_read_primary" => Some(EffectRequest::ClipboardReadPrimary),
+        "clipboard_clear" => Ok(EffectRequest::ClipboardClear),
+        "clipboard_read_primary" => Ok(EffectRequest::ClipboardReadPrimary),
         "clipboard_write_primary" => {
-            let text = payload
-                .get("text")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            Some(EffectRequest::ClipboardWritePrimary(text.to_string()))
+            let text = required_string_field(kind, fields, "text")?;
+            Ok(EffectRequest::ClipboardWritePrimary(text))
         }
         "notification" => {
-            let title = payload
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let body = payload
-                .get("body")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let mut opts = NotificationOpts::default();
-            if let Some(icon) = payload.get("icon").and_then(|v| v.as_str()) {
-                opts.icon = Some(icon.to_string());
-            }
-            if let Some(ms) = payload.get("timeout").and_then(|v| v.as_u64()) {
-                opts.timeout = Some(Duration::from_millis(ms));
-            }
-            if let Some(urgency_val) = payload.get("urgency") {
-                opts.urgency = serde_json::from_value(urgency_val.clone()).ok();
-            }
-            if let Some(sound) = payload.get("sound").and_then(|v| v.as_str()) {
-                opts.sound = Some(sound.to_string());
-            }
-            Some(EffectRequest::Notification { title, body, opts })
+            let title = required_string_field(kind, fields, "title")?;
+            let body = required_string_field(kind, fields, "body")?;
+            let opts = NotificationOpts {
+                icon: optional_string_field(kind, fields, "icon")?,
+                timeout: optional_u64_field(kind, fields, "timeout")?.map(Duration::from_millis),
+                urgency: optional_urgency_field(kind, fields)?,
+                sound: optional_string_field(kind, fields, "sound")?,
+            };
+            Ok(EffectRequest::Notification { title, body, opts })
         }
-        _ => None,
+        _ => unreachable!("effect kind was checked before parsing"),
     }
+}
+
+/// Convert wire format `(kind, payload)` to an [`EffectRequest`].
+///
+/// Returns `None` for unrecognized kinds or invalid payloads.
+pub fn effect_request_from_wire(kind: &str, payload: &Value) -> Option<EffectRequest> {
+    validate_effect_request_from_wire(kind, payload).ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -1388,35 +1457,314 @@ impl crate::types::PlushieType for WindowLevel {
     }
 }
 
-fn file_dialog_opts_from_value(payload: &Value) -> FileDialogOpts {
-    let mut filters = Vec::new();
-    if let Some(filter_arr) = payload.get("filters").and_then(|v| v.as_array()) {
-        for filter in filter_arr {
-            if let Some(pair) = filter.as_array()
-                && pair.len() >= 2
-                && let (Some(name), Some(ext)) = (pair[0].as_str(), pair[1].as_str())
-            {
-                let extensions: Vec<String> = ext
-                    .split(';')
-                    .map(|e| e.trim().trim_start_matches("*.").to_string())
-                    .collect();
-                filters.push((name.to_string(), extensions));
+fn payload_fields<'a>(
+    kind: &str,
+    payload: &'a Value,
+) -> Result<&'a Map<String, Value>, EffectRequestValidationError> {
+    payload
+        .as_object()
+        .ok_or_else(|| EffectRequestValidationError::InvalidPayload {
+            kind: kind.to_string(),
+            expected: "object",
+        })
+}
+
+fn required_string_field(
+    kind: &str,
+    fields: &Map<String, Value>,
+    field: &'static str,
+) -> Result<String, EffectRequestValidationError> {
+    match fields.get(field) {
+        Some(value) => value.as_str().map(ToString::to_string).ok_or_else(|| {
+            EffectRequestValidationError::InvalidFieldType {
+                kind: kind.to_string(),
+                field,
+                expected: "string",
             }
+        }),
+        None => Err(EffectRequestValidationError::MissingField {
+            kind: kind.to_string(),
+            field,
+        }),
+    }
+}
+
+fn optional_string_field(
+    kind: &str,
+    fields: &Map<String, Value>,
+    field: &'static str,
+) -> Result<Option<String>, EffectRequestValidationError> {
+    match fields.get(field) {
+        Some(value) => value.as_str().map(|s| Some(s.to_string())).ok_or_else(|| {
+            EffectRequestValidationError::InvalidFieldType {
+                kind: kind.to_string(),
+                field,
+                expected: "string",
+            }
+        }),
+        None => Ok(None),
+    }
+}
+
+fn optional_u64_field(
+    kind: &str,
+    fields: &Map<String, Value>,
+    field: &'static str,
+) -> Result<Option<u64>, EffectRequestValidationError> {
+    match fields.get(field) {
+        Some(value) => {
+            value
+                .as_u64()
+                .map(Some)
+                .ok_or_else(|| EffectRequestValidationError::InvalidFieldType {
+                    kind: kind.to_string(),
+                    field,
+                    expected: "unsigned integer",
+                })
+        }
+        None => Ok(None),
+    }
+}
+
+fn optional_urgency_field(
+    kind: &str,
+    fields: &Map<String, Value>,
+) -> Result<Option<NotificationUrgency>, EffectRequestValidationError> {
+    let Some(value) = fields.get("urgency") else {
+        return Ok(None);
+    };
+    let Some(urgency) = value.as_str() else {
+        return Err(EffectRequestValidationError::InvalidFieldType {
+            kind: kind.to_string(),
+            field: "urgency",
+            expected: "string",
+        });
+    };
+    match urgency {
+        "low" => Ok(Some(NotificationUrgency::Low)),
+        "normal" => Ok(Some(NotificationUrgency::Normal)),
+        "critical" => Ok(Some(NotificationUrgency::Critical)),
+        _ => Err(EffectRequestValidationError::InvalidFieldValue {
+            kind: kind.to_string(),
+            field: "urgency",
+            detail: "expected low, normal, or critical".to_string(),
+        }),
+    }
+}
+
+fn file_dialog_opts_from_fields(
+    kind: &str,
+    fields: &Map<String, Value>,
+) -> Result<FileDialogOpts, EffectRequestValidationError> {
+    Ok(FileDialogOpts {
+        title: optional_string_field(kind, fields, "title")?,
+        directory: optional_string_field(kind, fields, "directory")?,
+        default_name: optional_string_field(kind, fields, "default_name")?,
+        filters: file_dialog_filters_from_fields(kind, fields)?,
+    })
+}
+
+fn file_dialog_filters_from_fields(
+    kind: &str,
+    fields: &Map<String, Value>,
+) -> Result<Vec<(String, Vec<String>)>, EffectRequestValidationError> {
+    let Some(value) = fields.get("filters") else {
+        return Ok(Vec::new());
+    };
+    let filters =
+        value
+            .as_array()
+            .ok_or_else(|| EffectRequestValidationError::InvalidFieldType {
+                kind: kind.to_string(),
+                field: "filters",
+                expected: "array",
+            })?;
+    let mut parsed = Vec::new();
+    for filter in filters {
+        let pair =
+            filter
+                .as_array()
+                .ok_or_else(|| EffectRequestValidationError::InvalidFieldValue {
+                    kind: kind.to_string(),
+                    field: "filters",
+                    detail: "each filter must be [name, extensions]".to_string(),
+                })?;
+        if pair.len() < 2 {
+            return Err(EffectRequestValidationError::InvalidFieldValue {
+                kind: kind.to_string(),
+                field: "filters",
+                detail: "each filter must include a name and extensions".to_string(),
+            });
+        }
+        let name =
+            pair[0]
+                .as_str()
+                .ok_or_else(|| EffectRequestValidationError::InvalidFieldValue {
+                    kind: kind.to_string(),
+                    field: "filters",
+                    detail: "filter name must be a string".to_string(),
+                })?;
+        let ext =
+            pair[1]
+                .as_str()
+                .ok_or_else(|| EffectRequestValidationError::InvalidFieldValue {
+                    kind: kind.to_string(),
+                    field: "filters",
+                    detail: "filter extensions must be a string".to_string(),
+                })?;
+        let extensions: Vec<String> = ext
+            .split(';')
+            .map(|e| e.trim().trim_start_matches("*.").to_string())
+            .collect();
+        parsed.push((name.to_string(), extensions));
+    }
+    Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn effect_parser_rejects_missing_required_field() {
+        let err = validate_effect_request_from_wire("clipboard_write", &json!({})).unwrap_err();
+
+        assert_eq!(
+            err,
+            EffectRequestValidationError::MissingField {
+                kind: "clipboard_write".to_string(),
+                field: "text",
+            }
+        );
+    }
+
+    #[test]
+    fn effect_parser_rejects_unknown_kind() {
+        let err = validate_effect_request_from_wire("not_real", &json!({})).unwrap_err();
+
+        assert_eq!(
+            err,
+            EffectRequestValidationError::UnknownKind {
+                kind: "not_real".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn effect_parser_rejects_wrong_typed_required_field() {
+        let err =
+            validate_effect_request_from_wire("notification", &json!({"title": 1, "body": "hi"}))
+                .unwrap_err();
+
+        assert_eq!(
+            err,
+            EffectRequestValidationError::InvalidFieldType {
+                kind: "notification".to_string(),
+                field: "title",
+                expected: "string",
+            }
+        );
+    }
+
+    #[test]
+    fn effect_parser_rejects_wrong_typed_optional_field() {
+        let err = validate_effect_request_from_wire(
+            "clipboard_write_html",
+            &json!({"html": "<b>hi</b>", "alt_text": false}),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            EffectRequestValidationError::InvalidFieldType {
+                kind: "clipboard_write_html".to_string(),
+                field: "alt_text",
+                expected: "string",
+            }
+        );
+    }
+
+    #[test]
+    fn effect_parser_rejects_invalid_file_dialog_filters() {
+        let err = validate_effect_request_from_wire(
+            "file_open",
+            &json!({"filters": [{"name": "Images", "extensions": "png"}]}),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            EffectRequestValidationError::InvalidFieldValue {
+                kind,
+                field: "filters",
+                ..
+            } if kind == "file_open"
+        ));
+    }
+
+    #[test]
+    fn effect_parser_parses_valid_required_fields() {
+        let request = validate_effect_request_from_wire(
+            "notification",
+            &json!({
+                "title": "Build done",
+                "body": "All checks passed",
+                "timeout": 1500,
+                "urgency": "normal",
+            }),
+        )
+        .unwrap();
+
+        match request {
+            EffectRequest::Notification { title, body, opts } => {
+                assert_eq!(title, "Build done");
+                assert_eq!(body, "All checks passed");
+                assert_eq!(opts.timeout, Some(Duration::from_millis(1500)));
+                assert_eq!(opts.urgency, Some(NotificationUrgency::Normal));
+            }
+            other => panic!("expected notification, got {other:?}"),
         }
     }
-    FileDialogOpts {
-        title: payload
-            .get("title")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        directory: payload
-            .get("directory")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        default_name: payload
-            .get("default_name")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
-        filters,
+
+    #[test]
+    fn effect_parser_round_trips_typed_requests() {
+        let requests = vec![
+            EffectRequest::FileOpen(
+                FileDialogOpts::new()
+                    .title("Open")
+                    .filter("Images", &["png"]),
+            ),
+            EffectRequest::FileOpenMultiple(FileDialogOpts::new()),
+            EffectRequest::FileSave(FileDialogOpts::new().default_name("note.txt")),
+            EffectRequest::DirectorySelect(FileDialogOpts::new().directory("/tmp")),
+            EffectRequest::DirectorySelectMultiple(FileDialogOpts::new()),
+            EffectRequest::ClipboardRead,
+            EffectRequest::ClipboardWrite("hello".to_string()),
+            EffectRequest::ClipboardReadHtml,
+            EffectRequest::ClipboardWriteHtml {
+                html: "<b>hello</b>".to_string(),
+                alt_text: Some("hello".to_string()),
+            },
+            EffectRequest::ClipboardClear,
+            EffectRequest::ClipboardReadPrimary,
+            EffectRequest::ClipboardWritePrimary("hello".to_string()),
+            EffectRequest::Notification {
+                title: "Done".to_string(),
+                body: "Saved".to_string(),
+                opts: NotificationOpts::new()
+                    .icon("plushie")
+                    .timeout(Duration::from_secs(1))
+                    .urgency(NotificationUrgency::Low)
+                    .sound("ding"),
+            },
+        ];
+
+        for request in requests {
+            let (kind, payload) = effect_request_to_wire(&request);
+            let parsed = validate_effect_request_from_wire(kind, &payload)
+                .unwrap_or_else(|err| panic!("{kind} failed to parse: {err}"));
+            assert_eq!(parsed.kind(), kind);
+        }
     }
 }

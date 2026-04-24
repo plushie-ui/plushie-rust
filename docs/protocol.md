@@ -1224,14 +1224,14 @@ the real effect. Used by test frameworks to avoid OS dialogs.
 {
   "type": "register_effect_stub",
   "session": "s1",
-  "kind": "open_file",
+  "kind": "file_open",
   "response": {"path": "/tmp/test.txt"}
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `kind` | string | Effect kind to stub (e.g. `"open_file"`, `"save_file"`, `"clipboard_read"`). |
+| `kind` | string | Built-in effect kind to stub (e.g. `"file_open"`, `"file_save"`, `"clipboard_read"`). Unknown kinds are rejected with an error acknowledgement. |
 | `response` | object | Canned response payload. Shape must match the real effect response. |
 
 Response: `effect_stub_register_ack`.
@@ -1244,7 +1244,7 @@ Remove a previously registered effect stub, restoring real behavior.
 {
   "type": "unregister_effect_stub",
   "session": "s1",
-  "kind": "open_file"
+  "kind": "file_open"
 }
 ```
 
@@ -1744,13 +1744,14 @@ Response to a Reset message.
 
 ### effect_stub_register_ack
 
-Acknowledgment that an effect stub has been registered.
+Acknowledgment that an effect stub registration was accepted or
+rejected.
 
 ```json
 {
   "type": "effect_stub_register_ack",
   "session": "s1",
-  "kind": "open_file",
+  "kind": "file_open",
   "status": "registered"
 }
 ```
@@ -1760,17 +1761,17 @@ Acknowledgment that an effect stub has been registered.
 | `type` | string | Always `"effect_stub_register_ack"` |
 | `session` | string | Session |
 | `kind` | string | Effect kind that was registered |
-| `status` | string | Always `"registered"` |
+| `status` | string | `"registered"` when accepted, `"error"` when rejected |
 
 ### effect_stub_unregister_ack
 
-Acknowledgment that an effect stub has been removed.
+Acknowledgment that an effect stub removal was accepted or rejected.
 
 ```json
 {
   "type": "effect_stub_unregister_ack",
   "session": "s1",
-  "kind": "open_file",
+  "kind": "file_open",
   "status": "unregistered"
 }
 ```
@@ -1780,7 +1781,7 @@ Acknowledgment that an effect stub has been removed.
 | `type` | string | Always `"effect_stub_unregister_ack"` |
 | `session` | string | Session |
 | `kind` | string | Effect kind that was removed |
-| `status` | string | Always `"unregistered"` |
+| `status` | string | `"unregistered"` when accepted, `"error"` when rejected |
 
 ---
 

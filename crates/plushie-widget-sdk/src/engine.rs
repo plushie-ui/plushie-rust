@@ -394,7 +394,24 @@ impl Core {
             }
             IncomingMessage::Effect { id, kind, payload } => {
                 log::debug!("effect request: {kind} ({id})");
-                if let Some(stub_response) = self.effect_stubs.get(&kind) {
+                if id.is_empty() {
+                    log::warn!("effect request missing response id: {kind}");
+                    effects.push(CoreEffect::Emit(Emit::Event(OutgoingEvent::generic(
+                        "error",
+                        "effect",
+                        Some(serde_json::json!({
+                            "error": "effect request missing response id",
+                            "kind": kind,
+                        })),
+                    ))));
+                } else if let Err(err) =
+                    plushie_core::ops::validate_effect_request_from_wire(&kind, &payload)
+                {
+                    log::warn!("invalid effect request: {err}");
+                    effects.push(CoreEffect::Emit(Emit::EffectResponse(
+                        crate::protocol::EffectResponse::error(id, err.to_string()),
+                    )));
+                } else if let Some(stub_response) = self.effect_stubs.get(&kind) {
                     log::debug!("effect stub hit: {kind} ({id})");
                     effects.push(CoreEffect::Emit(Emit::EffectResponse(
                         crate::protocol::EffectResponse::ok(id, stub_response.clone()),
@@ -573,18 +590,32 @@ impl Core {
                 );
             }
             IncomingMessage::RegisterEffectStub { kind, response } => {
-                log::info!("effect stub registered: {kind}");
-                self.effect_stubs.insert(kind.clone(), response);
-                effects.push(CoreEffect::Emit(Emit::StubAck(
-                    crate::protocol::EffectStubAck::registered(kind),
-                )));
+                if plushie_core::ops::is_known_effect_kind(&kind) {
+                    log::info!("effect stub registered: {kind}");
+                    self.effect_stubs.insert(kind.clone(), response);
+                    effects.push(CoreEffect::Emit(Emit::StubAck(
+                        crate::protocol::EffectStubAck::registered(kind),
+                    )));
+                } else {
+                    log::warn!("unknown effect stub kind: {kind}");
+                    effects.push(CoreEffect::Emit(Emit::StubAck(
+                        crate::protocol::EffectStubAck::register_error(kind),
+                    )));
+                }
             }
             IncomingMessage::UnregisterEffectStub { kind } => {
-                log::info!("effect stub unregistered: {kind}");
-                self.effect_stubs.remove(&kind);
-                effects.push(CoreEffect::Emit(Emit::StubAck(
-                    crate::protocol::EffectStubAck::unregistered(kind),
-                )));
+                if plushie_core::ops::is_known_effect_kind(&kind) {
+                    log::info!("effect stub unregistered: {kind}");
+                    self.effect_stubs.remove(&kind);
+                    effects.push(CoreEffect::Emit(Emit::StubAck(
+                        crate::protocol::EffectStubAck::unregistered(kind),
+                    )));
+                } else {
+                    log::warn!("unknown effect stub kind: {kind}");
+                    effects.push(CoreEffect::Emit(Emit::StubAck(
+                        crate::protocol::EffectStubAck::unregister_error(kind),
+                    )));
+                }
             }
         }
 
@@ -1226,5 +1257,186 @@ mod tests {
             _ => false,
         });
         assert!(!has_error, "unique IDs should not produce an error event");
+    }
+
+    #[test]
+    fn invalid_effect_payload_returns_error_without_dispatch() {
+        let mut core = Core::new();
+
+        let effects = core.apply(IncomingMessage::Effect {
+            id: "req-1".to_string(),
+            kind: "clipboard_write".to_string(),
+            payload: serde_json::json!({}),
+        });
+
+        assert!(!effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CoreEffect::Dispatch(Dispatch::Effect {
+                    request_id,
+                    kind,
+                    ..
+                }) if request_id == "req-1" && kind == "clipboard_write"
+            )
+        }));
+        let response = effects.iter().find_map(|effect| match effect {
+            CoreEffect::Emit(Emit::EffectResponse(response)) => Some(response),
+            _ => None,
+        });
+        assert!(matches!(
+            response,
+            Some(response)
+                if response.id == "req-1"
+                    && response.status == "error"
+                    && response.error.as_deref()
+                        == Some("missing required field for clipboard_write: text")
+        ));
+    }
+
+    #[test]
+    fn unknown_effect_kind_returns_error_without_dispatch() {
+        let mut core = Core::new();
+
+        let effects = core.apply(IncomingMessage::Effect {
+            id: "req-1".to_string(),
+            kind: "not_real".to_string(),
+            payload: serde_json::json!({}),
+        });
+
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, CoreEffect::Dispatch(Dispatch::Effect { .. })))
+        );
+        let response = effects.iter().find_map(|effect| match effect {
+            CoreEffect::Emit(Emit::EffectResponse(response)) => Some(response),
+            _ => None,
+        });
+        assert!(matches!(
+            response,
+            Some(response)
+                if response.id == "req-1"
+                    && response.status == "error"
+                    && response.error.as_deref() == Some("unknown effect kind: not_real")
+        ));
+    }
+
+    #[test]
+    fn effect_with_empty_id_emits_error_event_without_dispatch() {
+        let mut core = Core::new();
+
+        let effects = core.apply(IncomingMessage::Effect {
+            id: String::new(),
+            kind: "clipboard_write".to_string(),
+            payload: serde_json::json!({"text": "hello"}),
+        });
+
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, CoreEffect::Dispatch(Dispatch::Effect { .. })))
+        );
+        assert!(effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CoreEffect::Emit(Emit::Event(event))
+                    if event.family == "error" && event.id == "effect"
+            )
+        }));
+    }
+
+    #[test]
+    fn unknown_effect_stub_kind_is_rejected_without_inserting() {
+        let mut core = Core::new();
+
+        let effects = core.apply(IncomingMessage::RegisterEffectStub {
+            kind: "not_real".to_string(),
+            response: serde_json::json!({"ok": true}),
+        });
+
+        assert!(!core.effect_stubs.contains_key("not_real"));
+        assert!(effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CoreEffect::Emit(Emit::StubAck(ack))
+                    if ack.kind == "not_real" && ack.status == "error"
+            )
+        }));
+    }
+
+    #[test]
+    fn valid_effect_stub_registration_still_works() {
+        let mut core = Core::new();
+
+        let effects = core.apply(IncomingMessage::RegisterEffectStub {
+            kind: "clipboard_read".to_string(),
+            response: serde_json::json!({"text": "stubbed"}),
+        });
+
+        assert_eq!(
+            core.effect_stubs.get("clipboard_read"),
+            Some(&serde_json::json!({"text": "stubbed"}))
+        );
+        assert!(effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CoreEffect::Emit(Emit::StubAck(ack))
+                    if ack.kind == "clipboard_read" && ack.status == "registered"
+            )
+        }));
+    }
+
+    #[test]
+    fn valid_effect_stub_intercepts_valid_effect_request() {
+        let mut core = Core::new();
+        core.apply(IncomingMessage::RegisterEffectStub {
+            kind: "clipboard_write".to_string(),
+            response: serde_json::json!({"stubbed": true}),
+        });
+
+        let effects = core.apply(IncomingMessage::Effect {
+            id: "req-1".to_string(),
+            kind: "clipboard_write".to_string(),
+            payload: serde_json::json!({"text": "hello"}),
+        });
+
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, CoreEffect::Dispatch(Dispatch::Effect { .. })))
+        );
+        let response = effects.iter().find_map(|effect| match effect {
+            CoreEffect::Emit(Emit::EffectResponse(response)) => Some(response),
+            _ => None,
+        });
+        assert!(matches!(
+            response,
+            Some(response)
+                if response.id == "req-1"
+                    && response.status == "ok"
+                    && response.result.as_ref() == Some(&serde_json::json!({"stubbed": true}))
+        ));
+    }
+
+    #[test]
+    fn unknown_effect_stub_unregister_is_rejected_without_mutating_stubs() {
+        let mut core = Core::new();
+        core.effect_stubs.insert(
+            "clipboard_read".to_string(),
+            serde_json::json!({"text": "stubbed"}),
+        );
+
+        let effects = core.apply(IncomingMessage::UnregisterEffectStub {
+            kind: "not_real".to_string(),
+        });
+
+        assert!(core.effect_stubs.contains_key("clipboard_read"));
+        assert!(effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CoreEffect::Emit(Emit::StubAck(ack))
+                    if ack.kind == "not_real" && ack.status == "error"
+            )
+        }));
     }
 }

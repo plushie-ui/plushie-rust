@@ -1130,6 +1130,16 @@ impl EffectStubAck {
         }
     }
 
+    /// Construct a failed registration acknowledgement.
+    pub fn register_error(kind: String) -> Self {
+        Self {
+            message_type: "effect_stub_register_ack",
+            session: String::new(),
+            kind,
+            status: "error",
+        }
+    }
+
     /// Set or construct `unregistered`.
     pub fn unregistered(kind: String) -> Self {
         Self {
@@ -1137,6 +1147,16 @@ impl EffectStubAck {
             session: String::new(),
             kind,
             status: "unregistered",
+        }
+    }
+
+    /// Construct a failed unregistration acknowledgement.
+    pub fn unregister_error(kind: String) -> Self {
+        Self {
+            message_type: "effect_stub_unregister_ack",
+            session: String::new(),
+            kind,
+            status: "error",
         }
     }
 
@@ -1342,30 +1362,60 @@ mod tests {
 
     #[test]
     fn effect_stub_register_ack_includes_status() {
-        let ack = EffectStubAck::registered("open_file".to_string()).with_session("s1");
+        let ack = EffectStubAck::registered("file_open".to_string()).with_session("s1");
 
         assert_eq!(
             serde_json::to_value(ack).unwrap(),
             json!({
                 "type": "effect_stub_register_ack",
                 "session": "s1",
-                "kind": "open_file",
+                "kind": "file_open",
                 "status": "registered",
             })
         );
     }
 
     #[test]
+    fn effect_stub_register_error_ack_includes_status() {
+        let ack = EffectStubAck::register_error("not_real".to_string()).with_session("s1");
+
+        assert_eq!(
+            serde_json::to_value(ack).unwrap(),
+            json!({
+                "type": "effect_stub_register_ack",
+                "session": "s1",
+                "kind": "not_real",
+                "status": "error",
+            })
+        );
+    }
+
+    #[test]
     fn effect_stub_unregister_ack_includes_status() {
-        let ack = EffectStubAck::unregistered("open_file".to_string()).with_session("s1");
+        let ack = EffectStubAck::unregistered("file_open".to_string()).with_session("s1");
 
         assert_eq!(
             serde_json::to_value(ack).unwrap(),
             json!({
                 "type": "effect_stub_unregister_ack",
                 "session": "s1",
-                "kind": "open_file",
+                "kind": "file_open",
                 "status": "unregistered",
+            })
+        );
+    }
+
+    #[test]
+    fn effect_stub_unregister_error_ack_includes_status() {
+        let ack = EffectStubAck::unregister_error("not_real".to_string()).with_session("s1");
+
+        assert_eq!(
+            serde_json::to_value(ack).unwrap(),
+            json!({
+                "type": "effect_stub_unregister_ack",
+                "session": "s1",
+                "kind": "not_real",
+                "status": "error",
             })
         );
     }

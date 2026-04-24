@@ -93,30 +93,42 @@ impl App {
                     kind,
                     payload,
                 }) => {
-                    if let Some(request) =
-                        plushie_core::ops::effect_request_from_wire(&kind, &payload)
-                    {
-                        if self.effect_handler.is_async(&request) {
-                            let future = self.effect_handler.handle_async(request_id, request);
-                            let sink = self.emitter.sink();
-                            let task =
-                                plushie_widget_sdk::iced::Task::perform(future, move |response| {
-                                    // sink lock is the innermost; no
-                                    // nested locks in this continuation.
-                                    let mut guard = sink.lock();
-                                    if let Err(e) = guard.emit_effect_response(response) {
-                                        log::error!("effect response write error: {e}");
-                                    }
-                                    plushie_widget_sdk::runtime::Message::NoOp
-                                });
-                            self.pending_tasks.push(task);
-                        } else if let Some(response) =
-                            self.effect_handler.handle_sync(&request_id, &request)
-                        {
-                            self.emitter.emit_effect_response(response)?;
+                    match plushie_core::ops::validate_effect_request_from_wire(&kind, &payload) {
+                        Ok(request) => {
+                            if self.effect_handler.is_async(&request) {
+                                let future = self.effect_handler.handle_async(request_id, request);
+                                let sink = self.emitter.sink();
+                                let task = plushie_widget_sdk::iced::Task::perform(
+                                    future,
+                                    move |response| {
+                                        // sink lock is the innermost; no
+                                        // nested locks in this continuation.
+                                        let mut guard = sink.lock();
+                                        if let Err(e) = guard.emit_effect_response(response) {
+                                            log::error!("effect response write error: {e}");
+                                        }
+                                        plushie_widget_sdk::runtime::Message::NoOp
+                                    },
+                                );
+                                self.pending_tasks.push(task);
+                            } else if let Some(response) =
+                                self.effect_handler.handle_sync(&request_id, &request)
+                            {
+                                self.emitter.emit_effect_response(response)?;
+                            }
                         }
-                    } else {
-                        log::warn!("unknown effect kind: {kind}");
+                        Err(err) if request_id.is_empty() => {
+                            log::warn!("invalid effect request without response id: {err}");
+                        }
+                        Err(err) => {
+                            log::warn!("invalid effect request: {err}");
+                            self.emitter.emit_effect_response(
+                                plushie_widget_sdk::protocol::EffectResponse::error(
+                                    request_id,
+                                    err.to_string(),
+                                ),
+                            )?;
+                        }
                     }
                 }
                 CoreEffect::Dispatch(Dispatch::WidgetOp { op, payload }) => {

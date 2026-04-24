@@ -31,6 +31,8 @@ use crate::widget::{EventResult as WidgetEventResult, Interception, WidgetStateS
 use super::effect_tracker::{self, EffectTracker};
 use super::queue_sink::{QueueSink, SinkEvent};
 
+const DIRECT_ROOT_WINDOW_ID: &str = "main";
+
 // ---------------------------------------------------------------------------
 // DirectApp: wraps the user's App for plushie_widget_sdk::iced::daemon
 // ---------------------------------------------------------------------------
@@ -163,7 +165,7 @@ impl<A: App> DirectApp<A> {
                 registry: &self.renderer.registry,
                 default_text_size: self.renderer.core.default_text_size,
                 default_font: None,
-                window_id: "main",
+                window_id: DIRECT_ROOT_WINDOW_ID,
                 scale_factor: self.renderer.scale_factor,
             };
             plushie_widget_sdk::runtime::render(tree, ctx)
@@ -470,10 +472,11 @@ impl<A: App> DirectApp<A> {
             ViewOutcome::Panicked { last_good, .. } => last_good,
         };
 
-        self.renderer.registry.prepare_walk(
+        self.renderer.registry.prepare_walk_in_window(
             &mut tree,
             &mut self.renderer.core.caches,
             &self.renderer.theme,
+            DIRECT_ROOT_WINDOW_ID,
         );
         self.current_tree = Some(tree);
     }

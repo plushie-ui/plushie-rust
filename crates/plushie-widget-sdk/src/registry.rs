@@ -47,7 +47,8 @@
 //! }
 //! ```
 
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 
 use iced::{Element, Theme};
 use serde_json::Value;
@@ -57,6 +58,76 @@ use crate::a11y::A11yOverrides;
 use crate::message::Message;
 use crate::protocol::{OutgoingEvent, TreeNode};
 use crate::render_ctx::RenderCtx;
+
+thread_local! {
+    static EXPLICIT_NULL_INIT_CONFIGS: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+}
+
+fn init_config_key(config: &Value) -> usize {
+    config as *const Value as usize
+}
+
+struct ExplicitNullInitConfig {
+    key: usize,
+}
+
+impl ExplicitNullInitConfig {
+    fn mark(config: &Value) -> Self {
+        let key = init_config_key(config);
+        EXPLICIT_NULL_INIT_CONFIGS.with(|provided| {
+            provided.borrow_mut().insert(key);
+        });
+        Self { key }
+    }
+}
+
+impl Drop for ExplicitNullInitConfig {
+    fn drop(&mut self) {
+        EXPLICIT_NULL_INIT_CONFIGS.with(|provided| {
+            provided.borrow_mut().remove(&self.key);
+        });
+    }
+}
+
+#[cfg(debug_assertions)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PreparedRenderKey {
+    window_id: String,
+    node_id: String,
+    type_name: String,
+}
+
+#[cfg(debug_assertions)]
+impl PreparedRenderKey {
+    fn for_node(node: &TreeNode, window_id: &str) -> Self {
+        Self {
+            window_id: window_id.to_string(),
+            node_id: node.id.clone(),
+            type_name: node.type_name.clone(),
+        }
+    }
+}
+
+#[cfg(debug_assertions)]
+#[derive(Debug, Clone, PartialEq)]
+struct PreparedNodeSnapshot {
+    id: String,
+    type_name: String,
+    props: plushie_core::protocol::Props,
+    children: Vec<PreparedNodeSnapshot>,
+}
+
+#[cfg(debug_assertions)]
+impl PreparedNodeSnapshot {
+    fn from_node(node: &TreeNode) -> Self {
+        Self {
+            id: node.id.clone(),
+            type_name: node.type_name.clone(),
+            props: node.props.clone(),
+            children: node.children.iter().map(Self::from_node).collect(),
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // InitCtx
@@ -75,9 +146,17 @@ use crate::render_ctx::RenderCtx;
 /// `widget_config[namespace]`; widgets without a namespace receive
 /// `Value::Null`.
 ///
+/// `InitCtx` keeps public fields so callers can continue using struct
+/// literals. That means only registry-created contexts can preserve
+/// the difference between a missing namespace and an explicitly
+/// supplied null namespace. A direct literal whose `config` is
+/// `&Value::Null` reports that config was not provided.
+///
 /// # Typed config
 ///
-/// Widgets that store config in a struct should declare
+/// Use [`config_was_provided`](Self::config_was_provided) when a widget
+/// needs to distinguish missing namespace config from an explicitly
+/// supplied empty object. Widgets that store config in a struct should declare
 /// `#[derive(Default, Deserialize)]` and read via
 /// [`config_or_default`](Self::config_or_default) so missing or
 /// malformed config falls back to sane defaults without boilerplate:
@@ -104,7 +183,10 @@ use crate::render_ctx::RenderCtx;
 pub struct InitCtx<'a> {
     /// Widget-specific config from `Settings.widget_config[namespace]`.
     /// `Value::Null` if the host didn't provide config for this
-    /// widget, or if the widget has no namespace.
+    /// widget, if the widget has no namespace, or if the host
+    /// explicitly supplied null. Use
+    /// [`config_was_provided`](Self::config_was_provided) to
+    /// distinguish those cases.
     pub config: &'a Value,
     /// The current theme at init time.
     pub theme: &'a Theme,
@@ -115,6 +197,23 @@ pub struct InitCtx<'a> {
 }
 
 impl InitCtx<'_> {
+    /// Whether the host supplied this widget's config namespace.
+    ///
+    /// This distinguishes a missing namespace from an explicitly
+    /// supplied empty object. Registry-created contexts also
+    /// distinguish a missing namespace from an explicitly supplied
+    /// null namespace while `init()` runs. Direct `InitCtx` literals
+    /// have no field to carry that presence bit, so `Value::Null`
+    /// means absent for those callers.
+    pub fn config_was_provided(&self) -> bool {
+        if !self.config.is_null() {
+            return true;
+        }
+
+        EXPLICIT_NULL_INIT_CONFIGS
+            .with(|provided| provided.borrow().contains(&init_config_key(self.config)))
+    }
+
     /// Deserialize [`config`](Self::config) into a typed value.
     ///
     /// Returns the deserialization error on malformed input so the
@@ -526,6 +625,17 @@ pub struct WidgetRegistry<R: PlushieRenderer = iced::Renderer> {
     /// the engine can route events back to the owning widget's
     /// [`PlushieWidget::handle_message`].
     active_widget_subs: HashMap<String, CollectedSubscription>,
+
+    /// Debug-only tree snapshot for nodes whose owning widget
+    /// completed `prepare()` during the latest prepare walk.
+    #[cfg(debug_assertions)]
+    prepared_render_snapshots: HashMap<PreparedRenderKey, PreparedNodeSnapshot>,
+
+    /// Debug-only keys whose untrusted widget failed during
+    /// `prepare()`. Rendering may still run so the panic boundary can
+    /// contain any follow-on render failure.
+    #[cfg(debug_assertions)]
+    failed_prepare_render_keys: HashSet<PreparedRenderKey>,
 }
 
 /// A collected widget subscription, keyed by its namespaced tag.
@@ -581,11 +691,20 @@ impl<'a, R: PlushieRenderer> PrepareTransform<'a, R> {
         shared: &'a mut crate::shared_state::SharedState,
         theme: &'a Theme,
     ) -> Self {
+        Self::new_in_window(registry, shared, theme, None)
+    }
+
+    pub(crate) fn new_in_window(
+        registry: &'a mut WidgetRegistry<R>,
+        shared: &'a mut crate::shared_state::SharedState,
+        theme: &'a Theme,
+        window_id: Option<&str>,
+    ) -> Self {
         Self {
             registry,
             shared,
             theme,
-            window_stack: Vec::new(),
+            window_stack: window_id.map(str::to_string).into_iter().collect(),
             live_ids: std::collections::HashSet::new(),
             live_keys: std::collections::HashSet::new(),
             widget_subs: HashMap::new(),
@@ -634,13 +753,40 @@ impl<R: PlushieRenderer> plushie_core::tree_walk::TreeTransform for PrepareTrans
             let window_id_owned = window_id_for_this_node.clone();
             let theme_ref = self.theme;
             let node_ref: &TreeNode = node;
+            #[cfg(debug_assertions)]
+            let prepared = self.registry.call_widget_mut(
+                &type_name,
+                "prepare",
+                &node_ref.id,
+                |widget| {
+                    widget.prepare(node_ref, &window_id_owned, theme_ref);
+                    true
+                },
+                || false,
+            );
+            #[cfg(not(debug_assertions))]
             self.registry.call_widget_mut(
                 &type_name,
                 "prepare",
                 &node_ref.id,
-                |widget| widget.prepare(node_ref, &window_id_owned, theme_ref),
+                |widget| {
+                    widget.prepare(node_ref, &window_id_owned, theme_ref);
+                    ()
+                },
                 || {},
             );
+            #[cfg(debug_assertions)]
+            if prepared {
+                let snapshot = PreparedNodeSnapshot::from_node(node_ref);
+                self.registry.prepared_render_snapshots.insert(
+                    PreparedRenderKey::for_node(node_ref, &window_id_owned),
+                    snapshot,
+                );
+            } else {
+                self.registry
+                    .failed_prepare_render_keys
+                    .insert(PreparedRenderKey::for_node(node_ref, &window_id_owned));
+            }
 
             // Collect widget-scoped subscriptions. Immutable call so
             // we drop through call_widget (panic isolation still
@@ -699,6 +845,10 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             node_factory_map: HashMap::new(),
             provenance: HashMap::new(),
             active_widget_subs: HashMap::new(),
+            #[cfg(debug_assertions)]
+            prepared_render_snapshots: HashMap::new(),
+            #[cfg(debug_assertions)]
+            failed_prepare_render_keys: HashSet::new(),
         }
     }
 
@@ -836,6 +986,42 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         self.provenance.get(type_name).is_some_and(|s| s == "iced")
     }
 
+    #[cfg(debug_assertions)]
+    fn assert_prepared_for_render(&self, node: &TreeNode, ctx_window_id: &str) {
+        let window_id = if node.type_name == "window" {
+            node.id.as_str()
+        } else {
+            ctx_window_id
+        };
+        let key = PreparedRenderKey::for_node(node, window_id);
+        let prepared_snapshot = self.prepared_render_snapshots.get(&key);
+        let Some(prepared_snapshot) = prepared_snapshot else {
+            if self.failed_prepare_render_keys.contains(&key) {
+                return;
+            }
+            panic!(
+                "render_node called for node `{}` of type `{}` before prepare completed for that node and type. \
+             Call WidgetRegistry::prepare_walk or WidgetRegistry::prepare_and_scan after tree changes before rendering.",
+                node.id, node.type_name,
+            );
+        };
+        let current_snapshot = PreparedNodeSnapshot::from_node(node);
+        if prepared_snapshot.props != current_snapshot.props {
+            panic!(
+                "render_node called for node `{}` of type `{}` after props changed since prepare completed. \
+             Call WidgetRegistry::prepare_walk or WidgetRegistry::prepare_and_scan after tree changes before rendering.",
+                node.id, node.type_name,
+            );
+        }
+        if prepared_snapshot != &current_snapshot {
+            panic!(
+                "render_node called for node `{}` of type `{}` after node or child changed since prepare completed. \
+             Call WidgetRegistry::prepare_walk or WidgetRegistry::prepare_and_scan after tree changes before rendering.",
+                node.id, node.type_name,
+            );
+        }
+    }
+
     /// Dispatch a widget call with panic isolation (immutable receiver).
     ///
     /// Trusted widgets (the built-in iced set) run `f` directly.
@@ -948,6 +1134,9 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             return iced::widget::container(iced::widget::Space::new()).into();
         };
 
+        #[cfg(debug_assertions)]
+        self.assert_prepared_for_render(node, ctx.window_id);
+
         if self.is_trusted(type_name) {
             self.impls[idx].render(node, ctx)
         } else {
@@ -998,6 +1187,10 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             node_factory_map: HashMap::new(),
             provenance: self.provenance.clone(),
             active_widget_subs: HashMap::new(),
+            #[cfg(debug_assertions)]
+            prepared_render_snapshots: HashMap::new(),
+            #[cfg(debug_assertions)]
+            failed_prepare_render_keys: HashSet::new(),
         }
     }
 
@@ -1103,20 +1296,21 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             .collect();
 
         for (type_name, ns) in per_widget {
-            let ns_config = if ns.is_empty() {
-                Value::Null
+            let (ns_config, config_provided) = if ns.is_empty() {
+                (Value::Null, false)
             } else {
-                ctx.config
-                    .as_object()
-                    .and_then(|obj| obj.get(&ns))
-                    .cloned()
-                    .unwrap_or(Value::Null)
+                match ctx.config.as_object().and_then(|obj| obj.get(&ns)) {
+                    Some(config) => (config.clone(), true),
+                    None => (Value::Null, false),
+                }
             };
             self.call_widget_mut(
                 &type_name,
                 "init",
                 &type_name,
                 |widget| {
+                    let _provided = (config_provided && ns_config.is_null())
+                        .then(|| ExplicitNullInitConfig::mark(&ns_config));
                     let ns_ctx = InitCtx {
                         config: &ns_config,
                         theme: ctx.theme,
@@ -1149,10 +1343,40 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         shared: &mut crate::shared_state::SharedState,
         theme: &Theme,
     ) {
+        self.prepare_walk_with_base_window(root, shared, theme, None);
+    }
+
+    /// Walk a rootless tree as if it lived under `window_id`.
+    ///
+    /// Window nodes still establish their own IDs for their subtrees.
+    /// The supplied ID only seeds nodes that do not have an enclosing
+    /// `window` ancestor.
+    pub fn prepare_walk_in_window(
+        &mut self,
+        root: &mut TreeNode,
+        shared: &mut crate::shared_state::SharedState,
+        theme: &Theme,
+        window_id: &str,
+    ) {
+        self.prepare_walk_with_base_window(root, shared, theme, Some(window_id));
+    }
+
+    fn prepare_walk_with_base_window(
+        &mut self,
+        root: &mut TreeNode,
+        shared: &mut crate::shared_state::SharedState,
+        theme: &Theme,
+        window_id: Option<&str>,
+    ) {
         self.node_factory_map.clear();
+        #[cfg(debug_assertions)]
+        {
+            self.prepared_render_snapshots.clear();
+            self.failed_prepare_render_keys.clear();
+        }
 
         let (live_ids, live_keys, widget_subs) = {
-            let mut transform = PrepareTransform::new(self, shared, theme);
+            let mut transform = PrepareTransform::new_in_window(self, shared, theme, window_id);
             let mut ctx = plushie_core::tree_walk::WalkCtx::default();
             plushie_core::tree_walk::walk(root, &mut [&mut transform], &mut ctx);
             transform.take_collected()
@@ -1177,6 +1401,11 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         animations: &mut crate::animation::TransitionManager,
     ) {
         self.node_factory_map.clear();
+        #[cfg(debug_assertions)]
+        {
+            self.prepared_render_snapshots.clear();
+            self.failed_prepare_render_keys.clear();
+        }
 
         let (live_ids, live_keys, widget_subs) = {
             let mut prepare = PrepareTransform::new(self, shared, theme);
@@ -1592,6 +1821,25 @@ mod tests {
         }
     }
 
+    fn test_render_ctx<'a, R: PlushieRenderer>(
+        caches: &'a crate::shared_state::SharedState,
+        images: &'a crate::image_registry::ImageRegistry,
+        theme: &'a Theme,
+        registry: &'a WidgetRegistry<R>,
+        window_id: &'a str,
+    ) -> RenderCtx<'a, R> {
+        RenderCtx {
+            caches,
+            images,
+            theme,
+            registry,
+            default_text_size: None,
+            default_font: None,
+            window_id,
+            scale_factor: 1.0,
+        }
+    }
+
     #[test]
     fn register_and_lookup() {
         let mut registry = WidgetRegistry::<()>::new();
@@ -1686,10 +1934,51 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum WindowLifecycleCall {
+        Prepare { window_id: String, node_id: String },
+        Render { window_id: String, node_id: String },
+    }
+
+    struct WindowLifecycleWidget {
+        calls: std::rc::Rc<std::cell::RefCell<Vec<WindowLifecycleCall>>>,
+    }
+
+    impl PlushieWidget<()> for WindowLifecycleWidget {
+        fn type_names(&self) -> &[&str] {
+            &["window_lifecycle"]
+        }
+
+        fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &Theme) {
+            self.calls.borrow_mut().push(WindowLifecycleCall::Prepare {
+                window_id: window_id.to_string(),
+                node_id: node.id.clone(),
+            });
+        }
+
+        fn render<'a>(
+            &'a self,
+            node: &'a TreeNode,
+            ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            self.calls.borrow_mut().push(WindowLifecycleCall::Render {
+                window_id: ctx.window_id.to_string(),
+                node_id: node.id.clone(),
+            });
+            iced::widget::text("window lifecycle").into()
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(Self {
+                calls: self.calls.clone(),
+            })
+        }
+    }
+
     // -- init ergonomics -----------------------------------------------------
 
     struct InitSpy {
-        inits: std::rc::Rc<std::cell::RefCell<Vec<(String, Value)>>>,
+        inits: std::rc::Rc<std::cell::RefCell<Vec<(String, Value, bool)>>>,
         ns: &'static str,
     }
 
@@ -1703,9 +1992,11 @@ mod tests {
         }
 
         fn init(&mut self, ctx: &InitCtx<'_>) {
-            self.inits
-                .borrow_mut()
-                .push((self.ns.to_string(), ctx.config.clone()));
+            self.inits.borrow_mut().push((
+                self.ns.to_string(),
+                ctx.config.clone(),
+                ctx.config_was_provided(),
+            ));
         }
 
         fn render<'a>(
@@ -1752,6 +2043,10 @@ mod tests {
             Value::Null,
             "namespace-less widget receives Value::Null"
         );
+        assert!(
+            !calls[0].2,
+            "namespace-less widget should report no config namespace"
+        );
     }
 
     #[test]
@@ -1776,6 +2071,119 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].0, "gauge");
         assert_eq!(calls[0].1, serde_json::json!({ "threshold": 42 }));
+        assert!(calls[0].2, "matching namespace should report config");
+    }
+
+    #[test]
+    fn init_reports_missing_namespaced_config() {
+        let inits = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(InitSpy {
+            inits: inits.clone(),
+            ns: "gauge",
+        }));
+        let theme = Theme::Dark;
+        let config = serde_json::json!({ "other": {} });
+        let ctx = InitCtx {
+            config: &config,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+        registry.init_all(&ctx);
+
+        let calls = inits.borrow().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1, Value::Null);
+        assert!(
+            !calls[0].2,
+            "missing namespace should report no config even though init runs"
+        );
+    }
+
+    #[test]
+    fn init_reports_explicit_empty_namespaced_config() {
+        let inits = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(InitSpy {
+            inits: inits.clone(),
+            ns: "gauge",
+        }));
+        let theme = Theme::Dark;
+        let config = serde_json::json!({ "gauge": {} });
+        let ctx = InitCtx {
+            config: &config,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+        registry.init_all(&ctx);
+
+        let calls = inits.borrow().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1, serde_json::json!({}));
+        assert!(
+            calls[0].2,
+            "empty namespace object should count as supplied"
+        );
+    }
+
+    #[test]
+    fn init_reports_explicit_null_namespaced_config() {
+        let inits = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(InitSpy {
+            inits: inits.clone(),
+            ns: "gauge",
+        }));
+        let theme = Theme::Dark;
+        let config = serde_json::json!({ "gauge": null });
+        let ctx = InitCtx {
+            config: &config,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+        registry.init_all(&ctx);
+
+        let calls = inits.borrow().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1, Value::Null);
+        assert!(
+            calls[0].2,
+            "explicit null namespace should count as supplied"
+        );
+    }
+
+    #[test]
+    fn direct_init_ctx_null_reports_config_not_provided() {
+        let theme = Theme::Dark;
+        let null = Value::Null;
+        let ctx = InitCtx {
+            config: &null,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+
+        assert!(
+            !ctx.config_was_provided(),
+            "direct InitCtx literals cannot represent explicit null presence"
+        );
+    }
+
+    #[test]
+    fn direct_init_ctx_non_null_reports_config_provided() {
+        let theme = Theme::Dark;
+        let config = serde_json::json!({});
+        let ctx = InitCtx {
+            config: &config,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+
+        assert!(ctx.config_was_provided());
     }
 
     #[test]
@@ -1877,6 +2285,161 @@ mod tests {
         assert!(cloned.handles_type("alpha"));
         assert!(cloned.handles_type("beta"));
         assert_eq!(cloned.len(), registry.len());
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "before prepare completed for that node")]
+    fn render_node_panics_without_prepare_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["counter"])));
+        let node = leaf("c1", "counter");
+        let caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
+
+        let _elem = registry.render_node(&node, &ctx);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn render_node_accepts_prepared_node_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["counter"])));
+        let mut node = leaf("c1", "counter");
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
+
+        let _elem = registry.render_node(&node, &ctx);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn render_node_accepts_node_prepared_in_matching_window_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        let calls = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        registry.register(Box::new(WindowLifecycleWidget {
+            calls: calls.clone(),
+        }));
+        let mut node = leaf("c1", "window_lifecycle");
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk_in_window(&mut node, &mut caches, &theme, "main");
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "main");
+
+        let _elem = registry.render_node(&node, &ctx);
+
+        assert_eq!(
+            calls.borrow().as_slice(),
+            [
+                WindowLifecycleCall::Prepare {
+                    window_id: "main".to_string(),
+                    node_id: "c1".to_string(),
+                },
+                WindowLifecycleCall::Render {
+                    window_id: "main".to_string(),
+                    node_id: "c1".to_string(),
+                },
+            ],
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "before prepare completed for that node and type")]
+    fn render_node_panics_when_prepared_in_different_window_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["counter"])));
+        let mut node = leaf("c1", "counter");
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk_in_window(&mut node, &mut caches, &theme, "main");
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "secondary");
+
+        let _elem = registry.render_node(&node, &ctx);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "before prepare completed for that node and type")]
+    fn render_node_panics_when_rootless_prepare_renders_in_window_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["counter"])));
+        let mut node = leaf("c1", "counter");
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "main");
+
+        let _elem = registry.render_node(&node, &ctx);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "before prepare completed for that node and type")]
+    fn render_node_panics_after_type_changes_since_prepare_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["counter"])));
+        registry.register(Box::new(TestWidget::new(&["other"])));
+        let mut node = leaf("c1", "counter");
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        node.type_name = "other".to_string();
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
+
+        let _elem = registry.render_node(&node, &ctx);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "after props changed since prepare completed")]
+    fn render_node_panics_after_props_change_since_prepare_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["counter"])));
+        let mut node = leaf("c1", "counter");
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        node.props = plushie_core::protocol::Props::from_json(serde_json::json!({
+            "value": 1
+        }));
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
+
+        let _elem = registry.render_node(&node, &ctx);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "after node or child changed since prepare completed")]
+    fn render_node_panics_after_child_changes_since_prepare_in_debug() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["counter"])));
+        let mut node = TreeNode {
+            id: "parent".to_string(),
+            type_name: "counter".to_string(),
+            props: plushie_core::protocol::Props::default(),
+            children: vec![leaf("child", "counter")],
+        };
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        node.children[0].props = plushie_core::protocol::Props::from_json(serde_json::json!({
+            "value": 1
+        }));
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
+
+        let _elem = registry.render_node(&node, &ctx);
     }
 
     #[test]
@@ -2537,10 +3100,21 @@ mod tests {
         let mut registry = WidgetRegistry::<()>::new();
         registry.register(Box::new(PanickingInPrepare));
 
-        let mut tree = tree(vec![leaf("p1", "prepare_panic")]);
+        let mut node = leaf("p1", "prepare_panic");
         let mut shared = crate::shared_state::SharedState::new();
-        // Must not panic out of prepare_walk.
-        registry.prepare_walk(&mut tree, &mut shared, &Theme::Dark);
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk(&mut node, &mut shared, &theme);
+        let ctx = test_render_ctx(&shared, &images, &theme, &registry, "");
+
+        let rendered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _elem = registry.render_node(&node, &ctx);
+        }));
+
+        assert!(
+            rendered.is_ok(),
+            "prepare failure should not make the debug guard unwind during render"
+        );
     }
 
     struct PanickingInHandleMessage;
@@ -2705,25 +3279,38 @@ mod tests {
     }
 
     #[test]
+    fn untrusted_prepare_contains_fresh_for_session_panic_before_render_guard() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(PanickingFreshForSession));
+        let mut node = leaf("fresh", "fresh_panic");
+        let mut shared = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = Theme::Dark;
+        registry.prepare_walk(&mut node, &mut shared, &theme);
+        let ctx = test_render_ctx(&shared, &images, &theme, &registry, "");
+
+        let rendered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _elem = registry.render_node(&node, &ctx);
+        }));
+
+        assert!(
+            rendered.is_ok(),
+            "fresh_for_session failure should not make the debug guard unwind during render"
+        );
+    }
+
+    #[test]
     fn untrusted_widget_override_panic_is_contained_in_render() {
         let mut registry = WidgetRegistry::<iced::Renderer>::new();
         registry.register_set(&crate::widget::widget_set::iced_widget_set());
         registry.register(Box::new(PanickingButton));
 
-        let node = leaf("b1", "button");
-        let caches = crate::shared_state::SharedState::new();
+        let mut node = leaf("b1", "button");
+        let mut caches = crate::shared_state::SharedState::new();
         let images = crate::image_registry::ImageRegistry::new();
         let theme = iced::Theme::Dark;
-        let ctx = RenderCtx {
-            caches: &caches,
-            images: &images,
-            theme: &theme,
-            registry: &registry,
-            default_text_size: None,
-            default_font: None,
-            window_id: "",
-            scale_factor: 1.0,
-        };
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
 
         // The panicking override must produce the error placeholder
         // instead of unwinding out of render_node.

@@ -145,13 +145,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for DocContainer {
 
 #[test]
 fn doc_container_renders() {
-    let node = node_with_props_and_children(
+    let mut node = node_with_props_and_children(
         "c1",
         "doc_container",
         json!({"title": "Section"}),
         vec![node("child1", "text")],
     );
-    let test = TestEnv::default();
+    let mut test = TestEnv::default();
+    test.registry
+        .prepare_walk(&mut node, &mut test.shared_state, &test.theme);
     let ctx = test.render_ctx();
     let widget = DocContainer;
     let _element: Element<'_, Message, IcedTheme, iced::Renderer> = widget.render(&node, &ctx);

@@ -169,37 +169,32 @@ mod tests {
         }
     }
 
+    fn render_prepared(mut node: TreeNode) {
+        let mut caches: SharedState = SharedState::new();
+        let images = ImageRegistry::new();
+        let theme = iced::Theme::Dark;
+        let mut registry = smoke_registry();
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
+        let _elem = render(&node, ctx);
+    }
+
     #[test]
     fn render_smoke_text() {
         let node = smoke_node("t", "text", serde_json::json!({"content": "hello"}));
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
     fn render_smoke_column_empty() {
         let node = smoke_node("c", "column", serde_json::json!({}));
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
     fn render_smoke_row_empty() {
         let node = smoke_node("r", "row", serde_json::json!({}));
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
@@ -210,12 +205,7 @@ mod tests {
             serde_json::json!({}),
             vec![smoke_text_child()],
         );
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
@@ -226,12 +216,7 @@ mod tests {
             serde_json::json!({}),
             vec![smoke_text_child()],
         );
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
@@ -241,34 +226,19 @@ mod tests {
             "checkbox",
             serde_json::json!({"label": "Accept", "checked": true}),
         );
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
     fn render_smoke_space() {
         let node = smoke_node("sp", "space", serde_json::json!({}));
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
     fn render_smoke_rule() {
         let node = smoke_node("rl", "rule", serde_json::json!({"direction": "horizontal"}));
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
@@ -278,12 +248,7 @@ mod tests {
             "progress_bar",
             serde_json::json!({"value": 50.0, "min": 0.0, "max": 100.0}),
         );
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
@@ -293,12 +258,7 @@ mod tests {
             "slider",
             serde_json::json!({"min": 0.0, "max": 100.0, "value": 50.0}),
         );
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
@@ -308,34 +268,19 @@ mod tests {
             "text_input",
             serde_json::json!({"placeholder": "Type here", "value": ""}),
         );
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
     fn render_smoke_toggler() {
         let node = smoke_node("tg", "toggler", serde_json::json!({"is_toggled": false}));
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     #[test]
     fn render_smoke_stack_empty() {
         let node = smoke_node("st", "stack", serde_json::json!({}));
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     // -----------------------------------------------------------------------
@@ -357,12 +302,7 @@ mod tests {
     #[test]
     fn render_text_input_missing_props_does_not_panic() {
         let node = smoke_node("ti_empty", "text_input", serde_json::json!({}));
-        let caches: SharedState = SharedState::new();
-        let images = ImageRegistry::new();
-        let theme = iced::Theme::Dark;
-        let registry = smoke_registry();
-        let ctx = smoke_ctx(&caches, &images, &theme, &registry);
-        let _elem = render(&node, ctx);
+        render_prepared(node);
     }
 
     // -----------------------------------------------------------------------

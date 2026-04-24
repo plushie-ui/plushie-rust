@@ -63,8 +63,9 @@ fires depends on the feature flags enabled at build time:
 - **WebAssembly**: direct mode runs in-browser today. A Web Worker +
   postMessage transport for WASM wire mode is tracked in the backlog.
 
-The [protocol reference](docs/protocol.md) documents the full wire
-format, message types, and startup handshake.
+The [wire protocol reference](docs/reference/wire-protocol.md)
+documents the full wire format, message types, and startup
+handshake.
 
 ## Crates
 
@@ -158,8 +159,9 @@ the `cargo-plushie` companion:
     cargo plushie download        # fetch a prebuilt stock renderer
     cargo plushie run --watch     # dev-loop runner
 
-See [docs/build-tool.md](docs/build-tool.md) for the full command
-reference, metadata schema, binary discovery, and mode precedence.
+See [docs/reference/cli-commands.md](docs/reference/cli-commands.md)
+for the full command reference, metadata schema, binary
+discovery, and mode precedence.
 
 ## Development
 
@@ -181,21 +183,23 @@ libraries can detect incompatibilities.
 
 ## Documentation
 
-- [Protocol reference](docs/protocol.md) - wire format, message
-  types, encoding, startup handshake
-- [Widget development](docs/widget-development.md) - building custom
-  widgets
-- [Custom widgets](docs/custom-widgets.md) - native widget crates and
-  the `PlushieWidget` trait
-- [Core widget guide](docs/core-widget-guide.md) - reusable iced
-  widgets that work across every SDK
-- [Build tool](docs/build-tool.md) - `cargo plushie` reference,
-  binary discovery, and the dev loop
-- [WASM build](docs/wasm-build.md) - building for WebAssembly
-- [Versioning policy](docs/versioning.md) - how plushie-rust
-  versions relate to host SDK versions and the wire protocol
-- [Release guide](docs/release.md) - pre-release checklist,
-  publish order, and recovery from partial publishes
+Start with the [documentation index](docs/README.md) for the full
+guide and reference set. Selected entry points:
+
+- [Getting started](docs/guides/02-getting-started.md) - install,
+  first app, choosing a mode
+- [Direct vs wire](docs/reference/direct-vs-wire.md) - in-process
+  iced versus subprocess renderer, WASM renderer, feature flags
+- [Built-in widgets](docs/reference/built-in-widgets.md) - every
+  widget with props, events, and examples
+- [Custom widgets](docs/reference/custom-widgets.md) - the
+  `PlushieWidget` trait, derive macros, native crates
+- [CLI commands](docs/reference/cli-commands.md) - `cargo plushie`
+  subcommands
+- [Wire protocol](docs/reference/wire-protocol.md) - format,
+  message types, handshake
+- [Versioning](docs/reference/versioning.md) - workspace version,
+  wire protocol version, host-SDK coordination
 
 ## License
 

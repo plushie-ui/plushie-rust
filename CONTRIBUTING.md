@@ -63,10 +63,11 @@ Use conventional commits:
 ## Widget Development
 
 For writing custom widgets (external or built-in), see
-[docs/widget-development.md](docs/widget-development.md). It covers
-the decision framework, a full single-crate example, the testing
-harness, development loop, toolchain expectations, and the
-additional steps for adding a widget to the iced set.
+[docs/reference/custom-widgets.md](docs/reference/custom-widgets.md)
+for the trait and derive-macro reference, and
+[docs/guides/13-custom-widgets.md](docs/guides/13-custom-widgets.md)
+for a progressive walkthrough covering helpers, canvas widgets,
+and native `PlushieWidget` crates.
 
 ## Pull Requests
 
@@ -76,9 +77,9 @@ additional steps for adding a widget to the iced set.
 
 ## Release Process
 
-See [docs/versioning.md](docs/versioning.md) for the full policy
-(what `PLUSHIE_RUST_VERSION` means, how SDK versions relate, and
-the protocol-compatibility rule).
+See [docs/reference/versioning.md](docs/reference/versioning.md)
+for the full policy (what `PLUSHIE_RUST_VERSION` means, how SDK
+versions relate, and the protocol-compatibility rule).
 
 1. Update `CHANGELOG.md`: rename `[Unreleased]` to `[x.y.z] - YYYY-MM-DD`.
    List breaking changes first if it's a minor/major bump.

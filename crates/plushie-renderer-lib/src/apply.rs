@@ -165,11 +165,13 @@ impl App {
                     let task = self.sync_windows();
                     self.pending_tasks.push(task);
                 }
-                CoreEffect::StateChange(StateChange::ThemeChanged(theme)) => {
+                CoreEffect::StateChange(StateChange::ThemeChanged(theme, chrome)) => {
                     self.theme = theme;
+                    self.theme_chrome = chrome;
                     self.theme_follows_system = false;
                 }
                 CoreEffect::StateChange(StateChange::ThemeFollowsSystem) => {
+                    self.theme_chrome = plushie_widget_sdk::runtime::ThemeChrome::default();
                     self.theme_follows_system = true;
                 }
                 CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
@@ -201,9 +203,10 @@ impl App {
             for win_id in window_ids {
                 if let Some(node) = self.core.tree.find_window(&win_id)
                     && let Some(theme_val) = node.props.get_value("theme")
-                    && let Some(theme) = plushie_widget_sdk::runtime::resolve_theme_only(&theme_val)
+                    && let Some((theme, chrome)) =
+                        plushie_widget_sdk::runtime::resolve_theme_and_chrome_only(&theme_val)
                 {
-                    self.windows.set_theme(&win_id, Some(theme));
+                    self.windows.set_theme(&win_id, Some(theme), chrome);
                 }
             }
 

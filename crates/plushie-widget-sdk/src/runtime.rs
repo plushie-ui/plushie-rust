@@ -12,7 +12,10 @@ pub use crate::message::{
     serialize_mouse_button, serialize_physical_key, serialize_scroll_delta,
 };
 pub use crate::shared_state::SharedState;
-pub use crate::theming::{resolve_theme, resolve_theme_only};
+pub use crate::theming::{
+    ThemeChrome, resolve_theme, resolve_theme_and_chrome_only, resolve_theme_only,
+    resolve_theme_with_chrome,
+};
 pub use crate::validate::{is_validate_props_enabled, set_validate_props};
 pub use crate::widget::render::render;
 pub use crate::widget::widget_set::{IcedWidgetSet, iced_widget_set};

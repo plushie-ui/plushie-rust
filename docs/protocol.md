@@ -279,7 +279,10 @@ not accepted.
   "text": "#e0e0e0",
   "primary": "#0f3460",
   "primary_strong": "#1a5276",
-  "background_weakest": "#0d0d1a"
+  "background_weakest": "#0d0d1a",
+  "cursor_color": "#ffffff",
+  "scrollbar_color": "#1f2937",
+  "scroller_color": "#6b7280"
 }
 ```
 The `base` field selects a built-in theme to extend. Seed colors
@@ -287,6 +290,11 @@ The `base` field selects a built-in theme to extend. Seed colors
 foundation. Shade keys provide fine-grained control over the
 extended palette (5 color families x 3 shades + 8 background
 levels, each with optional `_text` variant, 52 keys total).
+Chrome color tokens (`cursor_color`, `scrollbar_color`,
+`scroller_color`) are carried outside iced's palette. Scrollbar
+tokens become defaults for scrollable widgets, with widget props
+taking precedence. `cursor_color` applies to focused text entry
+widgets through iced's focused text style.
 
 ---
 

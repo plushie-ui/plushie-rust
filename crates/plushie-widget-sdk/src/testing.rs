@@ -23,6 +23,7 @@ use crate::protocol::{Props, TreeNode};
 use crate::registry::WidgetRegistry;
 use crate::render_ctx::RenderCtx;
 use crate::shared_state::SharedState;
+use crate::theming::ThemeChrome;
 
 // ---------------------------------------------------------------------------
 // TreeNode constructors
@@ -110,6 +111,8 @@ pub struct TestEnv {
     pub images: ImageRegistry,
     /// Active iced theme for the test.
     pub theme: Theme,
+    /// Active theme chrome for the test.
+    pub theme_chrome: ThemeChrome,
     /// Widget registry pre-populated with the built-in widget set.
     pub registry: WidgetRegistry,
     /// Default text size (pixels) applied to widgets without overrides.
@@ -137,6 +140,7 @@ impl Default for TestEnv {
             shared_state: SharedState::new(),
             images: ImageRegistry::new(),
             theme: Theme::Dark,
+            theme_chrome: ThemeChrome::default(),
             registry,
             default_text_size: None,
             default_font: None,
@@ -151,6 +155,7 @@ impl TestEnv {
             caches: &self.shared_state,
             images: &self.images,
             theme: &self.theme,
+            theme_chrome: self.theme_chrome,
             registry: &self.registry,
             default_text_size: self.default_text_size,
             default_font: self.default_font,

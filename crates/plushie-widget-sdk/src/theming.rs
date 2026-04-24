@@ -9,7 +9,7 @@
 //! hex-parser here; all hex validation goes through
 //! [`plushie_core::types::Color`]'s strict wire decoder.
 
-use iced::Theme;
+use iced::{Color, Theme};
 use serde_json::Value;
 
 use plushie_core::types::{PlushieType, Theme as CoreTheme};
@@ -26,22 +26,55 @@ use crate::iced_convert;
 /// exactly one hex-validation path. Unknown or unparseable values fall
 /// back to [`Theme::Dark`].
 pub fn resolve_theme(value: &Value) -> Theme {
+    resolve_theme_with_chrome(value).0
+}
+
+/// Theme-level chrome colors that iced does not store in [`Theme`].
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ThemeChrome {
+    pub cursor_color: Option<Color>,
+    pub scrollbar_color: Option<Color>,
+    pub scroller_color: Option<Color>,
+}
+
+impl ThemeChrome {
+    pub fn is_empty(self) -> bool {
+        self.cursor_color.is_none()
+            && self.scrollbar_color.is_none()
+            && self.scroller_color.is_none()
+    }
+}
+
+/// Resolve a JSON value into an iced [`Theme`] plus renderer chrome tokens.
+pub fn resolve_theme_with_chrome(value: &Value) -> (Theme, ThemeChrome) {
     match CoreTheme::wire_decode(value) {
-        Some(CoreTheme::System) => Theme::Dark,
-        Some(CoreTheme::Named(name)) => resolve_builtin(&name),
-        Some(CoreTheme::Custom(c)) => iced_convert::custom_theme(&c),
-        None => Theme::Dark,
+        Some(CoreTheme::System) => (Theme::Dark, ThemeChrome::default()),
+        Some(CoreTheme::Named(name)) => (resolve_builtin(&name), ThemeChrome::default()),
+        Some(CoreTheme::Custom(c)) => {
+            let chrome = ThemeChrome {
+                cursor_color: c.colors.get("cursor_color").map(iced_convert::color),
+                scrollbar_color: c.colors.get("scrollbar_color").map(iced_convert::color),
+                scroller_color: c.colors.get("scroller_color").map(iced_convert::color),
+            };
+            (iced_convert::custom_theme(&c), chrome)
+        }
+        None => (Theme::Dark, ThemeChrome::default()),
     }
 }
 
 /// Resolve a theme value, returning `None` for `"system"` (follow OS preference).
 pub fn resolve_theme_only(value: &Value) -> Option<Theme> {
+    resolve_theme_and_chrome_only(value).map(|(theme, _)| theme)
+}
+
+/// Resolve a theme value with chrome, returning `None` for `"system"`.
+pub fn resolve_theme_and_chrome_only(value: &Value) -> Option<(Theme, ThemeChrome)> {
     if let Some(s) = value.as_str()
         && s.eq_ignore_ascii_case("system")
     {
         return None;
     }
-    Some(resolve_theme(value))
+    Some(resolve_theme_with_chrome(value))
 }
 
 // ---------------------------------------------------------------------------
@@ -237,5 +270,36 @@ mod tests {
             pal.background.weakest.text,
             Color::from_rgb8(0xaa, 0xaa, 0xaa)
         );
+    }
+
+    #[test]
+    fn custom_theme_chrome_tokens_are_resolved_outside_iced_theme() {
+        let val = json!({
+            "cursor_color": "#112233",
+            "scrollbar_color": "#445566",
+            "scroller_color": "#778899"
+        });
+
+        let (_, chrome) = resolve_theme_with_chrome(&val);
+
+        assert_eq!(
+            chrome.cursor_color,
+            Some(Color::from_rgb8(0x11, 0x22, 0x33))
+        );
+        assert_eq!(
+            chrome.scrollbar_color,
+            Some(Color::from_rgb8(0x44, 0x55, 0x66))
+        );
+        assert_eq!(
+            chrome.scroller_color,
+            Some(Color::from_rgb8(0x77, 0x88, 0x99))
+        );
+    }
+
+    #[test]
+    fn built_in_theme_has_no_chrome_tokens() {
+        let (_, chrome) = resolve_theme_with_chrome(&json!("dark"));
+
+        assert!(chrome.is_empty());
     }
 }

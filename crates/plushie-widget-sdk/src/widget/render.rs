@@ -158,6 +158,7 @@ mod tests {
             caches,
             images,
             theme,
+            theme_chrome: crate::theming::ThemeChrome::default(),
             registry,
             default_text_size: None,
             default_font: None,

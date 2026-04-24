@@ -14,12 +14,16 @@ use super::{Color, PlushieType};
 ///
 /// - String `"system"` for OS-detected theme
 /// - String `"dark"`, `"light"`, etc. for built-in themes
-/// - JSON object for custom themes with palette colors and shade overrides
+/// - JSON object for custom themes with palette colors, shade overrides,
+///   and renderer chrome color tokens
 ///
 /// ## Custom themes
 ///
 /// Custom themes start from a base built-in theme and override specific
 /// colors. The `base` field selects the starting palette (default: "dark").
+/// Renderer chrome tokens such as `cursor_color`, `scrollbar_color`, and
+/// `scroller_color` are decoded as color keys and handled by the renderer
+/// outside iced's palette.
 ///
 /// ```
 /// use plushie_core::types::Theme;

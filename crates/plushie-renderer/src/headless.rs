@@ -147,6 +147,7 @@ struct UiState<R: PlushieRenderer> {
 struct Session<R: PlushieRenderer> {
     core: Core,
     theme: Theme,
+    theme_chrome: plushie_widget_sdk::runtime::ThemeChrome,
     registry: plushie_widget_sdk::registry::WidgetRegistry<R>,
     images: ImageRegistry,
     writer: WireWriter,
@@ -206,6 +207,7 @@ impl<R: PlushieRenderer> Session<R> {
         Self {
             core: Core::new(),
             theme: Theme::Dark,
+            theme_chrome: plushie_widget_sdk::runtime::ThemeChrome::default(),
             registry,
             images: ImageRegistry::new(),
             writer,
@@ -252,6 +254,7 @@ impl<R: PlushieRenderer> Session<R> {
             caches: &self.core.caches,
             images: &self.images,
             theme: &self.theme,
+            theme_chrome: self.theme_chrome,
             registry: &self.registry,
             default_text_size: self.core.default_text_size,
             default_font: self.core.default_font,
@@ -424,7 +427,15 @@ impl<R: PlushieRenderer> Session<R> {
                     for effect in effects {
                         use plushie_widget_sdk::runtime::{CoreEffect, StateChange};
                         match effect {
-                            CoreEffect::StateChange(StateChange::ThemeChanged(t)) => self.theme = t,
+                            CoreEffect::StateChange(StateChange::ThemeChanged(t, chrome)) => {
+                                self.theme = t;
+                                self.theme_chrome = chrome;
+                            }
+                            CoreEffect::StateChange(StateChange::ThemeFollowsSystem) => {
+                                self.theme = Theme::Dark;
+                                self.theme_chrome =
+                                    plushie_widget_sdk::runtime::ThemeChrome::default();
+                            }
                             CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
                                 let ctx = plushie_widget_sdk::registry::InitCtx {
                                     config: &config,
@@ -572,7 +583,7 @@ fn handle_message<R: PlushieRenderer>(
                             s.writer.emit(&response.with_session(session_id))?;
                         }
                     }
-                    CoreEffect::StateChange(StateChange::ThemeChanged(t)) => {
+                    CoreEffect::StateChange(StateChange::ThemeChanged(t, chrome)) => {
                         let mode_str = if t == iced::Theme::Light {
                             "light"
                         } else {
@@ -593,6 +604,7 @@ fn handle_message<R: PlushieRenderer>(
                             );
                         }
                         s.theme = t;
+                        s.theme_chrome = chrome;
                     }
                     CoreEffect::Dispatch(Dispatch::Image {
                         op,
@@ -701,7 +713,10 @@ fn handle_message<R: PlushieRenderer>(
                     | CoreEffect::Dispatch(Dispatch::WindowQuery(_))
                     | CoreEffect::Dispatch(Dispatch::System(_))
                     | CoreEffect::Dispatch(Dispatch::SystemQuery(_)) => {}
-                    CoreEffect::StateChange(StateChange::ThemeFollowsSystem) => {}
+                    CoreEffect::StateChange(StateChange::ThemeFollowsSystem) => {
+                        s.theme = Theme::Dark;
+                        s.theme_chrome = plushie_widget_sdk::runtime::ThemeChrome::default();
+                    }
                     CoreEffect::StateChange(StateChange::ExitNodes(nodes)) => {
                         for (parent_id, index, node) in nodes {
                             s.transition_manager
@@ -964,6 +979,7 @@ fn handle_screenshot<R: PlushieRenderer>(
         caches: &s.core.caches,
         images: &s.images,
         theme: &s.theme,
+        theme_chrome: s.theme_chrome,
         registry: &s.registry,
         default_text_size: s.core.default_text_size,
         default_font: s.core.default_font,

@@ -12,6 +12,7 @@ use crate::image_registry::ImageRegistry;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::shared_state::SharedState;
+use crate::theming::ThemeChrome;
 
 /// Renders child nodes through the main dispatch. Copy-able (all shared refs).
 ///
@@ -28,6 +29,8 @@ pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
     pub images: &'a ImageRegistry,
     /// Active iced theme for this window.
     pub theme: &'a Theme,
+    /// Theme chrome tokens carried outside iced's Theme palette.
+    pub theme_chrome: ThemeChrome,
     /// Widget registry for unified dispatch. All widget types are
     /// registered here.
     pub registry: &'a crate::registry::WidgetRegistry<R>,
@@ -72,6 +75,15 @@ impl<'a, R: PlushieRenderer> RenderCtx<'a, R> {
     /// Create a new RenderCtx with a different theme, preserving all other fields.
     pub fn with_theme(&self, theme: &'a Theme) -> Self {
         RenderCtx { theme, ..*self }
+    }
+
+    /// Create a new RenderCtx with a different theme and chrome tokens.
+    pub fn with_theme_and_chrome(&self, theme: &'a Theme, theme_chrome: ThemeChrome) -> Self {
+        RenderCtx {
+            theme,
+            theme_chrome,
+            ..*self
+        }
     }
 
     /// Create a new RenderCtx for a child window subtree.

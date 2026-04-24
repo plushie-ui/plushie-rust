@@ -6,6 +6,7 @@
 //! one side without the other.
 
 use iced::{Theme, window};
+use plushie_widget_sdk::runtime::ThemeChrome;
 use std::collections::HashMap;
 
 /// Per-window state beyond the ID mapping.
@@ -16,6 +17,7 @@ struct WindowState {
     /// Resolved theme for this window, if set via the tree's theme prop.
     /// None means "use app theme" (system or global).
     theme: Option<Theme>,
+    theme_chrome: ThemeChrome,
     /// Per-window scale factor override. None means "use global default".
     scale_factor: Option<f32>,
 }
@@ -25,6 +27,7 @@ impl Default for WindowState {
         Self {
             decorated: true,
             theme: None,
+            theme_chrome: ThemeChrome::default(),
             scale_factor: None,
         }
     }
@@ -142,15 +145,23 @@ impl WindowMap {
             .and_then(|(_, s)| s.theme.as_ref())
     }
 
-    pub fn set_theme(&mut self, window_id: &str, theme: Option<Theme>) {
+    pub fn cached_theme_chrome(&self, window_id: &str) -> Option<ThemeChrome> {
+        self.forward
+            .get(window_id)
+            .and_then(|(_, s)| s.theme.as_ref().map(|_| s.theme_chrome))
+    }
+
+    pub fn set_theme(&mut self, window_id: &str, theme: Option<Theme>, chrome: ThemeChrome) {
         if let Some((_, state)) = self.forward.get_mut(window_id) {
             state.theme = theme;
+            state.theme_chrome = chrome;
         }
     }
 
     pub fn clear_theme_cache(&mut self) {
         for (_, state) in self.forward.values_mut() {
             state.theme = None;
+            state.theme_chrome = ThemeChrome::default();
         }
     }
 

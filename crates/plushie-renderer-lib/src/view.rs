@@ -24,6 +24,7 @@ impl App {
         };
 
         let resolved_theme = self.theme_ref_for_window(iced_id);
+        let theme_chrome = self.theme_chrome_for_window(iced_id);
 
         match self.core.tree.find_window(window_id) {
             Some(window_node) => {
@@ -31,6 +32,7 @@ impl App {
                     caches: &self.core.caches,
                     images: &self.image_registry,
                     theme: resolved_theme,
+                    theme_chrome,
                     registry: &self.registry,
                     default_text_size: self.core.default_text_size,
                     default_font: self.core.default_font,

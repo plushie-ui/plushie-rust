@@ -162,6 +162,7 @@ impl<A: App> DirectApp<A> {
                 caches: &self.renderer.core.caches,
                 images: &self.renderer.image_registry,
                 theme: &self.renderer.theme,
+                theme_chrome: self.renderer.theme_chrome,
                 registry: &self.renderer.registry,
                 default_text_size: self.renderer.core.default_text_size,
                 default_font: None,

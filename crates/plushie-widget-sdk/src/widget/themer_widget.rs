@@ -8,6 +8,7 @@ use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
+use crate::theming::ThemeChrome;
 
 use plushie_core::types::PlushieType;
 
@@ -15,12 +16,14 @@ pub(crate) struct ThemerWidget {
     /// Resolved themes per (window_id, node_id). Populated during prepare,
     /// borrowed during render for child context theming.
     themes: HashMap<(String, String), Theme>,
+    chromes: HashMap<(String, String), ThemeChrome>,
 }
 
 impl ThemerWidget {
     pub(crate) fn new() -> Self {
         Self {
             themes: HashMap::new(),
+            chromes: HashMap::new(),
         }
     }
 }
@@ -35,13 +38,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
         let theme_val = plushie_core::types::Theme::extract(&node.props, "theme");
         if let Some(ref t) = theme_val {
             let wire = serde_json::Value::from(t.wire_encode());
-            if let Some(resolved) = crate::theming::resolve_theme_only(&wire) {
-                self.themes.insert(key, resolved);
+            if let Some((resolved, chrome)) = crate::theming::resolve_theme_and_chrome_only(&wire) {
+                self.themes.insert(key.clone(), resolved);
+                self.chromes.insert(key, chrome);
             } else {
                 self.themes.remove(&key);
+                self.chromes.remove(&key);
             }
         } else {
             self.themes.remove(&key);
+            self.chromes.remove(&key);
         }
     }
 
@@ -55,7 +61,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
         let key = (ctx.window_id.to_string(), node.id.clone());
         let cached_theme = self.themes.get(&key);
         let child_theme = cached_theme.unwrap_or(ctx.theme);
-        let child_ctx = ctx.with_theme(child_theme);
+        let child_chrome = self.chromes.get(&key).copied().unwrap_or(ctx.theme_chrome);
+        let child_ctx = ctx.with_theme_and_chrome(child_theme, child_chrome);
 
         let child: Element<'a, Message, Theme, R> = node
             .children
@@ -69,6 +76,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
 
     fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.themes.retain(|k, _| live_ids.contains(k));
+        self.chromes.retain(|k, _| live_ids.contains(k));
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {

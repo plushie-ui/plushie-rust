@@ -187,9 +187,11 @@ fn render_text_input<'a, R: PlushieRenderer>(
     // any style preset or StyleMap.
     let placeholder_color = tp.placeholder_color.as_ref().map(iced_convert::color);
     let selection_color = tp.selection_color.as_ref().map(iced_convert::color);
+    let cursor_color = ctx.theme_chrome.cursor_color;
 
     // Style: preset name or custom style map
-    let has_color_overrides = placeholder_color.is_some() || selection_color.is_some();
+    let has_color_overrides =
+        placeholder_color.is_some() || selection_color.is_some() || cursor_color.is_some();
     match &tp.style {
         Some(CoreStyle::Preset(name)) => {
             ti = match name.as_str() {
@@ -197,6 +199,7 @@ fn render_text_input<'a, R: PlushieRenderer>(
                     if has_color_overrides {
                         ti.style(move |theme: &iced::Theme, status| {
                             let mut style = text_input::default(theme, status);
+                            apply_text_input_cursor_chrome(&mut style, status, cursor_color);
                             if let Some(pc) = placeholder_color {
                                 style.placeholder = pc;
                             }
@@ -228,6 +231,7 @@ fn render_text_input<'a, R: PlushieRenderer>(
                         _ => text_input::default,
                     };
                 let mut style = base_fn(theme, status);
+                apply_text_input_cursor_chrome(&mut style, status, cursor_color);
                 apply_text_input_fields(&mut style, &ov.base);
                 match status {
                     text_input::Status::Focused { .. } => {
@@ -274,6 +278,7 @@ fn render_text_input<'a, R: PlushieRenderer>(
                 // No style prop but direct color overrides present
                 ti = ti.style(move |theme: &iced::Theme, status| {
                     let mut style = text_input::default(theme, status);
+                    apply_text_input_cursor_chrome(&mut style, status, cursor_color);
                     if let Some(pc) = placeholder_color {
                         style.placeholder = pc;
                     }

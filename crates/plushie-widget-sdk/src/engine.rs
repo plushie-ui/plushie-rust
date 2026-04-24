@@ -128,7 +128,7 @@ pub enum StateChange {
     ///
     /// The host should update its cached theme and set
     /// `theme_follows_system = false`.
-    ThemeChanged(iced::Theme),
+    ThemeChanged(iced::Theme, crate::theming::ThemeChrome),
 
     /// The root theme was set to `"system"`: the app-level theme
     /// should follow the OS preference.
@@ -179,6 +179,7 @@ pub struct Core {
     /// Cached resolved theme from the root node's `theme` prop.
     /// Only re-resolved when the raw JSON value changes.
     pub cached_theme: Option<iced::Theme>,
+    pub cached_theme_chrome: crate::theming::ThemeChrome,
     /// Content hash of the last resolved theme prop, used for change
     /// detection. Replaces the previous `to_string()` approach which
     /// allocated and compared a full JSON string on every check.
@@ -220,6 +221,7 @@ impl Core {
             default_text_size: None,
             default_font: None,
             cached_theme: None,
+            cached_theme_chrome: crate::theming::ThemeChrome::default(),
             cached_theme_hash: None,
             settings_applied: false,
             effect_stubs: HashMap::new(),
@@ -331,16 +333,31 @@ impl Core {
             return;
         }
         self.cached_theme_hash = Some(hash);
-        match theming::resolve_theme_only(theme_val) {
-            Some(theme) => {
+        match theming::resolve_theme_and_chrome_only(theme_val) {
+            Some((theme, chrome)) => {
                 self.cached_theme = Some(theme.clone());
-                effects.push(CoreEffect::StateChange(StateChange::ThemeChanged(theme)));
+                self.cached_theme_chrome = chrome;
+                effects.push(CoreEffect::StateChange(StateChange::ThemeChanged(
+                    theme, chrome,
+                )));
             }
             None => {
                 self.cached_theme = None;
+                self.cached_theme_chrome = crate::theming::ThemeChrome::default();
                 effects.push(CoreEffect::StateChange(StateChange::ThemeFollowsSystem));
             }
         }
+    }
+
+    fn clear_cached_theme(&mut self, effects: &mut Vec<CoreEffect>) {
+        if self.cached_theme_hash.is_none() {
+            return;
+        }
+
+        self.cached_theme = None;
+        self.cached_theme_chrome = crate::theming::ThemeChrome::default();
+        self.cached_theme_hash = None;
+        effects.push(CoreEffect::StateChange(StateChange::ThemeFollowsSystem));
     }
 
     /// Process an incoming message, mutate state, return effects.
@@ -352,6 +369,8 @@ impl Core {
                 log::debug!("snapshot received (root id={})", tree.id);
                 if let Some(theme_val) = tree.props.get_value("theme") {
                     self.resolve_and_cache_theme(&theme_val, &mut effects);
+                } else {
+                    self.clear_cached_theme(&mut effects);
                 }
                 if let Err(duplicates) = self.tree.snapshot(tree) {
                     let dup_list = duplicates.join(", ");
@@ -391,10 +410,12 @@ impl Core {
                     effects.push(CoreEffect::StateChange(StateChange::ExitNodes(exit_nodes)));
                 }
                 // Re-check root theme prop in case a patch changed it.
-                if let Some(root) = self.tree.root()
-                    && let Some(theme_val) = root.props.get_value("theme")
-                {
-                    self.resolve_and_cache_theme(&theme_val, &mut effects);
+                if let Some(root) = self.tree.root() {
+                    if let Some(theme_val) = root.props.get_value("theme") {
+                        self.resolve_and_cache_theme(&theme_val, &mut effects);
+                    } else {
+                        self.clear_cached_theme(&mut effects);
+                    }
                 }
                 if let Some(root) = self.tree.root()
                     && self.is_validate_props_enabled()
@@ -802,6 +823,15 @@ mod tests {
         })
     }
 
+    fn has_theme_follows_system(effects: &[CoreEffect]) -> bool {
+        effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CoreEffect::StateChange(StateChange::ThemeFollowsSystem)
+            )
+        })
+    }
+
     // -- Core::new() --
 
     #[test]
@@ -856,7 +886,7 @@ mod tests {
         let effects = core.apply(msg);
         let has_theme = effects
             .iter()
-            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_))));
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_, _))));
         assert!(has_theme);
     }
 
@@ -869,8 +899,34 @@ mod tests {
         let effects = core.apply(msg);
         let has_theme = effects
             .iter()
-            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_))));
+            .any(|e| matches!(e, CoreEffect::StateChange(StateChange::ThemeChanged(_, _))));
         assert!(!has_theme);
+    }
+
+    #[test]
+    fn snapshot_without_theme_prop_clears_previous_theme_chrome() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_props(
+                "root",
+                "column",
+                serde_json::json!({
+                    "theme": {
+                        "name": "chrome",
+                        "scrollbar_color": "#112233"
+                    }
+                }),
+            ),
+        });
+        assert!(core.cached_theme_chrome.scrollbar_color.is_some());
+
+        let effects = core.apply(IncomingMessage::Snapshot {
+            tree: make_node("root", "column"),
+        });
+
+        assert!(has_theme_follows_system(&effects));
+        assert!(core.cached_theme.is_none());
+        assert!(core.cached_theme_chrome.is_empty());
     }
 
     // -- Patch --
@@ -887,6 +943,40 @@ mod tests {
         let patch_msg = IncomingMessage::Patch { ops: vec![] };
         let effects = core.apply(patch_msg);
         assert!(has_sync_windows(&effects));
+    }
+
+    #[test]
+    fn patch_removing_root_theme_clears_previous_theme_chrome() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_props(
+                "root",
+                "column",
+                serde_json::json!({
+                    "theme": {
+                        "name": "chrome",
+                        "cursor_color": "#112233",
+                        "scrollbar_color": "#445566",
+                        "scroller_color": "#778899"
+                    }
+                }),
+            ),
+        });
+        assert!(!core.cached_theme_chrome.is_empty());
+
+        let effects = core.apply(IncomingMessage::Patch {
+            ops: vec![make_patch_op(
+                "update_props",
+                vec![],
+                serde_json::json!({
+                    "props": {"theme": null}
+                }),
+            )],
+        });
+
+        assert!(has_theme_follows_system(&effects));
+        assert!(core.cached_theme.is_none());
+        assert!(core.cached_theme_chrome.is_empty());
     }
 
     #[test]

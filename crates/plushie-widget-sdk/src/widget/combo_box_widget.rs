@@ -233,10 +233,21 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     }
 
     // Style: preset name or custom style map
+    let cursor_color = ctx.theme_chrome.cursor_color;
     match &cp.style {
         Some(CoreStyle::Preset(name)) => {
             cb = match name.as_str() {
-                "default" => cb.input_style(text_input::default),
+                "default" => {
+                    if cursor_color.is_some() {
+                        cb.input_style(move |theme: &iced::Theme, status| {
+                            let mut style = text_input::default(theme, status);
+                            apply_text_input_cursor_chrome(&mut style, status, cursor_color);
+                            style
+                        })
+                    } else {
+                        cb.input_style(text_input::default)
+                    }
+                }
                 _ => {
                     log::warn!(
                         "unknown style {:?} for widget type {:?}, using default",
@@ -256,6 +267,7 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
                         _ => text_input::default,
                     };
                 let mut style = base_fn(theme, status);
+                apply_text_input_cursor_chrome(&mut style, status, cursor_color);
                 apply_text_input_fields(&mut style, &ov.base);
                 match status {
                     text_input::Status::Focused { .. } => {
@@ -291,7 +303,15 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
                 style
             });
         }
-        None => {}
+        None => {
+            if cursor_color.is_some() {
+                cb = cb.input_style(move |theme: &iced::Theme, status| {
+                    let mut style = text_input::default(theme, status);
+                    apply_text_input_cursor_chrome(&mut style, status, cursor_color);
+                    style
+                });
+            }
+        }
     }
 
     container(cb).id(widget::Id::from(node.id.clone())).into()

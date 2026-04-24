@@ -10,7 +10,7 @@ use iced::{Task, Theme, keyboard, window};
 
 use plushie_widget_sdk::protocol::OutgoingEvent;
 use plushie_widget_sdk::registry::WidgetRegistry;
-use plushie_widget_sdk::runtime::Message;
+use plushie_widget_sdk::runtime::{Message, ThemeChrome};
 
 use crate::constants::*;
 use crate::effects::EffectHandler;
@@ -39,6 +39,7 @@ pub fn validate_scale_factor(sf: f32) -> f32 {
 pub struct App {
     pub core: plushie_widget_sdk::runtime::Core,
     pub theme: Theme,
+    pub theme_chrome: ThemeChrome,
     /// Widget ops and effects return iced Tasks, but `apply()` doesn't
     /// return them. They accumulate here and are drained via `Task::batch`
     /// in `update()` after `apply()` returns.
@@ -85,6 +86,7 @@ impl App {
         Self {
             core: plushie_widget_sdk::runtime::Core::new(),
             theme: DEFAULT_THEME,
+            theme_chrome: ThemeChrome::default(),
             pending_tasks: Vec::new(),
             windows: window_map::WindowMap::new(),
             image_registry: plushie_widget_sdk::image_registry::ImageRegistry::new(),
@@ -131,6 +133,19 @@ impl App {
             &self.system_theme
         } else {
             &self.theme
+        }
+    }
+
+    pub fn theme_chrome_for_window(&self, iced_id: window::Id) -> ThemeChrome {
+        if let Some(window_id) = self.windows.get_window_id(&iced_id)
+            && let Some(chrome) = self.windows.cached_theme_chrome(window_id)
+        {
+            return chrome;
+        }
+        if self.theme_follows_system {
+            ThemeChrome::default()
+        } else {
+            self.theme_chrome
         }
     }
 

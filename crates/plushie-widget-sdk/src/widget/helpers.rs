@@ -294,6 +294,23 @@ pub fn apply_text_input_fields(style: &mut text_input::Style, fields: &StyleMapF
     }
 }
 
+/// Apply the theme cursor token to text_input.
+///
+/// iced draws the caret with `Style::value`; there is no separate caret
+/// color field. This keeps the workaround focused on the focused state
+/// and lets explicit StyleMap `text_color` override it afterwards.
+pub fn apply_text_input_cursor_chrome(
+    style: &mut text_input::Style,
+    status: text_input::Status,
+    cursor_color: Option<iced::Color>,
+) {
+    if matches!(status, text_input::Status::Focused { .. })
+        && let Some(color) = cursor_color
+    {
+        style.value = color;
+    }
+}
+
 /// Apply style map fields to a text_editor style. Mirrors
 /// [`apply_text_input_fields`]; both style types have the same
 /// background/border/value fields but are distinct iced types.
@@ -306,6 +323,23 @@ pub fn apply_text_editor_fields(style: &mut text_editor::Style, fields: &StyleMa
     }
     if let Some(tc) = fields.text_color {
         style.value = tc;
+    }
+}
+
+/// Apply the theme cursor token to text_editor.
+///
+/// iced draws the caret with `Style::value`; there is no separate caret
+/// color field. This keeps the workaround focused on the focused state
+/// and lets explicit StyleMap `text_color` override it afterwards.
+pub fn apply_text_editor_cursor_chrome(
+    style: &mut text_editor::Style,
+    status: text_editor::Status,
+    cursor_color: Option<iced::Color>,
+) {
+    if matches!(status, text_editor::Status::Focused { .. })
+        && let Some(color) = cursor_color
+    {
+        style.value = color;
     }
 }
 
@@ -847,5 +881,56 @@ mod tests {
         assert!((result.g - 1.0).abs() < 0.001);
         assert!((result.b - 1.0).abs() < 0.001);
         assert!((result.a - 0.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn text_input_cursor_chrome_uses_focused_value_color() {
+        let cursor = Color::from_rgb8(0xaa, 0xbb, 0xcc);
+        let mut style = text_input::default(
+            &iced::Theme::Dark,
+            text_input::Status::Focused { is_hovered: false },
+        );
+
+        apply_text_input_cursor_chrome(
+            &mut style,
+            text_input::Status::Focused { is_hovered: false },
+            Some(cursor),
+        );
+
+        assert_eq!(style.value, cursor);
+    }
+
+    #[test]
+    fn text_input_explicit_text_color_overrides_cursor_chrome() {
+        let cursor = Color::from_rgb8(0xaa, 0xbb, 0xcc);
+        let explicit = Color::from_rgb8(0x11, 0x22, 0x33);
+        let mut style = text_input::default(
+            &iced::Theme::Dark,
+            text_input::Status::Focused { is_hovered: false },
+        );
+
+        apply_text_input_cursor_chrome(
+            &mut style,
+            text_input::Status::Focused { is_hovered: false },
+            Some(cursor),
+        );
+        let fields = StyleMapFields {
+            text_color: Some(explicit),
+            ..StyleMapFields::default()
+        };
+        apply_text_input_fields(&mut style, &fields);
+
+        assert_eq!(style.value, explicit);
+    }
+
+    #[test]
+    fn text_editor_cursor_chrome_ignores_unfocused_status() {
+        let cursor = Color::from_rgb8(0xaa, 0xbb, 0xcc);
+        let mut style = text_editor::default(&iced::Theme::Dark, text_editor::Status::Active);
+        let original = style.value;
+
+        apply_text_editor_cursor_chrome(&mut style, text_editor::Status::Active, Some(cursor));
+
+        assert_eq!(style.value, original);
     }
 }

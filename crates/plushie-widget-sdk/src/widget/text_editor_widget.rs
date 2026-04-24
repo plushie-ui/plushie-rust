@@ -586,6 +586,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     // Direct color props for placeholder and selection
     let placeholder_color = tp.placeholder_color.as_ref().map(iced_convert::color);
     let selection_color = tp.selection_color.as_ref().map(iced_convert::color);
+    let cursor_color = ctx.theme_chrome.cursor_color;
 
     // Style closure, shared between plain and highlighted paths
     #[allow(clippy::type_complexity)]
@@ -593,9 +594,13 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
         match &tp.style {
             Some(CoreStyle::Preset(name)) => match name.as_str() {
                 "default" => {
-                    if placeholder_color.is_some() || selection_color.is_some() {
+                    if placeholder_color.is_some()
+                        || selection_color.is_some()
+                        || cursor_color.is_some()
+                    {
                         Some(Box::new(move |theme: &iced::Theme, status| {
                             let mut style = text_editor::default(theme, status);
+                            apply_text_editor_cursor_chrome(&mut style, status, cursor_color);
                             if let Some(pc) = placeholder_color {
                                 style.placeholder = pc;
                             }
@@ -626,6 +631,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                             _ => text_editor::default,
                         };
                     let mut style = base_fn(theme, status);
+                    apply_text_editor_cursor_chrome(&mut style, status, cursor_color);
                     apply_text_editor_fields(&mut style, &ov.base);
                     match status {
                         text_editor::Status::Focused { .. } => {
@@ -668,10 +674,14 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                 }))
             }
             None => {
-                if placeholder_color.is_some() || selection_color.is_some() {
+                if placeholder_color.is_some()
+                    || selection_color.is_some()
+                    || cursor_color.is_some()
+                {
                     // No style prop but direct color overrides present
                     Some(Box::new(move |theme: &iced::Theme, status| {
                         let mut style = text_editor::default(theme, status);
+                        apply_text_editor_cursor_chrome(&mut style, status, cursor_color);
                         if let Some(pc) = placeholder_color {
                             style.placeholder = pc;
                         }

@@ -12,6 +12,21 @@ use crate::widget::helpers::*;
 
 use plushie_core::types::{Anchor, Color, Direction, Length, PlushieType};
 
+fn apply_scrollable_chrome(
+    style: &mut scrollable::Style,
+    scrollbar_color: Option<iced::Color>,
+    scroller_color: Option<iced::Color>,
+) {
+    if let Some(sc) = scrollbar_color {
+        style.vertical_rail.background = Some(iced::Background::Color(sc));
+        style.horizontal_rail.background = Some(iced::Background::Color(sc));
+    }
+    if let Some(sc) = scroller_color {
+        style.vertical_rail.scroller.background = iced::Background::Color(sc);
+        style.horizontal_rail.scroller.background = iced::Background::Color(sc);
+    }
+}
+
 struct ScrollableProps {
     width: Option<Length>,
     height: Option<Length>,
@@ -142,19 +157,20 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
         }
 
         // Scrollbar color styling (kept as iced::Color for style closure)
-        let scrollbar_color = sp.scrollbar_color.as_ref().map(iced_convert::color);
-        let scroller_color = sp.scroller_color.as_ref().map(iced_convert::color);
+        let scrollbar_color = sp
+            .scrollbar_color
+            .as_ref()
+            .map(iced_convert::color)
+            .or(ctx.theme_chrome.scrollbar_color);
+        let scroller_color = sp
+            .scroller_color
+            .as_ref()
+            .map(iced_convert::color)
+            .or(ctx.theme_chrome.scroller_color);
         if scrollbar_color.is_some() || scroller_color.is_some() {
             s = s.style(move |theme: &iced::Theme, status| {
                 let mut style = scrollable::default(theme, status);
-                if let Some(sc) = scrollbar_color {
-                    style.vertical_rail.background = Some(iced::Background::Color(sc));
-                    style.horizontal_rail.background = Some(iced::Background::Color(sc));
-                }
-                if let Some(sc) = scroller_color {
-                    style.vertical_rail.scroller.background = iced::Background::Color(sc);
-                    style.horizontal_rail.scroller.background = iced::Background::Color(sc);
-                }
+                apply_scrollable_chrome(&mut style, scrollbar_color, scroller_color);
                 style
             });
         }
@@ -175,5 +191,42 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ScrollableWidget {
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(ScrollableWidget)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_scrollable_chrome_sets_both_axes() {
+        let rail = iced::Color::from_rgb8(0x11, 0x22, 0x33);
+        let handle = iced::Color::from_rgb8(0x44, 0x55, 0x66);
+        let mut style = scrollable::default(
+            &iced::Theme::Dark,
+            scrollable::Status::Active {
+                is_horizontal_scrollbar_disabled: false,
+                is_vertical_scrollbar_disabled: false,
+            },
+        );
+
+        apply_scrollable_chrome(&mut style, Some(rail), Some(handle));
+
+        assert_eq!(
+            style.vertical_rail.background,
+            Some(iced::Background::Color(rail))
+        );
+        assert_eq!(
+            style.horizontal_rail.background,
+            Some(iced::Background::Color(rail))
+        );
+        assert_eq!(
+            style.vertical_rail.scroller.background,
+            iced::Background::Color(handle)
+        );
+        assert_eq!(
+            style.horizontal_rail.scroller.background,
+            iced::Background::Color(handle)
+        );
     }
 }

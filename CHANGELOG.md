@@ -56,6 +56,11 @@ relative to 0.6.1.
   overrides** for the `plushie-iced` fork during development. Consumer
   projects vendoring the fork need to update their override mechanism.
 
+### Deprecated
+
+- **`plushie-widget-sdk::JsonProps`.** The type alias remains available
+  for compatibility, but widget authors should use `&Props` directly.
+
 ### Added
 
 - **`plushie` Rust application SDK.** Elm-style `App` trait with

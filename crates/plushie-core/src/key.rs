@@ -39,7 +39,7 @@
 //! - `command` / `cmd` - platform shortcut key (Ctrl on Linux/Windows, Cmd on macOS)
 //! - `logo` / `super` / `win` / `meta` - physical Logo/Super/Command key
 
-use std::fmt;
+use std::{error::Error, fmt, str::FromStr};
 
 use crate::protocol::KeyModifiers;
 
@@ -332,6 +332,27 @@ pub struct KeyPress {
     pub modifiers: KeyModifiers,
 }
 
+/// Error returned when a combo string contains an unknown modifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseKeyPressError {
+    modifier: String,
+}
+
+impl ParseKeyPressError {
+    /// Unknown modifier segment from the combo string.
+    pub fn modifier(&self) -> &str {
+        &self.modifier
+    }
+}
+
+impl fmt::Display for ParseKeyPressError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown key modifier {:?}", self.modifier)
+    }
+}
+
+impl Error for ParseKeyPressError {}
+
 impl KeyPress {
     /// Construct a new value.
     pub fn new(key: Key, modifiers: KeyModifiers) -> Self {
@@ -347,7 +368,7 @@ impl KeyPress {
     pub fn from_wire(payload: &serde_json::Value) -> Option<Self> {
         // Try combined format first (preferred).
         if let Some(combo) = payload.get("combo").and_then(|v| v.as_str()) {
-            return Some(KeyPress::from(combo));
+            return combo.parse().ok();
         }
 
         let key_str = payload.get("key").and_then(|v| v.as_str())?;
@@ -370,26 +391,29 @@ impl KeyPress {
 
         // No explicit modifiers: parse key field as a combo string
         // (handles "ctrl+s" in the key field).
-        Some(KeyPress::from(key_str))
+        key_str.parse().ok()
     }
 }
 
-impl From<&str> for KeyPress {
-    fn from(s: &str) -> Self {
+impl FromStr for KeyPress {
+    type Err = ParseKeyPressError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Split on '+' preserving structure, then normalize each part.
         let parts: Vec<&str> = s.split('+').collect();
 
         if parts.len() == 1 {
             // No '+': just a key name.
-            return Self {
+            return Ok(Self {
                 key: Key::from(parts[0].trim()),
                 modifiers: KeyModifiers::default(),
-            };
+            });
         }
 
         let mut modifiers = KeyModifiers::default();
         for part in &parts[..parts.len() - 1] {
-            let normalized = normalize(part.trim());
+            let trimmed = part.trim();
+            let normalized = normalize(trimmed);
             match normalized.as_str() {
                 "ctrl" | "control" => modifiers.ctrl = true,
                 "shift" => modifiers.shift = true,
@@ -400,12 +424,26 @@ impl From<&str> for KeyPress {
                 // physical modifier at event time: Ctrl on Linux/
                 // Windows, Cmd (Logo) on macOS.
                 "command" | "cmd" => modifiers.command = true,
-                _ => {} // Unknown modifier segment ignored
+                "" => {}
+                _ => {
+                    return Err(ParseKeyPressError {
+                        modifier: trimmed.to_string(),
+                    });
+                }
             }
         }
 
         let key = Key::from(parts.last().unwrap().trim());
-        Self { key, modifiers }
+        Ok(Self { key, modifiers })
+    }
+}
+
+impl From<&str> for KeyPress {
+    fn from(s: &str) -> Self {
+        s.parse().unwrap_or_else(|_| Self {
+            key: Key::from(s.trim()),
+            modifiers: KeyModifiers::default(),
+        })
     }
 }
 
@@ -901,18 +939,27 @@ mod tests {
         assert_eq!(kp.key, Key::Named(String::new()));
         assert!(kp.modifiers.ctrl);
 
-        // Unknown modifier segment: silently dropped, remaining
-        // segment parses as the key. This is the documented
-        // contract; change it carefully.
-        let kp = KeyPress::from("Foo+s");
-        assert_eq!(kp.key, Key::Char('s'));
-        assert_eq!(kp.modifiers, KeyModifiers::default());
+        let err = "Foo+s".parse::<KeyPress>().unwrap_err();
+        assert_eq!(err.modifier(), "Foo");
 
         // Leading '+': empty modifier segment dropped, key parses
         // normally.
         let kp = KeyPress::from("+s");
         assert_eq!(kp.key, Key::Char('s'));
         assert_eq!(kp.modifiers, KeyModifiers::default());
+    }
+
+    #[test]
+    fn keypress_from_str_unknown_modifier_is_literal_key() {
+        let kp = KeyPress::from("Crtl+s");
+        assert_eq!(kp.key, Key::Named("crtl+s".to_string()));
+        assert_eq!(kp.modifiers, KeyModifiers::default());
+    }
+
+    #[test]
+    fn keypress_from_wire_rejects_unknown_modifier_combo() {
+        let payload = serde_json::json!({"combo": "Crtl+s"});
+        assert_eq!(KeyPress::from_wire(&payload), None);
     }
 
     #[test]

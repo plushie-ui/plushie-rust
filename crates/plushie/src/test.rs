@@ -344,11 +344,10 @@ impl<A: App> TestSession<A> {
     /// session.press((Key::Char('s'), KeyModifiers { ctrl: true, ..Default::default() }));
     /// ```
     ///
-    /// # Panics
-    ///
-    /// Panics if `key` is a combo string that fails to parse (e.g.
-    /// unknown modifier or key name). See [`KeyPress::from_str`] for
-    /// the recognised syntax.
+    /// Combo strings passed through this helper are best-effort:
+    /// unknown modifier segments are treated as part of a literal key
+    /// name. Use `str::parse::<KeyPress>()` when tests should fail
+    /// fast on a misspelled modifier.
     pub fn press(&mut self, key: impl Into<KeyPress>) {
         let kp = key.into();
         self.dispatch(key_event(

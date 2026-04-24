@@ -64,13 +64,21 @@ pub fn parse_key_and_modifiers(
         return (kp.key.wire_name(), resolve_modifiers(&kp.modifiers));
     }
 
-    // Fallback: try parsing just the "key" field as a combo string.
+    // Fallback: treat malformed combo input as a literal key instead
+    // of silently emitting an empty key event.
     let raw_key = payload_value
-        .get("key")
+        .get("combo")
         .and_then(|v| v.as_str())
+        .or_else(|| payload_value.get("key").and_then(|v| v.as_str()))
         .unwrap_or("");
-    let kp = plushie_core::KeyPress::from(raw_key);
-    (kp.key.wire_name(), resolve_modifiers(&kp.modifiers))
+    match raw_key.parse::<plushie_core::KeyPress>() {
+        Ok(kp) => (kp.key.wire_name(), resolve_modifiers(&kp.modifiers)),
+        Err(err) => {
+            log::warn!("invalid scripted key combo {raw_key:?}: {err}");
+            let key = plushie_core::Key::from(raw_key);
+            (key.wire_name(), resolve_modifiers(&Default::default()))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1214,6 +1222,26 @@ mod tests {
         assert_eq!(mods["ctrl"], true);
         assert_eq!(mods["shift"], true);
         assert_eq!(mods["alt"], false);
+    }
+
+    #[test]
+    fn parse_key_unknown_modifier_falls_back_to_literal_key() {
+        let map: serde_json::Map<String, Value> =
+            serde_json::from_value(json!({"key": "crtl+s"})).unwrap();
+        let (key, mods) = parse_key_and_modifiers(Some(&map));
+        assert_eq!(key, "crtl+s");
+        assert_eq!(mods["ctrl"], false);
+        assert_eq!(mods["shift"], false);
+    }
+
+    #[test]
+    fn parse_key_unknown_combo_modifier_falls_back_to_literal_key() {
+        let map: serde_json::Map<String, Value> =
+            serde_json::from_value(json!({"combo": "crtl+s"})).unwrap();
+        let (key, mods) = parse_key_and_modifiers(Some(&map));
+        assert_eq!(key, "crtl+s");
+        assert_eq!(mods["ctrl"], false);
+        assert_eq!(mods["shift"], false);
     }
 
     #[test]

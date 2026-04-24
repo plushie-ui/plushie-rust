@@ -205,6 +205,8 @@ impl EventEmitter {
         let buffered = {
             let mut state = self.batch.lock();
             if state.depth == 0 {
+                log::warn!("event emitter batch ended without a matching begin");
+                debug_assert!(state.depth > 0, "event emitter batch depth underflow");
                 return;
             }
             state.depth -= 1;
@@ -666,6 +668,21 @@ mod tests {
         emitter.set_subscription_rate("on_pointer_move", 30);
         emitter.remove_subscription_rate("on_pointer_move");
         assert!(!emitter.subscription_rates.contains_key("on_pointer_move"));
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "event emitter batch depth underflow")]
+    fn end_batch_without_begin_panics_in_debug_builds() {
+        let emitter = test_emitter();
+        emitter.end_batch();
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn end_batch_without_begin_is_noop_in_release_builds() {
+        let emitter = test_emitter();
+        emitter.end_batch();
     }
 
     // -- buffer_event --

@@ -796,7 +796,7 @@ point must not crash the renderer. Every dispatch through
 `WidgetRegistry` is wrapped in `catch_unwind` for untrusted widgets:
 
 - `render`, `prepare`, `handle_message`, `handle_widget_op`,
-  `init`, `cleanup_stale`, `infer_a11y`.
+  `init`, `prune_stale`, `infer_a11y`.
 
 On panic, the registry logs a diagnostic and either returns a red
 error placeholder (render) or skips the widget's contribution
@@ -896,10 +896,10 @@ Patterns to follow:
 - **Key state by `(window_id, node_id)`.** Both parts matter:
   multiple windows can host the same scoped node id, and pruning
   on node id alone mixes them up.
-- **Implement `cleanup_stale`.** The registry passes in the set of
-  live keys after every tree walk. Drop entries not in the set.
-  The canonical one-liner is
-  `self.my_state.retain(|k, _| live_ids.contains(k));`.
+- **Implement `prune_stale`.** The registry passes in the set of
+  live keys after every tree walk, not one removed node at a time.
+  Keep entries that are still live:
+  `self.my_state.retain(|id, _| live_ids.contains(id));`.
 - **Cap heavy caches.** Large tile sets or rendered glyph atlases
   should use an LRU or explicit size cap. The renderer does not
   GC widget state.

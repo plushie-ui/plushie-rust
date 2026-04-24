@@ -383,16 +383,18 @@ pub trait PlushieWidget<R: PlushieRenderer = iced::Renderer> {
     /// `live_ids` contains every `(window_id, node_id)` pair present
     /// in the current tree. Stateful widgets that key per-instance
     /// state by `(window_id, node_id)` should drop entries whose keys
-    /// are not in the set. Stateless widgets can ignore this.
+    /// are not in the set. This is a retain pass over the widget's
+    /// own state, not a callback for one removed node. Stateless
+    /// widgets can ignore it.
     ///
     /// Called by [`WidgetRegistry::prepare_walk`] after
     /// [`crate::shared_state::SharedState::prune_shared`], so implementations only need to
-    /// worry about their own keyed state. Canonical one-liner:
+    /// worry about their own keyed state. Canonical pattern:
     ///
     /// ```ignore
     /// self.contents.retain(|k, _| live_ids.contains(k));
     /// ```
-    fn cleanup_stale(&mut self, _live_ids: &std::collections::HashSet<(String, String)>) {}
+    fn prune_stale(&mut self, _live_ids: &std::collections::HashSet<(String, String)>) {}
 
     /// Settings message arrived. Receive per-namespace config.
     fn init(&mut self, _ctx: &InitCtx<'_>) {}
@@ -656,7 +658,7 @@ pub struct CollectedSubscription {
 /// The first element is the set of node IDs reached during the walk,
 /// used to prune stale [`crate::shared_state::SharedState`] entries.
 /// The second is a set of `(window_id, node_id)` pairs used by
-/// `cleanup_stale` dispatch. The third is the collected widget
+/// `prune_stale` dispatch. The third is the collected widget
 /// subscription map keyed by namespaced tag.
 type PrepareCollected = (
     std::collections::HashSet<String>,
@@ -669,7 +671,7 @@ type PrepareCollected = (
 ///
 /// Populates `node_factory_map`, calls each widget's `prepare()`,
 /// collects widget-scoped subscriptions, and accumulates live node
-/// IDs for later stale-state pruning and `cleanup_stale` dispatch.
+/// IDs for later stale-state pruning and `prune_stale` dispatch.
 ///
 /// The transform borrows the registry, shared state, and theme for
 /// the duration of one walk. It keeps a depth counter and a
@@ -1335,7 +1337,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// 4. Computes style override caches for nodes with a `style` prop.
     /// 5. Prunes stale `SharedState` entries for nodes no longer in the
     ///    tree (prevents unbounded memory growth across tree updates).
-    /// 6. Calls `cleanup_stale` on every registered widget so
+    /// 6. Calls `prune_stale` on every registered widget so
     ///    factory-owned per-instance state stays in sync with the
     ///    live tree.
     pub fn prepare_walk(
@@ -1429,7 +1431,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// `crate::animation::ScanTransform` through the shared
     /// [`plushie_core::tree_walk::walk`] driver so both passes share
     /// a single depth-first traversal. Post-walk cleanup (shared-
-    /// state pruning, per-widget `cleanup_stale`, active-subscription
+    /// state pruning, per-widget `prune_stale`, active-subscription
     /// replacement) runs exactly once after the combined walk.
     pub fn prepare_and_scan(
         &mut self,
@@ -1479,7 +1481,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
 
     /// Post-walk cleanup shared by [`Self::prepare_walk`] and
     /// [`Self::prepare_and_scan`]: prune stale shared state, dispatch
-    /// `cleanup_stale` to every widget, and replace the active
+    /// `prune_stale` to every widget, and replace the active
     /// subscription set with the freshly-collected one.
     fn finish_prepare(
         &mut self,
@@ -1490,7 +1492,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     ) {
         shared.prune_shared(&live_ids);
 
-        // Dispatch cleanup_stale to every registered widget. This
+        // Dispatch prune_stale to every registered widget. This
         // shrinks factory-owned per-instance state keyed by
         // (window_id, node_id) when nodes leave the tree.
         let type_names: Vec<String> = self
@@ -1509,9 +1511,9 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             let live_keys_ref = &live_keys;
             self.call_widget_mut(
                 &type_name,
-                "cleanup_stale",
+                "prune_stale",
                 &type_name,
-                |widget| widget.cleanup_stale(live_keys_ref),
+                |widget| widget.prune_stale(live_keys_ref),
                 || {},
             );
         }
@@ -2639,11 +2641,11 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------------
-    // cleanup_stale dispatch from prepare_walk
+    // prune_stale dispatch from prepare_walk
     //
     // Factory-owned per-instance HashMaps must shrink as nodes leave
     // the tree; otherwise widget state keyed by (window_id, node_id)
-    // leaks forever. cleanup_stale dispatches from prepare_walk
+    // leaks forever. prune_stale dispatches from prepare_walk
     // after prune_shared, letting factories evict entries whose key
     // is absent from the live set.
     // ---------------------------------------------------------------------------
@@ -2683,13 +2685,13 @@ mod tests {
     }
 
     // Shared counter used to expose live-key set sizes for
-    // cleanup_stale tests without smuggling typed references out of
+    // prune_stale tests without smuggling typed references out of
     // the registry.
     use std::sync::Arc;
 
     #[derive(Default)]
     struct ContentsSpy {
-        /// Snapshot of contents size after each cleanup_stale call.
+        /// Snapshot of contents size after each prune_stale call.
         sizes: std::sync::Mutex<Vec<usize>>,
     }
 
@@ -2716,7 +2718,7 @@ mod tests {
             iced::widget::text("spy").into()
         }
 
-        fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+        fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
             self.contents.retain(|k, _| live_ids.contains(k));
             self.spy.sizes.lock().unwrap().push(self.contents.len());
         }
@@ -2730,7 +2732,7 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_stale_removes_keys_for_nodes_not_in_tree() {
+    fn prune_stale_removes_keys_for_nodes_not_in_tree() {
         let mut registry = WidgetRegistry::<()>::new();
         let spy = Arc::new(ContentsSpy::default());
         registry.register(Box::new(SpyingWidget {
@@ -2741,7 +2743,7 @@ mod tests {
         let mut shared = crate::shared_state::SharedState::new();
         let theme = Theme::Dark;
 
-        // First prepare_walk: two nodes present. cleanup_stale runs
+        // First prepare_walk: two nodes present. prune_stale runs
         // after prepare populates contents, so the spy sees size 2.
         let mut first_tree = tree(vec![leaf("a", "spying"), leaf("b", "spying")]);
         registry.prepare_walk(&mut first_tree, &mut shared, &theme);
@@ -2754,7 +2756,7 @@ mod tests {
         assert_eq!(
             sizes,
             vec![2, 1],
-            "cleanup_stale should observe 2 contents after first walk and 1 after the second"
+            "prune_stale should observe 2 contents after first walk and 1 after the second"
         );
     }
 

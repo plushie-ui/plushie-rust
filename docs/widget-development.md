@@ -90,7 +90,7 @@ just the `render` body. `PlushieElement<'a>` is shorthand for
 `PlushieElement<'a, R>` only when writing renderer-generic code.
 
 Stateful widgets implement `PlushieWidget` directly so they can
-override `prepare`, `handle_message`, `cleanup_stale`, etc. The
+override `prepare`, `handle_message`, `prune_stale`, etc. The
 [Core Widget Guide](core-widget-guide.md) has a worked stateful
 example.
 
@@ -224,7 +224,7 @@ widget authors. The pieces:
 canonical stateless templates. A matching
 `doc_examples_stateful.rs` drives a stateful widget through the
 full `prepare -> render -> handle_message -> handle_widget_op ->
-cleanup_stale` lifecycle; copy it as the starting point for your
+prune_stale` lifecycle; copy it as the starting point for your
 own stateful widget tests.
 
 ## Development loop

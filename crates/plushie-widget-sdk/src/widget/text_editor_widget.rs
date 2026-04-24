@@ -392,7 +392,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
-    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.contents.retain(|k, _| live_ids.contains(k));
         self.content_hashes.retain(|k, _| live_ids.contains(k));
     }

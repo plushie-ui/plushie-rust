@@ -78,7 +78,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ThemerWidget {
         iced::widget::Themer::new(themer_theme, child).into()
     }
 
-    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.themes.retain(|k, _| live_ids.contains(k));
         self.chromes.retain(|k, _| live_ids.contains(k));
     }

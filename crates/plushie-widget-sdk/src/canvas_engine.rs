@@ -279,10 +279,10 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
 
     /// Prune per-instance state for canvas nodes that have left the tree.
     ///
-    /// Paired with [`crate::registry::PlushieWidget::cleanup_stale`].
+    /// Paired with [`crate::registry::PlushieWidget::prune_stale`].
     /// `live_ids` contains every `(window_id, node_id)` still present;
     /// drop entries whose keys aren't in the set.
-    pub fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    pub fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.layer_caches.retain(|k, _| live_ids.contains(k));
         self.interactions.retain(|k, _| live_ids.contains(k));
         self.pending_focus.retain(|k, _| live_ids.contains(k));

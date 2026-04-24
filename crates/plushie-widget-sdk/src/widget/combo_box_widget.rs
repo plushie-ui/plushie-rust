@@ -109,7 +109,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
         crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
     }
 
-    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.states.retain(|k, _| live_ids.contains(k));
         self.options.retain(|k, _| live_ids.contains(k));
     }

@@ -227,7 +227,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         qr_canvas.into()
     }
 
-    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.caches.retain(|k, _| live_ids.contains(k));
     }
 

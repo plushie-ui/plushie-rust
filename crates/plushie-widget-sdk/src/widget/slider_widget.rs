@@ -106,7 +106,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
         handle_slider_message(&mut self.last_values, msg)
     }
 
-    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.last_values.retain(|k, _| live_ids.contains(k));
     }
 
@@ -149,7 +149,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
         handle_slider_message(&mut self.last_values, msg)
     }
 
-    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.last_values.retain(|k, _| live_ids.contains(k));
     }
 

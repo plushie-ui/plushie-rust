@@ -299,7 +299,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
         }
     }
 
-    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.states.retain(|k, _| live_ids.contains(k));
     }
 

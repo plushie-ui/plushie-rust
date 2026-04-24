@@ -1,7 +1,7 @@
 //! Canonical template for testing a stateful widget end-to-end.
 //!
 //! Walks a contrived counter widget through the full
-//! `prepare -> render -> handle_message -> handle_widget_op -> cleanup_stale`
+//! `prepare -> render -> handle_message -> handle_widget_op -> prune_stale`
 //! lifecycle. Widget authors can copy this file and adapt it as the
 //! starting point for their own stateful widgets.
 
@@ -92,7 +92,7 @@ impl PlushieWidget for Counter {
         None
     }
 
-    fn cleanup_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
+    fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.counts.retain(|k, _| live_ids.contains(k));
     }
 
@@ -140,10 +140,10 @@ fn counter_widget_full_lifecycle() {
     assert_eq!(reset_events.len(), 1);
     assert_eq!(reset_events[0].family, "changed");
 
-    // 4. prepare_walk-style cleanup: empty live-key set evicts the
-    //    widget's per-instance state.
+    // 4. prepare_walk-style pruning: retain only keys from the
+    //    live-key set. An empty set evicts this widget's state.
     let empty: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
-    <Counter as PlushieWidget<iced::Renderer>>::cleanup_stale(&mut widget, &empty);
+    <Counter as PlushieWidget<iced::Renderer>>::prune_stale(&mut widget, &empty);
     // After cleanup, re-preparing an unrelated node shouldn't see
     // the previous key's state.
     assert!(widget.counts.is_empty());

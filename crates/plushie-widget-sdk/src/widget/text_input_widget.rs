@@ -13,7 +13,7 @@ use crate::widget::helpers::*;
 
 use plushie_core::types::{
     Color, Font, HorizontalAlignment, InputPurpose, Length, LineHeight, Padding, PlushieType,
-    Style as CoreStyle,
+    Style as CoreStyle, TextDirection,
 };
 
 struct TextInputProps {
@@ -25,6 +25,7 @@ struct TextInputProps {
     font: Option<Font>,
     line_height: Option<LineHeight>,
     align_x: Option<HorizontalAlignment>,
+    text_direction: Option<TextDirection>,
     input_purpose: Option<InputPurpose>,
     placeholder_color: Option<Color>,
     selection_color: Option<Color>,
@@ -43,12 +44,20 @@ impl TextInputProps {
             font: Font::extract(p, "font"),
             line_height: LineHeight::extract(p, "line_height"),
             align_x: HorizontalAlignment::extract(p, "align_x"),
+            text_direction: TextDirection::extract(p, "text_direction"),
             input_purpose: InputPurpose::extract(p, "input_purpose")
                 .or_else(|| InputPurpose::extract(p, "ime_purpose")),
             placeholder_color: Color::extract(p, "placeholder_color"),
             selection_color: Color::extract(p, "selection_color"),
             style: CoreStyle::extract(p, "style"),
         }
+    }
+}
+
+fn direction_hint_alignment(direction: TextDirection) -> HorizontalAlignment {
+    match direction {
+        TextDirection::Rtl => HorizontalAlignment::Right,
+        TextDirection::Auto | TextDirection::Ltr => HorizontalAlignment::Left,
     }
 }
 
@@ -133,7 +142,10 @@ fn render_text_input<'a, R: PlushieRenderer>(
     if let Some(ref lh) = tp.line_height {
         ti = ti.line_height(iced_convert::line_height(*lh));
     }
-    if let Some(ax) = tp.align_x {
+    if let Some(ax) = tp
+        .align_x
+        .or_else(|| tp.text_direction.map(direction_hint_alignment))
+    {
         ti = ti.align_x(iced_convert::horizontal_alignment(ax));
     }
 
@@ -292,4 +304,48 @@ fn render_text_input<'a, R: PlushieRenderer>(
     }
 
     ti.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn props(value: serde_json::Value) -> TextInputProps {
+        let node = crate::testing::node_with_props("test-input", "text_input", value);
+        TextInputProps::from_node(&node)
+    }
+
+    #[test]
+    fn extracts_text_direction() {
+        let props = props(json!({"text_direction": "rtl"}));
+
+        assert_eq!(props.text_direction, Some(TextDirection::Rtl));
+    }
+
+    #[test]
+    fn text_direction_provides_alignment_hint() {
+        assert_eq!(
+            direction_hint_alignment(TextDirection::Rtl),
+            HorizontalAlignment::Right
+        );
+        assert_eq!(
+            direction_hint_alignment(TextDirection::Ltr),
+            HorizontalAlignment::Left
+        );
+        assert_eq!(
+            direction_hint_alignment(TextDirection::Auto),
+            HorizontalAlignment::Left
+        );
+    }
+
+    #[test]
+    fn explicit_alignment_takes_precedence_over_direction() {
+        let props = props(json!({"align_x": "center", "text_direction": "rtl"}));
+        let align_x = props
+            .align_x
+            .or_else(|| props.text_direction.map(direction_hint_alignment));
+
+        assert_eq!(align_x, Some(HorizontalAlignment::Center));
+    }
 }

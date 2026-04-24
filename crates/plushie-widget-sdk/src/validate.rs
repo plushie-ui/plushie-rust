@@ -487,6 +487,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("on_submit", Bool),
             ("on_paste", Bool),
             ("align_x", OneOf(HORIZONTAL_ALIGNMENT_VALUES)),
+            ("text_direction", OneOf(TEXT_DIRECTION_VALUES)),
             ("placeholder_color", Color),
             ("selection_color", Color),
             ("input_purpose", OneOf(INPUT_PURPOSE_VALUES)),
@@ -1084,6 +1085,19 @@ mod tests {
         );
         let warnings = collect_prop_warnings(&node);
         assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    }
+
+    #[test]
+    fn text_input_text_direction_is_validated() {
+        let node = make_node("text_input", json!({"text_direction": "rtl"}));
+        let warnings = collect_prop_warnings(&node);
+        assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+
+        let node = make_node("text_input", json!({"text_direction": "sideways"}));
+        let warnings = collect_prop_warnings(&node);
+        assert_eq!(warnings.len(), 1, "unexpected warnings: {warnings:?}");
+        assert!(warnings[0].contains("text_direction"));
+        assert!(warnings[0].contains("\"auto\""));
     }
 
     #[test]

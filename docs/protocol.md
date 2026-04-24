@@ -2098,9 +2098,11 @@ props.
 | `text` | `ellipsis` | string | Text overflow: `"none"`, `"start"`, `"middle"`, `"end"` |
 | `rich_text` | `wrapping` | string | Text wrapping mode |
 | `rich_text` | `ellipsis` | string | Text overflow: `"none"`, `"start"`, `"middle"`, `"end"` |
+| `text_input` | `align_x` | string | Physical text alignment: `"left"`, `"center"`, `"right"` |
 | `text_input` | `placeholder_color` | hex color | Placeholder text colour |
 | `text_input` | `selection_color` | hex color | Text selection highlight |
 | `text_input` | `ime_purpose` | string | IME hint: `"normal"`, `"secure"`, `"terminal"` |
+| `text_input` | `text_direction` | string | Direction hint for placeholder and value text: `"auto"`, `"ltr"`, `"rtl"` |
 | `text_editor` | `text_direction` | string | Text direction for logical key-binding motions: `"auto"`, `"ltr"`, `"rtl"` |
 | `text_editor` | `placeholder_color` | hex color | Placeholder text colour |
 | `text_editor` | `selection_color` | hex color | Text selection highlight |
@@ -2147,6 +2149,11 @@ justified.
 `text.align_x`, `"start"` with `"auto"` uses the renderer default.
 `"end"` with `"auto"` falls back to physical right because iced cannot
 represent direction-aware end alignment.
+
+For `text_input`, `text_direction` is a directionality hint for the
+placeholder and value. When `align_x` is absent, `"rtl"` maps to
+physical right alignment, while `"ltr"` and `"auto"` map to physical
+left alignment. An explicit `align_x` value always wins.
 
 ### Text editor motion names
 

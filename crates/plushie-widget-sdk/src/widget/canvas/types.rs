@@ -269,9 +269,7 @@ pub(crate) enum ArrowMode {
     Wrap,
     /// Arrows stop at first/last element (no wrapping). Captures the event.
     Clamp,
-    /// Arrows navigate but return `None` at boundaries, letting the event
-    /// propagate to parent widgets. Useful for canvases inside scrollable
-    /// containers where arrows should scroll at the edges.
+    /// Arrows navigate in order and stop at boundaries. Captures the event.
     Linear,
     /// Arrows are not handled by the canvas at all. Elements are only
     /// navigable via Tab. Useful when arrow keys have app-specific meaning.

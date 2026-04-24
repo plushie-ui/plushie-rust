@@ -17,6 +17,8 @@ use serde_json::json;
 use crate::message::{Message, serialize_modifiers};
 use crate::protocol::KeyModifiers;
 
+const PAGE_NAVIGATION_STEP: usize = 5;
+
 /// Replace non-finite f32 with 0.0 for safe JSON serialization.
 fn sanitize_f32(v: f32) -> f32 {
     if v.is_finite() { v } else { 0.0 }
@@ -342,7 +344,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
     ///
     /// Extracted from `update()` for readability. Implements the roving
     /// tabindex pattern with two-level navigation for focusable groups.
-    fn handle_keyboard(
+    pub(super) fn handle_keyboard(
         &self,
         state: &mut CanvasState,
         key: &keyboard::Key,
@@ -450,7 +452,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                                 focus_to(state, Some(first))
                             }
                         } else {
-                            None
+                            Some(iced::widget::Action::capture())
                         }
                     }
                     Some(pos) if pos + 1 < top.len() => {
@@ -499,7 +501,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                                 focus_to(state, Some(last))
                             }
                         } else {
-                            None
+                            Some(iced::widget::Action::capture())
                         }
                     }
                     Some(0) => None,
@@ -533,7 +535,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                         focus_to(state, Some(arrow_indices[pos + 1]))
                     }
                     (Some(_), ArrowMode::Clamp) => Some(iced::widget::Action::capture()),
-                    (Some(_), ArrowMode::Linear) => None,
+                    (Some(_), ArrowMode::Linear) => Some(iced::widget::Action::capture()),
                     _ => None,
                 }
             }
@@ -546,7 +548,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                         focus_to(state, Some(*arrow_indices.last().unwrap()))
                     }
                     (Some(0), ArrowMode::Clamp) => Some(iced::widget::Action::capture()),
-                    (Some(0), ArrowMode::Linear) => None,
+                    (Some(0), ArrowMode::Linear) => Some(iced::widget::Action::capture()),
                     (Some(pos), _) => focus_to(state, Some(arrow_indices[pos - 1])),
                 }
             }
@@ -599,7 +601,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                 focus_to(state, Some(*arrow_indices.last().unwrap()))
             }
             keyboard::Key::Named(Named::PageDown) if !arrow_indices.is_empty() => {
-                let page_size = 10.min(arrow_count);
+                let page_size = PAGE_NAVIGATION_STEP.min(arrow_count);
                 let pos = arrow_pos.unwrap_or(0);
                 focus_to(
                     state,
@@ -607,7 +609,7 @@ impl<R: PlushieRenderer> CanvasProgram<'_, R> {
                 )
             }
             keyboard::Key::Named(Named::PageUp) if !arrow_indices.is_empty() => {
-                let page_size = 10.min(arrow_count);
+                let page_size = PAGE_NAVIGATION_STEP.min(arrow_count);
                 let pos = arrow_pos.unwrap_or(0);
                 focus_to(state, Some(arrow_indices[pos.saturating_sub(page_size)]))
             }

@@ -2,7 +2,7 @@ use super::*;
 use crate::protocol::TreeNode;
 use crate::shared_state::hash_str;
 use iced::widget::canvas;
-use iced::{Color, Point, alignment};
+use iced::{Color, Point, alignment, event, keyboard};
 use plushie_core::types::{CanvasShape, GroupShape};
 use serde_json::Value;
 use serde_json::json;
@@ -1365,6 +1365,16 @@ fn test_program(elements: &[InteractiveElement]) -> program::CanvasProgram<'_> {
     }
 }
 
+fn test_program_with_arrow_mode(
+    elements: &[InteractiveElement],
+    arrow_mode: ArrowMode,
+) -> program::CanvasProgram<'_> {
+    program::CanvasProgram {
+        arrow_mode,
+        ..test_program(elements)
+    }
+}
+
 /// Helper to build a minimal InteractiveElement.
 fn test_element(id: &str) -> InteractiveElement {
     InteractiveElement {
@@ -1395,6 +1405,166 @@ fn test_element(id: &str) -> InteractiveElement {
         tooltip: None,
         a11y: None,
     }
+}
+
+fn assert_captured_without_message(action: Option<iced::widget::Action<crate::message::Message>>) {
+    let (message, _, status) = action.expect("expected captured action").into_inner();
+    assert!(message.is_none());
+    assert_eq!(status, event::Status::Captured);
+}
+
+fn assert_published_and_captured(
+    action: Option<iced::widget::Action<crate::message::Message>>,
+) -> crate::message::Message {
+    let (message, _, status) = action.expect("expected published action").into_inner();
+    assert_eq!(status, event::Status::Captured);
+    message.expect("expected message")
+}
+
+#[test]
+fn tab_captures_when_canvas_has_no_focus_targets() {
+    let elements = Vec::new();
+    let program = test_program(&elements);
+    let mut state = CanvasState::default();
+
+    assert_captured_without_message(program.handle_keyboard(
+        &mut state,
+        &keyboard::Key::Named(keyboard::key::Named::Tab),
+        keyboard::Modifiers::empty(),
+    ));
+
+    assert_captured_without_message(program.handle_keyboard(
+        &mut state,
+        &keyboard::Key::Named(keyboard::key::Named::Tab),
+        keyboard::Modifiers::SHIFT,
+    ));
+}
+
+#[test]
+fn tab_bubbles_at_top_level_boundaries() {
+    let elements = vec![test_element("a"), test_element("b")];
+    let program = test_program(&elements);
+    let mut state = CanvasState {
+        focused_id: Some("b".to_string()),
+        ..Default::default()
+    };
+
+    assert!(
+        program
+            .handle_keyboard(
+                &mut state,
+                &keyboard::Key::Named(keyboard::key::Named::Tab),
+                keyboard::Modifiers::empty(),
+            )
+            .is_none()
+    );
+    assert_eq!(state.focused_id.as_deref(), Some("b"));
+
+    state.focused_id = Some("a".to_string());
+    assert!(
+        program
+            .handle_keyboard(
+                &mut state,
+                &keyboard::Key::Named(keyboard::key::Named::Tab),
+                keyboard::Modifiers::SHIFT,
+            )
+            .is_none()
+    );
+    assert_eq!(state.focused_id.as_deref(), Some("a"));
+}
+
+#[test]
+fn linear_arrow_mode_captures_at_boundaries() {
+    let elements = vec![test_element("a"), test_element("b")];
+    let program = test_program_with_arrow_mode(&elements, ArrowMode::Linear);
+    let mut state = CanvasState {
+        focused_id: Some("b".to_string()),
+        ..Default::default()
+    };
+
+    assert_captured_without_message(program.handle_keyboard(
+        &mut state,
+        &keyboard::Key::Named(keyboard::key::Named::ArrowRight),
+        keyboard::Modifiers::empty(),
+    ));
+    assert_eq!(state.focused_id.as_deref(), Some("b"));
+
+    state.focused_id = Some("a".to_string());
+    assert_captured_without_message(program.handle_keyboard(
+        &mut state,
+        &keyboard::Key::Named(keyboard::key::Named::ArrowLeft),
+        keyboard::Modifiers::empty(),
+    ));
+    assert_eq!(state.focused_id.as_deref(), Some("a"));
+}
+
+#[test]
+fn page_navigation_uses_bounded_local_step() {
+    let elements = vec![
+        test_element("a"),
+        test_element("b"),
+        test_element("c"),
+        test_element("d"),
+        test_element("e"),
+        test_element("f"),
+        test_element("g"),
+    ];
+    let program = test_program(&elements);
+    let mut state = CanvasState {
+        focused_id: Some("a".to_string()),
+        ..Default::default()
+    };
+
+    let message = assert_published_and_captured(program.handle_keyboard(
+        &mut state,
+        &keyboard::Key::Named(keyboard::key::Named::PageDown),
+        keyboard::Modifiers::empty(),
+    ));
+    assert_eq!(state.focused_id.as_deref(), Some("f"));
+    match message {
+        crate::message::Message::CanvasElementFocusChanged { new_element_id, .. } => {
+            assert_eq!(new_element_id.as_deref(), Some("f"));
+        }
+        other => panic!("expected FocusChanged, got {other:?}"),
+    }
+
+    let message = assert_published_and_captured(program.handle_keyboard(
+        &mut state,
+        &keyboard::Key::Named(keyboard::key::Named::PageUp),
+        keyboard::Modifiers::empty(),
+    ));
+    assert_eq!(state.focused_id.as_deref(), Some("a"));
+    match message {
+        crate::message::Message::CanvasElementFocusChanged { new_element_id, .. } => {
+            assert_eq!(new_element_id.as_deref(), Some("a"));
+        }
+        other => panic!("expected FocusChanged, got {other:?}"),
+    }
+}
+
+#[test]
+fn arrow_mode_none_forwards_navigation_keys_to_focused_element() {
+    let elements = vec![test_element("a")];
+    let program = test_program_with_arrow_mode(&elements, ArrowMode::None);
+    let mut state = CanvasState {
+        focused_id: Some("a".to_string()),
+        ..Default::default()
+    };
+
+    let message = assert_published_and_captured(program.handle_keyboard(
+        &mut state,
+        &keyboard::Key::Named(keyboard::key::Named::PageDown),
+        keyboard::Modifiers::empty(),
+    ));
+
+    match message {
+        crate::message::Message::Event { id, family, .. } => {
+            assert_eq!(id, "a");
+            assert_eq!(family, "key_press");
+        }
+        other => panic!("expected key event, got {other:?}"),
+    }
+    assert_eq!(state.focused_id.as_deref(), Some("a"));
 }
 
 #[test]

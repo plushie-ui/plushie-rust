@@ -2510,7 +2510,7 @@ internal keyboard navigation uses the roving tabindex pattern.
 | Arrow Up/Left | Previous element within current scope |
 | Home | First element in scope |
 | End | Last element in scope |
-| Page Down/Up | Jump by 10 within scope |
+| Page Down/Up | Jump by a small page step within scope |
 | Enter / Space | Activate focused element (`click` with `button: "keyboard"`) |
 | Escape | Exit focusable group / clear focus / unfocus canvas (three levels) |
 
@@ -2520,7 +2520,7 @@ internal keyboard navigation uses the roving tabindex pattern.
 |------|-------------------|
 | `wrap` (default) | Wraps last->first and first->last. Always captures. |
 | `clamp` | Stops at first/last. Captures. |
-| `linear` | Propagates at boundaries (e.g. scrollable parent handles it). |
+| `linear` | Stops at first/last. Captures. |
 | `none` | Navigation keys (arrows, Home, End, PageUp, PageDown) emit `key_press` to the host instead of navigating elements. Tab-only navigation for focus. Use for custom value adjustment on focused elements. |
 
 **Focusable groups** (`focusable: true` on a group): Tab moves between

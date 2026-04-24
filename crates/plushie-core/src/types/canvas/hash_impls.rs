@@ -572,6 +572,19 @@ mod tests {
     }
 
     #[test]
+    fn arc_to_radius_changes_path_hash() {
+        let small_radius = vec![shape_from(
+            "path",
+            json!({"commands": [["arc_to", 1.0, 2.0, 3.0, 4.0, 5.0]]}),
+        )];
+        let large_radius = vec![shape_from(
+            "path",
+            json!({"commands": [["arc_to", 1.0, 2.0, 3.0, 4.0, 6.0]]}),
+        )];
+        assert_ne!(hash_shapes(&small_radius), hash_shapes(&large_radius));
+    }
+
+    #[test]
     fn variant_discriminant_separates_types() {
         // A rect and a circle with coincidentally-equal numeric fields
         // must not collide.

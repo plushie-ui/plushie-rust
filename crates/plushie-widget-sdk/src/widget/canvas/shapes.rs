@@ -360,15 +360,25 @@ pub(super) fn draw_canvas_shapes<R: PlushieRenderer>(
     }
 }
 
-/// Apply per-shape opacity to a `canvas::Fill`. Multiplies the opacity
-/// into solid color alpha. Gradient stops are left unchanged (the host
-/// should bake opacity into gradient stop colors if needed).
-pub(super) fn apply_opacity_to_fill(opacity: Option<f32>, mut fill: canvas::Fill) -> canvas::Fill {
-    if let Some(a) = opacity
-        && let canvas::Style::Solid(ref mut c) = fill.style
-    {
-        c.a *= a;
+fn apply_opacity_to_style(opacity: Option<f32>, mut style: canvas::Style) -> canvas::Style {
+    if let Some(a) = opacity {
+        match &mut style {
+            canvas::Style::Solid(c) => c.a *= a,
+            canvas::Style::Gradient(canvas::Gradient::Linear(linear)) => {
+                for stop in &mut linear.stops {
+                    if let Some(stop) = stop.as_mut() {
+                        stop.color.a *= a;
+                    }
+                }
+            }
+        }
     }
+    style
+}
+
+/// Apply per-shape opacity to a `canvas::Fill`.
+pub(super) fn apply_opacity_to_fill(opacity: Option<f32>, mut fill: canvas::Fill) -> canvas::Fill {
+    fill.style = apply_opacity_to_style(opacity, fill.style);
     fill
 }
 
@@ -377,11 +387,7 @@ pub(super) fn apply_opacity_to_stroke(
     opacity: Option<f32>,
     mut stroke: canvas::Stroke<'static>,
 ) -> canvas::Stroke<'static> {
-    if let Some(a) = opacity
-        && let canvas::Style::Solid(ref mut c) = stroke.style
-    {
-        c.a *= a;
-    }
+    stroke.style = apply_opacity_to_style(opacity, stroke.style);
     stroke
 }
 

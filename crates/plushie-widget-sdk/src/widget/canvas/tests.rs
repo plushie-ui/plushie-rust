@@ -273,6 +273,48 @@ fn canvas_gradient_parse() {
     }
 }
 
+fn gradient_fill_with_alphas(alphas: &[f32]) -> canvas::Fill {
+    let mut linear = canvas::gradient::Linear::new(Point::new(0.0, 0.0), Point::new(100.0, 0.0));
+    for (index, alpha) in alphas.iter().enumerate() {
+        linear = linear.add_stop(
+            index as f32 / (alphas.len().saturating_sub(1).max(1) as f32),
+            Color::from_rgba(1.0, 0.0, 0.0, *alpha),
+        );
+    }
+    canvas::Fill {
+        style: canvas::Style::Gradient(canvas::Gradient::Linear(linear)),
+        rule: canvas::fill::Rule::NonZero,
+    }
+}
+
+fn gradient_stroke_with_alphas(alphas: &[f32]) -> canvas::Stroke<'static> {
+    canvas::Stroke {
+        style: gradient_fill_with_alphas(alphas).style,
+        ..canvas::Stroke::default()
+    }
+}
+
+fn gradient_stop_alphas(style: canvas::Style) -> Vec<f32> {
+    match style {
+        canvas::Style::Gradient(canvas::Gradient::Linear(linear)) => linear
+            .stops
+            .iter()
+            .filter_map(|stop| stop.map(|stop| stop.color.a))
+            .collect(),
+        other => panic!("expected linear gradient, got {other:?}"),
+    }
+}
+
+fn assert_alphas(actual: Vec<f32>, expected: &[f32]) {
+    assert_eq!(actual.len(), expected.len());
+    for (actual, expected) in actual.iter().zip(expected) {
+        assert!(
+            (actual - expected).abs() < 0.001,
+            "expected alpha ~{expected}, got {actual}",
+        );
+    }
+}
+
 #[test]
 fn canvas_fill_rule_defaults_to_non_zero() {
     let fill_val = json!("#ff0000");
@@ -382,6 +424,12 @@ fn opacity_applied_to_fill() {
 }
 
 #[test]
+fn opacity_applied_to_gradient_fill() {
+    let fill = shapes::apply_opacity_to_fill(Some(0.5), gradient_fill_with_alphas(&[1.0, 0.4]));
+    assert_alphas(gradient_stop_alphas(fill.style), &[0.5, 0.2]);
+}
+
+#[test]
 fn opacity_applied_to_stroke() {
     let stroke_val = json!({"color": "#00ff00", "width": 2.0});
     let stroke = shapes::apply_opacity_to_stroke(Some(0.25), parse_canvas_stroke(&stroke_val));
@@ -395,6 +443,13 @@ fn opacity_applied_to_stroke() {
         }
         _ => panic!("expected solid stroke"),
     }
+}
+
+#[test]
+fn opacity_applied_to_gradient_stroke() {
+    let stroke =
+        shapes::apply_opacity_to_stroke(Some(0.25), gradient_stroke_with_alphas(&[1.0, 0.8]));
+    assert_alphas(gradient_stop_alphas(stroke.style), &[0.25, 0.2]);
 }
 
 #[test]
@@ -421,6 +476,12 @@ fn no_opacity_leaves_alpha_unchanged() {
         }
         _ => panic!("expected solid fill"),
     }
+}
+
+#[test]
+fn no_opacity_leaves_gradient_alpha_unchanged() {
+    let fill = shapes::apply_opacity_to_fill(None, gradient_fill_with_alphas(&[0.6, 0.3]));
+    assert_alphas(gradient_stop_alphas(fill.style), &[0.6, 0.3]);
 }
 
 // -- Hit testing --

@@ -67,6 +67,11 @@ Direct mode (default) embeds the renderer. For wire-only (lighter build):
 plushie = { version = "0.6", default-features = false, features = ["wire"] }
 ```
 
+`default-features = false` without either runner feature (`direct` or
+`wire`) is a library-only build. It supports APIs such as queries and
+`TestSession`, but `plushie::run()` returns `Error::NoRunnerFeature`
+because no renderer runner is compiled in.
+
 Run the [examples](examples/) with `cargo run -p plushie --example counter`.
 
 ## How it works

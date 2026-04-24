@@ -61,6 +61,11 @@
 //! When both features are enabled, direct wins. Pass an explicit
 //! renderer path via [`run_with_renderer`] to force a specific wire
 //! binary.
+//!
+//! Builds with neither runner feature are supported for library,
+//! query, and test-session APIs, but cannot launch an app. In that
+//! configuration, [`run`] returns [`Error::NoRunnerFeature`] instead
+//! of trying to pick a renderer.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![deny(missing_docs)]
 

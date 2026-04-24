@@ -38,6 +38,7 @@ impl App {
                     default_font: self.core.default_font,
                     window_id,
                     scale_factor: self.scale_factor_for_window(iced_id),
+                    validate_props: self.core.is_validate_props_enabled(),
                 };
                 plushie_widget_sdk::runtime::render(window_node, ctx)
             }

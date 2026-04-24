@@ -148,7 +148,6 @@ impl PlushieApp {
         let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), codec);
         plushie_renderer_lib::emitters::init_sink(Box::new(sink));
 
-        plushie_renderer_lib::settings::apply_validate_props(&settings);
         let iced_settings = plushie_renderer_lib::settings::parse_iced_settings(&settings);
         let font_bytes = plushie_renderer_lib::settings::parse_inline_fonts(&settings);
 

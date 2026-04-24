@@ -194,14 +194,14 @@ pub struct Core {
     pub effect_stubs: HashMap<String, Value>,
     /// Per-session prop-validation override.
     ///
-    /// `Some(true)` enables validation, `Some(false)` disables it.
+    /// `Some(true)` enables validation for this session.
     /// `None` falls back to the process-wide
     /// [`is_validate_props_enabled`](crate::validate::is_validate_props_enabled)
     /// check (which itself defaults to `cfg(debug_assertions)` when
-    /// no global value has been set). The per-session override
-    /// isolates tests that run in the same process but need
-    /// different validation behaviour; the global flag is kept as a
-    /// fallback so no existing consumer regresses.
+    /// no global value has been set). `validate_props: false` in
+    /// Settings does not disable validation; it leaves the fallback in
+    /// control so hosts cannot turn off debug/default validation for a
+    /// session.
     pub validate_props: Option<bool>,
 }
 
@@ -231,12 +231,13 @@ impl Core {
 
     /// Resolve whether prop validation should run for this session.
     ///
-    /// Checks the per-session override first; falls back to the
-    /// process-wide flag for backwards compatibility.
+    /// A per-session `true` forces validation on. Otherwise the
+    /// process-wide flag decides.
     pub fn is_validate_props_enabled(&self) -> bool {
         match self.validate_props {
-            Some(v) => v,
+            Some(true) => true,
             None => crate::validate::is_validate_props_enabled(),
+            Some(false) => crate::validate::is_validate_props_enabled(),
         }
     }
 
@@ -564,13 +565,15 @@ impl Core {
                     .and_then(|v| v.as_f64())
                     .map(crate::prop_helpers::f64_to_f32);
                 self.default_font = settings.get("default_font").map(resolve_font_with_fallback);
-                // Per-session validate_props override. If the host
-                // sends the field, store it locally; it takes
-                // precedence over the process-global OnceLock so
-                // parallel test sessions in the same process can run
-                // with different validation modes.
-                if let Some(flag) = settings.get("validate_props").and_then(|v| v.as_bool()) {
-                    self.validate_props = Some(flag);
+                // Per-session validate_props override. Only `true`
+                // forces validation on for this session. `false`
+                // leaves the process/debug default in control.
+                if settings
+                    .get("validate_props")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
+                    self.validate_props = Some(true);
                 }
                 let ext_config = settings
                     .get("widget_config")
@@ -828,6 +831,16 @@ mod tests {
             matches!(
                 effect,
                 CoreEffect::StateChange(StateChange::ThemeFollowsSystem)
+            )
+        })
+    }
+
+    fn has_prop_validation(effects: &[CoreEffect], node_id: &str) -> bool {
+        effects.iter().any(|effect| {
+            matches!(
+                effect,
+                CoreEffect::Emit(Emit::Event(event))
+                    if event.family == "prop_validation" && event.id == node_id
             )
         })
     }
@@ -1335,6 +1348,48 @@ mod tests {
         };
         core.apply(msg);
         assert_eq!(core.default_event_rate, Some(60));
+    }
+
+    #[test]
+    fn settings_validate_props_false_does_not_store_local_override() {
+        let mut core: Core = Core::new();
+        let msg = IncomingMessage::Settings {
+            settings: serde_json::json!({"validate_props": false}),
+        };
+        core.apply(msg);
+        assert_eq!(core.validate_props, None);
+        assert_eq!(
+            core.is_validate_props_enabled(),
+            crate::validate::is_validate_props_enabled()
+        );
+        if cfg!(debug_assertions) {
+            assert!(core.is_validate_props_enabled());
+            let effects = core.apply(IncomingMessage::Snapshot {
+                tree: make_node_with_props("bad", "text", serde_json::json!({"content": 42})),
+            });
+            assert!(
+                has_prop_validation(&effects, "bad"),
+                "validate_props false must not suppress debug/default validation"
+            );
+        }
+    }
+
+    #[test]
+    fn settings_validate_props_true_stores_local_override() {
+        let mut core: Core = Core::new();
+        let msg = IncomingMessage::Settings {
+            settings: serde_json::json!({"validate_props": true}),
+        };
+        core.apply(msg);
+        assert_eq!(core.validate_props, Some(true));
+        assert!(core.is_validate_props_enabled());
+        let effects = core.apply(IncomingMessage::Snapshot {
+            tree: make_node_with_props("bad", "text", serde_json::json!({"content": 42})),
+        });
+        assert!(
+            has_prop_validation(&effects, "bad"),
+            "validate_props true should enable validation for the session"
+        );
     }
 
     #[test]

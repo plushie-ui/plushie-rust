@@ -6,7 +6,7 @@
 //! 2. Set global codec
 //! 3. Emit Hello
 //! 4. Read first message, require it to be Settings
-//! 5. Validate protocol version, token, validate_props
+//! 5. Validate protocol version and token
 //! 6. Process backend-specific concerns (iced settings, fonts)
 //! 7. Enter message loop
 //!
@@ -269,8 +269,6 @@ pub(crate) fn validate_settings(
         }
     }
 
-    // Prop validation flag.
-    plushie_renderer_lib::settings::apply_validate_props(settings);
     // required_widgets advisory check: emits a diagnostic listing any
     // names the renderer does not know about. Non-fatal.
     plushie_renderer_lib::settings::validate_required_widgets(settings, native_widgets);

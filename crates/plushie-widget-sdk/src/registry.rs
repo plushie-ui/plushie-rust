@@ -679,6 +679,7 @@ pub(crate) struct PrepareTransform<'a, R: PlushieRenderer> {
     registry: &'a mut WidgetRegistry<R>,
     shared: &'a mut crate::shared_state::SharedState,
     theme: &'a Theme,
+    validate_props: bool,
     /// Stack of window IDs; topmost is the current enclosing window.
     window_stack: Vec<String>,
     live_ids: std::collections::HashSet<String>,
@@ -687,24 +688,18 @@ pub(crate) struct PrepareTransform<'a, R: PlushieRenderer> {
 }
 
 impl<'a, R: PlushieRenderer> PrepareTransform<'a, R> {
-    pub(crate) fn new(
-        registry: &'a mut WidgetRegistry<R>,
-        shared: &'a mut crate::shared_state::SharedState,
-        theme: &'a Theme,
-    ) -> Self {
-        Self::new_in_window(registry, shared, theme, None)
-    }
-
     pub(crate) fn new_in_window(
         registry: &'a mut WidgetRegistry<R>,
         shared: &'a mut crate::shared_state::SharedState,
         theme: &'a Theme,
         window_id: Option<&str>,
+        validate_props: bool,
     ) -> Self {
         Self {
             registry,
             shared,
             theme,
+            validate_props,
             window_stack: window_id.map(str::to_string).into_iter().collect(),
             live_ids: std::collections::HashSet::new(),
             live_keys: std::collections::HashSet::new(),
@@ -753,6 +748,7 @@ impl<R: PlushieRenderer> plushie_core::tree_walk::TreeTransform for PrepareTrans
             let type_name = node.type_name.clone();
             let window_id_owned = window_id_for_this_node.clone();
             let theme_ref = self.theme;
+            let validate_props = self.validate_props;
             let node_ref: &TreeNode = node;
             #[cfg(debug_assertions)]
             let prepared = self.registry.call_widget_mut(
@@ -760,7 +756,9 @@ impl<R: PlushieRenderer> plushie_core::tree_walk::TreeTransform for PrepareTrans
                 "prepare",
                 &node_ref.id,
                 |widget| {
-                    widget.prepare(node_ref, &window_id_owned, theme_ref);
+                    crate::validate::with_validate_props_enabled(validate_props, || {
+                        widget.prepare(node_ref, &window_id_owned, theme_ref);
+                    });
                     true
                 },
                 || false,
@@ -771,7 +769,9 @@ impl<R: PlushieRenderer> plushie_core::tree_walk::TreeTransform for PrepareTrans
                 "prepare",
                 &node_ref.id,
                 |widget| {
-                    widget.prepare(node_ref, &window_id_owned, theme_ref);
+                    crate::validate::with_validate_props_enabled(validate_props, || {
+                        widget.prepare(node_ref, &window_id_owned, theme_ref);
+                    });
                     ()
                 },
                 || {},
@@ -1344,7 +1344,13 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         shared: &mut crate::shared_state::SharedState,
         theme: &Theme,
     ) {
-        self.prepare_walk_with_base_window(root, shared, theme, None);
+        self.prepare_walk_with_base_window(
+            root,
+            shared,
+            theme,
+            None,
+            crate::validate::is_validate_props_enabled(),
+        );
     }
 
     /// Walk a rootless tree as if it lived under `window_id`.
@@ -1359,7 +1365,36 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         theme: &Theme,
         window_id: &str,
     ) {
-        self.prepare_walk_with_base_window(root, shared, theme, Some(window_id));
+        self.prepare_walk_with_base_window(
+            root,
+            shared,
+            theme,
+            Some(window_id),
+            crate::validate::is_validate_props_enabled(),
+        );
+    }
+
+    /// Walk a tree using an explicit validation setting.
+    pub fn prepare_walk_with_validation(
+        &mut self,
+        root: &mut TreeNode,
+        shared: &mut crate::shared_state::SharedState,
+        theme: &Theme,
+        validate_props: bool,
+    ) {
+        self.prepare_walk_with_base_window(root, shared, theme, None, validate_props);
+    }
+
+    /// Walk a tree using an explicit validation setting for this session.
+    pub fn prepare_and_scan_with_validation(
+        &mut self,
+        root: &mut TreeNode,
+        shared: &mut crate::shared_state::SharedState,
+        theme: &Theme,
+        animations: &mut crate::animation::TransitionManager,
+        validate_props: bool,
+    ) {
+        self.prepare_and_scan_inner(root, shared, theme, animations, validate_props);
     }
 
     fn prepare_walk_with_base_window(
@@ -1368,6 +1403,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         shared: &mut crate::shared_state::SharedState,
         theme: &Theme,
         window_id: Option<&str>,
+        validate_props: bool,
     ) {
         self.node_factory_map.clear();
         #[cfg(debug_assertions)]
@@ -1377,7 +1413,8 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
 
         let (live_ids, live_keys, widget_subs) = {
-            let mut transform = PrepareTransform::new_in_window(self, shared, theme, window_id);
+            let mut transform =
+                PrepareTransform::new_in_window(self, shared, theme, window_id, validate_props);
             let mut ctx = plushie_core::tree_walk::WalkCtx::default();
             plushie_core::tree_walk::walk(root, &mut [&mut transform], &mut ctx);
             transform.take_collected()
@@ -1401,6 +1438,23 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         theme: &Theme,
         animations: &mut crate::animation::TransitionManager,
     ) {
+        self.prepare_and_scan_inner(
+            root,
+            shared,
+            theme,
+            animations,
+            crate::validate::is_validate_props_enabled(),
+        );
+    }
+
+    fn prepare_and_scan_inner(
+        &mut self,
+        root: &mut TreeNode,
+        shared: &mut crate::shared_state::SharedState,
+        theme: &Theme,
+        animations: &mut crate::animation::TransitionManager,
+        validate_props: bool,
+    ) {
         self.node_factory_map.clear();
         #[cfg(debug_assertions)]
         {
@@ -1409,7 +1463,8 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         }
 
         let (live_ids, live_keys, widget_subs) = {
-            let mut prepare = PrepareTransform::new(self, shared, theme);
+            let mut prepare =
+                PrepareTransform::new_in_window(self, shared, theme, None, validate_props);
             let mut scan = crate::animation::ScanTransform {
                 manager: animations,
             };
@@ -1839,6 +1894,7 @@ mod tests {
             default_font: None,
             window_id,
             scale_factor: 1.0,
+            validate_props: crate::validate::is_validate_props_enabled(),
         }
     }
 

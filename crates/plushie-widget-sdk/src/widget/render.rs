@@ -61,7 +61,7 @@ pub fn render<'a, R: PlushieRenderer>(
             .into();
     }
 
-    if validate::is_validate_props_enabled() {
+    if ctx.validate_props {
         validate::validate_props(node);
     }
 
@@ -164,6 +164,7 @@ mod tests {
             default_font: None,
             window_id: "",
             scale_factor: 1.0,
+            validate_props: crate::validate::is_validate_props_enabled(),
         }
     }
 

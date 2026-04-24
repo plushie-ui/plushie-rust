@@ -216,12 +216,14 @@ impl App {
             // Single depth-first walk drives both the widget-prepare
             // pass and the animation-descriptor scan. Each concern is
             // isolated behind its own `TreeTransform`.
+            let validate_props = self.core.is_validate_props_enabled();
             if let Some(root) = self.core.tree.root_mut() {
-                self.registry.prepare_and_scan(
+                self.registry.prepare_and_scan_with_validation(
                     root,
                     &mut self.core.caches,
                     &self.theme,
                     &mut self.transition_manager,
+                    validate_props,
                 );
             }
         }

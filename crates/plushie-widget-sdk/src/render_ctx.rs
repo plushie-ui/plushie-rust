@@ -46,6 +46,8 @@ pub struct RenderCtx<'a, R: PlushieRenderer = iced::Renderer> {
     /// The display scale factor for this window (1.0 = no scaling).
     /// Useful for DPI-aware canvas rendering.
     pub scale_factor: f32,
+    /// Whether prop validation should run for this render pass.
+    pub validate_props: bool,
 }
 
 impl<R: PlushieRenderer> Clone for RenderCtx<'_, R> {
@@ -60,6 +62,7 @@ impl<R: PlushieRenderer> std::fmt::Debug for RenderCtx<'_, R> {
         f.debug_struct("RenderCtx")
             .field("window_id", &self.window_id)
             .field("scale_factor", &self.scale_factor)
+            .field("validate_props", &self.validate_props)
             .field("default_text_size", &self.default_text_size)
             .field("default_font", &self.default_font)
             .finish_non_exhaustive()

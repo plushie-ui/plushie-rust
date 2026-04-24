@@ -8,6 +8,7 @@
 //! Validation is opt-in via `validate_props: true` in the Settings
 //! message. SDKs can opt in via `validate_props: true` in the Settings message.
 
+use std::cell::Cell;
 use std::sync::OnceLock;
 
 use serde_json::Value;
@@ -20,6 +21,10 @@ const UNIVERSAL_PROPS: &[&str] = &["a11y", "event_rate", "id"];
 /// Global flag to enable prop validation in release builds.
 /// Set via `set_validate_props(true)` during settings init.
 static VALIDATE_PROPS: OnceLock<bool> = OnceLock::new();
+
+thread_local! {
+    static SCOPED_VALIDATE_PROPS: Cell<Option<bool>> = const { Cell::new(None) };
+}
 
 /// Enable or disable prop validation at runtime. Called once during
 /// settings initialization. Returns false if already set.
@@ -38,6 +43,32 @@ pub fn is_validate_props_enabled() -> bool {
         return *v;
     }
     cfg!(debug_assertions)
+}
+
+/// Returns the session-scoped validation setting when one is active.
+pub(crate) fn current_validate_props_enabled() -> bool {
+    SCOPED_VALIDATE_PROPS
+        .with(|scoped| scoped.get())
+        .unwrap_or_else(is_validate_props_enabled)
+}
+
+/// Run a closure with a session-scoped prop validation setting.
+pub(crate) fn with_validate_props_enabled<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
+    struct Reset(Option<bool>);
+
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            SCOPED_VALIDATE_PROPS.with(|scoped| scoped.set(self.0));
+        }
+    }
+
+    let previous = SCOPED_VALIDATE_PROPS.with(|scoped| {
+        let previous = scoped.get();
+        scoped.set(Some(enabled));
+        previous
+    });
+    let _reset = Reset(previous);
+    f()
 }
 
 #[derive(Debug, Clone, Copy)]

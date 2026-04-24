@@ -260,6 +260,7 @@ impl<R: PlushieRenderer> Session<R> {
             default_font: self.core.default_font,
             window_id: "",
             scale_factor: 1.0,
+            validate_props: self.core.is_validate_props_enabled(),
         };
         let element = plushie_widget_sdk::runtime::render(root, ctx);
 
@@ -448,9 +449,16 @@ impl<R: PlushieRenderer> Session<R> {
                             _ => {}
                         }
                     }
-                    if is_tree_change && let Some(root) = self.core.tree.root_mut() {
-                        self.registry
-                            .prepare_walk(root, &mut self.core.caches, &self.theme);
+                    if is_tree_change {
+                        let validate_props = self.core.is_validate_props_enabled();
+                        if let Some(root) = self.core.tree.root_mut() {
+                            self.registry.prepare_walk_with_validation(
+                                root,
+                                &mut self.core.caches,
+                                &self.theme,
+                                validate_props,
+                            );
+                        }
                     }
                 } else {
                     // stdin closed or channel dropped mid-interact.
@@ -734,12 +742,14 @@ fn handle_message<R: PlushieRenderer>(
                 if is_snapshot {
                     s.transition_manager.clear();
                 }
+                let validate_props = s.core.is_validate_props_enabled();
                 if let Some(root) = s.core.tree.root_mut() {
-                    s.registry.prepare_and_scan(
+                    s.registry.prepare_and_scan_with_validation(
                         root,
                         &mut s.core.caches,
                         &s.theme,
                         &mut s.transition_manager,
+                        validate_props,
                     );
                 }
 
@@ -985,6 +995,7 @@ fn handle_screenshot<R: PlushieRenderer>(
         default_font: s.core.default_font,
         window_id: "",
         scale_factor: 1.0,
+        validate_props: s.core.is_validate_props_enabled(),
     };
     let element: iced::Element<'_, plushie_widget_sdk::runtime::Message, Theme, R> =
         plushie_widget_sdk::runtime::render(root, ctx);

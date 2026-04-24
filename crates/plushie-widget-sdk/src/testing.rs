@@ -161,6 +161,7 @@ impl TestEnv {
             default_font: self.default_font,
             window_id: "",
             scale_factor: 1.0,
+            validate_props: crate::validate::is_validate_props_enabled(),
         }
     }
 

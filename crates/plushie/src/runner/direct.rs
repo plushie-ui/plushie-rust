@@ -168,6 +168,7 @@ impl<A: App> DirectApp<A> {
                 default_font: None,
                 window_id: DIRECT_ROOT_WINDOW_ID,
                 scale_factor: self.renderer.scale_factor,
+                validate_props: self.renderer.core.is_validate_props_enabled(),
             };
             plushie_widget_sdk::runtime::render(tree, ctx)
         } else {

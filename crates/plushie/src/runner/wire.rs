@@ -44,6 +44,44 @@ fn hello_protocol_version(hello: &Value) -> Option<u32> {
         .and_then(plushie_core::protocol::json_protocol_version)
 }
 
+#[cfg(feature = "wire")]
+fn hello_string_field<'a>(hello: &'a Value, field: &str) -> &'a str {
+    hello
+        .get(field)
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown")
+}
+
+#[cfg(feature = "wire")]
+fn hello_optional_string_field<'a>(hello: &'a Value, field: &str) -> &'a str {
+    hello
+        .get(field)
+        .and_then(|value| value.as_str())
+        .unwrap_or("None")
+}
+
+#[cfg(feature = "wire")]
+fn renderer_hello_log_message(hello: &Value) -> String {
+    let protocol = hello_protocol_version(hello)
+        .map(|version| version.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    format!(
+        "renderer hello: name={} protocol={} codec={} mode={} backend={} transport={}",
+        hello_string_field(hello, "name"),
+        protocol,
+        hello_string_field(hello, "codec"),
+        hello_string_field(hello, "mode"),
+        hello_string_field(hello, "backend"),
+        hello_optional_string_field(hello, "transport")
+    )
+}
+
+#[cfg(feature = "wire")]
+fn log_renderer_hello(hello: &Value) {
+    log::info!("{}", renderer_hello_log_message(hello));
+}
+
 /// Run the app in wire mode.
 ///
 /// Spawns the renderer binary at `binary_path` and communicates
@@ -207,13 +245,7 @@ fn run_session_single<A: App>(
     bridge.send_settings(&settings)?;
 
     let hello = bridge.receive()?;
-    log::info!(
-        "renderer hello: {}",
-        hello
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-    );
+    log_renderer_hello(&hello);
 
     let expected = plushie_core::protocol::PROTOCOL_VERSION;
     let remote_protocol = hello_protocol_version(&hello);
@@ -358,13 +390,7 @@ fn run_wire_inner<A: App>(
 
         // Synchronous hello read (reader thread not started yet).
         let hello = bridge.receive()?;
-        log::info!(
-            "renderer hello: {}",
-            hello
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-        );
+        log_renderer_hello(&hello);
 
         // Protocol-version gate. A mismatch between the SDK's
         // PROTOCOL_VERSION and whatever the renderer advertises is
@@ -1850,6 +1876,34 @@ mod hello_protocol_tests {
         });
 
         assert_eq!(hello_protocol_version(&hello), Some(u32::MAX));
+    }
+
+    #[test]
+    fn hello_log_message_includes_handshake_details() {
+        let hello = serde_json::json!({
+            "name": "plushie-renderer",
+            "protocol_version": 7,
+            "protocol": 8,
+            "codec": "msgpack",
+            "mode": "headless",
+            "backend": "tiny-skia",
+            "transport": "stdio",
+        });
+
+        assert_eq!(
+            renderer_hello_log_message(&hello),
+            "renderer hello: name=plushie-renderer protocol=7 codec=msgpack mode=headless backend=tiny-skia transport=stdio"
+        );
+    }
+
+    #[test]
+    fn hello_log_message_uses_fallbacks_for_missing_details() {
+        let hello = serde_json::json!({});
+
+        assert_eq!(
+            renderer_hello_log_message(&hello),
+            "renderer hello: name=unknown protocol=unknown codec=unknown mode=unknown backend=unknown transport=None"
+        );
     }
 }
 

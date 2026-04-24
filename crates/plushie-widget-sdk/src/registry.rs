@@ -896,10 +896,24 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             return f(&mut self.impls[idx]);
         }
 
+        let fresh_replacement = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.impls[idx].fresh_for_session()
+        })) {
+            Ok(widget) => widget,
+            Err(_) => {
+                crate::diagnostics::error(plushie_core::Diagnostic::WidgetPanic {
+                    id: node_id.to_string(),
+                    type_name: type_name.to_string(),
+                    label: format!("{label}:fresh_for_session"),
+                });
+                return fallback();
+            }
+        };
         let widget = &mut self.impls[idx];
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(widget))) {
             Ok(v) => v,
             Err(_) => {
+                self.impls[idx] = fresh_replacement;
                 crate::diagnostics::error(plushie_core::Diagnostic::WidgetPanic {
                     id: node_id.to_string(),
                     type_name: type_name.to_string(),
@@ -2570,6 +2584,124 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].family, "click");
         assert_eq!(events[0].id, "m1");
+    }
+
+    struct StatefulPanicInHandleMessage {
+        count: u32,
+    }
+
+    impl PlushieWidget<()> for StatefulPanicInHandleMessage {
+        fn type_names(&self) -> &[&str] {
+            &["stateful_message_panic"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("noop").into()
+        }
+
+        fn handle_message(&mut self, msg: &Message) -> HandleResult {
+            match msg {
+                Message::Event { family, .. } if family == "panic" => {
+                    self.count += 1;
+                    panic!("intentional handle_message panic after mutation");
+                }
+                Message::Event { id, family, .. } if family == "report" => {
+                    HandleResult::emit(vec![OutgoingEvent::generic(
+                        "state".to_string(),
+                        id.clone(),
+                        Some(serde_json::json!(self.count)),
+                    )])
+                }
+                _ => HandleResult::Fallthrough,
+            }
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(StatefulPanicInHandleMessage { count: 0 })
+        }
+    }
+
+    #[test]
+    fn untrusted_mutable_panic_replaces_widget_with_fresh_instance() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(StatefulPanicInHandleMessage { count: 0 }));
+        let idx = registry.index_for_type("stateful_message_panic").unwrap();
+        registry.map_node("s1".to_string(), idx);
+
+        let _ = registry.process_message(&Message::Event {
+            window_id: String::new(),
+            id: "s1".to_string(),
+            value: Value::Null,
+            family: "panic".to_string(),
+        });
+
+        let events = registry.process_message(&Message::Event {
+            window_id: String::new(),
+            id: "s1".to_string(),
+            value: Value::Null,
+            family: "report".to_string(),
+        });
+
+        assert_eq!(registry.index_for_type("stateful_message_panic"), Some(idx));
+        assert_eq!(
+            registry.get_for_node_id("s1").map(|(found, _)| found),
+            Some(idx)
+        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].family, "state");
+        assert_eq!(events[0].id, "s1");
+        assert_eq!(events[0].value, Some(serde_json::json!(0)));
+    }
+
+    struct PanickingFreshForSession;
+
+    impl PlushieWidget<()> for PanickingFreshForSession {
+        fn type_names(&self) -> &[&str] {
+            &["fresh_panic"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("noop").into()
+        }
+
+        fn handle_message(&mut self, _msg: &Message) -> HandleResult {
+            HandleResult::emit(vec![OutgoingEvent::generic(
+                "handled".to_string(),
+                "fresh".to_string(),
+                None,
+            )])
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            panic!("intentional fresh_for_session panic");
+        }
+    }
+
+    #[test]
+    fn untrusted_mutable_dispatch_contains_fresh_for_session_panic() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(PanickingFreshForSession));
+        let idx = registry.index_for_type("fresh_panic").unwrap();
+        registry.map_node("fresh".to_string(), idx);
+
+        let events = registry.process_message(&Message::Event {
+            window_id: String::new(),
+            id: "fresh".to_string(),
+            value: Value::Null,
+            family: "click".to_string(),
+        });
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].family, "click");
+        assert_eq!(events[0].id, "fresh");
     }
 
     #[test]

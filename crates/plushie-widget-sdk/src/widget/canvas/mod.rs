@@ -16,6 +16,7 @@ mod interaction;
 mod program;
 mod shapes;
 mod types;
+mod validation;
 
 #[cfg(test)]
 mod tests;
@@ -37,6 +38,7 @@ use crate::widget::helpers::*;
 
 pub(crate) use interaction::{collect_interactive_elements, validate_interactive_elements};
 pub(crate) use types::{InteractiveElement, TransformMatrix};
+pub(crate) use validation::validate_canvas_shape_tree;
 
 // Re-exports used only by tests and the canvas module itself.
 // Guarded by cfg(test) to avoid unused-import warnings in production.

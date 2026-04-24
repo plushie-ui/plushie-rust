@@ -143,6 +143,12 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         let key = (window_id.to_string(), node.id.clone());
         let layer_map = canvas_layers_from_node(node);
 
+        if crate::validate::is_validate_props_enabled() {
+            for warning in canvas_widgets::validate_canvas_shape_tree(node) {
+                log::warn!("[canvas {}] {}", node.id, warning);
+            }
+        }
+
         // Parse interactive elements from all layers.
         let mut interactive_elements = Vec::new();
         for (layer_name, shapes) in &layer_map {

@@ -43,6 +43,49 @@ pub(crate) enum HitRegion {
     },
 }
 
+fn clean_coordinate(value: f32) -> f32 {
+    if value.is_finite() { value } else { 0.0 }
+}
+
+fn clean_extent(value: f32) -> f32 {
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+impl HitRegion {
+    pub(crate) fn normalized(&self) -> Self {
+        match *self {
+            Self::Rect { x, y, w, h } => Self::Rect {
+                x: clean_coordinate(x),
+                y: clean_coordinate(y),
+                w: clean_extent(w),
+                h: clean_extent(h),
+            },
+            Self::Circle { cx, cy, r } => Self::Circle {
+                cx: clean_coordinate(cx),
+                cy: clean_coordinate(cy),
+                r: clean_extent(r),
+            },
+            Self::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                half_width,
+            } => Self::Line {
+                x1: clean_coordinate(x1),
+                y1: clean_coordinate(y1),
+                x2: clean_coordinate(x2),
+                y2: clean_coordinate(y2),
+                half_width: clean_extent(half_width),
+            },
+        }
+    }
+}
+
 /// 2D affine transform matrix for mapping between coordinate spaces.
 ///
 /// Stored as a 2x3 matrix `[a, b, c, d, tx, ty]` representing:

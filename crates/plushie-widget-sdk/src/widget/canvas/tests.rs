@@ -620,6 +620,37 @@ fn parse_interactive_group_with_hit_rect() {
 }
 
 #[test]
+fn parse_interactive_group_stores_normalized_hit_rect() {
+    let shape = json!({
+        "type": "group",
+        "id": "bad-hit-rect",
+        "on_click": true,
+        "hit_rect": {"x": -5.0, "y": 1.0e39, "w": -20.0, "h": 1.0e39},
+        "children": [
+            {"type": "rect", "x": 0.0, "y": 0.0, "w": 10.0, "h": 10.0}
+        ]
+    });
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+
+    match &result.hit_region {
+        HitRegion::Rect { x, y, w, h } => {
+            assert_eq!(*x, -5.0);
+            assert_eq!(*y, 0.0);
+            assert_eq!(*w, 0.0);
+            assert_eq!(*h, 0.0);
+        }
+        other => panic!("expected Rect, got {other:?}"),
+    }
+
+    let rect = interaction::hit_region_to_rect(&result.hit_region);
+    assert_eq!(rect.x, -5.0);
+    assert_eq!(rect.y, 0.0);
+    assert_eq!(rect.width, 0.0);
+    assert_eq!(rect.height, 0.0);
+}
+
+#[test]
 fn parse_interactive_missing_id_returns_none() {
     // Group without an id is not interactive.
     let shape = json!({
@@ -708,6 +739,63 @@ fn compute_hit_region_group_with_mixed_children() {
             assert!((y - 0.0).abs() < 0.01);
             assert!((w - 90.0).abs() < 0.01);
             assert!((h - 30.0).abs() < 0.01);
+        }
+        other => panic!("expected Rect, got {other:?}"),
+    }
+}
+
+#[test]
+fn compute_hit_region_includes_nested_group_transforms() {
+    let shape = json!({
+        "type": "group",
+        "id": "outer", "on_click": true,
+        "children": [{
+            "type": "group",
+            "transforms": [
+                {"type": "translate", "x": 10.0, "y": 20.0},
+                {"type": "scale", "x": 2.0, "y": 3.0}
+            ],
+            "children": [
+                {"type": "rect", "x": -5.0, "y": 2.0, "w": 10.0, "h": 4.0}
+            ]
+        }]
+    });
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    match result.hit_region {
+        HitRegion::Rect { x, y, w, h } => {
+            assert!((x - 0.0).abs() < 0.01, "x={x}");
+            assert!((y - 26.0).abs() < 0.01, "y={y}");
+            assert!((w - 20.0).abs() < 0.01, "w={w}");
+            assert!((h - 12.0).abs() < 0.01, "h={h}");
+        }
+        other => panic!("expected Rect, got {other:?}"),
+    }
+}
+
+#[test]
+fn compute_hit_region_includes_rotated_nested_group_aabb() {
+    let shape = json!({
+        "type": "group",
+        "id": "outer", "on_click": true,
+        "children": [{
+            "type": "group",
+            "transforms": [
+                {"type": "rotate", "angle": 90.0}
+            ],
+            "children": [
+                {"type": "rect", "x": 2.0, "y": 3.0, "w": 4.0, "h": 6.0}
+            ]
+        }]
+    });
+    let result =
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").unwrap();
+    match result.hit_region {
+        HitRegion::Rect { x, y, w, h } => {
+            assert!((x + 9.0).abs() < 0.01, "x={x}");
+            assert!((y - 2.0).abs() < 0.01, "y={y}");
+            assert!((w - 6.0).abs() < 0.01, "w={w}");
+            assert!((h - 4.0).abs() < 0.01, "h={h}");
         }
         other => panic!("expected Rect, got {other:?}"),
     }

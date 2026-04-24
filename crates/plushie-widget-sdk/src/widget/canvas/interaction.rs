@@ -176,22 +176,28 @@ pub(super) fn parse_interactive_element(
 fn compute_hit_region(group: &GroupShape) -> Option<HitRegion> {
     // Explicit hit_rect overrides geometric inference.
     if let Some(ref hr) = group.hit_rect {
-        return Some(HitRegion::Rect {
-            x: hr.x,
-            y: hr.y,
-            w: hr.w,
-            h: hr.h,
-        });
+        return Some(
+            HitRegion::Rect {
+                x: hr.x,
+                y: hr.y,
+                w: hr.w,
+                h: hr.h,
+            }
+            .normalized(),
+        );
     }
 
     // Infer from children's bounding box.
     let (min_x, min_y, max_x, max_y) = children_bounds(&group.children)?;
-    Some(HitRegion::Rect {
-        x: min_x,
-        y: min_y,
-        w: max_x - min_x,
-        h: max_y - min_y,
-    })
+    Some(
+        HitRegion::Rect {
+            x: min_x,
+            y: min_y,
+            w: max_x - min_x,
+            h: max_y - min_y,
+        }
+        .normalized(),
+    )
 }
 
 /// Parse a cursor name string into an iced mouse interaction.
@@ -543,23 +549,35 @@ pub(crate) fn validate_interactive_elements(
 // Bounds helpers (used by compute_hit_region)
 // ---------------------------------------------------------------------------
 
-/// Extract the net translation from a group's `"transforms"` array.
-///
-/// Scans for `{"type": "translate", "x": ..., "y": ...}` entries and
-/// sums their x/y components. Non-translate transforms (rotate, scale)
-/// are ignored for this purpose; they affect hit testing via the
-/// transform matrix in Phase 2.5, not via this simple offset.
-/// Compute the translation offset from a group's transforms.
-fn group_translation(transforms: &[Transform]) -> (f32, f32) {
-    let mut tx = 0.0f32;
-    let mut ty = 0.0f32;
-    for t in transforms {
-        if let Transform::Translate { x, y } = t {
-            tx += x;
-            ty += y;
-        }
-    }
-    (tx, ty)
+fn transformed_child_bounds(
+    bounds: (f32, f32, f32, f32),
+    transforms: &[Transform],
+) -> (f32, f32, f32, f32) {
+    let (min_x, min_y, max_x, max_y) = bounds;
+    let transform = TransformMatrix::from_typed_transforms(transforms);
+    let corners = [
+        transform.transform_point(min_x, min_y),
+        transform.transform_point(max_x, min_y),
+        transform.transform_point(min_x, max_y),
+        transform.transform_point(max_x, max_y),
+    ];
+    let min_x = corners
+        .iter()
+        .map(|corner| corner.0)
+        .fold(f32::INFINITY, f32::min);
+    let min_y = corners
+        .iter()
+        .map(|corner| corner.1)
+        .fold(f32::INFINITY, f32::min);
+    let max_x = corners
+        .iter()
+        .map(|corner| corner.0)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let max_y = corners
+        .iter()
+        .map(|corner| corner.1)
+        .fold(f32::NEG_INFINITY, f32::max);
+    (min_x, min_y, max_x, max_y)
 }
 
 /// Compute the bounding box of a single shape in its parent's coordinate
@@ -583,9 +601,8 @@ fn child_bounds(child: &CanvasShape) -> Option<(f32, f32, f32, f32)> {
         CanvasShape::Image(i) => Some((i.x, i.y, i.x + i.w, i.y + i.h)),
         CanvasShape::Svg(s) => Some((s.x, s.y, s.x + s.w, s.y + s.h)),
         CanvasShape::Group(g) => {
-            let (gx, gy) = group_translation(&g.transforms);
-            let (min_x, min_y, max_x, max_y) = children_bounds(&g.children)?;
-            Some((gx + min_x, gy + min_y, gx + max_x, gy + max_y))
+            let bounds = children_bounds(&g.children)?;
+            Some(transformed_child_bounds(bounds, &g.transforms))
         }
         CanvasShape::Path(p) => path_bounds(&p.commands),
     }

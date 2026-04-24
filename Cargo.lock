@@ -3735,6 +3735,7 @@ name = "plushie-widget-sdk"
 version = "0.6.1"
 dependencies = [
  "base64",
+ "image",
  "log",
  "plushie-core",
  "plushie-core-macros",

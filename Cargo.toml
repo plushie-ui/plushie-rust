@@ -44,6 +44,7 @@ sha2 = "0.10"
 tokio = "1"
 rmp-serde = "1"
 rmpv = { version = "1", features = ["with-serde"] }
+image = "0.25"
 
 thiserror = "2"
 parking_lot = "0.12"

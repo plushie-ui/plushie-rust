@@ -219,13 +219,35 @@ impl TransformMatrix {
     /// rotate, and scale operations (no shear). For matrices with shear,
     /// the result is an approximation.
     pub fn decompose(&self) -> (f32, f32, f32, f32, f32) {
-        let tx = self.tx;
-        let ty = self.ty;
+        const MIN_SCALE: f32 = 1e-10;
+
+        let tx = if self.tx.is_finite() { self.tx } else { 0.0 };
+        let ty = if self.ty.is_finite() { self.ty } else { 0.0 };
+
         let angle = self.c.atan2(self.a);
+        let angle = if angle.is_finite() { angle } else { 0.0 };
+
         let sx = (self.a * self.a + self.c * self.c).sqrt();
+        let sx = if sx.is_finite() {
+            sx.max(MIN_SCALE)
+        } else {
+            1.0
+        };
+
         // Use determinant / sx to get sy with correct sign (handles reflection).
         let det = self.a * self.d - self.b * self.c;
-        let sy = if sx.abs() > 1e-10 { det / sx } else { 0.0 };
+        let sy = if det.is_finite() {
+            let sy = det / sx;
+            if sy.is_finite() {
+                let sign = if sy.is_sign_negative() { -1.0 } else { 1.0 };
+                sign * sy.abs().max(MIN_SCALE)
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        };
+
         (tx, ty, angle, sx, sy)
     }
 

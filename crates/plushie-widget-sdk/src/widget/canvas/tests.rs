@@ -2004,7 +2004,7 @@ fn clip_transformed_by_group_matrix() {
     assert!(miss.is_none());
 }
 
-// -- TransformMatrix::decompose tests --
+// TransformMatrix::decompose tests
 
 #[test]
 fn decompose_identity() {
@@ -2048,6 +2048,35 @@ fn decompose_scale_only() {
     assert!((angle).abs() < 0.001);
     assert!((sx - 3.0).abs() < 0.001, "sx={sx}");
     assert!((sy - 0.5).abs() < 0.001, "sy={sy}");
+}
+
+#[test]
+fn decompose_zero_scale_returns_finite_nonzero_scales() {
+    let m = TransformMatrix::identity().scale(0.0, 0.0);
+    let (_, _, angle, sx, sy) = m.decompose();
+
+    assert!(angle.is_finite(), "angle={angle}");
+    assert!(sx.is_finite() && sx > 0.0, "sx={sx}");
+    assert!(sy.is_finite() && sy.abs() > 0.0, "sy={sy}");
+}
+
+#[test]
+fn decompose_non_finite_matrix_returns_finite_values() {
+    let m = TransformMatrix {
+        a: f32::NAN,
+        b: f32::INFINITY,
+        c: f32::NEG_INFINITY,
+        d: 1.0,
+        tx: f32::NAN,
+        ty: f32::INFINITY,
+    };
+    let (tx, ty, angle, sx, sy) = m.decompose();
+
+    assert!(tx.is_finite(), "tx={tx}");
+    assert!(ty.is_finite(), "ty={ty}");
+    assert!(angle.is_finite(), "angle={angle}");
+    assert!(sx.is_finite() && sx > 0.0, "sx={sx}");
+    assert!(sy.is_finite() && sy.abs() > 0.0, "sy={sy}");
 }
 
 #[test]

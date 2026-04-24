@@ -246,34 +246,52 @@ fn extract_variant_meta(variant: &syn::Variant) -> syn::Result<VariantMeta> {
 
 /// Convert PascalCase to snake_case.
 ///
-/// Inserts `_` before each uppercase letter that follows a lowercase
-/// letter or precedes a lowercase letter in a run of uppercase.
+/// Keeps acronym runs together, respects existing underscores, and
+/// splits numeric suffixes before the next capitalized word.
 fn pascal_to_snake(s: &str) -> String {
     let mut result = String::with_capacity(s.len() + 4);
     let chars: Vec<char> = s.chars().collect();
 
     for (i, &c) in chars.iter().enumerate() {
-        if c.is_uppercase() {
-            if i > 0 {
-                let prev = chars[i - 1];
-                if prev.is_lowercase() {
-                    // camelCase boundary: aB -> a_b
-                    result.push('_');
-                } else if prev.is_uppercase() {
-                    // Check if this uppercase starts a new word:
-                    // ABc -> a_bc (the B starts the word "Bc")
-                    if i + 1 < chars.len() && chars[i + 1].is_lowercase() {
-                        result.push('_');
-                    }
-                }
+        if c == '_' {
+            if !result.ends_with('_') && !result.is_empty() {
+                result.push('_');
             }
-            result.push(c.to_lowercase().next().unwrap());
+            continue;
+        }
+
+        if i > 0 && should_insert_snake_boundary(chars[i - 1], c, chars.get(i + 1).copied()) {
+            result.push('_');
+        }
+
+        if c.is_uppercase() {
+            result.extend(c.to_lowercase());
         } else {
             result.push(c);
         }
     }
 
+    if result.ends_with('_') {
+        result.pop();
+    }
+
     result
+}
+
+fn should_insert_snake_boundary(prev: char, current: char, next: Option<char>) -> bool {
+    if prev == '_' || current == '_' {
+        return false;
+    }
+
+    let lower_to_upper = prev.is_lowercase() && current.is_uppercase();
+    let acronym_to_word =
+        prev.is_uppercase() && current.is_uppercase() && next.is_some_and(char::is_lowercase);
+    let lower_to_digit =
+        prev.is_lowercase() && current.is_ascii_digit() && next.is_some_and(char::is_uppercase);
+    let digit_to_word =
+        prev.is_ascii_digit() && current.is_uppercase() && next.is_some_and(char::is_lowercase);
+
+    lower_to_upper || acronym_to_word || lower_to_digit || digit_to_word
 }
 
 // ---------------------------------------------------------------------------
@@ -1537,6 +1555,14 @@ mod tests {
             pascal_to_snake("ResizingDiagonallyUp"),
             "resizing_diagonally_up"
         );
+    }
+
+    #[test]
+    fn pascal_to_snake_digits_and_existing_underscores() {
+        assert_eq!(pascal_to_snake("GL11Version"), "gl11_version");
+        assert_eq!(pascal_to_snake("Version2D"), "version_2d");
+        assert_eq!(pascal_to_snake("HTTP2Connection"), "http2_connection");
+        assert_eq!(pascal_to_snake("XML_HTTP_Request"), "xml_http_request");
     }
 
     #[test]

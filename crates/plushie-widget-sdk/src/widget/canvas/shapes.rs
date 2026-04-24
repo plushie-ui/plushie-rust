@@ -215,8 +215,8 @@ const MAX_DASH_CACHE: usize = 1024;
 ///
 /// When the cache reaches [`MAX_DASH_CACHE`] entries, new unique
 /// patterns still get a leaked slice (LineDash requires `'static`
-/// segments) but are not inserted into the cache. A one-time warning
-/// is logged when this limit is hit.
+/// segments) but are not inserted into the cache. A one-time info
+/// diagnostic is logged when this limit is hit.
 fn intern_dash_segments(segments: Vec<f32>) -> &'static [f32] {
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -239,7 +239,7 @@ fn intern_dash_segments(segments: Vec<f32>) -> &'static [f32] {
         if !WARNED.swap(true, Ordering::Relaxed) {
             // The atomic guards the emit to once per process; patterns
             // past this point still leak uncached.
-            crate::diagnostics::warn(plushie_core::Diagnostic::DashCacheCapExceeded {
+            crate::diagnostics::info(plushie_core::Diagnostic::DashCacheCapExceeded {
                 max: MAX_DASH_CACHE,
             });
         }

@@ -962,7 +962,8 @@ pub enum DiagnosticLevel {
     Info,
     /// Something irregular but recoverable.
     Warn,
-    /// Unrecoverable by the renderer; host intervention may be needed.
+    /// A serious failure that needs host attention, such as malformed
+    /// input, a protocol fault, or widget code panicking.
     Error,
 }
 

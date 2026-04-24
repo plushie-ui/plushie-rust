@@ -99,7 +99,7 @@ impl plushie_renderer_lib::EventSink for QueueSink {
         _message: plushie_core::protocol::DiagnosticMessage,
     ) -> io::Result<()> {
         // Direct mode: the diagnostics::emit call already logged the
-        // message via log::warn/error. There is no wire consumer here,
+        // message at its chosen level. There is no wire consumer here,
         // so nothing to queue. When direct-mode apps need programmatic
         // observation, add an SDK Event variant and deliver through
         // sink_event_to_sdk.

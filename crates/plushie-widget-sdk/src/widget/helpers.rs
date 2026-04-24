@@ -85,7 +85,7 @@ pub(crate) fn intern_font_family(name: &str) -> &'static str {
         if !WARNED.swap(true, Ordering::Relaxed) {
             // The atomic guards the emit to once per process; names
             // past this point still leak uncached.
-            crate::diagnostics::warn(plushie_core::Diagnostic::FontCacheCapExceeded {
+            crate::diagnostics::info(plushie_core::Diagnostic::FontCacheCapExceeded {
                 max: MAX_FONT_FAMILY_CACHE,
             });
         }

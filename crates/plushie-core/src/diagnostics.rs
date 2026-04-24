@@ -37,9 +37,10 @@ pub fn set_hook(hook: Box<DiagnosticHook>) {
 
 /// Emit a typed diagnostic.
 ///
-/// Always logs via `log::warn!` so any captured log stream still shows
-/// the diagnostic. When the renderer's sink hook is installed, also
-/// forwards the diagnostic to the wire (as a `DiagnosticMessage`).
+/// Logs via the matching `log` level so captured streams can be
+/// filtered by severity. When the renderer's sink hook is installed,
+/// also forwards the diagnostic to the wire (as a
+/// `DiagnosticMessage`).
 pub fn emit(level: DiagnosticLevel, diagnostic: Diagnostic) {
     match level {
         DiagnosticLevel::Info => log::info!("{diagnostic}"),

@@ -1,11 +1,10 @@
-//! Integration test: verify Settings-handshake validation of the
-//! `required_widgets` list.
+//! Integration tests for Settings-handshake diagnostics.
 //!
-//! Spawns `plushie-renderer --mock --json` and sends a Settings
-//! message listing a mix of built-in and unknown widget type names.
-//! The renderer must emit a `required_widgets_missing` diagnostic
-//! naming the unknown types and omit the diagnostic entirely when
-//! all names resolve.
+//! Spawns `plushie-renderer --mock --json` and sends Settings messages
+//! that exercise recoverable validation and malformed input. For
+//! `required_widgets`, the renderer must emit a
+//! `required_widgets_missing` diagnostic naming the unknown types and
+//! omit the diagnostic entirely when all names resolve.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStderr, Command, Stdio};
@@ -207,6 +206,7 @@ fn settings_required_widgets_missing_names_are_reported() {
     let diag = stdout
         .find_diagnostic("required_widgets_missing", Duration::from_secs(5))
         .expect("renderer should emit required_widgets_missing diagnostic");
+    assert_eq!(diag["level"], "warn");
 
     let missing = diag["diagnostic"]["missing"]
         .as_array()
@@ -217,6 +217,36 @@ fn settings_required_widgets_missing_names_are_reported() {
         vec!["never_registered_widget"],
         "only the unknown name should appear in missing; got: {names:?}"
     );
+
+    drop(stdin);
+    let _ = child.wait();
+}
+
+#[test]
+fn malformed_settings_emit_error_diagnostic() {
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--json"]);
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = LineReceiver::new(child.stdout.take().unwrap());
+
+    send(
+        &mut stdin,
+        &serde_json::json!({
+            "session": "s1",
+            "type": "settings",
+            "settings": {
+                "protocol_version": 1,
+                "antialiasing": "yes"
+            }
+        }),
+    );
+
+    let hello = stdout.recv().expect("hello message");
+    assert_eq!(hello["type"], "hello");
+
+    let diag = stdout
+        .find_diagnostic("invalid_settings", Duration::from_secs(5))
+        .expect("renderer should emit invalid_settings diagnostic");
+    assert_eq!(diag["level"], "error");
 
     drop(stdin);
     let _ = child.wait();

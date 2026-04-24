@@ -768,13 +768,13 @@ struct WireSettings {
 }
 
 /// Run the typed `deny_unknown_fields` validation. Unknown keys
-/// and type mismatches produce a tagged log diagnostic but do not
-/// fail the parse: the caller proceeds with per-field extraction.
+/// and type mismatches produce an error diagnostic but do not fail
+/// the parse: the caller proceeds with per-field extraction.
 fn validate_wire_settings(settings: &Value) {
     match serde_json::from_value::<WireSettings>(settings.clone()) {
         Ok(_) => {}
         Err(e) => {
-            crate::diagnostics::warn(plushie_core::Diagnostic::InvalidSettings {
+            crate::diagnostics::error(plushie_core::Diagnostic::InvalidSettings {
                 detail: e.to_string(),
             });
         }

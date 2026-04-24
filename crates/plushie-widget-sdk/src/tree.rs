@@ -232,7 +232,7 @@ impl Tree {
                 }
             }
             other => {
-                crate::diagnostics::warn(plushie_core::Diagnostic::UnknownPatchOp {
+                crate::diagnostics::error(plushie_core::Diagnostic::UnknownPatchOp {
                     op: other.to_string(),
                     payload: patch_op_payload(op),
                 });

@@ -1075,12 +1075,12 @@ fn wire_to_sdk_events(
     let Some(decoded) = decode_incoming(msg) else {
         // No `type` field at all: not our message shape. We are on the
         // SDK side here (reading renderer output), so the diagnostic
-        // channel hook on the renderer does not apply; log as warn
+        // channel hook on the renderer does not apply; log as error
         // with the raw payload for diagnosis.
-        plushie_core::diagnostics::warn(plushie_core::Diagnostic::UnknownMessageType {
+        plushie_core::diagnostics::error(plushie_core::Diagnostic::UnknownMessageType {
             msg_type: String::new(),
         });
-        log::warn!("raw unknown-type message: {msg}");
+        log::error!("raw unknown-type message: {msg}");
         return vec![];
     };
 

@@ -1,8 +1,6 @@
 //! CanvasProgram struct, impl methods, and canvas::Program trait impl.
 //! Also includes overlay helpers (merge_shape_style, draw_focus_ring, draw_tooltip).
 
-use std::collections::HashMap;
-
 use iced::widget::canvas;
 use iced::{Color, Pixels, Point, Radians, Size, Vector, keyboard, mouse};
 
@@ -12,6 +10,7 @@ use super::interaction::*;
 use super::shapes::*;
 use super::types::*;
 use crate::PlushieRenderer;
+use crate::canvas_engine::{CanvasLayerCaches, canvas_theme_hash};
 use serde_json::json;
 
 use crate::message::{Message, serialize_modifiers};
@@ -101,7 +100,7 @@ pub(crate) struct CanvasProgram<'a, R: PlushieRenderer = iced::Renderer> {
     /// Sorted layer data: (layer_name, shapes array).
     pub layers: Vec<(String, Vec<CanvasShape>)>,
     /// Per-layer caches from SharedState.
-    pub caches: Option<&'a HashMap<String, (u64, canvas::Cache<R>)>>,
+    pub caches: Option<&'a CanvasLayerCaches<R>>,
     pub background: Option<Color>,
     pub window_id: String,
     pub id: String,
@@ -1388,13 +1387,15 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
 
         // Draw each layer, using its cache when available.
         let images = self.images;
+        let theme_hash = canvas_theme_hash(theme);
         for (layer_name, shapes) in &self.layers {
             let shape_refs: Vec<&CanvasShape> = shapes.iter().collect();
             let force_redraw = active_layers.iter().any(|l| l == layer_name);
 
             let geom = if !force_redraw {
-                if let Some((_hash, cache)) = self.caches.and_then(|c| c.get(layer_name)) {
-                    cache.draw(renderer, bounds.size(), |frame| {
+                if let Some(record) = self.caches.and_then(|c| c.get(layer_name)) {
+                    record.ensure_theme_hash(theme_hash);
+                    record.cache.draw(renderer, bounds.size(), |frame| {
                         draw_canvas_shapes(frame, &shape_refs, images, theme);
                     })
                 } else {
@@ -1403,10 +1404,10 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                     frame.into_geometry()
                 }
             } else {
-                // Layer has active interaction (hover/pressed/focus style) --
+                // Layer has active interaction (hover/pressed/focus style):
                 // clear cache and draw fresh with style overrides applied.
-                if let Some((_hash, cache)) = self.caches.and_then(|c| c.get(layer_name)) {
-                    cache.clear();
+                if let Some(record) = self.caches.and_then(|c| c.get(layer_name)) {
+                    record.cache.clear();
                 }
                 let mut frame = canvas::Frame::new(renderer, bounds.size());
                 self.draw_shapes_with_overrides(&mut frame, &shape_refs, state, images, theme);

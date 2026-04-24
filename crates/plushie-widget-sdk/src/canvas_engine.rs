@@ -39,7 +39,10 @@
 //! }
 //! ```
 
+use std::cell::Cell;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use iced::widget::canvas;
 use iced::{Element, Theme};
@@ -51,16 +54,67 @@ use crate::protocol::TreeNode;
 use crate::render_ctx::RenderCtx;
 use crate::widget::canvas as canvas_widgets;
 
+pub(crate) type CanvasLayerCaches<R> = HashMap<String, CanvasLayerCache<R>>;
+
+pub(crate) struct CanvasLayerCache<R: PlushieRenderer> {
+    content_hash: u64,
+    theme_hash: Cell<u64>,
+    pub(crate) cache: canvas::Cache<R>,
+}
+
+impl<R: PlushieRenderer> CanvasLayerCache<R> {
+    fn new(content_hash: u64) -> Self {
+        Self {
+            content_hash,
+            theme_hash: Cell::new(0),
+            cache: canvas::Cache::new(),
+        }
+    }
+
+    fn update_content_hash(&mut self, content_hash: u64) {
+        if self.content_hash != content_hash {
+            self.cache.clear();
+            self.content_hash = content_hash;
+        }
+    }
+
+    pub(crate) fn ensure_theme_hash(&self, theme_hash: u64) {
+        if self.theme_hash.get() != theme_hash {
+            self.cache.clear();
+            self.theme_hash.set(theme_hash);
+        }
+    }
+}
+
+pub(crate) fn canvas_theme_hash(theme: &Theme) -> u64 {
+    fn hash_color(color: iced::Color, state: &mut DefaultHasher) {
+        color.r.to_bits().hash(state);
+        color.g.to_bits().hash(state);
+        color.b.to_bits().hash(state);
+        color.a.to_bits().hash(state);
+    }
+
+    let palette = theme.palette();
+    let mut hasher = DefaultHasher::new();
+    palette.is_dark.hash(&mut hasher);
+    hash_color(palette.primary.base.color, &mut hasher);
+    hash_color(palette.background.base.color, &mut hasher);
+    hash_color(palette.background.base.text, &mut hasher);
+    hash_color(palette.success.base.color, &mut hasher);
+    hash_color(palette.danger.base.color, &mut hasher);
+    hash_color(palette.warning.base.color, &mut hasher);
+    hasher.finish()
+}
+
 /// Reusable canvas rendering engine.
 ///
 /// Owns per-instance canvas state (layer tessellation caches, interactive
 /// elements, pending focus) keyed by `(window_id, node_id)`. Provides
 /// prepare, render, and message handling that PlushieWidget implementations
 /// delegate to.
-#[allow(clippy::type_complexity)]
 pub struct CanvasEngine<R: PlushieRenderer> {
     /// Per-canvas, per-layer tessellation caches with content hashing.
-    layer_caches: HashMap<(String, String), HashMap<String, (u64, canvas::Cache<R>)>>,
+    layer_caches: HashMap<(String, String), CanvasLayerCaches<R>>,
     /// Pre-parsed interactive elements per (window_id, canvas_id).
     interactions: HashMap<(String, String), Vec<canvas_widgets::InteractiveElement>>,
     /// Pending programmatic focus per (window_id, canvas_id).
@@ -84,9 +138,6 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     /// manages per-layer tessellation cache invalidation using content
     /// hashing.
     pub fn prepare(&mut self, node: &TreeNode, window_id: &str) {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
         use crate::widget::canvas::canvas_layers_from_node;
 
         let key = (window_id.to_string(), node.id.clone());
@@ -130,14 +181,9 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
                 hasher.finish()
             };
             match node_caches.get_mut(layer_name) {
-                Some((existing_hash, cache)) => {
-                    if *existing_hash != hash {
-                        cache.clear();
-                        *existing_hash = hash;
-                    }
-                }
+                Some(record) => record.update_content_hash(hash),
                 None => {
-                    node_caches.insert(layer_name.clone(), (hash, canvas::Cache::new()));
+                    node_caches.insert(layer_name.clone(), CanvasLayerCache::new(hash));
                 }
             }
         }
@@ -240,5 +286,34 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
 impl<R: PlushieRenderer> Default for CanvasEngine<R> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canvas_theme_hash_changes_with_palette_colors() {
+        let light = iced::Theme::Light;
+        let dark = iced::Theme::Dark;
+
+        assert_ne!(
+            light.palette().background.base.color,
+            dark.palette().background.base.color
+        );
+        assert_ne!(canvas_theme_hash(&light), canvas_theme_hash(&dark));
+    }
+
+    #[test]
+    fn layer_cache_tracks_theme_hash_separately_from_content_hash() {
+        let cache = CanvasLayerCache::<iced::Renderer>::new(10);
+        assert_eq!(cache.theme_hash.get(), 0);
+
+        cache.ensure_theme_hash(20);
+        assert_eq!(cache.theme_hash.get(), 20);
+
+        cache.ensure_theme_hash(20);
+        assert_eq!(cache.theme_hash.get(), 20);
     }
 }

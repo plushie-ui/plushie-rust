@@ -20,15 +20,13 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
-
-use iced::widget::canvas;
 use iced::{Element, Point, Theme};
 
 use plushie_core::types::{self as core_types, PlushieType};
 use plushie_core::types::{CanvasShape, extract_canvas_layers};
 
 use crate::PlushieRenderer;
+use crate::canvas_engine::CanvasLayerCaches;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
@@ -43,7 +41,7 @@ pub(crate) use types::{InteractiveElement, TransformMatrix};
 // Re-exports used only by tests and the canvas module itself.
 // Guarded by cfg(test) to avoid unused-import warnings in production.
 #[cfg(test)]
-pub(crate) use shapes::{parse_canvas_fill, parse_canvas_stroke};
+pub(crate) use shapes::{parse_canvas_fill, parse_canvas_stroke, resolve_color};
 #[cfg(test)]
 pub(crate) use types::{ArrowMode, CanvasState, DragAxis, HitRegion};
 
@@ -113,7 +111,7 @@ impl CanvasProps {
 pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
     node: &'a TreeNode,
     ctx: RenderCtx<'a, R>,
-    node_caches: Option<&'a HashMap<String, (u64, canvas::Cache<R>)>>,
+    node_caches: Option<&'a CanvasLayerCaches<R>>,
     interactive_elements: &'a [InteractiveElement],
     pending_focus: Option<String>,
 ) -> Element<'a, Message, Theme, R> {

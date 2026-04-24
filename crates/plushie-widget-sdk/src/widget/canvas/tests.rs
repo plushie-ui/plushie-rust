@@ -182,6 +182,23 @@ fn canvas_hash_changes() {
 }
 
 #[test]
+fn canvas_palette_background_resolves_from_current_theme() {
+    let light = iced::Theme::Light;
+    let dark = iced::Theme::Dark;
+    let color = json!("background");
+
+    let light_background = resolve_color(&color, &light);
+    let dark_background = resolve_color(&color, &dark);
+
+    assert_eq!(
+        light_background,
+        Some(light.palette().background.base.color)
+    );
+    assert_eq!(dark_background, Some(dark.palette().background.base.color));
+    assert_ne!(light_background, dark_background);
+}
+
+#[test]
 fn canvas_layer_sort_order() {
     let node = make_canvas_node(
         json!({}),

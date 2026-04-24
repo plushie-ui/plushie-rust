@@ -541,7 +541,7 @@ pub(super) fn truncate_shapes(name: &str, mut shapes: Vec<CanvasShape>) -> Vec<C
 ///
 /// Returns `None` if the value is neither a valid hex color nor a recognized
 /// theme palette name.
-pub(super) fn resolve_color(value: &Value, theme: &iced::Theme) -> Option<Color> {
+pub(crate) fn resolve_color(value: &Value, theme: &iced::Theme) -> Option<Color> {
     let s = value.as_str()?;
 
     // Try hex first (most common case).

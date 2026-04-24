@@ -92,6 +92,11 @@ impl A11yOverrides {
     ///
     /// Returns `None` if no `a11y` key exists or if the `a11y` object
     /// contains no meaningful overrides.
+    ///
+    /// Explicit `false` values keep the wrapper for fields where false
+    /// can clear inferred or widget-provided state. `hidden: false` is
+    /// the exception because hidden only controls subtree suppression,
+    /// and false means "do not suppress".
     pub fn from_props(props: &plushie_core::protocol::Props) -> Option<Self> {
         let core = A11y::extract(props, "a11y")?;
         let result = Self::from_core(&core);
@@ -109,11 +114,10 @@ impl A11yOverrides {
     /// Excludes `hidden` which is handled separately (subtree
     /// suppression rather than property override).
     ///
-    /// State flags (required, invalid, modal, read_only) only count
-    /// as overrides when `Some(true)`, because `Some(false)` matches
-    /// the default (no visible effect). Interaction state fields
-    /// (busy, disabled, toggled, selected) count as overrides for
-    /// ANY value because they override auto-detected widget state.
+    /// State fields count as overrides for any explicit value because
+    /// `Some(false)` can clear inferred or widget-provided true values.
+    /// `hidden` is handled separately and only `hidden: true`
+    /// suppresses a subtree.
     pub(crate) fn has_overrides(&self) -> bool {
         let c = &self.core;
         c.role.is_some()
@@ -123,11 +127,11 @@ impl A11yOverrides {
             || c.live.is_some()
             || c.level.is_some()
             || c.mnemonic.is_some()
-            || c.required == Some(true)
+            || c.required.is_some()
             || c.busy.is_some()
-            || c.invalid == Some(true)
-            || c.modal == Some(true)
-            || c.read_only == Some(true)
+            || c.invalid.is_some()
+            || c.modal.is_some()
+            || c.read_only.is_some()
             || c.toggled.is_some()
             || c.selected.is_some()
             || c.value.is_some()
@@ -147,15 +151,8 @@ impl A11yOverrides {
     /// new struct with override values taking precedence.
     ///
     /// - `Option` fields: override wins if `Some`, falls back to base.
-    /// - `bool` state fields (`required`, `invalid`, `modal`,
-    ///   `read_only`): merged with OR semantics so a default `false`
-    ///   override never clears a `true` base value. When the override
-    ///   explicitly sets `true`, the result is `true` regardless of
-    ///   base. When the override is default (`false`), the base value
-    ///   is preserved.
-    /// - `busy`, `disabled`: `Option<bool>` in the core A11y struct,
-    ///   so `Some(v)` overrides the widget's auto-detected state and
-    ///   `None` falls back to the base value.
+    /// - `bool` state fields: `Some(v)` overrides the widget's
+    ///   auto-detected state and `None` falls back to the base value.
     /// - `hidden`: handled at the interception layer (subtree
     ///   suppression) rather than as a property merge. See the
     ///   `operate()` and `traverse()` methods.
@@ -603,11 +600,26 @@ mod tests {
     }
 
     #[test]
-    fn from_props_none_when_all_defaults() {
-        let props = plushie_core::protocol::Props::from_json(
-            json!({"a11y": {"hidden": false, "required": false}}),
-        );
+    fn from_props_none_when_hidden_false_only() {
+        let props = plushie_core::protocol::Props::from_json(json!({"a11y": {"hidden": false}}));
         assert!(A11yOverrides::from_props(&props).is_none());
+    }
+
+    #[test]
+    fn from_props_preserves_false_state_flags() {
+        let props = plushie_core::protocol::Props::from_json(json!({
+            "a11y": {
+                "required": false,
+                "invalid": false,
+                "modal": false,
+                "read_only": false
+            }
+        }));
+        let overrides = A11yOverrides::from_props(&props).unwrap();
+        assert_eq!(overrides.core.required, Some(false));
+        assert_eq!(overrides.core.invalid, Some(false));
+        assert_eq!(overrides.core.modal, Some(false));
+        assert_eq!(overrides.core.read_only, Some(false));
     }
 
     #[test]
@@ -828,6 +840,18 @@ mod tests {
     }
 
     #[test]
+    fn has_overrides_true_for_false_state_flags() {
+        let overrides = A11yOverrides::from_core(
+            &A11y::new()
+                .required(false)
+                .invalid(false)
+                .modal(false)
+                .read_only(false),
+        );
+        assert!(overrides.has_overrides());
+    }
+
+    #[test]
     fn has_overrides_true_for_each_field() {
         let cases: Vec<A11yOverrides> = vec![
             A11yOverrides::from_core(&A11y::new().role(Role::Button)),
@@ -874,8 +898,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_to_bools_are_ored() {
-        // Override sets required=true, base has busy=true.
+    fn apply_to_sets_true_state_flags() {
         let overrides = A11yOverrides::from_core(&A11y::new().required(true));
         let base = Accessible {
             busy: true,
@@ -888,7 +911,7 @@ mod tests {
 
     #[test]
     fn apply_to_default_override_preserves_base_bools() {
-        // Default overrides (all bools false) must NOT clear true base values.
+        // Unset overrides must not clear true base values.
         let overrides = A11yOverrides::default();
         let base = Accessible {
             required: true,
@@ -934,6 +957,55 @@ mod tests {
         assert!(merged.invalid);
         assert!(merged.modal);
         assert!(merged.read_only);
+    }
+
+    #[test]
+    fn apply_to_false_state_flags_clear_base() {
+        let overrides = A11yOverrides::from_core(
+            &A11y::new()
+                .required(false)
+                .invalid(false)
+                .modal(false)
+                .read_only(false),
+        );
+        let base = Accessible {
+            required: true,
+            invalid: true,
+            modal: true,
+            read_only: true,
+            ..Default::default()
+        };
+        let merged = overrides.apply_to(&base);
+        assert!(!merged.required);
+        assert!(!merged.invalid);
+        assert!(!merged.modal);
+        assert!(!merged.read_only);
+    }
+
+    #[test]
+    fn merge_explicit_false_state_flags_clear_inferred_true() {
+        let inferred = A11yOverrides::from_core(
+            &A11y::new()
+                .required(true)
+                .invalid(true)
+                .modal(true)
+                .read_only(true),
+        );
+        let explicit = A11yOverrides::from_props(&wire(json!({
+            "a11y": {
+                "required": false,
+                "invalid": false,
+                "modal": false,
+                "read_only": false
+            }
+        })))
+        .unwrap();
+        let merged = A11yOverrides::merge(&inferred, &explicit);
+
+        assert_eq!(merged.core.required, Some(false));
+        assert_eq!(merged.core.invalid, Some(false));
+        assert_eq!(merged.core.modal, Some(false));
+        assert_eq!(merged.core.read_only, Some(false));
     }
 
     #[test]

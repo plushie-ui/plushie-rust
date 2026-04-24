@@ -219,8 +219,8 @@ pub enum IncomingMessage {
 /// Payload of an [`IncomingMessage::ImageOp`] message.
 ///
 /// Fields are union-style: individual ops use a subset. `data` and
-/// `pixels` accept either raw bytes (msgpack binary) or base64-encoded
-/// strings (JSON); see [`deserialize_binary_field`].
+/// `pixels` accept base64-encoded strings and serde byte arrays; see
+/// [`deserialize_binary_field`].
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ImageOpPayload {
     #[serde(default)]
@@ -244,17 +244,16 @@ pub struct ImageOpPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Binary field deserialization (handles both raw bytes and base64 strings)
+// Binary field deserialization
 // ---------------------------------------------------------------------------
 
 /// Deserializes a binary field that may arrive as:
-/// - Raw bytes (msgpack binary type, via rmpv path)
-/// - Base64-encoded string (JSON path)
+/// - Base64-encoded string (JSON path, or msgpack binary via rmpv conversion)
+/// - Array of u8 values (serde byte sequence fallback)
 /// - null / absent (returns None)
 ///
-/// When the codec's rmpv-based decode extracts binary fields and injects them
-/// as `serde_json::Value::Array` of u8 values, serde picks them up as `Vec<u8>`.
-/// When the field arrives as a base64 string (JSON mode), we decode it here.
+/// When the codec's rmpv-based decode extracts binary fields, it injects them
+/// as compact base64 strings. JSON mode uses the same representation.
 fn deserialize_binary_field<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -265,7 +264,7 @@ where
     match val {
         None => Ok(None),
         Some(Value::Null) => Ok(None),
-        // Base64 string (JSON mode)
+        // Base64 string.
         Some(Value::String(s)) => {
             use base64::Engine as _;
             base64::engine::general_purpose::STANDARD
@@ -273,7 +272,7 @@ where
                 .map(Some)
                 .map_err(|e| D::Error::custom(format!("base64 decode: {e}")))
         }
-        // Array of u8 values (injected by rmpv binary extraction)
+        // Array of u8 values.
         Some(Value::Array(arr)) => {
             let bytes: Result<Vec<u8>, _> = arr
                 .into_iter()

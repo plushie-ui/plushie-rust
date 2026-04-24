@@ -176,9 +176,9 @@ impl Codec {
     /// For MsgPack, `bytes` is the raw msgpack payload (without the length prefix).
     ///
     /// MsgPack decoding routes through `rmpv::Value` as an intermediate. This
-    /// preserves binary data (msgpack's bin type) as JSON arrays of byte values,
-    /// which the `deserialize_binary_field` custom deserializer in protocol.rs
-    /// can reconstruct into `Vec<u8>`. The `serde_json::Value` intermediate is
+    /// preserves binary data (msgpack's bin type) as base64 strings, which the
+    /// `deserialize_binary_field` custom deserializer in protocol.rs can
+    /// reconstruct into `Vec<u8>`. The `serde_json::Value` intermediate is
     /// still needed for tag dispatch (`#[serde(tag = "type")]`) which rmp-serde
     /// doesn't handle reliably for externally-produced msgpack.
     ///
@@ -320,12 +320,12 @@ impl Codec {
 // ---------------------------------------------------------------------------
 
 /// Convert an rmpv::Value to serde_json::Value, preserving binary data as
-/// JSON arrays of byte values (u8). This is the key difference from the old
-/// rmp_serde -> serde_json::Value path, which silently dropped binary data
+/// base64 strings. This is the key difference from the old rmp_serde ->
+/// serde_json::Value path, which silently dropped binary data
 /// (serde_json::Value has no binary type).
 ///
 /// The `deserialize_binary_field` custom deserializer in protocol.rs knows
-/// how to reconstruct `Vec<u8>` from these byte arrays.
+/// how to reconstruct `Vec<u8>` from these strings.
 ///
 /// Returns an error on invalid UTF-8 in msgpack strings: silently falling
 /// back (either to U+FFFD or an empty string) would corrupt the `type`
@@ -387,30 +387,9 @@ fn rmpv_to_json_inner(val: rmpv::Value, depth: usize) -> Result<serde_json::Valu
             }
         }
         rmpv::Value::Binary(bytes) => {
-            // Preserve raw bytes as a JSON array of u8 values.
-            // The deserialize_binary_field custom deserializer reconstructs Vec<u8>.
-            //
-            // Memory amplification note: each byte becomes a serde_json::Value::Number,
-            // which is ~40x larger than the original byte on 64-bit platforms
-            // (Value enum tag + Number heap alloc + i64). A 64 MiB binary field
-            // would expand to ~2.5 GiB of Value::Number objects. This is bounded
-            // by the 64 MiB MAX_MESSAGE_SIZE cap on incoming wire messages --
-            // the worst-case expansion stays under ~2.5 GiB, which is large but
-            // finite. In practice, binary fields in real messages are much smaller
-            // (e.g. pixel data in image_ops, font data in load_font).
-            //
-            // Future work: side-channel binary extraction to avoid the Value-tree
-            // expansion entirely. Route Binary values around the rmpv -> Value
-            // conversion, keeping the byte buffer out of the intermediate tree,
-            // then splice back in at the typed-deserializer layer. Bounded by
-            // the 64 MiB message cap either way, but side-channel keeps memory
-            // proportional to the actual payload, not ~40x the payload.
-            serde_json::Value::Array(
-                bytes
-                    .into_iter()
-                    .map(|b| serde_json::Value::Number(b.into()))
-                    .collect(),
-            )
+            use base64::Engine as _;
+
+            serde_json::Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
         }
         rmpv::Value::Array(arr) => {
             let mut out = Vec::with_capacity(arr.len());
@@ -969,10 +948,17 @@ mod tests {
     // -- rmpv_to_json unit tests --
 
     #[test]
-    fn rmpv_to_json_preserves_binary_as_array() {
+    fn rmpv_to_json_preserves_binary_as_base64_string() {
+        use base64::Engine as _;
+
         let binary = rmpv::Value::Binary(vec![1, 2, 3]);
         let result = rmpv_to_json(binary).unwrap();
-        assert_eq!(result, json!([1, 2, 3]));
+        assert!(!result.is_array());
+        let encoded = result.as_str().unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        assert_eq!(decoded, vec![1, 2, 3]);
     }
 
     #[test]
@@ -1051,7 +1037,9 @@ mod tests {
 
     #[test]
     fn rmpv_to_json_binary_in_nested_map() {
-        // Binary data nested inside a map should be preserved as byte arrays.
+        use base64::Engine as _;
+
+        // Binary data nested inside a map should be preserved as base64.
         let val = rmpv::Value::Map(vec![
             (
                 rmpv::Value::String("name".into()),
@@ -1064,13 +1052,19 @@ mod tests {
         ]);
         let result = rmpv_to_json(val).unwrap();
         assert_eq!(result["name"], json!("img"));
-        assert_eq!(result["pixels"], json!([255, 128, 0, 255]));
+        assert!(!result["pixels"].is_array());
+        let encoded = result["pixels"].as_str().unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        assert_eq!(decoded, vec![255, 128, 0, 255]);
     }
 
     #[test]
     fn msgpack_roundtrip_with_binary_field() {
         // Encode a message containing binary data via msgpack, decode it,
-        // and verify the binary field comes through as a byte array.
+        // and verify the binary field comes through as base64.
+        use base64::Engine as _;
         use rmpv::Value as RmpvValue;
 
         let raw_bytes: Vec<u8> = vec![0xDE, 0xAD, 0xBE, 0xEF];
@@ -1093,7 +1087,7 @@ mod tests {
         let mut buf = Vec::new();
         rmpv::encode::write_value(&mut buf, &msg).unwrap();
 
-        // The rmpv_to_json path preserves binary as an array of u8.
+        // The rmpv_to_json path preserves binary as base64.
         let rmpv_val: rmpv::Value = rmpv::decode::read_value(&mut &buf[..]).unwrap();
         let json_val = rmpv_to_json(rmpv_val).unwrap();
 
@@ -1101,10 +1095,12 @@ mod tests {
         assert_eq!(json_val["type"], "alpha");
         assert_eq!(json_val["value"], "hello");
 
-        // Binary preserved as array of byte values.
-        let payload = json_val["payload"].as_array().unwrap();
-        let bytes: Vec<u8> = payload.iter().map(|v| v.as_u64().unwrap() as u8).collect();
-        assert_eq!(bytes, raw_bytes);
+        assert!(!json_val["payload"].is_array());
+        let payload = json_val["payload"].as_str().unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(payload)
+            .unwrap();
+        assert_eq!(decoded, raw_bytes);
     }
 
     #[test]

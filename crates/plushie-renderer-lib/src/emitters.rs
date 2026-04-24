@@ -613,6 +613,11 @@ mod tests {
         assert_eq!(parsed["hash"], "d4e5f6");
         assert_eq!(parsed["width"], 2);
         assert_eq!(parsed["height"], 3);
-        assert_eq!(parsed["rgba"], serde_json::json!([0, 1, 2, 3]));
+
+        let rgba = parsed["rgba"].as_str().expect("rgba base64 string");
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(rgba)
+            .unwrap();
+        assert_eq!(decoded, vec![0, 1, 2, 3]);
     }
 }

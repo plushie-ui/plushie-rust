@@ -1174,6 +1174,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             prepare.take_collected()
         };
 
+        animations.prune_to_live_widgets(&live_ids, &mut shared.interpolated_props);
         self.finish_prepare(shared, live_ids, live_keys, widget_subs);
     }
 
@@ -2030,6 +2031,22 @@ mod tests {
         }
     }
 
+    fn animated_leaf(id: &str, type_name: &str) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: type_name.to_string(),
+            props: plushie_core::protocol::Props::from_json(serde_json::json!({
+                "opacity": {
+                    "type": "transition",
+                    "from": 0.0,
+                    "to": 1.0,
+                    "duration": 1000.0
+                }
+            })),
+            children: vec![],
+        }
+    }
+
     // Shared counter used to expose live-key set sizes for
     // cleanup_stale tests without smuggling typed references out of
     // the registry.
@@ -2104,6 +2121,31 @@ mod tests {
             vec![2, 1],
             "cleanup_stale should observe 2 contents after first walk and 1 after the second"
         );
+    }
+
+    #[test]
+    fn prepare_and_scan_prunes_animation_state_for_removed_nodes() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(TestWidget::new(&["animated"])));
+
+        let mut shared = crate::shared_state::SharedState::new();
+        let mut animations = crate::animation::TransitionManager::new();
+
+        let mut first_tree = tree(vec![animated_leaf("gone", "animated")]);
+        registry.prepare_and_scan(&mut first_tree, &mut shared, &Theme::Dark, &mut animations);
+        assert!(animations.has_active());
+
+        animations.advance_all(iced::time::Instant::now(), &mut shared.interpolated_props);
+        assert!(shared.interpolated_props.contains_key("gone"));
+
+        let mut second_tree = tree(vec![]);
+        registry.prepare_and_scan(&mut second_tree, &mut shared, &Theme::Dark, &mut animations);
+
+        assert!(!animations.has_active());
+        assert!(!shared.interpolated_props.contains_key("gone"));
+
+        animations.advance_all(iced::time::Instant::now(), &mut shared.interpolated_props);
+        assert!(!shared.interpolated_props.contains_key("gone"));
     }
 
     #[test]

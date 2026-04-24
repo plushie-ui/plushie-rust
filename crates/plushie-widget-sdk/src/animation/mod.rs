@@ -26,7 +26,7 @@ use ghost::GhostManager;
 use iced::animation::Easing;
 use iced::time::Instant;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// The value being animated: either a number or a color.
 #[derive(Clone, Debug)]
@@ -183,6 +183,18 @@ impl TransitionManager {
         self.ghosts.clear();
         self.last_tick = None;
         self.last_headless_ms = None;
+    }
+
+    /// Removes animations and cached interpolated props for widgets that are
+    /// no longer present in the live tree.
+    pub(crate) fn prune_to_live_widgets(
+        &mut self,
+        live_ids: &HashSet<String>,
+        interpolated_props: &mut HashMap<String, serde_json::Map<String, Value>>,
+    ) {
+        self.active
+            .retain(|(widget_id, _), _| live_ids.contains(widget_id));
+        interpolated_props.retain(|widget_id, _| live_ids.contains(widget_id));
     }
 
     /// Advances all active animations by one frame.

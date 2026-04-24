@@ -968,6 +968,42 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         self.type_index.keys().map(|s| s.as_str()).collect()
     }
 
+    fn active_widget_impls(&self) -> Vec<(&str, &dyn PlushieWidget<R>)> {
+        let mut active: Vec<(&str, usize)> = self
+            .type_index
+            .iter()
+            .map(|(type_name, &idx)| (type_name.as_str(), idx))
+            .collect();
+        active.sort_by(|(type_a, _), (type_b, _)| type_a.cmp(type_b));
+
+        let mut seen = HashSet::new();
+        active
+            .into_iter()
+            .filter_map(|(type_name, idx)| {
+                if seen.insert(idx) {
+                    Some((type_name, self.impls[idx].as_ref()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn diagnostic_type_name_for_idx(&self, idx: usize) -> String {
+        self.type_index
+            .iter()
+            .filter_map(|(type_name, &mapped_idx)| (mapped_idx == idx).then_some(type_name))
+            .min()
+            .cloned()
+            .or_else(|| {
+                self.impls
+                    .get(idx)
+                    .and_then(|widget| widget.type_names().first())
+                    .map(|type_name| (*type_name).to_string())
+            })
+            .unwrap_or_else(|| format!("widget#{idx}"))
+    }
+
     /// Return type names grouped by set/provenance.
     pub fn type_names_by_set(&self) -> HashMap<&str, Vec<&str>> {
         let mut result: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -987,6 +1023,10 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// third-party set) goes through panic isolation.
     fn is_trusted(&self, type_name: &str) -> bool {
         self.provenance.get(type_name).is_some_and(|s| s == "iced")
+    }
+
+    fn is_trusted_idx(&self, idx: usize, type_name: &str) -> bool {
+        self.type_index.get(type_name) == Some(&idx) && self.is_trusted(type_name)
     }
 
     #[cfg(debug_assertions)]
@@ -1042,9 +1082,23 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         let Some(&idx) = self.type_index.get(type_name) else {
             return fallback();
         };
-        let widget = self.impls[idx].as_ref();
+        self.call_widget_by_idx(idx, type_name, label, node_id, f, fallback)
+    }
 
-        if self.is_trusted(type_name) {
+    fn call_widget_by_idx<T>(
+        &self,
+        idx: usize,
+        type_name: &str,
+        label: &str,
+        node_id: &str,
+        f: impl FnOnce(&dyn PlushieWidget<R>) -> T,
+        fallback: impl FnOnce() -> T,
+    ) -> T {
+        let Some(widget) = self.impls.get(idx).map(|widget| widget.as_ref()) else {
+            return fallback();
+        };
+
+        if self.is_trusted_idx(idx, type_name) {
             return f(widget);
         }
 
@@ -1076,12 +1130,26 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         f: impl FnOnce(&mut Box<dyn PlushieWidget<R>>) -> T,
         fallback: impl FnOnce() -> T,
     ) -> T {
-        let trusted = self.is_trusted(type_name);
         let Some(&idx) = self.type_index.get(type_name) else {
             return fallback();
         };
+        self.call_widget_mut_by_idx(idx, type_name, label, node_id, f, fallback)
+    }
 
-        if trusted {
+    fn call_widget_mut_by_idx<T>(
+        &mut self,
+        idx: usize,
+        type_name: &str,
+        label: &str,
+        node_id: &str,
+        f: impl FnOnce(&mut Box<dyn PlushieWidget<R>>) -> T,
+        fallback: impl FnOnce() -> T,
+    ) -> T {
+        if idx >= self.impls.len() {
+            return fallback();
+        }
+
+        if self.is_trusted_idx(idx, type_name) {
             return f(&mut self.impls[idx]);
         }
 
@@ -1211,13 +1279,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         let mut events: HashMap<String, (String, PayloadSpec)> = HashMap::new();
         let mut commands: HashMap<String, (String, PayloadSpec)> = HashMap::new();
 
-        for widget in &self.impls {
-            let type_name = widget
-                .type_names()
-                .first()
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-
+        for (type_name, widget) in self.active_widget_impls() {
             for EventSpec { family, payload } in widget.event_specs() {
                 match events.get(&family) {
                     Some((prev_type, prev_payload)) => {
@@ -1238,7 +1300,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                         }
                     }
                     None => {
-                        events.insert(family, (type_name.clone(), payload));
+                        events.insert(family, (type_name.to_string(), payload));
                     }
                 }
             }
@@ -1263,7 +1325,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                         }
                     }
                     None => {
-                        commands.insert(family, (type_name.clone(), payload));
+                        commands.insert(family, (type_name.to_string(), payload));
                     }
                 }
             }
@@ -1289,16 +1351,12 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             .iter()
             .enumerate()
             .map(|(idx, widget)| {
-                let type_name = widget
-                    .type_names()
-                    .first()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| format!("widget#{idx}"));
+                let type_name = self.diagnostic_type_name_for_idx(idx);
                 (type_name, widget.namespace().to_string())
             })
             .collect();
 
-        for (type_name, ns) in per_widget {
+        for (idx, (type_name, ns)) in per_widget.into_iter().enumerate() {
             let (ns_config, config_provided) = if ns.is_empty() {
                 (Value::Null, false)
             } else {
@@ -1307,7 +1365,8 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
                     None => (Value::Null, false),
                 }
             };
-            self.call_widget_mut(
+            self.call_widget_mut_by_idx(
+                idx,
                 &type_name,
                 "init",
                 &type_name,
@@ -1499,17 +1558,12 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             .impls
             .iter()
             .enumerate()
-            .map(|(idx, widget)| {
-                widget
-                    .type_names()
-                    .first()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| format!("widget#{idx}"))
-            })
+            .map(|(idx, _widget)| self.diagnostic_type_name_for_idx(idx))
             .collect();
-        for type_name in type_names {
+        for (idx, type_name) in type_names.into_iter().enumerate() {
             let live_keys_ref = &live_keys;
-            self.call_widget_mut(
+            self.call_widget_mut_by_idx(
+                idx,
                 &type_name,
                 "prune_stale",
                 &type_name,
@@ -1546,12 +1600,9 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         if let Some(node_id) = msg.node_id()
             && let Some((idx, _)) = self.get_for_node_id(node_id)
         {
-            let type_name = self.impls[idx]
-                .type_names()
-                .first()
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-            let result = self.call_widget_mut(
+            let type_name = self.diagnostic_type_name_for_idx(idx);
+            let result = self.call_widget_mut_by_idx(
+                idx,
                 &type_name,
                 "handle_message",
                 node_id,
@@ -1646,10 +1697,10 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         window_id: Option<&str>,
         msg: &Message,
     ) -> Vec<OutgoingEvent> {
-        // Collect matching (node_id, type_name) pairs first so the
+        // Collect matching targets first so the
         // mutable borrow in call_widget_mut doesn't overlap with the
         // immutable iteration over active_widget_subs.
-        let targets: Vec<(String, String)> = self
+        let targets: Vec<(String, usize)> = self
             .active_widget_subs
             .values()
             .filter(|sub| sub.kind == kind)
@@ -1660,15 +1711,15 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             .filter_map(|sub| {
                 self.node_factory_map
                     .get(&sub.node_id)
-                    .and_then(|&idx| self.impls.get(idx))
-                    .and_then(|w| w.type_names().first().map(|t| t.to_string()))
-                    .map(|type_name| (sub.node_id.clone(), type_name))
+                    .map(|&idx| (sub.node_id.clone(), idx))
             })
             .collect();
 
         let mut out = Vec::new();
-        for (node_id, type_name) in targets {
-            let result = self.call_widget_mut(
+        for (node_id, idx) in targets {
+            let type_name = self.diagnostic_type_name_for_idx(idx);
+            let result = self.call_widget_mut_by_idx(
+                idx,
                 &type_name,
                 "handle_message",
                 &node_id,
@@ -1692,12 +1743,9 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     ) -> Option<Vec<OutgoingEvent>> {
         let (idx, _) = self.get_for_node_id(node_id)?;
         self.validate_command_payload(idx, node_id, op, payload);
-        let type_name = self.impls[idx]
-            .type_names()
-            .first()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        self.call_widget_mut(
+        let type_name = self.diagnostic_type_name_for_idx(idx);
+        self.call_widget_mut_by_idx(
+            idx,
             &type_name,
             "handle_widget_op",
             node_id,
@@ -2640,6 +2688,223 @@ mod tests {
         registry.validate_command_payload(idx, "b1", "anything", &serde_json::json!(true));
     }
 
+    #[test]
+    fn event_specs_validation_uses_active_node_owner_after_override() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecWidget));
+        registry.register(Box::new(EventSpecStringOverride));
+        let idx = registry.index_for_type("gauge").unwrap();
+        registry.map_node("g1".into(), idx);
+
+        registry.validate_event_payload("g1", "slide", &serde_json::json!("active"));
+    }
+
+    #[test]
+    fn command_specs_validation_uses_active_node_owner_after_override() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecWidget));
+        registry.register(Box::new(CommandSpecStringOverride));
+        let idx = registry.index_for_type("gauge").unwrap();
+        registry.map_node("g1".into(), idx);
+
+        let events = registry.handle_widget_op("g1", "set_value", &serde_json::json!("active"));
+        assert!(events.is_none());
+    }
+
+    #[test]
+    fn alias_partial_override_does_not_steal_widget_op_dispatch() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(AliasDispatchOwner));
+        registry.register(Box::new(HiddenAliasOverride));
+        let idx = registry.index_for_type("visible").unwrap();
+        registry.map_node("node".into(), idx);
+
+        let events = registry
+            .handle_widget_op("node", "run", &Value::Null)
+            .expect("visible owner should handle the widget op");
+
+        assert_eq!(events[0].family, "command_owner");
+    }
+
+    #[test]
+    fn alias_partial_override_does_not_steal_message_dispatch() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(AliasDispatchOwner));
+        registry.register(Box::new(HiddenAliasOverride));
+        let idx = registry.index_for_type("visible").unwrap();
+        registry.map_node("node".into(), idx);
+
+        let events = registry.process_message(&Message::Event {
+            window_id: String::new(),
+            id: "node".to_string(),
+            value: Value::Null,
+            family: "press".to_string(),
+        });
+
+        assert_eq!(events[0].family, "message_owner");
+    }
+
+    #[test]
+    fn alias_partial_override_does_not_steal_subscription_dispatch() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(AliasDispatchOwner));
+        registry.register(Box::new(HiddenAliasOverride));
+
+        let mut tree = tree(vec![leaf("node", "visible")]);
+        let mut shared = crate::shared_state::SharedState::new();
+        registry.prepare_walk(&mut tree, &mut shared, &Theme::Dark);
+
+        let events = registry.dispatch_widget_subscription("alias_tick", None, &Message::NoOp);
+
+        assert_eq!(events[0].family, "message_owner");
+    }
+
+    struct AliasDispatchOwner;
+
+    impl PlushieWidget<()> for AliasDispatchOwner {
+        fn type_names(&self) -> &[&str] {
+            &["hidden", "visible"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("visible").into()
+        }
+
+        fn handle_message(&mut self, _msg: &Message) -> HandleResult {
+            HandleResult::emit(vec![OutgoingEvent::generic(
+                "message_owner".to_string(),
+                "node".to_string(),
+                None,
+            )])
+        }
+
+        fn handle_widget_op(
+            &mut self,
+            _node_id: &str,
+            _op: &str,
+            _payload: &Value,
+        ) -> Option<Vec<OutgoingEvent>> {
+            Some(vec![OutgoingEvent::generic(
+                "command_owner".to_string(),
+                "node".to_string(),
+                None,
+            )])
+        }
+
+        fn subscriptions(
+            &self,
+            _node: &TreeNode,
+            _ctx: &SubscribeCtx<'_>,
+        ) -> Vec<WidgetSubscription> {
+            vec![WidgetSubscription::new("alias_tick", "tick")]
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(AliasDispatchOwner)
+        }
+    }
+
+    struct HiddenAliasOverride;
+
+    impl PlushieWidget<()> for HiddenAliasOverride {
+        fn type_names(&self) -> &[&str] {
+            &["hidden"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("hidden").into()
+        }
+
+        fn handle_message(&mut self, _msg: &Message) -> HandleResult {
+            HandleResult::emit(vec![OutgoingEvent::generic(
+                "message_override".to_string(),
+                "node".to_string(),
+                None,
+            )])
+        }
+
+        fn handle_widget_op(
+            &mut self,
+            _node_id: &str,
+            _op: &str,
+            _payload: &Value,
+        ) -> Option<Vec<OutgoingEvent>> {
+            Some(vec![OutgoingEvent::generic(
+                "command_override".to_string(),
+                "node".to_string(),
+                None,
+            )])
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(HiddenAliasOverride)
+        }
+    }
+
+    struct EventSpecStringOverride;
+
+    impl PlushieWidget<()> for EventSpecStringOverride {
+        fn type_names(&self) -> &[&str] {
+            &["gauge"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("gauge").into()
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(EventSpecStringOverride)
+        }
+
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            vec![EventSpec {
+                family: "slide".into(),
+                payload: PayloadSpec::Value(ValueType::String),
+            }]
+        }
+    }
+
+    struct CommandSpecStringOverride;
+
+    impl PlushieWidget<()> for CommandSpecStringOverride {
+        fn type_names(&self) -> &[&str] {
+            &["gauge"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("gauge").into()
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(CommandSpecStringOverride)
+        }
+
+        fn command_specs(&self) -> Vec<plushie_core::CommandSpec> {
+            use plushie_core::spec::*;
+            vec![CommandSpec {
+                family: "set_value".into(),
+                payload: PayloadSpec::Value(ValueType::String),
+            }]
+        }
+    }
+
     // ---------------------------------------------------------------------------
     // prune_stale dispatch from prepare_walk
     //
@@ -2830,6 +3095,23 @@ mod tests {
             _ctx: &RenderCtx<'a, iced::Renderer>,
         ) -> Element<'a, Message, Theme, iced::Renderer> {
             panic!("intentional render panic");
+        }
+
+        fn init(&mut self, _ctx: &InitCtx<'_>) {
+            panic!("intentional init panic");
+        }
+
+        fn handle_message(&mut self, _msg: &Message) -> HandleResult {
+            panic!("intentional handle_message panic");
+        }
+
+        fn handle_widget_op(
+            &mut self,
+            _node_id: &str,
+            _op: &str,
+            _payload: &Value,
+        ) -> Option<Vec<OutgoingEvent>> {
+            panic!("intentional handle_widget_op panic");
         }
 
         fn fresh_for_session(&self) -> Box<dyn PlushieWidget<iced::Renderer>> {
@@ -3114,6 +3396,218 @@ mod tests {
     }
 
     #[test]
+    fn family_collision_ignores_shadowed_event_specs() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecFamilyA));
+        registry.register(Box::new(SpecFamilyAStringOverride));
+        registry.register(Box::new(SpecFamilyBConflicting));
+
+        assert!(registry.family_collision_diagnostics().is_empty());
+    }
+
+    #[test]
+    fn family_collision_ignores_shadowed_command_specs() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(CommandFamilyA));
+        registry.register(Box::new(CommandFamilyAStringOverride));
+        registry.register(Box::new(CommandFamilyBMatchingOverride));
+
+        assert!(registry.family_collision_diagnostics().is_empty());
+    }
+
+    #[test]
+    fn family_collision_ignores_empty_type_name_specs() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecFamilyA));
+        registry.register(Box::new(EmptyTypeNameSpecFamily));
+
+        assert!(registry.family_collision_diagnostics().is_empty());
+    }
+
+    #[test]
+    fn family_collision_reports_active_alias_name() {
+        let mut registry = WidgetRegistry::<()>::new();
+        registry.register(Box::new(SpecFamilyWithShadowedAlias));
+        registry.register(Box::new(SpecFamilyHiddenAliasOverride));
+
+        let diags = registry.family_collision_diagnostics();
+        let value = diags
+            .first()
+            .and_then(|event| event.value.as_ref())
+            .expect("conflicting active specs should produce a diagnostic");
+        assert_eq!(value["type_a"], "hidden");
+        assert_eq!(value["type_b"], "visible");
+    }
+
+    struct SpecFamilyAStringOverride;
+    impl PlushieWidget<()> for SpecFamilyAStringOverride {
+        fn type_names(&self) -> &[&str] {
+            &["a"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("a").into()
+        }
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            vec![EventSpec {
+                family: "select".into(),
+                payload: PayloadSpec::Value(ValueType::String),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(SpecFamilyAStringOverride)
+        }
+    }
+
+    struct CommandFamilyA;
+    impl PlushieWidget<()> for CommandFamilyA {
+        fn type_names(&self) -> &[&str] {
+            &["command_a"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("command a").into()
+        }
+        fn command_specs(&self) -> Vec<plushie_core::CommandSpec> {
+            use plushie_core::spec::*;
+            vec![CommandSpec {
+                family: "set".into(),
+                payload: PayloadSpec::Value(ValueType::Integer),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(CommandFamilyA)
+        }
+    }
+
+    struct CommandFamilyAStringOverride;
+    impl PlushieWidget<()> for CommandFamilyAStringOverride {
+        fn type_names(&self) -> &[&str] {
+            &["command_a"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("command a").into()
+        }
+        fn command_specs(&self) -> Vec<plushie_core::CommandSpec> {
+            use plushie_core::spec::*;
+            vec![CommandSpec {
+                family: "set".into(),
+                payload: PayloadSpec::Value(ValueType::String),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(CommandFamilyAStringOverride)
+        }
+    }
+
+    struct CommandFamilyBMatchingOverride;
+    impl PlushieWidget<()> for CommandFamilyBMatchingOverride {
+        fn type_names(&self) -> &[&str] {
+            &["command_b"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("command b").into()
+        }
+        fn command_specs(&self) -> Vec<plushie_core::CommandSpec> {
+            use plushie_core::spec::*;
+            vec![CommandSpec {
+                family: "set".into(),
+                payload: PayloadSpec::Value(ValueType::String),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(CommandFamilyBMatchingOverride)
+        }
+    }
+
+    struct EmptyTypeNameSpecFamily;
+    impl PlushieWidget<()> for EmptyTypeNameSpecFamily {
+        fn type_names(&self) -> &[&str] {
+            &[]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("empty").into()
+        }
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            vec![EventSpec {
+                family: "select".into(),
+                payload: PayloadSpec::Value(ValueType::String),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(EmptyTypeNameSpecFamily)
+        }
+    }
+
+    struct SpecFamilyWithShadowedAlias;
+    impl PlushieWidget<()> for SpecFamilyWithShadowedAlias {
+        fn type_names(&self) -> &[&str] {
+            &["hidden", "visible"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("visible").into()
+        }
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            vec![EventSpec {
+                family: "select".into(),
+                payload: PayloadSpec::Value(ValueType::String),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(SpecFamilyWithShadowedAlias)
+        }
+    }
+
+    struct SpecFamilyHiddenAliasOverride;
+    impl PlushieWidget<()> for SpecFamilyHiddenAliasOverride {
+        fn type_names(&self) -> &[&str] {
+            &["hidden"]
+        }
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, ()>,
+        ) -> Element<'a, Message, Theme, ()> {
+            iced::widget::text("hidden").into()
+        }
+        fn event_specs(&self) -> Vec<plushie_core::EventSpec> {
+            use plushie_core::spec::*;
+            vec![EventSpec {
+                family: "select".into(),
+                payload: PayloadSpec::Value(ValueType::Integer),
+            }]
+        }
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<()>> {
+            Box::new(SpecFamilyHiddenAliasOverride)
+        }
+    }
+
+    #[test]
     fn widget_override_of_iced_type_clears_trusted_provenance() {
         let mut registry = WidgetRegistry::<iced::Renderer>::new();
         registry.register_set(&crate::widget::widget_set::iced_widget_set());
@@ -3129,6 +3623,78 @@ mod tests {
             "`.widget()` override must drop inherited provenance so panic \
              isolation wraps the new widget"
         );
+    }
+
+    #[test]
+    fn trusted_button_override_does_not_trust_stale_button_index_for_init() {
+        let mut registry = WidgetRegistry::<iced::Renderer>::new();
+        registry.register(Box::new(PanickingButton));
+        let stale_idx = registry.index_for_type("button").unwrap();
+        registry.register_set(&crate::widget::widget_set::iced_widget_set());
+        assert_ne!(registry.index_for_type("button"), Some(stale_idx));
+        assert_eq!(
+            registry.provenance.get("button").map(|s| s.as_str()),
+            Some("iced")
+        );
+
+        let theme = Theme::Dark;
+        let config = Value::Null;
+        let ctx = InitCtx {
+            config: &config,
+            theme: &theme,
+            default_text_size: None,
+            default_font: None,
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            registry.init_all(&ctx);
+        }));
+
+        assert!(
+            result.is_ok(),
+            "stale untrusted implementation must remain panic-isolated"
+        );
+    }
+
+    #[test]
+    fn trusted_button_override_does_not_trust_stale_button_index_for_message() {
+        let mut registry = WidgetRegistry::<iced::Renderer>::new();
+        registry.register(Box::new(PanickingButton));
+        let stale_idx = registry.index_for_type("button").unwrap();
+        registry.register_set(&crate::widget::widget_set::iced_widget_set());
+        assert_ne!(registry.index_for_type("button"), Some(stale_idx));
+        registry.map_node("stale".to_string(), stale_idx);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            registry.process_message(&Message::Event {
+                window_id: String::new(),
+                id: "stale".to_string(),
+                value: Value::Null,
+                family: "press".to_string(),
+            })
+        }));
+
+        let events = result.expect("stale untrusted message panic should be isolated");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].family, "press");
+        assert_eq!(events[0].id, "stale");
+    }
+
+    #[test]
+    fn trusted_button_override_does_not_trust_stale_button_index_for_widget_op() {
+        let mut registry = WidgetRegistry::<iced::Renderer>::new();
+        registry.register(Box::new(PanickingButton));
+        let stale_idx = registry.index_for_type("button").unwrap();
+        registry.register_set(&crate::widget::widget_set::iced_widget_set());
+        assert_ne!(registry.index_for_type("button"), Some(stale_idx));
+        registry.map_node("stale".to_string(), stale_idx);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            registry.handle_widget_op("stale", "run", &Value::Null)
+        }));
+
+        let events = result.expect("stale untrusted widget op panic should be isolated");
+        assert!(events.is_none());
     }
 
     struct PanickingInPrepare;

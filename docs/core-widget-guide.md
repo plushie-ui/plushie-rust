@@ -828,12 +828,15 @@ When an override is deliberate, call:
 
 ### Event and command family diagnostics
 
-At Settings time the registry scans every widget's `event_specs`
-and `command_specs`. Two widgets declaring the same family name
-with the **same** `PayloadSpec` (e.g. both use `click` with
-`PayloadSpec::None`) is silent - that is the intended shared
-taxonomy. Two widgets declaring the same family with **different**
-shapes emit a `widget_family_collision` diagnostic event:
+At Settings time the registry scans `event_specs` and
+`command_specs` for the widget implementations that currently own at
+least one registered type name. Shadowed overrides and widgets with no
+registered type name do not participate. Two widgets declaring the
+same family name with the **same** `PayloadSpec` (e.g. both use
+`click` with `PayloadSpec::None`) is silent - that is the intended
+shared taxonomy. Two widgets declaring the same family with
+**different** shapes emit a `widget_family_collision` diagnostic
+event:
 
 ```json
 {

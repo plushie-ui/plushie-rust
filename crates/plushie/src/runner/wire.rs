@@ -747,14 +747,25 @@ fn run_session<A: App>(
             let event = match sink_event {
                 SinkEvent::EffectTimeout { wire_id } => {
                     // Resolve to the user tag via the tracker; emit
-                    // Timeout. Skip silently if already resolved
-                    // (response-raced-the-deadline).
-                    effect_tracker.resolve(&wire_id).map(|(tag, _kind)| {
-                        Event::Effect(EffectEvent {
-                            tag,
-                            result: EffectResult::Timeout,
-                        })
-                    })
+                    // Timeout. Skip if already resolved by a
+                    // response that raced the deadline.
+                    match effect_tracker.resolve(&wire_id) {
+                        Some((tag, kind)) => {
+                            log::debug!(
+                                "wire effect timeout resolved: wire_id={wire_id} tag={tag} kind={kind}"
+                            );
+                            Some(Event::Effect(EffectEvent {
+                                tag,
+                                result: EffectResult::Timeout,
+                            }))
+                        }
+                        None => {
+                            log::debug!(
+                                "wire effect timeout fired after resolution: wire_id={wire_id}"
+                            );
+                            None
+                        }
+                    }
                 }
                 other => super::event_bridge::sink_event_to_sdk(other),
             };
@@ -1152,12 +1163,18 @@ fn wire_to_sdk_events(
             async_mgr.cancel_effect_timeout(&wire_id);
             // Resolve via the tracker for typed result parsing.
             if let Some((tag, kind)) = effect_tracker.resolve(&wire_id) {
+                log::debug!(
+                    "wire effect response resolved: wire_id={wire_id} tag={tag} kind={kind} status={status}"
+                );
                 let error_as_value = error.as_ref().map(|e| Value::String(e.clone()));
                 let value = result.as_ref().or(error_as_value.as_ref());
                 let result = EffectResult::parse(&kind, status, value);
                 return vec![Event::Effect(EffectEvent { tag, result })];
             }
 
+            log::debug!(
+                "wire effect response without tracked request: wire_id={wire_id} status={status}"
+            );
             let response = EffectResponse {
                 message_type: "effect_response",
                 session: String::new(),
@@ -1266,12 +1283,15 @@ impl AsyncTaskManager {
     fn schedule_effect_timeout(&mut self, wire_id: String, duration: std::time::Duration) {
         // Replace any prior timeout task for this wire ID.
         if let Some(handle) = self.effect_timeouts.remove(&wire_id) {
+            log::debug!("wire effect timeout task cancelled: wire_id={wire_id}");
             handle.abort();
         }
+        log::debug!("wire effect timeout task scheduled: wire_id={wire_id} duration={duration:?}");
         let tx = self.tx.clone();
         let wire_id_for_task = wire_id.clone();
         let handle = self.runtime.handle().spawn(async move {
             tokio::time::sleep(duration).await;
+            log::debug!("wire effect timeout task fired: wire_id={wire_id_for_task}");
             let _ = tx.send(SinkEvent::EffectTimeout {
                 wire_id: wire_id_for_task,
             });
@@ -1285,6 +1305,7 @@ impl AsyncTaskManager {
     /// scheduled SinkEvent::EffectTimeout is never emitted.
     fn cancel_effect_timeout(&mut self, wire_id: &str) {
         if let Some(handle) = self.effect_timeouts.remove(wire_id) {
+            log::debug!("wire effect timeout task cancelled: wire_id={wire_id}");
             handle.abort();
         }
     }

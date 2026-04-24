@@ -112,6 +112,11 @@ impl EffectTracker {
             },
         );
 
+        log::debug!(
+            "effect tracked: wire_id={wire_id} tag={tag} kind={kind} timeout={timeout:?} replaced={}",
+            replaced.is_some()
+        );
+
         (wire_id, replaced)
     }
 
@@ -132,8 +137,16 @@ impl EffectTracker {
 
         expired
             .into_iter()
-            .filter_map(|id| self.pending.remove(&id))
-            .map(|e| (e.tag, e.kind))
+            .filter_map(|id| {
+                self.pending.remove(&id).map(|e| {
+                    log::debug!(
+                        "effect timeout resolved: wire_id={id} tag={} kind={}",
+                        e.tag,
+                        e.kind
+                    );
+                    (e.tag, e.kind)
+                })
+            })
             .collect()
     }
 

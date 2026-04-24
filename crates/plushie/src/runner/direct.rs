@@ -377,12 +377,16 @@ impl<A: App> DirectApp<A> {
         let wire_id = &response.id;
         match self.effect_tracker.resolve(wire_id) {
             Some((tag, kind)) => {
+                let status = response.status;
+                log::debug!(
+                    "direct effect response resolved: wire_id={wire_id} tag={tag} kind={kind} status={status}"
+                );
                 let error_as_value = response
                     .error
                     .as_ref()
                     .map(|e| serde_json::Value::String(e.clone()));
                 let value = response.result.as_ref().or(error_as_value.as_ref());
-                let result = EffectResult::parse(&kind, response.status, value);
+                let result = EffectResult::parse(&kind, status, value);
                 Some(Event::Effect(EffectEvent { tag, result }))
             }
             None => {

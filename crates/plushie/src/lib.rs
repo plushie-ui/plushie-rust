@@ -79,18 +79,18 @@ pub mod route;
 pub mod runner;
 pub(crate) mod runtime;
 
-/// Re-exports of runtime internals used by the test harness and
-/// property tests.
+/// Re-exports of runtime internals for in-repo integration tests.
 ///
-/// - [`SubOp`] and [`SubscriptionManager`] back
-///   [`test::TestSession::last_subscription_ops`].
-/// - [`diff_tree`] plus [`apply_patch`] and [`try_apply_patch`] let
+/// - `SubOp` and `SubscriptionManager` back
+///   `test::TestSession::last_subscription_ops`.
+/// - `diff_tree` plus `apply_patch` and `try_apply_patch` let
 ///   tree-diff proptests round-trip patches against arbitrary
 ///   `TreeNode` pairs.
 ///
-/// Everything here is `pub(crate)` in its original module; this
-/// re-export surface exists for tests, not for day-to-day SDK
-/// consumers. The regular SDK user should never need it.
+/// This module is public because Rust integration tests compile as
+/// external crates. The exported names are intentionally unstable and
+/// are not part of the SDK contract for application code.
+#[doc(hidden)]
 pub mod runtime_internals {
     pub use crate::runtime::subscriptions::{SubOp, SubscriptionManager};
     pub use crate::runtime::tree_diff::{PatchOp, apply_patch, diff_tree, try_apply_patch};

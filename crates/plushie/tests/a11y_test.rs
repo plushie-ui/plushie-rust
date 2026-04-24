@@ -3,12 +3,12 @@
 //!
 //! These tests pin the SDK-level a11y contract:
 //!
-//! - The normalizer auto-populates `a11y.role` from the widget type
-//!   when the author doesn't set one.
+//! - The normalizer wires implicit radio relationships without adding
+//!   wrapper roles for native widgets.
 //! - `resolved_a11y` composes explicit + inferred fields so
 //!   `placeholder` survives even when `a11y.label` is set explicitly.
-//! - Image/SVG `alt` flows into `a11y.label` via the widget-sdk
-//!   fallback when the author didn't set a label.
+//! - Image/SVG `alt` is visible through `resolved_a11y` when the
+//!   author didn't set a label.
 //! - Author overrides win per field (precedence pin).
 //! - Ctrl+Tab escapes a focus-capturing widget (fork behaviour
 //!   visible from the SDK).
@@ -65,15 +65,14 @@ impl App for A11yHarness {
 }
 
 #[test]
-fn normalizer_auto_populates_role_for_text_input() {
+fn normalizer_does_not_add_wrapper_role_for_text_input() {
     let session = TestSession::<A11yHarness>::start();
     let a11y = session
         .resolved_a11y("search")
         .expect("text_input should have resolved a11y");
     assert_eq!(
-        a11y.role,
-        Some(plushie_core::types::Role::TextInput),
-        "normalizer should auto-populate role on built-in widgets"
+        a11y.role, None,
+        "native widgets should keep their native accessible roles"
     );
 }
 
@@ -106,7 +105,7 @@ fn image_alt_flows_to_label_when_unset() {
     assert_eq!(
         a11y.label.as_deref(),
         Some("Settings icon"),
-        "image alt should flow to a11y.label"
+        "image alt should be visible as the resolved label"
     );
 }
 
@@ -122,13 +121,11 @@ fn explicit_a11y_label_wins_over_image_alt() {
 #[test]
 fn assert_a11y_matches_resolved_values() {
     let session = TestSession::<A11yHarness>::start();
-    // Both role (from normalizer) and description (from inference) are
-    // visible to assert_a11y even though neither appears on the raw
-    // author-provided a11y prop.
+    // Description from inference is visible to assert_a11y even though
+    // it does not appear on the raw author-provided a11y prop.
     session.assert_a11y(
         "notes",
         &serde_json::json!({
-            "role": "multiline_text_input",
             "description": "Write here...",
         }),
     );

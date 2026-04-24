@@ -1109,15 +1109,14 @@ impl<A: App> TestSession<A> {
     /// way the render pipeline does.
     ///
     /// The normalized tree already carries the author's explicit `a11y`
-    /// prop plus any host-SDK defaults (role from the widget-type
-    /// table, implicit radio-group wiring, etc.). This helper also
-    /// layers widget-sdk's `infer_a11y` fallbacks so the returned
-    /// value matches what `A11yOverride` would send to AccessKit:
+    /// prop plus host-SDK defaults and normalizer-populated radio
+    /// relationships. This helper also layers renderer-side fallbacks so
+    /// the returned value matches what AccessKit should hear:
     ///
     /// - `text_input` / `text_editor` / `combo_box` / `pick_list`:
     ///   `placeholder` flows into `description` when unset.
     /// - `image` / `svg` / `qr_code`: `alt` flows into `label` when
-    ///   unset.
+    ///   unset through the native widget alt path.
     ///
     /// Returns `None` if the selector does not match any widget in the
     /// tree. An empty `A11y` (no fields set) is returned for widgets
@@ -1139,9 +1138,9 @@ impl<A: App> TestSession<A> {
     /// expected key-value pairs.
     ///
     /// Uses [`resolved_a11y`](Self::resolved_a11y) so both explicit
-    /// overrides and widget-sdk auto-inference (placeholder -> description,
-    /// alt -> label) are visible to the assertion. `expected` must be a
-    /// JSON object; each key is compared against the resolved a11y.
+    /// overrides, placeholder descriptions, and native alt labels are
+    /// visible to the assertion. `expected` must be a JSON object; each
+    /// key is compared against the resolved a11y.
     ///
     /// ```ignore
     /// session.assert_a11y("heading", &serde_json::json!({"role": "heading", "level": 1}));
@@ -1739,9 +1738,9 @@ fn key_event(
 }
 
 /// Resolve the merged a11y for a node: author explicit + widget-sdk
-/// fallbacks (placeholder / alt inference). The normalizer has already
-/// injected tree-authored defaults (role, implicit radio_group), so we
-/// only need to layer in the infer_a11y fallbacks here.
+/// fallbacks plus native alt labels. The normalizer has already injected
+/// tree-authored defaults such as implicit radio relationships, so we
+/// only need to layer in renderer-side fallbacks here.
 fn resolve_a11y_for_node(node: &TreeNode) -> plushie_core::types::A11y {
     use plushie_core::types::A11y;
     use plushie_core::types::PlushieType;
@@ -1749,12 +1748,11 @@ fn resolve_a11y_for_node(node: &TreeNode) -> plushie_core::types::A11y {
     let explicit = A11y::extract(&node.props, "a11y").unwrap_or_default();
     let mut inferred = A11y::default();
 
-    // Widget-sdk infer_a11y fallbacks for the built-in types that have
-    // one. These mirror the pick_list_widget, combo_box_widget,
-    // text_input_widget, text_editor_widget infer_a11y implementations;
-    // host SDK builders are expected to set the same defaults directly
-    // on the tree, but we fall back here so tests still see them for
-    // custom widgets or untouched trees.
+    // Renderer-side fallbacks for built-ins. Placeholder handling mirrors
+    // widget-sdk infer_a11y; alt handling mirrors native image-like widgets.
+    // Host SDK builders are expected to set the same defaults directly on
+    // the tree, but this keeps tests honest for custom widgets or untouched
+    // trees.
     match node.type_name.as_str() {
         "text_input" | "text_editor" | "combo_box" | "pick_list" => {
             if let Some(placeholder) = node.props.get_str("placeholder") {

@@ -6,8 +6,8 @@
 //! references (`labelled_by`, `described_by`, `error_message`,
 //! `active_descendant`, `radio_group`) through the same scope-
 //! prefix logic, populates implicit radio groups from the shared
-//! `group` prop on radios, and fills in the accessible role from
-//! the widget type when the author did not set one.
+//! `group` prop on radios, and exposes the currently selected radio
+//! as the group's active descendant.
 //!
 //! ## Scoping rules
 //!
@@ -51,9 +51,8 @@
 //! HTML `<input type="radio" name="x">` model where grouping is by
 //! name, not DOM position.
 //!
-//! `a11y.role` is auto-populated from the widget type when the
-//! author has not set one. `automation::Element::inferred_role`
-//! reads this normalized prop directly.
+//! `automation::Element::inferred_role` falls back to the widget type
+//! for selector matching without writing those roles back into the tree.
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -64,8 +63,8 @@ use plushie_core::tree_walk::walk;
 use plushie_core::tree_walk::{MAX_TREE_DEPTH, TreeTransform, WalkCtx};
 
 /// Normalize a view tree: apply scope prefixes, validate IDs,
-/// rewrite cross-widget a11y references, and auto-populate a11y
-/// defaults (role, radio_group).
+/// rewrite cross-widget a11y references, and populate implicit
+/// radio relationships.
 ///
 /// Returns the normalized tree and any validation warnings
 /// (duplicate IDs, reserved characters, unresolved a11y refs).
@@ -420,17 +419,31 @@ fn collect_ids(node: &TreeNode) -> HashSet<String> {
 /// string.
 type RadioGroupKey = (String, String);
 
+#[derive(Clone, Default)]
+struct RadioGroupInfo {
+    ids: Vec<String>,
+    active_descendant: Option<String>,
+}
+
 /// Collect radio widgets sharing the same `group` prop value within
 /// the same enclosing scope. Returns a map from `(scope, group_name)`
-/// to an ordered list of scoped IDs.
-fn collect_radio_groups(root: &TreeNode) -> BTreeMap<RadioGroupKey, Vec<String>> {
-    fn walk(node: &TreeNode, scope: &str, groups: &mut BTreeMap<RadioGroupKey, Vec<String>>) {
+/// to the ordered scoped IDs and the currently selected radio, when
+/// one can be inferred from matching `value` and `selected` props.
+fn collect_radio_groups(root: &TreeNode) -> BTreeMap<RadioGroupKey, RadioGroupInfo> {
+    fn walk(node: &TreeNode, scope: &str, groups: &mut BTreeMap<RadioGroupKey, RadioGroupInfo>) {
         let next_scope = child_scope_of(node, scope);
         if node.type_name == "radio"
             && let Some(group) = node.props.get_str("group")
         {
             let key = (scope.to_string(), group.to_string());
-            groups.entry(key).or_default().push(node.id.clone());
+            let info = groups.entry(key).or_default();
+            info.ids.push(node.id.clone());
+            if let (Some(value), Some(selected)) =
+                (node.props.get_str("value"), node.props.get_str("selected"))
+                && value == selected
+            {
+                info.active_descendant = Some(node.id.clone());
+            }
         }
         for child in &node.children {
             walk(child, &next_scope, groups);
@@ -462,7 +475,7 @@ fn rewrite_a11y_in_place(
     node: &mut TreeNode,
     scope: &str,
     declared: &HashSet<String>,
-    radio_groups: &BTreeMap<RadioGroupKey, Vec<String>>,
+    radio_groups: &BTreeMap<RadioGroupKey, RadioGroupInfo>,
     warnings: &mut Vec<Diagnostic>,
     depth: usize,
 ) {
@@ -565,20 +578,10 @@ fn apply_a11y_rewrites(
     node: &TreeNode,
     scope: &str,
     declared: &HashSet<String>,
-    radio_groups: &BTreeMap<RadioGroupKey, Vec<String>>,
+    radio_groups: &BTreeMap<RadioGroupKey, RadioGroupInfo>,
     warnings: &mut Vec<Diagnostic>,
 ) -> plushie_core::protocol::Props {
-    let existing_role = node
-        .props
-        .get_value("a11y")
-        .and_then(|v| v.get("role").cloned());
-    let inferred_role = if existing_role.is_none() {
-        widget_type_to_role(&node.type_name).map(|s| s.to_string())
-    } else {
-        None
-    };
-
-    let radio_ids = if node.type_name == "radio" {
+    let radio_info = if node.type_name == "radio" {
         node.props.get_str("group").and_then(|g| {
             radio_groups
                 .get(&(scope.to_string(), g.to_string()))
@@ -599,8 +602,7 @@ fn apply_a11y_rewrites(
     // If the existing a11y is absent AND we have nothing to inject,
     // leave props alone. This keeps untouched nodes bit-identical.
     if a11y_obj.is_none()
-        && inferred_role.is_none()
-        && radio_ids.is_none()
+        && radio_info.is_none()
         && required_prop.is_none()
         && invalid_prop.is_none()
         && error_text.is_none()
@@ -609,11 +611,6 @@ fn apply_a11y_rewrites(
     }
 
     let mut obj = a11y_obj.unwrap_or_default();
-
-    // Inject inferred role if the author didn't set one.
-    if let Some(role) = inferred_role {
-        obj.entry("role").or_insert(serde_json::Value::String(role));
-    }
 
     // Rewrite single-ID refs.
     for key in [
@@ -664,13 +661,25 @@ fn apply_a11y_rewrites(
         );
     }
 
-    // Populate implicit radio group (authoring via shared `group` prop)
-    // only when the author hasn't already set one explicitly.
-    if let Some(ids) = radio_ids
-        && !obj.contains_key("radio_group")
-    {
-        let arr: Vec<serde_json::Value> = ids.into_iter().map(serde_json::Value::String).collect();
-        obj.insert("radio_group".to_string(), serde_json::Value::Array(arr));
+    // Populate implicit radio relationships from the shared `group`
+    // prop. Explicit author-provided fields win independently.
+    if let Some(info) = radio_info {
+        if !obj.contains_key("radio_group") {
+            let arr: Vec<serde_json::Value> = info
+                .ids
+                .into_iter()
+                .map(serde_json::Value::String)
+                .collect();
+            obj.insert("radio_group".to_string(), serde_json::Value::Array(arr));
+        }
+        if !obj.contains_key("active_descendant")
+            && let Some(active_descendant) = info.active_descendant
+        {
+            obj.insert(
+                "active_descendant".to_string(),
+                serde_json::Value::String(active_descendant),
+            );
+        }
     }
 
     // Project `required: true` onto `a11y.required`. Explicit a11y
@@ -807,49 +816,6 @@ fn has_accessible_name(node: &TreeNode) -> bool {
         false
     }
     has_text_child(node)
-}
-
-/// Built-in widget-type -> accessible-role map.
-///
-/// Uses the same role-name strings as iced's native `convert_role`
-/// mapping so the automation fallback and the AccessKit tree agree.
-/// Widgets whose role is context-dependent (e.g. `tooltip`, which
-/// the fork models via iced-direct defaults) are omitted so we don't
-/// override the author's intent.
-fn widget_type_to_role(widget_type: &str) -> Option<&'static str> {
-    Some(match widget_type {
-        "button" => "button",
-        "checkbox" => "check_box",
-        "toggler" => "switch",
-        "radio" => "radio_button",
-        "text_input" => "text_input",
-        "text_editor" => "multiline_text_input",
-        "text" => "label",
-        "rich_text" => "label",
-        "slider" => "slider",
-        "vertical_slider" => "slider",
-        "pick_list" => "combo_box",
-        "combo_box" => "combo_box",
-        "progress_bar" => "progress_indicator",
-        "image" => "image",
-        "svg" => "image",
-        "qr_code" => "image",
-        "scrollable" => "scroll_view",
-        "container" => "group",
-        "column" => "group",
-        "row" => "group",
-        "stack" => "group",
-        "grid" => "group",
-        "pane_grid" => "group",
-        "table" => "table",
-        "canvas" => "canvas",
-        "rule" => "separator",
-        // Space is purely visual whitespace. No accessible role.
-        // Tooltip, overlay, pin, floating, sensor, pointer_area,
-        // themer, responsive, window: no default role; leave them
-        // to the fork or explicit overrides.
-        _ => return None,
-    })
 }
 
 #[cfg(test)]
@@ -992,6 +958,12 @@ mod tests {
             props: plushie_core::protocol::Props::from_json(props),
             children: vec![],
         }
+    }
+
+    fn a11y_role(node: &TreeNode) -> Option<String> {
+        node.props
+            .get_value("a11y")
+            .and_then(|v| v.get("role").and_then(|r| r.as_str()).map(str::to_string))
     }
 
     #[test]
@@ -1284,7 +1256,7 @@ mod tests {
     // -- A11y rewrite tests -------------------------------------------------
 
     #[test]
-    fn a11y_role_populated_from_widget_type() {
+    fn a11y_role_not_populated_from_widget_type() {
         let tree = node(
             "root",
             "column",
@@ -1292,15 +1264,14 @@ mod tests {
         );
         let (result, _warnings) = normalize(&tree);
         let btn = &result.children[0];
-        let role = btn
-            .props
-            .get_value("a11y")
-            .and_then(|v| v.get("role").and_then(|r| r.as_str()).map(str::to_string));
-        assert_eq!(role.as_deref(), Some("button"));
+        assert!(
+            a11y_role(btn).is_none(),
+            "native widgets should keep their native accessible roles"
+        );
     }
 
     #[test]
-    fn a11y_role_explicit_wins_over_inferred() {
+    fn a11y_role_explicit_is_preserved() {
         let tree = node(
             "root",
             "column",
@@ -1312,11 +1283,57 @@ mod tests {
         );
         let (result, _warnings) = normalize(&tree);
         let btn = &result.children[0];
-        let role = btn
-            .props
-            .get_value("a11y")
-            .and_then(|v| v.get("role").and_then(|r| r.as_str()).map(str::to_string));
-        assert_eq!(role.as_deref(), Some("link"));
+        assert_eq!(a11y_role(btn).as_deref(), Some("link"));
+    }
+
+    #[test]
+    fn a11y_role_not_populated_for_builtin_widgets() {
+        for type_name in [
+            "button",
+            "canvas",
+            "checkbox",
+            "column",
+            "combo_box",
+            "container",
+            "float",
+            "floating",
+            "grid",
+            "image",
+            "overlay",
+            "pane_grid",
+            "pick_list",
+            "pin",
+            "pointer_area",
+            "progress_bar",
+            "qr_code",
+            "radio",
+            "responsive",
+            "rich_text",
+            "row",
+            "rule",
+            "scrollable",
+            "sensor",
+            "slider",
+            "stack",
+            "svg",
+            "table",
+            "text",
+            "text_editor",
+            "text_input",
+            "themer",
+            "tooltip",
+            "toggler",
+            "vertical_slider",
+            "window",
+        ] {
+            let tree = node("root", "column", vec![node(type_name, type_name, vec![])]);
+            let (result, _warnings) = normalize(&tree);
+            let child = &result.children[0];
+            assert!(
+                a11y_role(child).is_none(),
+                "{type_name} should not get a normalizer-injected role"
+            );
+        }
     }
 
     #[test]
@@ -1392,6 +1409,60 @@ mod tests {
                 .filter_map(|v| v.as_str().map(str::to_string))
                 .collect();
             assert_eq!(ids, vec!["form/r1", "form/r2", "form/r3"]);
+        }
+    }
+
+    #[test]
+    fn implicit_radio_group_populates_active_descendant() {
+        let tree = node(
+            "form",
+            "container",
+            vec![
+                node_with_props(
+                    "r1",
+                    "radio",
+                    json!({"group": "flavor", "value": "vanilla", "selected": "chocolate"}),
+                ),
+                node_with_props(
+                    "r2",
+                    "radio",
+                    json!({"group": "flavor", "value": "chocolate", "selected": "chocolate"}),
+                ),
+            ],
+        );
+        let (result, warnings) = normalize(&tree);
+        assert!(warnings.is_empty(), "got {warnings:?}");
+        for child in &result.children {
+            let active_descendant = child.props.get_value("a11y").and_then(|v| {
+                v.get("active_descendant")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            });
+            assert_eq!(active_descendant.as_deref(), Some("form/r2"));
+        }
+    }
+
+    #[test]
+    fn implicit_radio_group_without_selection_has_no_active_descendant() {
+        let tree = node(
+            "form",
+            "container",
+            vec![
+                node_with_props("r1", "radio", json!({"group": "flavor"})),
+                node_with_props("r2", "radio", json!({"group": "flavor"})),
+            ],
+        );
+        let (result, warnings) = normalize(&tree);
+        assert!(warnings.is_empty(), "got {warnings:?}");
+        for child in &result.children {
+            let active_descendant = child
+                .props
+                .get_value("a11y")
+                .and_then(|v| v.get("active_descendant").cloned());
+            assert!(
+                active_descendant.is_none(),
+                "unselected radio group should not infer active_descendant"
+            );
         }
     }
 
@@ -1636,8 +1707,8 @@ mod tests {
         let (result, _warnings) = normalize(&tree);
         let email = &result.children[0];
         let a11y = email.props.get_value("a11y");
-        // No invalid projection; role inference still runs so a11y
-        // exists with at least the role field.
+        // No invalid projection; if no other a11y field is inferred,
+        // pending validation leaves the node's a11y props untouched.
         if let Some(a11y) = a11y {
             assert!(
                 a11y.get("invalid").is_none(),
@@ -1678,5 +1749,35 @@ mod tests {
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect();
         assert_eq!(ids, vec!["form/heading"]);
+    }
+
+    #[test]
+    fn explicit_radio_group_still_gets_inferred_active_descendant() {
+        let tree = node(
+            "form",
+            "container",
+            vec![
+                node_with_props("heading", "text", json!({"content": "Pick"})),
+                node_with_props(
+                    "r1",
+                    "radio",
+                    json!({
+                        "group": "flavor",
+                        "value": "vanilla",
+                        "selected": "vanilla",
+                        "a11y": {"radio_group": ["heading"]}
+                    }),
+                ),
+            ],
+        );
+        let (result, warnings) = normalize(&tree);
+        assert!(warnings.is_empty(), "got {warnings:?}");
+        let r1 = &result.children[1];
+        let active_descendant = r1.props.get_value("a11y").and_then(|v| {
+            v.get("active_descendant")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        });
+        assert_eq!(active_descendant.as_deref(), Some("form/r1"));
     }
 }

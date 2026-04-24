@@ -2026,10 +2026,10 @@ accessibility behaviour. All fields are optional.
 | `size_of_set` | number | Total items in set (paired with `position_in_set`) |
 | `has_popup` | string | Popup type: `"listbox"`, `"menu"`, `"dialog"`, `"tree"`, `"grid"` |
 
-**Auto-inference:** Image and SVG widgets with an `alt` prop auto-populate
-`label` from the alt text. Text input and text editor widgets auto-populate
-`description` from their `placeholder` prop. Explicit `a11y` values always
-take priority.
+**Auto-inference:** Image, SVG, QR code, and canvas widgets pass `alt`
+to iced's native accessible label. Text input, text editor, combo box,
+and pick list widgets use `placeholder` as the accessible description.
+Explicit `a11y` values always take priority.
 
 ### Precedence
 
@@ -2039,16 +2039,16 @@ and overrides. Fields resolve highest-priority-first:
 1. **Author explicit overrides.** Any `a11y.<field>` set by app code on
    a widget builder wins for that field. Other fields are unaffected:
    setting `a11y.label` does not clear an inferred `description`.
-2. **Host SDK builder defaults.** Builders like `tooltip(...)`,
-   `text_input(...).placeholder(...)`, `pick_list(...)`, etc. author
-   common a11y fields directly on the tree (`role`, `described_by`,
-   `description`). These are visible to test harnesses.
-3. **Normalizer auto-population.** The tree normalizer fills in
-   `a11y.role` from the widget type when unset and wires implicit
-   radio groups from the shared `group` prop.
+2. **Host SDK builder props and defaults.** Builders like
+   `text_input(...).placeholder(...)` and `pick_list(...)` put common
+   source fields on the tree. Some host SDKs also author a11y defaults
+   directly. These are visible to test harnesses.
+3. **Normalizer auto-population.** The tree normalizer wires implicit
+   radio groups from the shared `group` prop and sets the group's
+   `active_descendant` when the selected radio can be identified.
 4. **widget-sdk fallback.** The widget SDK's `infer_a11y` provides a
    safety net for custom widgets not using the host builder defaults
-   (placeholder -> description, alt -> label).
+   (for example, placeholder text as description).
 5. **iced native widget defaults.** At the bottom, the fork's iced
    widgets contribute baseline attributes (e.g. a button's `role`).
 
@@ -2068,10 +2068,10 @@ into accessibility output.
 | `checkbox` | `access_key` | string | Alias for `mnemonic` |
 | `radio` | `mnemonic` | string | Alt-key mnemonic. First character is used. Explicit `a11y.mnemonic` takes priority. |
 | `radio` | `access_key` | string | Alias for `mnemonic` |
-| `image` | `alt` | string | Accessible label (auto-populates `a11y.label`) |
+| `image` | `alt` | string | Accessible label passed to the native image widget |
 | `image` | `description` | string | Extended accessible description |
 | `image` | `decorative` | bool | When true, hides the image from assistive technology. Use for purely visual images that don't convey information. |
-| `svg` | `alt` | string | Accessible label (auto-populates `a11y.label`) |
+| `svg` | `alt` | string | Accessible label passed to the native SVG widget |
 | `svg` | `description` | string | Extended accessible description |
 | `svg` | `decorative` | bool | When true, hides the SVG from assistive technology. Use for purely visual images that don't convey information. |
 | `slider` | `label` | string | Accessible label (e.g. `"Volume"`). Without this, screen readers announce the value without context. |

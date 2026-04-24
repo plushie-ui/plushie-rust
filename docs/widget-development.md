@@ -157,9 +157,9 @@ same external-author flow plus a few workspace-specific deltas:
 3. **Prop validation schema.** Add an entry to
    `crates/plushie-widget-sdk/src/validate.rs` so the renderer can
    warn on invalid prop shapes.
-4. **Role auto-population.** Add a row to the a11y normalizer's
-   role table if the widget defaults to a specific role
-   (button, checkbox, etc.).
+4. **Accessibility behaviour.** Prefer the native iced widget's
+   accessible role. Only add renderer overrides when the widget does
+   not already emit the right accessible node.
 5. **Automation fallback.** If the widget surfaces a label, update
    `crates/plushie-widget-sdk/src/a11y.rs` so screen-reader
    inspection picks up the right text.

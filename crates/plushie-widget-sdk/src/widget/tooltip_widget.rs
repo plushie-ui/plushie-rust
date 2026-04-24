@@ -46,13 +46,9 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
     ///
     /// # Accessibility
     ///
-    /// The tooltip `tip` text is rendered visually on hover but is not
-    /// automatically exposed as the child widget's accessible description.
-    /// For AT users to hear the tooltip content, the host should wire the
-    /// tooltip text into the child's `a11y.description` prop, or use
-    /// `a11y.described_by` to point to a separate text node containing the
-    /// same content. iced's tooltip widget itself does not currently emit
-    /// an accessible `Tooltip` role.
+    /// Non-empty `tip` text is passed to iced as tooltip text, which
+    /// emits a tooltip accessible node and a `described_by` relationship
+    /// from the child to that node.
     fn render<'a>(
         &'a self,
         node: &'a TreeNode,
@@ -79,7 +75,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
             .unwrap_or_else(|| Space::new().into());
 
         let tip = tp.tip.unwrap_or_default();
-        let mut tt = tooltip(child, text(tip), position);
+        let mut tt = tooltip(child, text(tip.clone()), position);
+        if !tip.trim().is_empty() {
+            tt = tt.tooltip_text(tip);
+        }
         if let Some(g) = tp.gap {
             tt = tt.gap(g);
         }

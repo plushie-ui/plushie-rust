@@ -137,6 +137,7 @@ mod tests {
     use crate::testing::{
         node_with_props as smoke_node, node_with_props_and_children as smoke_node_with_children,
     };
+    use plushie_core::types::Role;
 
     fn smoke_text_child() -> TreeNode {
         smoke_node("child", "text", serde_json::json!({"content": "hi"}))
@@ -381,11 +382,11 @@ mod tests {
     }
 
     #[test]
-    fn a11y_no_wrapping_without_alt_or_a11y() {
+    fn a11y_text_uses_native_text_operation_without_override() {
         let node = smoke_node("txt1", "text", serde_json::json!({"content": "hello"}));
         assert!(
             infer_a11y_overrides(&node).is_none(),
-            "plain text node should not get a11y wrapping"
+            "text should not get a wrapper role"
         );
     }
 
@@ -416,6 +417,18 @@ mod tests {
     }
 
     #[test]
+    fn a11y_auto_infer_pick_list_placeholder_as_description() {
+        let node = smoke_node(
+            "pick1",
+            "pick_list",
+            serde_json::json!({"placeholder": "Choose one", "options": ["A", "B"]}),
+        );
+        let overrides =
+            infer_a11y_overrides(&node).expect("should infer overrides from placeholder");
+        assert_eq!(overrides.description(), Some("Choose one"));
+    }
+
+    #[test]
     fn a11y_auto_infer_text_editor_placeholder_as_description() {
         let node = smoke_node(
             "te1",
@@ -429,16 +442,16 @@ mod tests {
     }
 
     #[test]
-    fn a11y_no_wrapping_combo_box_without_placeholder() {
+    fn a11y_combo_box_without_placeholder_uses_native_role() {
         let node = smoke_node("cb2", "combo_box", serde_json::json!({"value": "selected"}));
         assert!(
             infer_a11y_overrides(&node).is_none(),
-            "combo_box without placeholder should not get a11y wrapping"
+            "combo_box should not get a wrapper role"
         );
     }
 
     #[test]
-    fn a11y_no_wrapping_text_input_without_placeholder() {
+    fn a11y_text_input_without_placeholder_uses_native_role() {
         let node = smoke_node(
             "ti2",
             "text_input",
@@ -446,7 +459,7 @@ mod tests {
         );
         assert!(
             infer_a11y_overrides(&node).is_none(),
-            "text_input without placeholder should not get a11y wrapping"
+            "text_input should not get a wrapper role"
         );
     }
 
@@ -475,6 +488,98 @@ mod tests {
             Some("Search..."),
             "inferred description should survive merge"
         );
+    }
+
+    #[test]
+    fn a11y_does_not_infer_role_for_tooltip_wrapper() {
+        let node = smoke_node_with_children(
+            "help",
+            "tooltip",
+            serde_json::json!({"tip": "More details"}),
+            vec![smoke_text_child()],
+        );
+        assert!(
+            infer_a11y_overrides(&node).is_none(),
+            "tooltip has its own iced a11y relationship"
+        );
+    }
+
+    #[test]
+    fn a11y_does_not_infer_roles_for_native_or_pass_through_widgets() {
+        for type_name in [
+            "button",
+            "checkbox",
+            "column",
+            "combo_box",
+            "container",
+            "floating",
+            "float",
+            "grid",
+            "overlay",
+            "pane_grid",
+            "pick_list",
+            "pin",
+            "pointer_area",
+            "progress_bar",
+            "radio",
+            "responsive",
+            "row",
+            "rule",
+            "scrollable",
+            "sensor",
+            "slider",
+            "stack",
+            "themer",
+            "text_editor",
+            "text_input",
+            "toggler",
+            "vertical_slider",
+            "window",
+            "rich",
+            "rich_text",
+            "text",
+        ] {
+            let node = smoke_node_with_children(
+                type_name,
+                type_name,
+                serde_json::json!({}),
+                vec![smoke_text_child()],
+            );
+            assert!(
+                infer_a11y_overrides(&node).is_none(),
+                "{type_name} should not get an inferred wrapper role"
+            );
+        }
+    }
+
+    #[test]
+    fn a11y_does_not_infer_roles_for_widgets_with_custom_a11y() {
+        for (type_name, props) in [
+            (
+                "canvas",
+                serde_json::json!({"role": "image", "alt": "Chart"}),
+            ),
+            ("table", serde_json::json!({"columns": []})),
+        ] {
+            let node = smoke_node(type_name, type_name, props);
+            assert!(
+                infer_a11y_overrides(&node).is_none(),
+                "{type_name} owns its accessible nodes"
+            );
+        }
+    }
+
+    #[test]
+    fn a11y_explicit_role_is_preserved() {
+        let node = smoke_node(
+            "save",
+            "button",
+            serde_json::json!({
+                "a11y": {"role": "link"}
+            }),
+        );
+        let overrides = infer_a11y_overrides(&node).expect("explicit role should be preserved");
+        assert_eq!(overrides.core().role, Some(Role::Link));
     }
 
     #[test]

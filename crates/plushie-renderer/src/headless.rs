@@ -482,6 +482,10 @@ impl<R: PlushieRenderer> Session<R> {
                 self.writer.emit(&step).ok();
 
                 if let Some(msg) = read_next() {
+                    // Effects from the iterative snapshot are
+                    // intentionally discarded; the next loop pass
+                    // re-derives whatever state it needs from the
+                    // updated tree.
                     let _ = self.core.apply(msg);
                 }
             }
@@ -603,13 +607,13 @@ fn handle_message<R: PlushieRenderer>(
                             plushie_renderer_lib::constants::SUB_THEME_CHANGE,
                             None,
                         ) {
-                            let _ = s.writer.emit(
+                            s.writer.emit(
                                 &plushie_widget_sdk::protocol::OutgoingEvent::theme_changed(
                                     entry.tag.clone(),
                                     mode_str.to_string(),
                                 )
                                 .with_session(session_id),
-                            );
+                            )?;
                         }
                         s.theme = t;
                         s.theme_chrome = chrome;
@@ -669,7 +673,7 @@ fn handle_message<R: PlushieRenderer>(
                                 "politeness": politeness,
                             })),
                         );
-                        let _ = s.writer.emit(&event.with_session(session_id));
+                        s.writer.emit(&event.with_session(session_id))?;
                     }
                     CoreEffect::Dispatch(Dispatch::WidgetOp {
                         ref op,
@@ -691,7 +695,7 @@ fn handle_message<R: PlushieRenderer>(
                             "tag": tag,
                             "data": {"focused": null}
                         });
-                        let _ = s.writer.emit(&resp);
+                        s.writer.emit(&resp)?;
                     }
                     CoreEffect::Dispatch(Dispatch::WidgetOp {
                         ref op,
@@ -714,7 +718,7 @@ fn handle_message<R: PlushieRenderer>(
                             "tag": tag,
                             "data": {"handles": handles}
                         });
-                        let _ = s.writer.emit(&resp);
+                        s.writer.emit(&resp)?;
                     }
                     CoreEffect::Dispatch(Dispatch::WidgetOp { .. }) => {}
                     CoreEffect::Dispatch(Dispatch::Window(_))
@@ -1282,7 +1286,9 @@ fn load_font_from_payload<R: PlushieRenderer>(
             "",
             Some(serde_json::json!({ "code": "font_cap_exceeded", "error": msg })),
         );
-        let _ = session.writer.emit(&event.with_session(session_id));
+        if let Err(e) = session.writer.emit(&event.with_session(session_id)) {
+            log::error!("[code=font_load_failed] session '{session_id}': write failed: {e}");
+        }
         return;
     }
     session.fonts_loaded = session.fonts_loaded.saturating_add(1);

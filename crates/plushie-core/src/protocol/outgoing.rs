@@ -928,23 +928,28 @@ impl OutgoingEvent {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Replace non-finite f32 with 0.0 for safe JSON serialization.
-fn sanitize_f32(v: f32) -> f32 {
+/// Map an `f32` to a JSON value: finite values become a `Number`,
+/// non-finite values become `Null`. Aligns with the wire codec, which
+/// also rewrites non-finite to `null` after the event constructors run.
+/// Earlier code substituted `0.0`, which silently invented a finite
+/// position whenever upstream produced `NaN`/`inf`.
+fn sanitize_f32(v: f32) -> Value {
     if v.is_finite() {
-        v
+        serde_json::json!(v)
     } else {
-        log::warn!("non-finite f32 ({v}) replaced with 0.0 in outgoing event");
-        0.0
+        log::warn!("non-finite f32 ({v}) replaced with null in outgoing event");
+        Value::Null
     }
 }
 
-/// Replace non-finite f64 with 0.0 for safe JSON serialization.
-fn sanitize_f64(v: f64) -> f64 {
+/// `f64` counterpart of [`sanitize_f32`]. Non-finite values become
+/// JSON `null` rather than `0.0`.
+fn sanitize_f64(v: f64) -> Value {
     if v.is_finite() {
-        v
+        serde_json::json!(v)
     } else {
-        log::warn!("non-finite f64 ({v}) replaced with 0.0 in outgoing event");
-        0.0
+        log::warn!("non-finite f64 ({v}) replaced with null in outgoing event");
+        Value::Null
     }
 }
 

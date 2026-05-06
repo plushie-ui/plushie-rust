@@ -10,8 +10,14 @@
 //! to route overlay interactions internally rather than forwarding
 //! them to `App::update`. Port of Elixir's
 //! `Plushie.Dev.RebuildingOverlay`.
+//!
+//! The overlay operates on the wire-level [`TreeNode`] rather than
+//! the SDK's authoring [`crate::View`] because injection happens at
+//! the runtime boundary, after `View` has already been collapsed to
+//! the canonical tree shape. The Elixir port had this at the View
+//! layer, but in Rust the runtime always passes a `TreeNode`.
 
-use crate::View;
+use plushie_core::protocol::TreeNode;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -161,12 +167,12 @@ pub fn is_overlay_id(id: &str) -> bool {
     id == OVERLAY_PREFIX || id.starts_with(&format!("{OVERLAY_PREFIX}/"))
 }
 
-/// Inject an overlay snapshot into a rendered view tree, wrapping
+/// Inject an overlay snapshot into a rendered tree, wrapping
 /// each window's content with a stack whose top layer is the overlay
 /// status bar.
 ///
 /// When `overlay` is `None`, the tree is returned unchanged.
-pub fn inject(tree: View, overlay: Option<&RebuildingOverlay>) -> View {
+pub fn inject(tree: TreeNode, overlay: Option<&RebuildingOverlay>) -> TreeNode {
     let Some(overlay) = overlay else {
         return tree;
     };
@@ -178,7 +184,7 @@ pub fn inject(tree: View, overlay: Option<&RebuildingOverlay>) -> View {
 // Internal tree builders
 // ---------------------------------------------------------------------------
 
-fn wrap_windows(mut node: View, overlay_node: &View) -> View {
+fn wrap_windows(mut node: TreeNode, overlay_node: &TreeNode) -> TreeNode {
     if node.type_name == "window" {
         // Prepend a stack that layers the overlay over the window's
         // existing child tree. Windows with no child yet get just the
@@ -196,10 +202,10 @@ fn wrap_windows(mut node: View, overlay_node: &View) -> View {
     node
 }
 
-fn stack_with_overlay(window_children: Vec<View>, overlay_node: View) -> View {
+fn stack_with_overlay(window_children: Vec<TreeNode>, overlay_node: TreeNode) -> TreeNode {
     let mut children = window_children;
     children.push(overlay_node);
-    View {
+    TreeNode {
         id: format!("{OVERLAY_PREFIX}/stack"),
         type_name: "stack".to_string(),
         props: Default::default(),
@@ -207,19 +213,19 @@ fn stack_with_overlay(window_children: Vec<View>, overlay_node: View) -> View {
     }
 }
 
-fn build_overlay(overlay: &RebuildingOverlay) -> View {
+fn build_overlay(overlay: &RebuildingOverlay) -> TreeNode {
     let bar = build_bar(overlay);
     let mut column_children = vec![bar];
     if overlay.expanded {
         column_children.push(build_drawer(overlay));
     }
-    let column = View {
+    let column = TreeNode {
         id: format!("{OVERLAY_PREFIX}/column"),
         type_name: "column".to_string(),
         props: Default::default(),
         children: column_children,
     };
-    View {
+    TreeNode {
         id: format!("{OVERLAY_PREFIX}/anchor"),
         type_name: "container".to_string(),
         props: Default::default(),
@@ -227,7 +233,7 @@ fn build_overlay(overlay: &RebuildingOverlay) -> View {
     }
 }
 
-fn build_bar(overlay: &RebuildingOverlay) -> View {
+fn build_bar(overlay: &RebuildingOverlay) -> TreeNode {
     let icon_node = simple_text(
         &format!("{OVERLAY_PREFIX}/icon"),
         &format!("[{}]", overlay.status.icon()),
@@ -247,13 +253,13 @@ fn build_bar(overlay: &RebuildingOverlay) -> View {
     if matches!(overlay.status, Status::Failed | Status::Frozen) {
         row_children.push(simple_button(&format!("{OVERLAY_PREFIX}/dismiss"), "x"));
     }
-    let row = View {
+    let row = TreeNode {
         id: format!("{OVERLAY_PREFIX}/bar_row"),
         type_name: "row".to_string(),
         props: Default::default(),
         children: row_children,
     };
-    View {
+    TreeNode {
         id: format!("{OVERLAY_PREFIX}/bar"),
         type_name: "container".to_string(),
         props: Default::default(),
@@ -261,20 +267,20 @@ fn build_bar(overlay: &RebuildingOverlay) -> View {
     }
 }
 
-fn build_drawer(overlay: &RebuildingOverlay) -> View {
+fn build_drawer(overlay: &RebuildingOverlay) -> TreeNode {
     let content = if overlay.detail.is_empty() {
         "(waiting for output)".to_string()
     } else {
         overlay.detail.clone()
     };
     let text_node = simple_text(&format!("{OVERLAY_PREFIX}/output"), &content);
-    let scrollable = View {
+    let scrollable = TreeNode {
         id: format!("{OVERLAY_PREFIX}/scrollable"),
         type_name: "scrollable".to_string(),
         props: Default::default(),
         children: vec![text_node],
     };
-    View {
+    TreeNode {
         id: format!("{OVERLAY_PREFIX}/drawer"),
         type_name: "container".to_string(),
         props: Default::default(),
@@ -282,8 +288,8 @@ fn build_drawer(overlay: &RebuildingOverlay) -> View {
     }
 }
 
-fn simple_text(id: &str, content: &str) -> View {
-    View {
+fn simple_text(id: &str, content: &str) -> TreeNode {
+    TreeNode {
         id: id.to_string(),
         type_name: "text".to_string(),
         props: plushie_core::protocol::Props::from_json(serde_json::json!({ "content": content })),
@@ -291,8 +297,8 @@ fn simple_text(id: &str, content: &str) -> View {
     }
 }
 
-fn simple_button(id: &str, label: &str) -> View {
-    View {
+fn simple_button(id: &str, label: &str) -> TreeNode {
+    TreeNode {
         id: id.to_string(),
         type_name: "button".to_string(),
         props: plushie_core::protocol::Props::from_json(serde_json::json!({ "label": label })),
@@ -349,7 +355,7 @@ mod tests {
 
     #[test]
     fn inject_wraps_window_children_in_stack() {
-        let mut window = View {
+        let mut window = TreeNode {
             id: "main".to_string(),
             type_name: "window".to_string(),
             props: Default::default(),
@@ -376,7 +382,7 @@ mod tests {
 
     #[test]
     fn inject_none_returns_tree_unchanged() {
-        let window = View {
+        let window = TreeNode {
             id: "main".to_string(),
             type_name: "window".to_string(),
             props: Default::default(),
@@ -407,7 +413,7 @@ mod tests {
         assert!(ids.iter().any(|i| i == &format!("{OVERLAY_PREFIX}/drawer")));
     }
 
-    fn collect_ids(n: &View, out: &mut Vec<String>) {
+    fn collect_ids(n: &TreeNode, out: &mut Vec<String>) {
         out.push(n.id.clone());
         for c in &n.children {
             collect_ids(c, out);

@@ -163,7 +163,9 @@ the view of the authoritative document this session last applied.
 Anything truly per-user (local selection, dark-mode preference, a
 "dirty" flag while drafting) lives here and stays here.
 
-`init` registers with the store and seeds the model:
+`init` seeds the model from the store and starts a streaming
+command that bridges store broadcasts back into this session's
+update loop:
 
 ```rust
 impl App for Session {
@@ -178,41 +180,65 @@ impl App for Session {
             model,
             outbox: None,
         };
-        // Register this session so the store can broadcast into it.
-        let tag = user_id.clone();
-        let cmd = shared.register(tag, sender_for_this_session());
-        (me, cmd)
+
+        // Register a fresh broadcast channel with the store.
+        let mut rx = shared.register(user_id.clone());
+        // Forward each Broadcast into the MVU loop as a StreamEvent
+        // tagged "broadcast". The stream stays open for the lifetime
+        // of the session; cancel via Command::cancel("broadcast") on
+        // teardown if needed.
+        let bridge = Command::stream("broadcast", move |emitter| async move {
+            while let Some(bcast) = rx.recv().await {
+                emitter.emit(serde_json::to_value(&bcast).unwrap_or_default());
+            }
+            Ok(serde_json::Value::Null)
+        });
+
+        (me, bridge)
     }
 }
 ```
 
-`sender_for_this_session()` returns whatever transport the store
-uses to push broadcasts back: an `mpsc::Sender`, a channel handle,
-or a typed queue. The handle the store holds is opaque; what matters
-is that it can wake this session.
+`shared.register` allocates a per-session `mpsc::Sender` inside
+the store, returns the matching `Receiver`, and is the single
+source of truth for who is connected. The store fans broadcasts
+out to every registered sender; when this session ends the
+receiver drops and the store cleans up on the next send.
 
 ## Broadcasting updates to all sessions
 
 The shared store is an ordinary async actor. It holds the canonical
-model, runs the real `update`, and emits a `Broadcast` after every
-successful mutation:
+model, runs the real `update`, and fans a `Broadcast` out to every
+registered session after a successful mutation:
 
 ```rust
 use tokio::sync::{mpsc, RwLock};
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
 pub struct Store {
     inner: Arc<RwLock<Document>>,
     subscribers: Arc<RwLock<Vec<(String, mpsc::Sender<Broadcast>)>>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Broadcast {
     pub originator: String,
     pub model: Document,
 }
 
 impl Store {
+    pub fn register(&self, user_id: String) -> mpsc::Receiver<Broadcast> {
+        let (tx, rx) = mpsc::channel(32);
+        tokio::spawn({
+            let subs = self.subscribers.clone();
+            async move {
+                subs.write().await.push((user_id, tx));
+            }
+        });
+        rx
+    }
+
     pub async fn submit(&self, originator: &str, msg: UserMsg) {
         let mut doc = self.inner.write().await;
         if let Err(e) = doc.apply(msg) {
@@ -225,10 +251,8 @@ impl Store {
             originator: originator.to_string(),
             model: snapshot,
         };
-        let subs = self.subscribers.read().await;
-        for (_id, tx) in subs.iter() {
-            let _ = tx.send(bcast.clone()).await;
-        }
+        let mut subs = self.subscribers.write().await;
+        subs.retain(|(_id, tx)| tx.try_send(bcast.clone()).is_ok());
     }
 }
 ```
@@ -237,42 +261,41 @@ The store runs `apply` behind its own lock, so a crash in one user's
 event cannot corrupt another user's view. Rejections are logged, not
 propagated, and the broadcast is skipped. A more defensive store
 wraps `apply` in `catch_unwind` and downgrades panics to logged
-errors.
+errors. `submit` drops senders whose receiver has gone away (the
+session ended), so the registration list does not grow without
+bound.
 
-Each session's side of the bridge is a tokio task that reads
-`Broadcast` from its channel and dispatches it as an `Event` so the
-runner's loop wakes up:
-
-```rust
-tokio::spawn(async move {
-    while let Some(bcast) = rx.recv().await {
-        if let Err(e) = event_tx.send(Event::Custom(bcast.into())).await {
-            log::debug!("session gone: {e}");
-            break;
-        }
-    }
-});
-```
-
-`Event::Custom` is the escape hatch. The session's `update` matches
-on it, replaces the shared fields of `model`, and keeps per-session
-fields untouched. An `originator` check skips the "echo to self" arm
-when the user already saw their own change optimistically:
+Inside the session, the `Command::stream` started in `init` is the
+bridge. Each `emitter.emit(json)` call delivers a
+`StreamEvent { tag: "broadcast", value }` through the normal
+update pipeline, so the runner's loop wakes up the same way it
+does for any subscription:
 
 ```rust
 fn update(model: &mut Session, event: Event) -> Command {
-    if let Some(bcast) = event.as_custom::<Broadcast>() {
-        if bcast.originator == model.user_id {
-            model.model.status = bcast.model.status;
-        } else {
-            let local_prefs = std::mem::take(&mut model.model.prefs);
-            model.model = bcast.model.clone();
-            model.model.prefs = local_prefs;
+    if let Some(stream) = event.as_stream() {
+        if stream.tag == "broadcast" {
+            let bcast: Broadcast = match serde_json::from_value(stream.value.clone()) {
+                Ok(b) => b,
+                Err(e) => {
+                    log::warn!("malformed broadcast: {e}");
+                    return Command::none();
+                }
+            };
+            if bcast.originator == model.user_id {
+                // Echo of this user's own submit; reconcile only the
+                // fields the optimistic update did not already set.
+                model.model.status = bcast.model.status;
+            } else {
+                let local_prefs = std::mem::take(&mut model.model.prefs);
+                model.model = bcast.model;
+                model.model.prefs = local_prefs;
+            }
+            return Command::none();
         }
-        return Command::none();
     }
 
-    if let Some(WidgetMatch::Click(id)) = event.widget_match() {
+    if let Some(Click(id)) = event.widget_match() {
         if id == "save" {
             let shared = model.shared.clone();
             let user = model.user_id.clone();
@@ -290,7 +313,9 @@ fn update(model: &mut Session, event: Event) -> Command {
 The runner handles the rest: after `update` returns, `view` rebuilds
 the tree, the diff engine produces the minimal patch set, and the
 socket transport ships it to this user's renderer. Only the user
-whose view actually changed pays the diff cost.
+whose view actually changed pays the diff cost. An `originator`
+check skips the "echo to self" reconciliation when the user already
+saw their own change optimistically.
 
 ## Over SSH
 

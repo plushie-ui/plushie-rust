@@ -11,10 +11,47 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
+  # CI gate. Runs the same checks the per-PR pipeline runs so a tag
+  # cannot bypass a failing main. Subsequent build / publish jobs
+  # `needs: [ci]`, so a red gate prevents asset upload and crates.io
+  # publish.
+  ci:
+    name: CI gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.92.0"
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev \
+            libx11-dev cmake libfontconfig1-dev libfreetype-dev pkg-config
+
+      - name: Check
+        run: cargo check --workspace --all-targets --locked
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Test
+        run: cargo nextest run --workspace --profile ci --locked
+
   build:
     name: Build (${{ matrix.target }})
+    needs: [ci]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -66,13 +103,21 @@ jobs:
         if: matrix.cross
         uses: taiki-e/install-action@cross
 
+      # The aarch64-unknown-linux-gnu cross build runs in cross-rs's
+      # default Docker image. That image must have aarch64 versions of
+      # the iced/winit system deps (libxkbcommon, libwayland-client,
+      # libx11) available for linking. If a future cross-rs image
+      # update drops one of them, this build will fail at link time
+      # and a `Cross.toml` with a `pre-build` hook (apt-get install
+      # libxkbcommon-dev:arm64 libwayland-dev:arm64 libx11-dev:arm64)
+      # is the documented fix. Today the default image suffices.
       - name: Build (native)
         if: "!matrix.cross"
-        run: cargo build --profile dist --target ${{ matrix.target }}
+        run: cargo build --profile dist --target ${{ matrix.target }} --locked
 
       - name: Build (cross)
         if: matrix.cross
-        run: cross build --profile dist --target ${{ matrix.target }}
+        run: cross build --profile dist --target ${{ matrix.target }} --locked
 
       - name: Rename binary
         shell: bash
@@ -103,6 +148,7 @@ jobs:
 
   build-wasm:
     name: Build (wasm32)
+    needs: [ci]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -115,7 +161,9 @@ jobs:
           key: wasm32
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        # Pin so a silent upstream change doesn't move release outputs
+        # underneath us. Bump when a new wasm-pack release is well-aged.
+        run: cargo install wasm-pack --version 0.13.1 --locked
 
       - name: Install binaryen
         run: sudo apt-get update && sudo apt-get install -y binaryen

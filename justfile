@@ -10,7 +10,7 @@ default:
 
 # === CI Preflight ===
 
-preflight: check check-release clippy fmt test test-examples test-wire
+preflight: check check-release clippy fmt test test-examples test-wire test-feature-combos doc
     @echo ""
     @echo "All preflight checks passed!"
 
@@ -23,7 +23,7 @@ check:
     # wire-only, direct-only, and no-feature builds before CI does.
     cargo check -p plushie --no-default-features --features direct --all-targets
     cargo check -p plushie --no-default-features --features wire --all-targets
-    cargo check --workspace --no-default-features
+    cargo check --workspace --no-default-features --all-targets
 
 check-release:
     cargo check --workspace --release
@@ -31,6 +31,9 @@ check-release:
 clippy:
     cargo clippy --workspace --all-targets
     cargo clippy -p plushie --all-targets --features wire
+
+doc:
+    cargo doc --workspace --no-deps
 
 fmt:
     cargo fmt --check
@@ -46,6 +49,12 @@ test-wire:
     cargo test -p plushie --features wire --test wire_connect
     cargo test -p plushie --features wire --test wire_image_ops
     cargo test -p plushie --features wire --test automation_replay_windowed
+
+test-feature-combos:
+    # The "wire,dev" combo (wire_hot_reload) is currently broken at
+    # the lib-level (see follow-up-questions.md Q11); add back once
+    # the dev::overlay module is ported to TreeNode.
+    cargo nextest run -p plushie --no-default-features --test no_runner_features --profile ci
 
 test-cargo:
     cargo test --workspace

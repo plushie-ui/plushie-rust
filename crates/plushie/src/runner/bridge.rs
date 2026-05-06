@@ -274,6 +274,19 @@ impl Bridge {
                 writer.flush()?;
             }
             Codec::MsgPack => {
+                // No non-finite-float sanitisation pass here: every
+                // numeric field in `OutgoingMessage` either travels
+                // through `serde_json::Value` (already sanitised by
+                // the constructors that produced it) or as a typed
+                // integer / `u32`. The widget-sdk codec runs a
+                // defensive `sanitize_rmpv_value` pass after a generic
+                // `serde_json::Value` round-trip; here, the
+                // `Value`-typed payload constraint already enforces
+                // the invariant, so the same pass would only re-walk
+                // a structure that cannot contain a `NaN`/`inf` to
+                // begin with. Revisit if a future variant gains a
+                // bare `f32`/`f64` field that bypasses the JSON
+                // intermediate.
                 let bytes = rmp_serde::to_vec_named(message)
                     .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
                 let len = (bytes.len() as u32).to_be_bytes();

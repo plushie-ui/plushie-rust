@@ -262,7 +262,7 @@ impl App {
         captured: bool,
         event_fn: impl Fn(String) -> OutgoingEvent,
     ) -> Task<Message> {
-        self.coalesce_subscription_for_window(key, None, captured, event_fn)
+        coalesce_subscription_into(&self.core, &mut self.emitter, key, None, captured, event_fn)
     }
 
     /// Coalesce a subscription event scoped to a specific window.
@@ -275,32 +275,14 @@ impl App {
         captured: bool,
         event_fn: impl Fn(String) -> OutgoingEvent,
     ) -> Task<Message> {
-        let entries = self
-            .core
-            .matching_entries_with_catchall(key, SUB_EVENT, window_id);
-        // Fast paths for the common 0- and 1-entry cases avoid
-        // allocating a `Vec` and a `Task::batch` per high-frequency
-        // event (cursor move, scroll, etc.).
-        match entries.len() {
-            0 => Task::none(),
-            1 => {
-                let entry = &entries[0];
-                let event = event_fn(entry.tag.clone()).with_captured(captured);
-                self.emitter
-                    .coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
-            }
-            _ => {
-                let tasks: Vec<_> = entries
-                    .into_iter()
-                    .map(|entry| {
-                        let event = event_fn(entry.tag.clone()).with_captured(captured);
-                        self.emitter
-                            .coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
-                    })
-                    .collect();
-                Task::batch(tasks)
-            }
-        }
+        coalesce_subscription_into(
+            &self.core,
+            &mut self.emitter,
+            key,
+            window_id,
+            captured,
+            event_fn,
+        )
     }
 
     /// Route a [`Message`] to every widget with an active subscription
@@ -316,19 +298,75 @@ impl App {
         window_id: Option<&str>,
         msg: &Message,
     ) -> Task<Message> {
-        if !self.registry.has_widget_subscription(kind) {
-            return Task::none();
+        dispatch_widget_subscription_into(
+            &mut self.registry,
+            &mut self.emitter,
+            kind,
+            window_id,
+            msg,
+        )
+    }
+}
+
+/// Free-function form of [`App::dispatch_widget_subscription`] for
+/// the same split-borrow reason as [`coalesce_subscription_into`]:
+/// callers can hold a `&str` borrowed from `App.windows` while
+/// passing `&mut App.emitter` and `&mut App.registry` separately.
+pub(crate) fn dispatch_widget_subscription_into(
+    registry: &mut WidgetRegistry,
+    emitter: &mut EventEmitter,
+    kind: &str,
+    window_id: Option<&str>,
+    msg: &Message,
+) -> Task<Message> {
+    if !registry.has_widget_subscription(kind) {
+        return Task::none();
+    }
+    let events = registry.dispatch_widget_subscription(kind, window_id, msg);
+    if events.is_empty() {
+        return Task::none();
+    }
+    let tasks: Vec<_> = events
+        .into_iter()
+        .map(|event| emitter.emit_immediate(event))
+        .collect();
+    Task::batch(tasks)
+}
+
+/// Free-function form of [`App::coalesce_subscription_for_window`] so
+/// callers can hold a `&str` borrowed from `App.windows` while
+/// passing `&mut App.emitter` and `&App.core` separately. Going
+/// through the `&mut self` method form would force the borrow
+/// checker to take a whole-self mutable borrow, which conflicts
+/// with the live `&str` into windows.
+pub(crate) fn coalesce_subscription_into(
+    core: &plushie_widget_sdk::runtime::Core,
+    emitter: &mut EventEmitter,
+    key: &str,
+    window_id: Option<&str>,
+    captured: bool,
+    event_fn: impl Fn(String) -> OutgoingEvent,
+) -> Task<Message> {
+    let entries = core.matching_entries_with_catchall(key, SUB_EVENT, window_id);
+    // Fast paths for the common 0- and 1-entry cases avoid
+    // allocating a `Vec` and a `Task::batch` per high-frequency
+    // event (cursor move, scroll, etc.).
+    match entries.len() {
+        0 => Task::none(),
+        1 => {
+            let entry = &entries[0];
+            let event = event_fn(entry.tag.clone()).with_captured(captured);
+            emitter.coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
         }
-        let events = self
-            .registry
-            .dispatch_widget_subscription(kind, window_id, msg);
-        if events.is_empty() {
-            return Task::none();
+        _ => {
+            let tasks: Vec<_> = entries
+                .into_iter()
+                .map(|entry| {
+                    let event = event_fn(entry.tag.clone()).with_captured(captured);
+                    emitter.coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
+                })
+                .collect();
+            Task::batch(tasks)
         }
-        let tasks: Vec<_> = events
-            .into_iter()
-            .map(|event| self.emitter.emit_immediate(event))
-            .collect();
-        Task::batch(tasks)
     }
 }

@@ -163,24 +163,27 @@ impl App {
                 // decides whether to close by sending a close_window command
                 // or removing the window from the tree. Closing immediately
                 // would bypass app-level confirmation dialogs.
-                let window_id = self.windows.window_id_for(&iced_id);
-                let wid = Some(window_id.as_str()).filter(|s| !s.is_empty());
-                let entries = self.core.matching_entries(SUB_WINDOW_CLOSE, wid);
-                if !entries.is_empty() {
-                    let tasks: Vec<_> = entries
-                        .into_iter()
-                        .map(|entry| {
-                            self.emitter
-                                .emit_direct(OutgoingEvent::window_close_requested(
-                                    entry.tag.clone(),
-                                    window_id.clone(),
-                                ))
-                        })
-                        .collect();
-                    Task::batch(tasks)
-                } else {
-                    Task::none()
+                let Some(window_id) = self.windows.get_window_id(&iced_id) else {
+                    return Task::none();
+                };
+                let entries = self
+                    .core
+                    .matching_entries(SUB_WINDOW_CLOSE, Some(window_id));
+                if entries.is_empty() {
+                    return Task::none();
                 }
+                let owned_window_id = window_id.to_string();
+                let tasks: Vec<_> = entries
+                    .into_iter()
+                    .map(|entry| {
+                        self.emitter
+                            .emit_direct(OutgoingEvent::window_close_requested(
+                                entry.tag.clone(),
+                                owned_window_id.clone(),
+                            ))
+                    })
+                    .collect();
+                Task::batch(tasks)
             }
             Message::WindowClosed(iced_id) => {
                 if let Some(window_id) = self.windows.remove_by_iced(&iced_id) {
@@ -302,84 +305,78 @@ impl App {
         // (specific kind, whether the catch-all `on_event` also applies,
         // optional window-scoped delivery). `None` for window_id means
         // window-agnostic (e.g. theme change).
-        let (kind, catchall, window_id): (&str, bool, Option<String>) = match message {
-            Message::KeyPressed(_, iced_id) => (
-                SUB_KEY_PRESS,
-                true,
-                self.resolve_window_id_for_widget(*iced_id),
-            ),
-            Message::KeyReleased(_, iced_id) => (
-                SUB_KEY_RELEASE,
-                true,
-                self.resolve_window_id_for_widget(*iced_id),
-            ),
+        let (kind, catchall, window_id): (&str, bool, Option<&str>) = match message {
+            Message::KeyPressed(_, iced_id) => {
+                (SUB_KEY_PRESS, true, self.windows.get_window_id(iced_id))
+            }
+            Message::KeyReleased(_, iced_id) => {
+                (SUB_KEY_RELEASE, true, self.windows.get_window_id(iced_id))
+            }
             Message::ModifiersChanged(_, iced_id, _) => (
                 SUB_MODIFIERS_CHANGED,
                 true,
-                self.resolve_window_id_for_widget(*iced_id),
+                self.windows.get_window_id(iced_id),
             ),
             Message::CursorMoved(_, iced_id, _)
             | Message::CursorEntered(iced_id, _)
-            | Message::CursorLeft(iced_id, _) => (
-                SUB_POINTER_MOVE,
-                true,
-                self.resolve_window_id_for_widget(*iced_id),
-            ),
+            | Message::CursorLeft(iced_id, _) => {
+                (SUB_POINTER_MOVE, true, self.windows.get_window_id(iced_id))
+            }
             Message::MouseButtonPressed(_, iced_id, _)
             | Message::MouseButtonReleased(_, iced_id, _) => (
                 SUB_POINTER_BUTTON,
                 true,
-                self.resolve_window_id_for_widget(*iced_id),
+                self.windows.get_window_id(iced_id),
             ),
             Message::WheelScrolled(_, iced_id, _) => (
                 SUB_POINTER_SCROLL,
                 true,
-                self.resolve_window_id_for_widget(*iced_id),
+                self.windows.get_window_id(iced_id),
             ),
             Message::FingerPressed(_, _, iced_id, _)
             | Message::FingerMoved(_, _, iced_id, _)
             | Message::FingerLifted(_, _, iced_id, _)
-            | Message::FingerLost(_, _, iced_id, _) => (
-                SUB_POINTER_TOUCH,
-                true,
-                self.resolve_window_id_for_widget(*iced_id),
-            ),
+            | Message::FingerLost(_, _, iced_id, _) => {
+                (SUB_POINTER_TOUCH, true, self.windows.get_window_id(iced_id))
+            }
             Message::ImeOpened(iced_id, _)
             | Message::ImePreedit(_, _, iced_id, _)
             | Message::ImeCommit(_, iced_id, _)
             | Message::ImeClosed(iced_id, _) => {
-                (SUB_IME, true, self.resolve_window_id_for_widget(*iced_id))
+                (SUB_IME, true, self.windows.get_window_id(iced_id))
             }
-            Message::WindowEvent(iced_id, _) => (
-                SUB_WINDOW_EVENT,
-                false,
-                self.resolve_window_id_for_widget(*iced_id),
-            ),
-            Message::WindowCloseRequested(iced_id) => (
-                SUB_WINDOW_CLOSE,
-                false,
-                self.resolve_window_id_for_widget(*iced_id),
-            ),
+            Message::WindowEvent(iced_id, _) => {
+                (SUB_WINDOW_EVENT, false, self.windows.get_window_id(iced_id))
+            }
+            Message::WindowCloseRequested(iced_id) => {
+                (SUB_WINDOW_CLOSE, false, self.windows.get_window_id(iced_id))
+            }
             Message::AnimationFrame(_) => (SUB_ANIMATION_FRAME, false, None),
             Message::ThemeChanged(_) => (SUB_THEME_CHANGE, false, None),
             _ => return Task::none(),
         };
-        let specific = self.dispatch_widget_subscription(kind, window_id.as_deref(), message);
+        // Split-borrow: window_id borrows into self.windows. Going
+        // through the &mut self method form would force the borrow
+        // checker to take a whole-self mutable borrow.
+        let specific = crate::app::dispatch_widget_subscription_into(
+            &mut self.registry,
+            &mut self.emitter,
+            kind,
+            window_id,
+            message,
+        );
         if catchall {
-            let event = self.dispatch_widget_subscription(SUB_EVENT, window_id.as_deref(), message);
+            let event = crate::app::dispatch_widget_subscription_into(
+                &mut self.registry,
+                &mut self.emitter,
+                SUB_EVENT,
+                window_id,
+                message,
+            );
             Task::batch([specific, event])
         } else {
             specific
         }
-    }
-
-    /// Resolve an iced window id to a string window id for widget
-    /// dispatch. Unresolved ids (e.g. late events after close) return
-    /// `None`, which delivers to window-agnostic widget subscriptions
-    /// only.
-    fn resolve_window_id_for_widget(&self, iced_id: window::Id) -> Option<String> {
-        let id = self.windows.window_id_for(&iced_id);
-        if id.is_empty() { None } else { Some(id) }
     }
 
     pub fn handle_stdin(&mut self, event: StdinEvent) -> Task<Message> {

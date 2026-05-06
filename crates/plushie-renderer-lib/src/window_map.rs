@@ -97,13 +97,11 @@ impl WindowMap {
         self.forward.get(window_id).map(|(id, _)| id)
     }
 
-    pub fn get_window_id(&self, iced_id: &window::Id) -> Option<&String> {
-        self.reverse.get(iced_id)
-    }
-
-    /// Resolve window ID from iced ID, returning empty string if not found.
-    pub fn window_id_for(&self, iced_id: &window::Id) -> String {
-        self.reverse.get(iced_id).cloned().unwrap_or_default()
+    /// Borrow the host-facing window ID for an iced window. Returns
+    /// `None` when the iced ID isn't tracked (e.g. late events after
+    /// the window has closed).
+    pub fn get_window_id(&self, iced_id: &window::Id) -> Option<&str> {
+        self.reverse.get(iced_id).map(String::as_str)
     }
 
     pub fn iced_ids(&self) -> impl Iterator<Item = &window::Id> {

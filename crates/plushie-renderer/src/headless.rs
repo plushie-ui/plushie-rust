@@ -1504,6 +1504,10 @@ fn run_multiplexed<R: PlushieRenderer>(
     let mut pending_initial_settings = Some(initial.into_incoming_message());
 
     // Helper: emit a structured session_error on the writer channel.
+    // Uses try_send so a stalled writer cannot block the dispatcher.
+    // Dropping the message on a full or disconnected channel is fine:
+    // the writer thread's downstream is the host, and a host that is
+    // not draining the writer will never see this event regardless.
     let emit_session_error =
         |writer_tx: &mpsc::SyncSender<Vec<u8>>, session_id: &str, code: &str, message: &str| {
             let event = serde_json::json!({
@@ -1514,7 +1518,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                 "data": { "code": code, "error": message }
             });
             if let Ok(bytes) = codec.encode(&event) {
-                let _ = writer_tx.send(bytes);
+                let _ = writer_tx.try_send(bytes);
             }
         };
 
@@ -1717,10 +1721,14 @@ fn run_multiplexed<R: PlushieRenderer>(
                         });
                         match codec.encode(&closed) {
                             Ok(bytes) => {
-                                if closed_writer_tx.send(bytes).is_err() {
+                                // try_send: a blocked writer means the
+                                // host is not draining; blocking here
+                                // would stall the dispatcher and starve
+                                // every other session.
+                                if closed_writer_tx.try_send(bytes).is_err() {
                                     log::info!(
                                         "session '{sid}': session_closed send failed \
-                                         (writer likely gone)"
+                                         (writer likely gone or full)"
                                     );
                                 }
                             }

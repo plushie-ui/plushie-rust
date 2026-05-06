@@ -531,7 +531,7 @@ pub(crate) fn validate_interactive_elements(
             diagnostics.push(OutgoingEvent::diagnostic(
                 canvas_id.to_string(),
                 None,
-                "info",
+                "warning",
                 "canvas_no_set_position",
                 &format!(
                     "{} interactive elements without position_in_set/size_of_set; \

@@ -3,6 +3,7 @@ use iced::{Element, Radians, Rotation, Theme};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
+use crate::a11y::A11yOverrides;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
@@ -10,7 +11,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{ContentFit, FilterMethod, Length, PlushieType};
+use plushie_core::types::{A11y, ContentFit, FilterMethod, Length, PlushieType};
 
 struct ImageProps {
     width: Option<Length>,
@@ -147,7 +148,41 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ImageWidget {
         img.into()
     }
 
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        if prop_bool_default(&node.props, "decorative", false) {
+            return Some(A11yOverrides::from_core(&A11y::new().hidden(true)));
+        }
+        None
+    }
+
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(ImageWidget)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn infer(props: serde_json::Value) -> Option<A11yOverrides> {
+        let node = crate::testing::node_with_props("img", "image", props);
+        <ImageWidget as PlushieWidget<iced::Renderer>>::infer_a11y(&ImageWidget, &node)
+    }
+
+    #[test]
+    fn decorative_infers_hidden() {
+        let overrides = infer(json!({"decorative": true})).expect("decorative should infer");
+        assert_eq!(overrides.core().hidden, Some(true));
+    }
+
+    #[test]
+    fn no_decorative_returns_none() {
+        assert!(infer(json!({"alt": "logo"})).is_none());
+    }
+
+    #[test]
+    fn decorative_false_returns_none() {
+        assert!(infer(json!({"decorative": false})).is_none());
     }
 }

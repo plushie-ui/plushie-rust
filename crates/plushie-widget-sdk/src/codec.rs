@@ -1652,6 +1652,65 @@ mod tests {
                     Codec::MsgPack.decode(payload).unwrap();
                 prop_assert_eq!(decoded, val);
             }
+
+            /// Random byte sequences fed into the MsgPack decoder must
+            /// produce a structured `Err` or a valid `Ok`, never panic.
+            ///
+            /// The codec sits at the wire boundary; a panic here would
+            /// take the renderer down on malformed input. The decoder
+            /// gates on a depth pre-check and routes through rmpv ->
+            /// serde_json::Value -> typed value, so this test exercises
+            /// every layer that could plausibly trip on bad bytes.
+            ///
+            /// `proptest::collection::vec(any::<u8>(), 0..256)` keeps
+            /// the input bounded so the test stays fast. The decoder
+            /// is byte-stream oblivious past 256 bytes; bigger inputs
+            /// don't change the panic surface.
+            #[test]
+            fn msgpack_decode_random_bytes_never_panics(
+                bytes in proptest::collection::vec(any::<u8>(), 0..256),
+            ) {
+                let result = Codec::MsgPack.decode::<serde_json::Value>(&bytes);
+                // We don't care which variant of Result we get;
+                // the contract is that the decoder always returns
+                // a Result rather than unwinding.
+                let _ = result;
+            }
+
+            /// Random JSON values fed into the typed-message decoder
+            /// must produce a structured `Err` (unknown variant,
+            /// missing field, etc.) or a valid `Ok`, never panic.
+            ///
+            /// IncomingMessage uses `#[serde(tag = "type")]`; arbitrary
+            /// JSON without a recognised tag should hit the "unknown
+            /// variant" path without unwinding. Custom binary-field
+            /// deserializers along the way must also reject malformed
+            /// input cleanly.
+            #[test]
+            fn from_value_into_incoming_message_never_panics(
+                val in arb_json_value(),
+            ) {
+                let result = serde_json::from_value::<crate::protocol::IncomingMessage>(val);
+                let _ = result;
+            }
+
+            /// Targeted variant: well-formed JSON that's deliberately
+            /// shaped like a recognised tag but with malformed
+            /// payload fields. The custom binary-field deserializer
+            /// path is the most likely place to hit panics, so
+            /// concentrate fuzz coverage there.
+            #[test]
+            fn image_op_with_arbitrary_payload_never_panics(
+                op in "[a-z_]{1,32}",
+                payload in arb_json_value(),
+            ) {
+                let envelope = serde_json::json!({
+                    "type": "image_op",
+                    "op": op,
+                    "payload": payload,
+                });
+                let _ = serde_json::from_value::<crate::protocol::IncomingMessage>(envelope);
+            }
         }
     }
 }

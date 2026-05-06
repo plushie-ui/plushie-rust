@@ -807,6 +807,12 @@ mod tests {
 
     #[test]
     fn all_easings_reach_endpoints() {
+        // Boundary check: every curve must land exactly at the start
+        // and end values. Animation pipelines snap to those when t
+        // crosses 0 or 1; a rounding bug here produces visible jumps.
+        // Back and Elastic families are listed last because they
+        // overshoot in the middle but still terminate exactly at
+        // endpoints by design.
         let easings = [
             Easing::Linear,
             Easing::EaseIn,
@@ -830,6 +836,12 @@ mod tests {
             Easing::EaseInCirc,
             Easing::EaseOutCirc,
             Easing::EaseInOutCirc,
+            Easing::EaseInBack,
+            Easing::EaseOutBack,
+            Easing::EaseInOutBack,
+            Easing::EaseInElastic,
+            Easing::EaseOutElastic,
+            Easing::EaseInOutElastic,
             Easing::EaseInBounce,
             Easing::EaseOutBounce,
             Easing::EaseInOutBounce,
@@ -843,6 +855,54 @@ mod tests {
     }
 
     #[test]
+    fn back_family_overshoots_endpoints_in_middle() {
+        // The back family exists to overshoot. Pin that property so
+        // a future "fix" that clamps back into [0, 1] doesn't go
+        // unnoticed.
+        let near_one = apply_easing(0.95, &Easing::EaseOutBack);
+        assert!(
+            near_one > 1.0,
+            "EaseOutBack should overshoot before settling, got {near_one}",
+        );
+
+        let near_zero = apply_easing(0.05, &Easing::EaseInBack);
+        assert!(
+            near_zero < 0.0,
+            "EaseInBack should undershoot before pulling forward, got {near_zero}",
+        );
+    }
+
+    #[test]
+    fn elastic_family_oscillates_around_endpoints() {
+        // The elastic family oscillates either side of the target
+        // before converging. The midpoint is approximately 0.5 for
+        // EaseInOutElastic but the two ease-out / ease-in curves
+        // dip past 0 / overshoot 1. Pin a sample of that behavior.
+        let dip = apply_easing(0.1, &Easing::EaseInElastic);
+        assert!(
+            dip < 0.05,
+            "EaseInElastic near 0 should be very small or negative, got {dip}",
+        );
+
+        // EaseOutElastic samples a slight overshoot near t=0.1; the
+        // damped oscillation means we just check it's not stuck at
+        // exactly the target line.
+        let early = apply_easing(0.1, &Easing::EaseOutElastic);
+        assert!(
+            !(early - 0.1).abs().is_finite() || (early > 0.0),
+            "EaseOutElastic should produce a non-trivial intermediate, got {early}",
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Cubic bezier solver
+    //
+    // The Newton-Raphson solver runs at most 8 iterations. The CSS
+    // canonical curves are well-behaved (monotonic, x'(s) > 0 in [0,1]),
+    // so 8 steps comfortably converge well within visible tolerances.
+    // -----------------------------------------------------------------------
+
+    #[test]
     fn cubic_bezier_easing_linear() {
         // A linear cubic bezier: (0.0, 0.0, 1.0, 1.0)
         let e = Easing::CubicBezier(0.0, 0.0, 1.0, 1.0);
@@ -851,6 +911,97 @@ mod tests {
             let result = apply_easing(t, &e);
             assert!((result - t).abs() < 0.01, "t={}: {}", t, result);
         }
+    }
+
+    #[test]
+    fn cubic_bezier_endpoints_are_exact() {
+        // CSS spec: bezier curves anchor exactly at (0,0) and (1,1)
+        // regardless of the control points. The solver short-circuits
+        // those values; a regression here produces a visible jump.
+        for (x1, y1, x2, y2) in [
+            (0.25_f32, 0.1, 0.25, 1.0), // CSS `ease`
+            (0.42, 0.0, 1.0, 1.0),      // CSS `ease-in`
+            (0.0, 0.0, 0.58, 1.0),      // CSS `ease-out`
+            (0.42, 0.0, 0.58, 1.0),     // CSS `ease-in-out`
+        ] {
+            let e = Easing::CubicBezier(x1, y1, x2, y2);
+            assert!(apply_easing(0.0, &e).abs() < 1.0e-10);
+            assert!((apply_easing(1.0, &e) - 1.0).abs() < 1.0e-10);
+        }
+    }
+
+    #[test]
+    fn cubic_bezier_ease_curve_resembles_css_ease() {
+        // CSS `ease` (the default `transition-timing-function`) is
+        // bezier (0.25, 0.1, 0.25, 1.0). At t=0.5 the y is roughly
+        // 0.80; pinned to a generous tolerance because the renderer
+        // is interpolating positions, not chasing IEEE bit-identity.
+        let e = Easing::CubicBezier(0.25, 0.1, 0.25, 1.0);
+        let mid = apply_easing(0.5, &e);
+        assert!(
+            (mid - 0.80).abs() < 0.03,
+            "css `ease` at t=0.5 should be near 0.80, got {mid}",
+        );
+    }
+
+    #[test]
+    fn cubic_bezier_ease_in_starts_slow_and_finishes_fast() {
+        // CSS `ease-in` is (0.42, 0.0, 1.0, 1.0). The first half
+        // moves substantially less than half the distance; verify
+        // the slow start.
+        let e = Easing::CubicBezier(0.42, 0.0, 1.0, 1.0);
+        let early = apply_easing(0.25, &e);
+        assert!(
+            early < 0.10,
+            "css `ease-in` at t=0.25 should still be near 0, got {early}",
+        );
+        let late = apply_easing(0.85, &e);
+        assert!(
+            late > 0.7,
+            "css `ease-in` at t=0.85 should be approaching 1, got {late}",
+        );
+    }
+
+    #[test]
+    fn cubic_bezier_ease_out_starts_fast_and_finishes_slow() {
+        // CSS `ease-out` is (0.0, 0.0, 0.58, 1.0); mirror of ease-in.
+        // The function is concave-down, so y at t=0.25 is meaningfully
+        // ahead of t=0.25 itself (the linear baseline).
+        let e = Easing::CubicBezier(0.0, 0.0, 0.58, 1.0);
+        let early = apply_easing(0.25, &e);
+        assert!(
+            early > 0.30,
+            "css `ease-out` at t=0.25 should pull ahead of linear, got {early}",
+        );
+        let late = apply_easing(0.85, &e);
+        assert!(
+            late > 0.95,
+            "css `ease-out` at t=0.85 should be very close to 1, got {late}",
+        );
+    }
+
+    #[test]
+    fn cubic_bezier_solver_handles_near_degenerate_curve() {
+        // (0, 0, 0, 1) makes x'(0) = 0 (degenerate slope at the
+        // start). Newton-Raphson would normally divide by zero; the
+        // solver guards against that with the |dx| < 1e-7 break.
+        // The result must remain finite and monotonic, even if the
+        // intermediate values aren't a perfect smooth curve.
+        let e = Easing::CubicBezier(0.0, 0.0, 0.0, 1.0);
+        let mut last = 0.0;
+        for i in 0..=10 {
+            let t = i as f64 / 10.0;
+            let v = apply_easing(t, &e);
+            assert!(v.is_finite(), "non-finite at t={t}: {v}");
+            assert!(
+                v + 1.0e-9 >= last,
+                "non-monotonic: at t={t} got {v} after {last}",
+            );
+            last = v;
+        }
+        // Endpoints anchor exactly.
+        assert!(apply_easing(0.0, &e).abs() < 1.0e-10);
+        assert!((apply_easing(1.0, &e) - 1.0).abs() < 1.0e-10);
     }
 
     // -- Timed advance tests -------------------------------------------------

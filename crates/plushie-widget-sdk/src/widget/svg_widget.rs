@@ -19,7 +19,13 @@ use std::collections::HashMap;
 /// stuck or malicious source. parking_lot::Mutex avoids the
 /// poisoning surface of std::sync::Mutex; the cache is throwaway
 /// hot-path memoisation, not state we need to fence on a panic.
+/// Capped at [`MAX_FAILED_PATHS`] so a churning unique-source stream
+/// cannot grow the map without bound; past the cap, new failures are
+/// not recorded and the worst case is wasted CPU on retry, not memory.
 static FAILED_PATHS: Mutex<Option<HashMap<String, DecodeFailure>>> = Mutex::new(None);
+
+/// Cap on the failed-path memoisation map.
+const MAX_FAILED_PATHS: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DecodeFailure {
@@ -103,9 +109,10 @@ impl SvgWidget {
 
     fn record_failure(source: &str, kind: DecodeFailure) {
         let mut guard = FAILED_PATHS.lock();
-        guard
-            .get_or_insert_with(HashMap::new)
-            .insert(source.to_string(), kind);
+        let map = guard.get_or_insert_with(HashMap::new);
+        if map.contains_key(source) || map.len() < MAX_FAILED_PATHS {
+            map.insert(source.to_string(), kind);
+        }
     }
 
     fn is_failed(source: &str) -> bool {

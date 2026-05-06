@@ -234,7 +234,7 @@ Key presses then arrive as `Event::Key(KeyEvent)`. Use the
 `as_key_press` accessor to destructure safely:
 
 ```rust
-use plushie_core::Key;
+use plushie::prelude::Key;
 
 fn update(model: &mut Editor, event: Event) -> Command {
     if let Some(key) = event.as_key_press() {
@@ -309,7 +309,7 @@ actually wants them.
 Once enabled, match on the widget variants:
 
 ```rust
-use plushie_core::key::{MouseButton, PointerKind};
+use plushie::prelude::{MouseButton, PointerKind};
 
 match event.widget_match() {
     Some(Press(id, press)) if id == "canvas-overlay"

@@ -40,7 +40,7 @@ the crate root; unit tests that want access to private items stay in
 
 Every interaction and query accepts `impl Into<Selector>`. Bare
 `&str` becomes an ID selector; richer forms come from the
-`Selector` constructors in `plushie_core::selector`.
+`Selector` constructors.
 
 | Constructor | Signature | Matches |
 |---|---|---|
@@ -52,7 +52,7 @@ Every interaction and query accepts `impl Into<Selector>`. Bare
 | `Selector::focused` | `() -> Self` | Widget with keyboard focus |
 
 ```rust
-use plushie_core::Selector;
+use plushie::automation::Selector;
 
 session.click("save");                          // by ID
 session.click(Selector::id("form/save"));       // scoped path

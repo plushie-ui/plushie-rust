@@ -58,7 +58,7 @@ window overrides it:
 
 ```rust
 use plushie::prelude::*;
-use plushie_core::settings::Settings;
+use plushie::settings::Settings;
 use plushie::types::Theme;
 
 impl App for Counter {

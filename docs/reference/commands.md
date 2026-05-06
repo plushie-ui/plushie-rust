@@ -394,7 +394,7 @@ family string and a JSON value.
 
 ```rust
 use plushie::prelude::*;
-use plushie_core::ops::WidgetCommand;
+use plushie::command::WidgetCommand;
 
 #[derive(WidgetCommand)]
 enum GaugeCommand {

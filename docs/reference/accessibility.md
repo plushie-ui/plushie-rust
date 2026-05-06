@@ -364,7 +364,6 @@ overrides applied.
 
 ```rust
 use plushie::prelude::*;
-use plushie_core::Selector;
 use serde_json::json;
 
 let mut session = TestSession::<MyApp>::start();

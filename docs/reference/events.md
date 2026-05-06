@@ -447,7 +447,7 @@ fn update(model: &mut Todos, event: Event) -> Command {
 
 ```rust
 use plushie::event::{Event, KeyEventType};
-use plushie_core::Key;
+use plushie::prelude::Key;
 
 fn update(model: &mut Editor, event: Event) -> Command {
     if let Some(key) = event.as_key_press() {
@@ -492,7 +492,7 @@ fn update(model: &mut Editor, event: Event) -> Command {
 
 ```rust
 use plushie::event::WidgetMatch::*;
-use plushie_core::key::{MouseButton, PointerKind};
+use plushie::prelude::{MouseButton, PointerKind};
 
 match event.widget_match() {
     Some(Press("canvas", p)) if p.pointer == PointerKind::Mouse

@@ -115,11 +115,11 @@ the tree until the next dispatch or an explicit `session.rerender()`.
 ## Selectors
 
 Every interaction and query accepts `impl Into<Selector>`. A bare
-`&str` is an ID selector; richer forms come from the constructors in
-`plushie_core::selector`:
+`&str` is an ID selector; richer forms come from the `Selector`
+constructors:
 
 ```rust
-use plushie_core::Selector;
+use plushie::automation::Selector;
 
 session.click("save");                              // by ID
 session.click(Selector::id("form/save"));           // scoped path

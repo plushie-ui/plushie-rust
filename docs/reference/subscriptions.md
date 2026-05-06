@@ -159,7 +159,6 @@ impl App for Clock {
 
 ```rust
 use plushie::prelude::*;
-use plushie_core::Key;
 
 fn subscribe(_model: &Self) -> Vec<Subscription> {
     vec![Subscription::on_key_press()]

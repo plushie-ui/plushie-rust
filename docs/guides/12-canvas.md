@@ -206,7 +206,7 @@ the tuple-form variants of `WidgetMatch`:
 
 ```rust
 use plushie::event::WidgetMatch::*;
-use plushie_core::key::PointerKind;
+use plushie::prelude::PointerKind;
 
 match event.widget_match() {
     Some(Press("drawing", p)) if p.pointer == PointerKind::Mouse => {

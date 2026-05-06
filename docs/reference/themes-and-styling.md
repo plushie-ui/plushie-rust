@@ -497,7 +497,7 @@ application-wide theme alongside default fonts, text size, and
 event rate:
 
 ```rust
-use plushie_core::settings::Settings;
+use plushie::settings::Settings;
 use plushie::types::Theme;
 
 Settings {

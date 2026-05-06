@@ -543,4 +543,298 @@ mod tests {
         let past_limit = text_node_at_depth(MAX_SELECTOR_SEARCH_DEPTH + 1, "needle");
         assert!(Selector::text("needle").find(&past_limit).is_none());
     }
+
+    // -----------------------------------------------------------------------
+    // Wire codec round-trips
+    //
+    // `from_wire` parses the JSON shape the SDK emits; `to_wire` produces
+    // it. Drift between the two would silently misroute interact requests
+    // (e.g. a renamed `by` discriminant), so each variant gets a paired
+    // round-trip pin.
+    // -----------------------------------------------------------------------
+
+    fn selector_wire_round_trip(sel: Selector) {
+        let wire = sel.to_wire();
+        let parsed = Selector::from_wire(&wire).unwrap_or_else(|| {
+            panic!("Selector::from_wire returned None for {sel:?} (wire: {wire})")
+        });
+        assert_eq!(parsed, sel);
+    }
+
+    #[test]
+    fn selector_id_round_trips() {
+        selector_wire_round_trip(Selector::id("save"));
+    }
+
+    #[test]
+    fn selector_id_with_window_qualification_round_trips() {
+        // The `#` syntax is stripped into a separate window_id field
+        // by `id()`; the wire format reflects both.
+        let sel = Selector::id("main#save");
+        selector_wire_round_trip(sel);
+        let parsed = Selector::from_wire(&serde_json::json!({
+            "by": "id",
+            "value": "main#save",
+        }))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            Selector::Id {
+                widget_id: "main#save".into(),
+                window_id: Some("main".into()),
+            }
+        );
+    }
+
+    #[test]
+    fn selector_id_in_window_round_trips() {
+        // `id_in_window` keeps the id local; window_id rides as a
+        // sidecar field. The sidecar must round-trip independently.
+        let sel = Selector::id_in_window("save", "popup");
+        selector_wire_round_trip(sel);
+    }
+
+    #[test]
+    fn selector_text_round_trips() {
+        selector_wire_round_trip(Selector::text("Save document"));
+    }
+
+    #[test]
+    fn selector_role_round_trips() {
+        selector_wire_round_trip(Selector::role("button"));
+    }
+
+    #[test]
+    fn selector_label_round_trips() {
+        selector_wire_round_trip(Selector::label("Save"));
+    }
+
+    #[test]
+    fn selector_focused_round_trips() {
+        selector_wire_round_trip(Selector::focused());
+    }
+
+    #[test]
+    fn selector_unknown_by_returns_none() {
+        // An unknown `by` discriminant is rejected at the wire boundary
+        // rather than papering over with a default selector.
+        assert!(
+            Selector::from_wire(&serde_json::json!({
+                "by": "future_kind",
+                "value": "x",
+            }))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn selector_missing_value_for_non_focused_returns_none() {
+        // All non-focused selectors require a `value`. Absence is a
+        // protocol violation; surface it instead of constructing an
+        // empty selector.
+        for by in ["id", "text", "role", "label"] {
+            assert!(
+                Selector::from_wire(&serde_json::json!({"by": by})).is_none(),
+                "expected None for missing value on by={by}",
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tree-search predicates: Role, Label, Focused
+    //
+    // The earlier tests cover Id and Text. Each predicate has its own
+    // resolution rules (with fallbacks); they each get a focused
+    // BDD-style scenario here.
+    // -----------------------------------------------------------------------
+
+    fn node_with_a11y(id: &str, type_name: &str, a11y: serde_json::Value) -> TreeNode {
+        TreeNode {
+            id: id.into(),
+            type_name: type_name.into(),
+            props: Props::from_json(serde_json::json!({"a11y": a11y})),
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn role_matches_explicit_a11y_role_first() {
+        // When a node has an a11y prop, the `role` predicate reads
+        // from it. The type_name fallback only applies when a11y is
+        // absent.
+        let root = node_with_children(
+            "root",
+            "container",
+            vec![
+                node_with_a11y(
+                    "explicit",
+                    "container",
+                    serde_json::json!({"role": "button"}),
+                ),
+                node("by-type", "button"),
+            ],
+        );
+
+        let found = Selector::role("button").find(&root).unwrap();
+        // First match in DFS order: the explicit a11y role.
+        assert_eq!(found.id, "explicit");
+    }
+
+    #[test]
+    fn role_falls_back_to_type_name_without_a11y() {
+        // Most built-in widgets emit type_name without an explicit
+        // a11y prop. The fallback covers that path.
+        let root = node_with_children("root", "container", vec![node("btn", "button")]);
+        let found = Selector::role("button").find(&root).unwrap();
+        assert_eq!(found.id, "btn");
+    }
+
+    #[test]
+    fn label_prefers_a11y_label_then_label_prop_then_content() {
+        let root = node_with_children(
+            "root",
+            "container",
+            vec![
+                {
+                    let mut n = node("a11y_match", "button");
+                    n.props =
+                        Props::from_json(serde_json::json!({"a11y": {"label": "Save document"}}));
+                    n
+                },
+                {
+                    let mut n = node("label_prop_match", "button");
+                    n.props = Props::from_json(serde_json::json!({"label": "Save"}));
+                    n
+                },
+                {
+                    let mut n = node("content_match", "text");
+                    n.props = Props::from_json(serde_json::json!({"content": "Cancel"}));
+                    n
+                },
+            ],
+        );
+
+        assert_eq!(
+            Selector::label("Save document").find(&root).unwrap().id,
+            "a11y_match",
+        );
+        assert_eq!(
+            Selector::label("Save").find(&root).unwrap().id,
+            "label_prop_match",
+        );
+        assert_eq!(
+            Selector::label("Cancel").find(&root).unwrap().id,
+            "content_match",
+        );
+    }
+
+    #[test]
+    fn focused_matches_props_and_a11y_focused() {
+        // Both `props.focused: true` and `a11y.focused: true` resolve
+        // through the focused predicate; the renderer-side a11y
+        // wrapper writes one or the other depending on the widget.
+        let mut props_focused = node("via-props", "text_input");
+        props_focused.props = Props::from_json(serde_json::json!({"focused": true}));
+        let mut a11y_focused = node("via-a11y", "text_input");
+        a11y_focused.props = Props::from_json(serde_json::json!({"a11y": {"focused": true}}));
+
+        let root = node_with_children("root", "container", vec![props_focused, a11y_focused]);
+
+        // First match wins (DFS, pre-order).
+        let found = Selector::focused().find(&root).unwrap();
+        assert_eq!(found.id, "via-props");
+    }
+
+    #[test]
+    fn focused_returns_none_when_nothing_is_focused() {
+        let root = node_with_children(
+            "root",
+            "container",
+            vec![node("a", "button"), node("b", "button")],
+        );
+        assert!(Selector::focused().find(&root).is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // find_all
+    //
+    // ID matches yield at most one node; text/role/label/focused yield
+    // every match.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn find_all_role_returns_every_match() {
+        let root = node_with_children(
+            "root",
+            "container",
+            vec![
+                node("btn1", "button"),
+                node_with_children("inner", "container", vec![node("btn2", "button")]),
+                node("not_a_button", "text"),
+            ],
+        );
+        let found = Selector::role("button").find_all(&root);
+        let ids: Vec<&str> = found.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, vec!["btn1", "btn2"]);
+    }
+
+    #[test]
+    fn find_all_text_returns_every_match() {
+        let mut a = node("a", "text");
+        a.props = Props::from_json(serde_json::json!({"content": "Cancel"}));
+        let mut b = node("b", "text");
+        b.props = Props::from_json(serde_json::json!({"content": "Cancel"}));
+        let mut c = node("c", "text");
+        c.props = Props::from_json(serde_json::json!({"content": "Save"}));
+
+        let root = node_with_children("root", "container", vec![a, b, c]);
+        let ids: Vec<&str> = Selector::text("Cancel")
+            .find_all(&root)
+            .iter()
+            .map(|n| n.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn find_all_id_returns_at_most_one_match() {
+        // ID selectors short-circuit on the first match by design.
+        // `find_all` mirrors that and still returns a Vec.
+        let root = node_with_children(
+            "root",
+            "container",
+            vec![
+                node("only-once", "button"),
+                node("only-once", "text"), // Same id; second one is unreachable.
+            ],
+        );
+        let found = Selector::id("only-once").find_all(&root);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].type_name, "button");
+    }
+
+    #[test]
+    fn find_all_focused_returns_every_focused_node() {
+        // Multiple focused indicators in the tree (uncommon but
+        // protocol-legal during transient focus shuffles); find_all
+        // returns all of them.
+        let mut a = node("a", "text_input");
+        a.props = Props::from_json(serde_json::json!({"focused": true}));
+        let mut b = node("b", "text_input");
+        b.props = Props::from_json(serde_json::json!({"a11y": {"focused": true}}));
+
+        let root = node_with_children("root", "container", vec![a, b]);
+        let ids: Vec<&str> = Selector::focused()
+            .find_all(&root)
+            .iter()
+            .map(|n| n.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn find_all_returns_empty_when_no_match() {
+        let root = node_with_children("root", "container", vec![node("a", "text")]);
+        assert!(Selector::role("button").find_all(&root).is_empty());
+    }
 }

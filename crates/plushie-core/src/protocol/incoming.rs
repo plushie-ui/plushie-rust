@@ -777,6 +777,356 @@ mod tests {
         assert!(matches!(msg, IncomingMessage::AdvanceFrame { .. }));
     }
 
+    // -----------------------------------------------------------------------
+    // ImageOp deserialization
+    //
+    // ImageOp shares the unified `_op` envelope shape with WindowOp and
+    // SystemOp. Each `op` selects a subset of the union-style payload
+    // (handle, data, pixels, width, height, tag); the renderer-side
+    // dispatch reads only the fields it needs.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn deserialize_image_op_create_from_bytes_with_base64_data() {
+        use base64::Engine as _;
+        let bytes: Vec<u8> = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "image_op",
+            "op": "create_from_bytes",
+            "payload": {
+                "handle": "logo",
+                "data": b64,
+            }
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::ImageOp { op, payload } => {
+                assert_eq!(op, "create_from_bytes");
+                assert_eq!(payload.handle, "logo");
+                assert_eq!(payload.data, Some(bytes));
+                assert_eq!(payload.pixels, None);
+            }
+            other => panic!("expected ImageOp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_image_op_create_from_rgba() {
+        use base64::Engine as _;
+        let pixels: Vec<u8> = vec![0xFF, 0x00, 0xFF, 0x80];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&pixels);
+
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "image_op",
+            "op": "create_from_rgba",
+            "payload": {
+                "handle": "swatch",
+                "pixels": b64,
+                "width": 1,
+                "height": 1,
+            }
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::ImageOp { op, payload } => {
+                assert_eq!(op, "create_from_rgba");
+                assert_eq!(payload.handle, "swatch");
+                assert_eq!(payload.pixels, Some(pixels));
+                assert_eq!(payload.width, Some(1));
+                assert_eq!(payload.height, Some(1));
+            }
+            other => panic!("expected ImageOp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_image_op_delete() {
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "image_op",
+            "op": "delete",
+            "payload": {"handle": "logo"}
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::ImageOp { op, payload } => {
+                assert_eq!(op, "delete");
+                assert_eq!(payload.handle, "logo");
+            }
+            other => panic!("expected ImageOp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_image_op_list_uses_tag() {
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "image_op",
+            "op": "list",
+            "payload": {"tag": "snapshot"}
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::ImageOp { op, payload } => {
+                assert_eq!(op, "list");
+                assert_eq!(payload.tag.as_deref(), Some("snapshot"));
+            }
+            other => panic!("expected ImageOp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_image_op_clear_with_default_payload() {
+        // The payload is `default` if absent; clear takes no fields.
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "image_op",
+            "op": "clear"
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::ImageOp { op, payload } => {
+                assert_eq!(op, "clear");
+                assert_eq!(payload.handle, "");
+                assert!(payload.data.is_none());
+                assert!(payload.pixels.is_none());
+            }
+            other => panic!("expected ImageOp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_image_op_with_byte_array_data() {
+        // Some hosts produce raw JSON byte arrays instead of base64
+        // strings (typically from msgpack-passthrough paths). The
+        // custom `deserialize_binary_field` accepts both.
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "image_op",
+            "op": "update",
+            "payload": {
+                "handle": "logo",
+                "data": [1, 2, 3, 255],
+            }
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::ImageOp { op, payload } => {
+                assert_eq!(op, "update");
+                assert_eq!(payload.data, Some(vec![1, 2, 3, 255]));
+            }
+            other => panic!("expected ImageOp, got {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // SystemOp / SystemQuery deserialization
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn deserialize_system_op() {
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "system_op",
+            "op": "allow_automatic_tabbing",
+            "payload": {"enabled": true}
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::SystemOp { op, payload } => {
+                assert_eq!(op, "allow_automatic_tabbing");
+                assert_eq!(payload["enabled"], true);
+            }
+            other => panic!("expected SystemOp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_system_op_with_default_payload() {
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "system_op",
+            "op": "noop"
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::SystemOp { op, payload } => {
+                assert_eq!(op, "noop");
+                assert!(payload.is_null());
+            }
+            other => panic!("expected SystemOp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_system_query() {
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "system_query",
+            "op": "get_system_theme",
+            "payload": {"tag": "t1"}
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::SystemQuery { op, payload } => {
+                assert_eq!(op, "get_system_theme");
+                assert_eq!(payload["tag"], "t1");
+            }
+            other => panic!("expected SystemQuery, got {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Effect stub register / unregister
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn deserialize_register_effect_stub() {
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "register_effect_stub",
+            "kind": "file_open",
+            "response": {"status": "ok", "result": {"path": "/tmp/x"}}
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::RegisterEffectStub { kind, response } => {
+                assert_eq!(kind, "file_open");
+                assert_eq!(response["status"], "ok");
+                assert_eq!(response["result"]["path"], "/tmp/x");
+            }
+            other => panic!("expected RegisterEffectStub, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_unregister_effect_stub() {
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "unregister_effect_stub",
+            "kind": "file_open"
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::UnregisterEffectStub { kind } => {
+                assert_eq!(kind, "file_open");
+            }
+            other => panic!("expected UnregisterEffectStub, got {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Negative paths: malformed types, unexpected nulls, extra fields
+    //
+    // The existing negative tests at `deserialize_malformed_json_*` cover
+    // missing fields, unknown tags, and invalid syntax. The cases here
+    // pin down field-type validation specifically.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn deserialize_rejects_image_op_with_wrong_typed_field() {
+        // `width` declared as `u32`; passing a string fails decode
+        // rather than falling through to `None`.
+        let result = serde_json::from_value::<IncomingMessage>(json!({
+            "type": "image_op",
+            "op": "create_from_rgba",
+            "payload": {
+                "handle": "x",
+                "pixels": "AA==",
+                "width": "not-a-number",
+                "height": 1,
+            }
+        }));
+        assert!(result.is_err(), "expected decode failure: {result:?}");
+    }
+
+    #[test]
+    fn deserialize_rejects_image_op_with_invalid_base64_data() {
+        // The custom binary-field deserializer must reject base64
+        // garbage at the boundary; a silent fallback would let bad
+        // input flow into the loader and surface as an opaque error.
+        let result = serde_json::from_value::<IncomingMessage>(json!({
+            "type": "image_op",
+            "op": "create_from_bytes",
+            "payload": {
+                "handle": "x",
+                "data": "***not-base64***",
+            }
+        }));
+        assert!(result.is_err(), "expected decode failure: {result:?}");
+    }
+
+    #[test]
+    fn deserialize_rejects_image_op_with_non_u8_in_byte_array() {
+        // Byte arrays must hold values that fit in u8.
+        let result = serde_json::from_value::<IncomingMessage>(json!({
+            "type": "image_op",
+            "op": "create_from_bytes",
+            "payload": {
+                "handle": "x",
+                "data": [1, 2, 999],
+            }
+        }));
+        assert!(result.is_err(), "expected decode failure: {result:?}");
+    }
+
+    #[test]
+    fn deserialize_rejects_image_op_with_unexpected_data_shape() {
+        // Object is neither a string (base64) nor an array (byte
+        // sequence) nor null; the custom deserializer must surface
+        // this rather than swallow it.
+        let result = serde_json::from_value::<IncomingMessage>(json!({
+            "type": "image_op",
+            "op": "create_from_bytes",
+            "payload": {
+                "handle": "x",
+                "data": {"oops": "an object"},
+            }
+        }));
+        assert!(result.is_err(), "expected decode failure: {result:?}");
+    }
+
+    #[test]
+    fn deserialize_image_op_treats_explicit_null_data_as_absent() {
+        // null and missing both deserialize to None for binary fields
+        // (intentional convergence; missing data is handled the same
+        // way as `data: null` by the renderer-side dispatch).
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "image_op",
+            "op": "create_from_bytes",
+            "payload": {
+                "handle": "x",
+                "data": null,
+            }
+        }))
+        .unwrap();
+        match msg {
+            IncomingMessage::ImageOp { payload, .. } => {
+                assert_eq!(payload.data, None);
+            }
+            other => panic!("expected ImageOp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deserialize_ignores_extra_unknown_fields() {
+        // Forward-compat: unknown top-level fields don't break decode.
+        // The renderer should accept tomorrow's extension fields today
+        // without rejecting the message.
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "snapshot",
+            "tree": {"id": "root", "type": "column", "props": {}, "children": []},
+            "future_field": {"unused": true},
+        }))
+        .unwrap();
+        assert!(matches!(msg, IncomingMessage::Snapshot { .. }));
+    }
+
+    #[test]
+    fn deserialize_register_effect_stub_rejects_missing_kind() {
+        // `kind` is required; serde reports the missing field instead
+        // of defaulting to empty. This protects against silent
+        // round-trips that lose the routing hint.
+        let result = serde_json::from_value::<IncomingMessage>(json!({
+            "type": "register_effect_stub",
+            "response": {"status": "ok"},
+        }));
+        assert!(result.is_err(), "expected decode failure: {result:?}");
+    }
+
     #[test]
     fn deserialize_load_font_with_base64_data() {
         use base64::Engine as _;

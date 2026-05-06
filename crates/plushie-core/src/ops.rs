@@ -1750,6 +1750,336 @@ mod tests {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // WindowOp wire round-trips
+    //
+    // Each variant goes through the (op, window_id, payload) <-> typed
+    // pair. The renderer parses the wire shape with `from_wire`, the SDK
+    // emits it via `to_wire`. Drift between the two would silently drop
+    // commands or misroute window IDs, so every variant gets an explicit
+    // round-trip pin here. Variants with parameters check field-by-field;
+    // the unit-window-id variants check the op string and id only.
+    // -----------------------------------------------------------------------
+
+    fn window_op_round_trip(op: WindowOp) {
+        let (op_str, wid, payload) = op.to_wire();
+        let parsed = WindowOp::from_wire(op_str, &wid, &payload)
+            .unwrap_or_else(|| panic!("WindowOp::from_wire returned None for op={op_str}"));
+        // Re-serialize the parsed op and compare to the original wire
+        // shape; this catches asymmetric (de)serializers without needing
+        // PartialEq on every typed variant.
+        let (re_op_str, re_wid, re_payload) = parsed.to_wire();
+        assert_eq!(op_str, re_op_str, "op string drift");
+        assert_eq!(wid, re_wid, "window_id drift");
+        assert_eq!(payload, re_payload, "payload drift");
+    }
+
+    #[test]
+    fn window_op_open_round_trips() {
+        window_op_round_trip(WindowOp::Open {
+            window_id: "main".into(),
+            settings: json!({"title": "App", "size": [800, 600]}),
+        });
+    }
+
+    #[test]
+    fn window_op_update_round_trips() {
+        window_op_round_trip(WindowOp::Update {
+            window_id: "main".into(),
+            settings: json!({"title": "Renamed"}),
+        });
+    }
+
+    #[test]
+    fn window_op_close_round_trips() {
+        window_op_round_trip(WindowOp::Close("popup".into()));
+    }
+
+    #[test]
+    fn window_op_resize_round_trips() {
+        window_op_round_trip(WindowOp::Resize {
+            window_id: "main".into(),
+            width: 800.0,
+            height: 600.0,
+        });
+    }
+
+    #[test]
+    fn window_op_move_round_trips() {
+        window_op_round_trip(WindowOp::Move {
+            window_id: "main".into(),
+            x: 100.0,
+            y: 200.0,
+        });
+    }
+
+    #[test]
+    fn window_op_maximize_round_trips() {
+        window_op_round_trip(WindowOp::Maximize {
+            window_id: "main".into(),
+            maximized: true,
+        });
+    }
+
+    #[test]
+    fn window_op_minimize_round_trips() {
+        window_op_round_trip(WindowOp::Minimize {
+            window_id: "main".into(),
+            minimized: false,
+        });
+    }
+
+    #[test]
+    fn window_op_set_mode_round_trips() {
+        window_op_round_trip(WindowOp::SetMode {
+            window_id: "main".into(),
+            mode: WindowMode::Fullscreen,
+        });
+        window_op_round_trip(WindowOp::SetMode {
+            window_id: "main".into(),
+            mode: WindowMode::Windowed,
+        });
+    }
+
+    #[test]
+    fn window_op_unit_variants_round_trip() {
+        for op in [
+            WindowOp::ToggleMaximize("main".into()),
+            WindowOp::ToggleDecorations("main".into()),
+            WindowOp::FocusWindow("main".into()),
+            WindowOp::DragWindow("main".into()),
+            WindowOp::EnableMousePassthrough("main".into()),
+            WindowOp::DisableMousePassthrough("main".into()),
+            WindowOp::ShowSystemMenu("main".into()),
+        ] {
+            window_op_round_trip(op);
+        }
+    }
+
+    #[test]
+    fn window_op_set_level_round_trips() {
+        for level in [
+            WindowLevel::Normal,
+            WindowLevel::AlwaysOnTop,
+            WindowLevel::AlwaysOnBottom,
+        ] {
+            window_op_round_trip(WindowOp::SetLevel {
+                window_id: "main".into(),
+                level,
+            });
+        }
+    }
+
+    #[test]
+    fn window_op_drag_resize_round_trips() {
+        window_op_round_trip(WindowOp::DragResize {
+            window_id: "main".into(),
+            direction: "north_east".into(),
+        });
+    }
+
+    #[test]
+    fn window_op_request_attention_round_trips() {
+        for urgency in [
+            None,
+            Some(NotificationUrgency::Low),
+            Some(NotificationUrgency::Normal),
+            Some(NotificationUrgency::Critical),
+        ] {
+            window_op_round_trip(WindowOp::RequestAttention {
+                window_id: "main".into(),
+                urgency,
+            });
+        }
+    }
+
+    #[test]
+    fn window_op_screenshot_round_trips() {
+        window_op_round_trip(WindowOp::Screenshot {
+            window_id: "main".into(),
+            tag: "snap".into(),
+        });
+    }
+
+    #[test]
+    fn window_op_resizable_min_max_round_trip() {
+        window_op_round_trip(WindowOp::SetResizable {
+            window_id: "main".into(),
+            resizable: true,
+        });
+        window_op_round_trip(WindowOp::SetMinSize {
+            window_id: "main".into(),
+            width: 320.0,
+            height: 240.0,
+        });
+        window_op_round_trip(WindowOp::SetMaxSize {
+            window_id: "main".into(),
+            width: 1920.0,
+            height: 1080.0,
+        });
+        window_op_round_trip(WindowOp::SetResizeIncrements {
+            window_id: "main".into(),
+            width: 8.0,
+            height: 8.0,
+        });
+    }
+
+    #[test]
+    fn window_op_set_icon_round_trips_with_base64() {
+        // SetIcon is the load-bearing variant: from_wire base64-decodes
+        // the data field; to_wire base64-encodes it back. A regression
+        // would silently produce a zero-byte icon.
+        let bytes = vec![0xAA_u8, 0xBB, 0xCC, 0xDD];
+        window_op_round_trip(WindowOp::SetIcon {
+            window_id: "main".into(),
+            data: bytes,
+            width: 16,
+            height: 16,
+        });
+    }
+
+    #[test]
+    fn window_op_set_icon_invalid_base64_returns_none() {
+        // Bad base64 must surface as "unrecognised" rather than as a
+        // zero-byte icon; the caller logs a diagnostic and skips.
+        let payload = json!({"data": "***not-base64***", "width": 16, "height": 16});
+        assert!(WindowOp::from_wire("set_icon", "main", &payload).is_none());
+    }
+
+    #[test]
+    fn window_op_unknown_op_returns_none() {
+        // Unrecognised op strings are surfaced as None so the renderer
+        // can log and continue rather than swallow the message.
+        let payload = json!({});
+        assert!(WindowOp::from_wire("not_a_real_op", "main", &payload).is_none());
+    }
+
+    #[test]
+    fn window_op_resize_uses_payload_defaults_when_fields_missing() {
+        // Fields default through the typed `f` extractor when the
+        // payload is incomplete. The renderer's window manager uses
+        // these defaults (800x600) for resize.
+        let parsed = WindowOp::from_wire("resize", "main", &json!({})).unwrap();
+        match parsed {
+            WindowOp::Resize { width, height, .. } => {
+                assert_eq!(width, 800.0);
+                assert_eq!(height, 600.0);
+            }
+            other => panic!("expected Resize, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn window_op_window_id_accessor_returns_target() {
+        // `window_id()` lets dispatchers route on a shared field
+        // regardless of which variant payload they hold; verify a
+        // representative case from each shape (struct vs tuple).
+        assert_eq!(
+            WindowOp::Resize {
+                window_id: "main".into(),
+                width: 0.0,
+                height: 0.0,
+            }
+            .window_id(),
+            Some("main"),
+        );
+        assert_eq!(WindowOp::Close("popup".into()).window_id(), Some("popup"),);
+    }
+
+    // -----------------------------------------------------------------------
+    // WindowQuery wire round-trips
+    // -----------------------------------------------------------------------
+
+    fn window_query_round_trip(q: WindowQuery) {
+        let (op_str, wid, payload) = q.to_wire();
+        let parsed = WindowQuery::from_wire(op_str, &wid, &payload)
+            .unwrap_or_else(|| panic!("WindowQuery::from_wire returned None for op={op_str}"));
+        let (re_op_str, re_wid, re_payload) = parsed.to_wire();
+        assert_eq!(op_str, re_op_str);
+        assert_eq!(wid, re_wid);
+        assert_eq!(payload, re_payload);
+    }
+
+    #[test]
+    fn window_query_all_variants_round_trip() {
+        let make = |build: fn(String, String) -> WindowQuery| build("main".into(), "tag1".into());
+        for q in [
+            make(|window_id, tag| WindowQuery::GetSize { window_id, tag }),
+            make(|window_id, tag| WindowQuery::GetPosition { window_id, tag }),
+            make(|window_id, tag| WindowQuery::IsMaximized { window_id, tag }),
+            make(|window_id, tag| WindowQuery::IsMinimized { window_id, tag }),
+            make(|window_id, tag| WindowQuery::GetMode { window_id, tag }),
+            make(|window_id, tag| WindowQuery::GetScaleFactor { window_id, tag }),
+            make(|window_id, tag| WindowQuery::MonitorSize { window_id, tag }),
+            make(|window_id, tag| WindowQuery::RawId { window_id, tag }),
+        ] {
+            window_query_round_trip(q);
+        }
+    }
+
+    #[test]
+    fn window_query_unknown_op_returns_none() {
+        assert!(WindowQuery::from_wire("not_a_query", "main", &json!({})).is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // SystemOp / SystemQuery wire round-trips
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn system_op_allow_automatic_tabbing_round_trips() {
+        let op = SystemOp::AllowAutomaticTabbing(true);
+        let (op_str, payload) = op.to_wire();
+        assert_eq!(op_str, "allow_automatic_tabbing");
+        assert_eq!(payload, json!({"enabled": true}));
+        match SystemOp::from_wire(op_str, &payload).unwrap() {
+            SystemOp::AllowAutomaticTabbing(enabled) => assert!(enabled),
+        }
+    }
+
+    #[test]
+    fn system_op_allow_automatic_tabbing_default_when_missing() {
+        // The wire contract defaults `enabled` to `true` when the
+        // field is absent; that's the documented "request enable"
+        // shorthand and the check pins it.
+        match SystemOp::from_wire("allow_automatic_tabbing", &json!({})).unwrap() {
+            SystemOp::AllowAutomaticTabbing(enabled) => assert!(enabled),
+        }
+    }
+
+    #[test]
+    fn system_op_unknown_op_returns_none() {
+        assert!(SystemOp::from_wire("not_a_real_system_op", &json!({})).is_none());
+    }
+
+    #[test]
+    fn system_query_get_theme_round_trips() {
+        let q = SystemQuery::GetTheme { tag: "t1".into() };
+        let (op_str, payload) = q.to_wire();
+        assert_eq!(op_str, "get_system_theme");
+        assert_eq!(payload, json!({"tag": "t1"}));
+        match SystemQuery::from_wire(op_str, &payload).unwrap() {
+            SystemQuery::GetTheme { tag } => assert_eq!(tag, "t1"),
+            other => panic!("expected GetTheme, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn system_query_get_info_round_trips() {
+        let q = SystemQuery::GetInfo { tag: "info".into() };
+        let (op_str, payload) = q.to_wire();
+        assert_eq!(op_str, "get_system_info");
+        match SystemQuery::from_wire(op_str, &payload).unwrap() {
+            SystemQuery::GetInfo { tag } => assert_eq!(tag, "info"),
+            other => panic!("expected GetInfo, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn system_query_unknown_op_returns_none() {
+        assert!(SystemQuery::from_wire("not_a_query", &json!({})).is_none());
+    }
+
     #[test]
     fn effect_parser_round_trips_typed_requests() {
         let requests = vec![

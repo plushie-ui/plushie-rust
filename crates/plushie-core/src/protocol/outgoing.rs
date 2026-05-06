@@ -1501,4 +1501,268 @@ mod tests {
         assert_eq!(event.family, "click");
         assert_eq!(event.id, "button");
     }
+
+    // -----------------------------------------------------------------------
+    // Subscription event constructors
+    //
+    // These constructors all flow through `Self::tagged()` and carry a
+    // `tag` instead of an `id`. The wire shape and the coalesce hint
+    // are part of the contract; both are pinned here.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn cursor_moved_serializes_with_position_value_and_replace_hint() {
+        let event = OutgoingEvent::cursor_moved("mouse".into(), 10.0, 20.0).with_session("s1");
+        assert!(matches!(event.coalesce_hint(), Some(CoalesceHint::Replace)));
+
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            json!({
+                "type": "event",
+                "session": "s1",
+                "family": "cursor_moved",
+                "id": "",
+                "tag": "mouse",
+                "value": {"x": 10.0, "y": 20.0},
+            })
+        );
+    }
+
+    #[test]
+    fn cursor_entered_left_serialize_without_value() {
+        let entered = OutgoingEvent::cursor_entered("mouse".into()).with_session("s1");
+        let left = OutgoingEvent::cursor_left("mouse".into()).with_session("s1");
+        for (event, family) in [(entered, "cursor_entered"), (left, "cursor_left")] {
+            let val = serde_json::to_value(event).unwrap();
+            assert_eq!(val["family"], family);
+            assert_eq!(val["tag"], "mouse");
+            // Constructors without a payload omit the `value` field.
+            assert!(val.get("value").is_none(), "{family} should omit value");
+        }
+    }
+
+    #[test]
+    fn button_pressed_released_carry_button_string() {
+        let pressed = OutgoingEvent::button_pressed("mouse".into(), "left".into());
+        assert_eq!(
+            serde_json::to_value(pressed).unwrap()["value"],
+            json!("left"),
+        );
+        let released = OutgoingEvent::button_released("mouse".into(), "right".into());
+        assert_eq!(
+            serde_json::to_value(released).unwrap()["family"],
+            "button_released",
+        );
+    }
+
+    #[test]
+    fn wheel_scrolled_serializes_with_accumulate_hint() {
+        let event = OutgoingEvent::wheel_scrolled("mouse".into(), 1.0, 2.0, "pixel");
+        match event.coalesce_hint() {
+            Some(CoalesceHint::Accumulate(fields)) => {
+                assert_eq!(fields, &vec!["delta_x".to_string(), "delta_y".to_string()]);
+            }
+            other => panic!("expected Accumulate hint, got {other:?}"),
+        }
+
+        let val = serde_json::to_value(event).unwrap();
+        assert_eq!(val["family"], "wheel_scrolled");
+        assert_eq!(val["value"]["delta_x"], 1.0);
+        assert_eq!(val["value"]["delta_y"], 2.0);
+        assert_eq!(val["value"]["unit"], "pixel");
+    }
+
+    #[test]
+    fn modifiers_changed_carries_modifiers_with_replace_hint() {
+        let event = OutgoingEvent::modifiers_changed(
+            "kbd".into(),
+            KeyModifiers {
+                shift: true,
+                ctrl: true,
+                alt: false,
+                logo: false,
+                command: false,
+            },
+        );
+        assert!(matches!(event.coalesce_hint(), Some(CoalesceHint::Replace)));
+        let val = serde_json::to_value(event).unwrap();
+        assert_eq!(val["family"], "modifiers_changed");
+        assert_eq!(val["modifiers"]["shift"], true);
+        assert_eq!(val["modifiers"]["ctrl"], true);
+        assert_eq!(val["modifiers"]["alt"], false);
+    }
+
+    #[test]
+    fn theme_changed_serializes_with_string_mode_and_replace_hint() {
+        let event = OutgoingEvent::theme_changed("theme".into(), "dark".into());
+        assert!(matches!(event.coalesce_hint(), Some(CoalesceHint::Replace)));
+        let val = serde_json::to_value(event).unwrap();
+        assert_eq!(val["family"], "theme_changed");
+        assert_eq!(val["value"], "dark");
+    }
+
+    #[test]
+    fn window_event_constructors_share_window_event_shape() {
+        for (event, family) in [
+            (
+                OutgoingEvent::window_closed("win".into(), "main".into()),
+                "window_closed",
+            ),
+            (
+                OutgoingEvent::window_close_requested("win".into(), "main".into()),
+                "window_close_requested",
+            ),
+            (
+                OutgoingEvent::window_focused("win".into(), "main".into()),
+                "window_focused",
+            ),
+            (
+                OutgoingEvent::window_unfocused("win".into(), "main".into()),
+                "window_unfocused",
+            ),
+            (
+                OutgoingEvent::files_hovered_left("win".into(), "main".into()),
+                "files_hovered_left",
+            ),
+        ] {
+            let val = serde_json::to_value(event).unwrap();
+            assert_eq!(val["family"], family);
+            assert_eq!(val["tag"], "win");
+            assert_eq!(val["value"]["window_id"], "main", "for {family}");
+        }
+    }
+
+    #[test]
+    fn window_opened_includes_position_when_provided() {
+        let with_pos = OutgoingEvent::window_opened(
+            "win".into(),
+            "main".into(),
+            Some((50.0, 75.0)),
+            800.0,
+            600.0,
+            2.0,
+        );
+        let val = serde_json::to_value(with_pos).unwrap();
+        assert_eq!(val["family"], "window_opened");
+        assert_eq!(val["value"]["window_id"], "main");
+        assert_eq!(val["value"]["width"], 800.0);
+        assert_eq!(val["value"]["height"], 600.0);
+        assert_eq!(val["value"]["scale_factor"], 2.0);
+        assert_eq!(val["value"]["x"], 50.0);
+        assert_eq!(val["value"]["y"], 75.0);
+    }
+
+    #[test]
+    fn window_opened_omits_position_when_absent() {
+        // Top-level x/y are absent rather than zero when the platform
+        // didn't report a position; mirrors the documented contract.
+        let without_pos =
+            OutgoingEvent::window_opened("win".into(), "main".into(), None, 800.0, 600.0, 1.0);
+        let val = serde_json::to_value(without_pos).unwrap();
+        assert!(val["value"].get("x").is_none());
+        assert!(val["value"].get("y").is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Touch event constructors
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn finger_event_constructors_share_payload_shape() {
+        for (event, family, expects_replace) in [
+            (
+                OutgoingEvent::finger_pressed("touch".into(), 7, 1.0, 2.0),
+                "finger_pressed",
+                false,
+            ),
+            (
+                OutgoingEvent::finger_moved("touch".into(), 7, 1.0, 2.0),
+                "finger_moved",
+                true,
+            ),
+            (
+                OutgoingEvent::finger_lifted("touch".into(), 7, 1.0, 2.0),
+                "finger_lifted",
+                false,
+            ),
+            (
+                OutgoingEvent::finger_lost("touch".into(), 7, 1.0, 2.0),
+                "finger_lost",
+                false,
+            ),
+        ] {
+            let has_replace = matches!(event.coalesce_hint(), Some(CoalesceHint::Replace));
+            assert_eq!(
+                has_replace, expects_replace,
+                "{family} coalesce hint mismatch (only finger_moved should coalesce)"
+            );
+            let val = serde_json::to_value(event).unwrap();
+            assert_eq!(val["family"], family);
+            assert_eq!(val["tag"], "touch");
+            assert_eq!(val["value"]["id"], 7);
+            assert_eq!(val["value"]["x"], 1.0);
+            assert_eq!(val["value"]["y"], 2.0);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Coalesce-hint behavior
+    //
+    // The action plan calls out CoalesceHint::Accumulate as
+    // load-bearing (delta_x/delta_y in wheel_scrolled, pointer_scroll).
+    // The hint itself is metadata; the renderer's emitter is what
+    // sums the deltas. This test pins the emitter-input contract: the
+    // hint is `Accumulate(["delta_x", "delta_y"])` for both
+    // wheel_scrolled and pointer_scroll.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn pointer_scroll_carries_accumulate_hint_for_deltas() {
+        let event = OutgoingEvent::pointer_scroll(
+            "scroller".into(),
+            5.0,
+            10.0,
+            1.5,
+            -2.5,
+            "mouse",
+            KeyModifiers::default(),
+        );
+        match event.coalesce_hint() {
+            Some(CoalesceHint::Accumulate(fields)) => {
+                let mut sorted: Vec<&str> = fields.iter().map(String::as_str).collect();
+                sorted.sort();
+                assert_eq!(sorted, vec!["delta_x", "delta_y"]);
+            }
+            other => panic!("expected Accumulate hint, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn coalesce_hint_persists_after_with_session() {
+        // `with_session` rebuilds the struct via the builder pattern;
+        // verify the hint isn't dropped on the way through.
+        let event = OutgoingEvent::cursor_moved("mouse".into(), 0.0, 0.0).with_session("s1");
+        assert!(matches!(event.coalesce_hint(), Some(CoalesceHint::Replace)));
+    }
+
+    #[test]
+    fn take_coalesce_consumes_hint_only_once() {
+        let mut event = OutgoingEvent::cursor_moved("mouse".into(), 0.0, 0.0);
+        assert!(event.take_coalesce().is_some());
+        // Second take returns None; the hint is already consumed by
+        // the renderer's coalesce pipeline.
+        assert!(event.take_coalesce().is_none());
+    }
+
+    #[test]
+    fn coalesce_hint_field_is_skipped_on_serialization() {
+        // The hint is renderer-internal metadata; it must not leak
+        // onto the wire. Pin the contract explicitly here so a future
+        // serde tweak can't quietly start exposing it.
+        let event = OutgoingEvent::cursor_moved("mouse".into(), 0.0, 0.0);
+        let val = serde_json::to_value(event).unwrap();
+        assert!(val.get("coalesce").is_none());
+        let object = val.as_object().unwrap();
+        assert!(!object.contains_key("coalesce_hint"));
+    }
 }

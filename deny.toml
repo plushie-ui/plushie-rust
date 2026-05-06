@@ -1,41 +1,98 @@
 # cargo-deny config for plushie-rust.
 #
-# Run locally with `cargo deny check`. CI runs this on the nightly
-# audit schedule alongside `cargo audit`. License coverage is the
-# primary motivation: plushie ships as MIT OR Apache-2.0, and the
-# transitive dep graph pulls in a few hundred crates. A permissive
-# allowlist matches what iced, winit, wgpu, and similar upstreams
-# already depend on; GPL / AGPL / OSL licenses would be surprising
-# and worth surfacing.
+# Run locally with `cargo deny check`. CI runs this on every PR
+# (license/advisory checks are seconds and worth catching at review
+# time) and again on the nightly audit schedule alongside `cargo
+# audit`. License coverage is the primary motivation: plushie ships
+# as MIT OR Apache-2.0, and the transitive dep graph pulls in a few
+# hundred crates. A permissive allowlist matches what iced, winit,
+# wgpu, and similar upstreams already depend on; GPL / AGPL / OSL
+# licenses would be surprising and worth surfacing.
 
 [advisories]
-yanked = "warn"
+# Vulnerabilities and yanked crates are hard-fail by default; that
+# default is documented here rather than relying on it being implicit.
+# Unmaintained advisories tend to come from upstream choices we can't
+# act on (yaml-rust pulled in via syntect via plushie-iced-highlighter,
+# bincode 1.x via the same path); they are listed in `ignore` with a
+# reason rather than fully suppressed at the axis level. New
+# unmaintained advisories not in the list still surface as errors so
+# they get triaged.
+yanked = "deny"
+ignore = [
+    { id = "RUSTSEC-2024-0320", reason = "yaml-rust is unmaintained; pulled in transitively by syntect/plushie-iced-highlighter, no safe alternative without dropping syntax highlighting upstream" },
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1.x is unmaintained; pulled in transitively by syntect/plushie-iced-highlighter, no safe alternative without dropping syntax highlighting upstream" },
+]
 
 [licenses]
 # Permissive licenses compatible with MIT OR Apache-2.0 distribution.
-# Zlib, BSD variants, ISC, Unicode-3.0, and MPL-2.0 match the current
-# transitive graph. CC0-1.0 and 0BSD are effectively public domain.
+# Each entry corresponds to at least one crate currently in the
+# resolved graph; cargo-deny warns on unmatched entries so this list
+# stays honest.
 allow = [
     "MIT",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    "BSL-1.0",
     "ISC",
     "Zlib",
-    "MPL-2.0",
-    "CC0-1.0",
     "0BSD",
     "Unicode-3.0",
-    "Unicode-DFS-2016",
-    "BSL-1.0",
-    "OpenSSL",
+    "CDLA-Permissive-2.0",
 ]
-confidence-threshold = 0.9
+# Require an exact license-text match. Anything below 1.0 means
+# cargo-deny guessed; force a [[licenses.clarify]] entry instead so
+# the choice is visible.
+confidence-threshold = 1.0
 
 [bans]
-multiple-versions = "allow"
+# Surface duplicate versions as a warning so they stay visible in CI
+# logs without breaking the build. The `skip` list documents the
+# inevitable cases (transitive deps the upstream graph holds at
+# different versions for legitimate reasons).
+multiple-versions = "warn"
 wildcards = "warn"
+skip = [
+    # png 0.17 still pulls bitflags 1.x; everything else is on 2.x.
+    { crate = "bitflags@1" },
+    # hashbrown ships major versions on a roughly six-month cadence;
+    # the ecosystem catches up over multiple releases.
+    { crate = "hashbrown" },
+    # thiserror 2 is the current major; some transitive deps still
+    # pin 1.x.
+    { crate = "thiserror@1" },
+    # toml_edit pulls winnow 0.7; cargo-platform / dependencies on
+    # newer toml_edit pull winnow 1.x.
+    { crate = "winnow" },
+    # The `windows` ecosystem rolls forward at its own cadence and
+    # different upstreams (winit, accesskit_winit, wgpu-hal) settle
+    # on different majors. Pinning a single version is a lockfile
+    # exercise (see CLAUDE.md's gpu-allocator / windows 0.62 note),
+    # not a deny.toml exercise.
+    { crate = "windows" },
+    { crate = "windows-sys" },
+    { crate = "windows-targets" },
+    { crate = "windows-core" },
+    { crate = "windows-result" },
+    { crate = "windows-strings" },
+    { crate = "windows-link" },
+    { crate = "windows-implement" },
+    { crate = "windows-interface" },
+    { crate = "windows-future" },
+    { crate = "windows-collections" },
+    { crate = "windows-numerics" },
+    { crate = "windows-threading" },
+    { crate = "windows_aarch64_gnullvm" },
+    { crate = "windows_aarch64_msvc" },
+    { crate = "windows_i686_gnu" },
+    { crate = "windows_i686_gnullvm" },
+    { crate = "windows_i686_msvc" },
+    { crate = "windows_x86_64_gnu" },
+    { crate = "windows_x86_64_gnullvm" },
+    { crate = "windows_x86_64_msvc" },
+]
 
 [sources]
 unknown-registry = "deny"

@@ -1300,7 +1300,9 @@ fn load_font_from_payload<R: PlushieRenderer>(
 /// headless). Once loaded, fonts are available to all subsequent renders.
 fn load_font_bytes(bytes: Vec<u8>) {
     let fs = iced::advanced::graphics::text::font_system();
-    let mut guard = fs.write().expect("font system lock");
+    // A panic in the font system is non-fatal here; recover the
+    // inner state so subsequent loads still proceed.
+    let mut guard = fs.write().unwrap_or_else(|e| e.into_inner());
     guard.load_font(std::borrow::Cow::Owned(bytes));
 }
 

@@ -13,9 +13,18 @@ use crate::shared_state::MAX_TREE_DEPTH;
 
 /// Retained tree store. Holds the current root node (if any) and supports
 /// full replacement (snapshot) and incremental patch application.
+///
+/// Maintains an internal `id_index` mapping each node ID to the
+/// child-index path that addresses it from the root. The index is
+/// rebuilt on every snapshot and after every `apply_patch` call so
+/// `find_by_id` is O(path-depth) instead of O(tree-size). Empty IDs
+/// (legal for unaddressable nodes) are not indexed; under duplicate
+/// IDs the first depth-first occurrence wins, matching the recursive
+/// scan it replaces.
 #[derive(Debug, Default)]
 pub struct Tree {
     root: Option<TreeNode>,
+    id_index: HashMap<String, Vec<usize>>,
 }
 
 impl Tree {
@@ -31,6 +40,7 @@ impl Tree {
     /// The caller should emit a protocol error so the host can fix the bug.
     pub fn snapshot(&mut self, root: TreeNode) -> Result<(), Vec<String>> {
         self.root = Some(root);
+        self.rebuild_id_index();
         // Validate after setting: the tree is accepted regardless, but
         // duplicates are reported as errors.
         if let Some(root) = self.root.as_ref() {
@@ -70,15 +80,25 @@ impl Tree {
         ids
     }
 
-    /// Find a node by ID, searching the entire tree depth-first.
+    /// Find a node by ID. Goes through the `id_index` for O(depth)
+    /// lookup instead of a full depth-first scan.
     pub fn find_by_id(&self, node_id: &str) -> Option<&TreeNode> {
         let root = self.root.as_ref()?;
-        find_by_id_recursive(root, node_id, 0)
+        let path = self.id_index.get(node_id)?;
+        navigate(root, path).ok()
     }
 
     /// Returns the type name of the node with the given ID, if found.
     pub fn find_by_type(&self, node_id: &str) -> Option<&str> {
         self.find_by_id(node_id).map(|n| n.type_name.as_str())
+    }
+
+    fn rebuild_id_index(&mut self) {
+        self.id_index.clear();
+        if let Some(root) = self.root.as_ref() {
+            let mut path = Vec::new();
+            collect_id_index(root, &mut path, &mut self.id_index, 0);
+        }
     }
 
     /// Validate protocol ordering for a sequence of patch operations.
@@ -128,6 +148,11 @@ impl Tree {
                 }
             }
         }
+        // Index paths can shift under insert_child/remove_child and
+        // get rewritten under replace_node. Rebuilding once per
+        // apply_patch keeps incremental complexity off the inner
+        // loop and matches the snapshot path's index ownership.
+        self.rebuild_id_index();
         exit_nodes
     }
 
@@ -397,23 +422,27 @@ fn classify_patch_order_op(op: &PatchOp) -> Option<PatchOrderOp<'_>> {
     }
 }
 
-fn find_by_id_recursive<'a>(
-    node: &'a TreeNode,
-    node_id: &str,
+/// Walk the tree depth-first and record the path to each non-empty
+/// node ID. Mirrors the original `find_by_id` semantics: when an ID
+/// appears more than once (which the validator already flags as a
+/// host bug), only the first depth-first occurrence is indexed.
+fn collect_id_index(
+    node: &TreeNode,
+    path: &mut Vec<usize>,
+    out: &mut HashMap<String, Vec<usize>>,
     depth: usize,
-) -> Option<&'a TreeNode> {
+) {
     if depth > MAX_TREE_DEPTH {
-        return None;
+        return;
     }
-    if node.id == node_id {
-        return Some(node);
+    if !node.id.is_empty() {
+        out.entry(node.id.clone()).or_insert_with(|| path.clone());
     }
-    for child in &node.children {
-        if let Some(found) = find_by_id_recursive(child, node_id, depth + 1) {
-            return Some(found);
-        }
+    for (idx, child) in node.children.iter().enumerate() {
+        path.push(idx);
+        collect_id_index(child, path, out, depth + 1);
+        path.pop();
     }
-    None
 }
 
 fn find_window_recursive<'a>(
@@ -1615,5 +1644,171 @@ mod tests {
             !ids.contains(&"deep_win".to_string()),
             "window beyond MAX_TREE_DEPTH should not appear in window_ids"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // id_index: find_by_id across snapshot + patch
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn find_by_id_finds_root() {
+        let mut tree = Tree::new();
+        let _ = tree.snapshot(node("root", "column"));
+        let found = tree.find_by_id("root").unwrap();
+        assert_eq!(found.id, "root");
+    }
+
+    #[test]
+    fn find_by_id_finds_nested_descendant() {
+        let mut tree = Tree::new();
+        let root = node_with_children(
+            "root",
+            "column",
+            vec![node_with_children("row", "row", vec![node("deep", "text")])],
+        );
+        let _ = tree.snapshot(root);
+        let found = tree.find_by_id("deep").unwrap();
+        assert_eq!(found.id, "deep");
+        assert_eq!(found.type_name, "text");
+    }
+
+    #[test]
+    fn find_by_id_returns_none_for_missing() {
+        let mut tree = Tree::new();
+        let _ = tree.snapshot(node("root", "column"));
+        assert!(tree.find_by_id("ghost").is_none());
+    }
+
+    #[test]
+    fn find_by_id_skips_empty_ids() {
+        let mut tree = Tree::new();
+        let root = node_with_children("root", "column", vec![node("", "text"), node("a", "text")]);
+        let _ = tree.snapshot(root);
+        // Empty ID is not indexed, but a real one is reachable.
+        assert!(tree.find_by_id("").is_none());
+        assert!(tree.find_by_id("a").is_some());
+    }
+
+    #[test]
+    fn find_by_id_first_match_wins_under_duplicates() {
+        let mut tree = Tree::new();
+        // Two nodes share an ID: the first one (depth-first) is the
+        // visible one through the index. The validator will report
+        // the duplicate, but the lookup must remain stable.
+        let root = node_with_children(
+            "root",
+            "column",
+            vec![
+                node_with_props("dupe", "text", json!({"content": "first"})),
+                node_with_props("dupe", "button", json!({"content": "second"})),
+            ],
+        );
+        let _ = tree.snapshot(root);
+        let found = tree.find_by_id("dupe").unwrap();
+        assert_eq!(found.type_name, "text");
+        assert_eq!(found.props.to_value()["content"], "first");
+    }
+
+    #[test]
+    fn id_index_reflects_inserts_and_removes() {
+        let mut tree = Tree::new();
+        let _ = tree.snapshot(node("root", "column"));
+        assert!(tree.find_by_id("root").is_some());
+
+        // Insert "a" at index 0; insert_child shifts no existing
+        // index because parent is empty.
+        tree.apply_patch(vec![make_patch_op(
+            "insert_child",
+            vec![],
+            json!({
+                "index": 0,
+                "node": {"id": "a", "type": "text", "props": {}, "children": []}
+            }),
+        )]);
+        assert_eq!(tree.find_by_id("a").unwrap().id, "a");
+
+        // Insert "b" at index 0, pushing "a" to index 1. The index
+        // entry for "a" must follow the shift.
+        tree.apply_patch(vec![make_patch_op(
+            "insert_child",
+            vec![],
+            json!({
+                "index": 0,
+                "node": {"id": "b", "type": "text", "props": {}, "children": []}
+            }),
+        )]);
+        assert_eq!(tree.find_by_id("a").unwrap().id, "a");
+        assert_eq!(tree.find_by_id("b").unwrap().id, "b");
+
+        // Update a prop on "a" (now at child index 1) and confirm
+        // the index lookup still reaches the right node.
+        tree.apply_patch(vec![make_patch_op(
+            "update_props",
+            vec![1],
+            json!({"props": {"content": "updated"}}),
+        )]);
+        assert_eq!(
+            tree.find_by_id("a").unwrap().props.to_value()["content"],
+            "updated"
+        );
+
+        // Remove "b" at index 0; "a" shifts back to index 0. The
+        // index for "b" disappears; "a" still resolves.
+        tree.apply_patch(vec![make_patch_op(
+            "remove_child",
+            vec![],
+            json!({"index": 0}),
+        )]);
+        assert!(tree.find_by_id("b").is_none());
+        let a = tree.find_by_id("a").unwrap();
+        assert_eq!(a.id, "a");
+        assert_eq!(a.props.to_value()["content"], "updated");
+
+        // Replace "a" with "c"; the old ID drops from the index,
+        // the new one appears.
+        tree.apply_patch(vec![make_patch_op(
+            "replace_node",
+            vec![0],
+            json!({
+                "node": {"id": "c", "type": "button", "props": {}, "children": []}
+            }),
+        )]);
+        assert!(tree.find_by_id("a").is_none());
+        assert_eq!(tree.find_by_id("c").unwrap().type_name, "button");
+    }
+
+    #[test]
+    fn id_index_indexes_descendants_added_via_replace() {
+        let mut tree = Tree::new();
+        let _ = tree.snapshot(node("root", "column"));
+        // Replace root with a richer subtree; every nested ID
+        // should be reachable through find_by_id afterwards.
+        tree.apply_patch(vec![make_patch_op(
+            "replace_node",
+            vec![],
+            json!({
+                "node": {
+                    "id": "new_root",
+                    "type": "column",
+                    "props": {},
+                    "children": [
+                        {"id": "kid_a", "type": "text", "props": {}, "children": []},
+                        {
+                            "id": "kid_b",
+                            "type": "row",
+                            "props": {},
+                            "children": [
+                                {"id": "grand", "type": "text", "props": {}, "children": []}
+                            ]
+                        }
+                    ]
+                }
+            }),
+        )]);
+        assert!(tree.find_by_id("root").is_none());
+        assert_eq!(tree.find_by_id("new_root").unwrap().type_name, "column");
+        assert_eq!(tree.find_by_id("kid_a").unwrap().type_name, "text");
+        assert_eq!(tree.find_by_id("kid_b").unwrap().type_name, "row");
+        assert_eq!(tree.find_by_id("grand").unwrap().type_name, "text");
     }
 }

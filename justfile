@@ -10,7 +10,7 @@ default:
 
 # === CI Preflight ===
 
-preflight: check check-release clippy fmt test test-examples test-wire test-feature-combos doc
+preflight: check check-release clippy fmt test test-examples test-wire test-wire-dev test-feature-combos doc
     @echo ""
     @echo "All preflight checks passed!"
 
@@ -50,10 +50,13 @@ test-wire:
     cargo test -p plushie --features wire --test wire_image_ops
     cargo test -p plushie --features wire --test automation_replay_windowed
 
+# Hot-reload integration test exercises the wire+dev feature combo
+# (control-signal-driven renderer swap). Runs against the
+# plushie-renderer binary built earlier in the preflight chain.
+test-wire-dev:
+    cargo nextest run -p plushie --features "wire,dev" --test wire_hot_reload --profile ci
+
 test-feature-combos:
-    # The "wire,dev" combo (wire_hot_reload) is currently broken at
-    # the lib-level (see follow-up-questions.md Q11); add back once
-    # the dev::overlay module is ported to TreeNode.
     cargo nextest run -p plushie --no-default-features --test no_runner_features --profile ci
 
 test-cargo:

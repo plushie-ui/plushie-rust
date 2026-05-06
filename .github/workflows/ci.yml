@@ -61,11 +61,9 @@ jobs:
       - name: Test - examples
         run: cargo test -p plushie --examples --locked
 
-      # The "wire,dev" combo (wire_hot_reload) is currently broken at
-      # the lib-level (see follow-up-questions.md Q11); add the
-      # `cargo nextest run -p plushie --features "wire,dev" --test
-      # wire_hot_reload --profile ci` step back once the dev::overlay
-      # module is ported to TreeNode.
+      - name: Test - wire+dev hot-reload
+        run: cargo nextest run -p plushie --features "wire,dev" --test wire_hot_reload --profile ci --locked
+
       - name: Test - no runner features
         run: cargo nextest run -p plushie --no-default-features --test no_runner_features --profile ci --locked
 

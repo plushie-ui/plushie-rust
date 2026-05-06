@@ -216,10 +216,19 @@ impl EventEmitter {
                 Vec::new()
             }
         };
+        if buffered.is_empty() {
+            return;
+        }
+        // Hold the sink lock for the whole batch so the writes appear
+        // contiguous on the wire and so we only pay one buffer flush.
+        let mut guard = self.sink.lock();
         for event in buffered {
-            if let Err(e) = self.with_sink(|sink| sink.emit_event(event)) {
+            if let Err(e) = guard.emit_event(event) {
                 log::error!("event sink write error: {e}");
             }
+        }
+        if let Err(e) = guard.flush_output() {
+            log::error!("event sink flush error: {e}");
         }
     }
 
@@ -410,13 +419,16 @@ impl EventEmitter {
         let mut tasks: Vec<Task<Message>> = Vec::new();
         for (key, pending) in drained {
             self.last_emits.insert(key, now);
-            tasks.push(self.do_emit(pending.into_event()));
+            tasks.push(self.do_emit_no_flush(pending.into_event()));
         }
         if tasks.is_empty() {
-            Task::none()
-        } else {
-            Task::batch(tasks)
+            return Task::none();
         }
+        // One flush for the whole drained batch: the BufWriter inside
+        // the sink has been accumulating bytes for every event in the
+        // loop, and we want a single syscall to push them to the host.
+        tasks.push(self.flush_output());
+        Task::batch(tasks)
     }
 
     /// Buffer an event under the given key.
@@ -487,8 +499,16 @@ impl EventEmitter {
     ///
     /// Used by methods that return `io::Result` (e.g. event handlers
     /// in events.rs, apply.rs).
+    ///
+    /// These callers wait on the result before continuing (e.g. they
+    /// emit a `session_error` and exit on write failure), so this
+    /// path flushes the sink before returning instead of leaving the
+    /// event in the BufWriter for the next coalesce-flush boundary.
     pub fn emit_event(&self, event: OutgoingEvent) -> std::io::Result<()> {
-        self.with_sink(|sink| sink.emit_event(event))
+        self.with_sink(|sink| {
+            sink.emit_event(event)?;
+            sink.flush_output()
+        })
     }
 
     /// Write an event directly to the sink, bypassing rate limiting.
@@ -538,7 +558,13 @@ impl EventEmitter {
         self.with_sink(|sink| sink.write_raw(bytes))
     }
 
-    fn do_emit(&self, event: OutgoingEvent) -> Task<Message> {
+    /// Write a single event without flushing the underlying buffer.
+    ///
+    /// Used inside loops that drain the pending coalesce map: a
+    /// single `flush_output()` call at the end of the loop produces
+    /// one syscall for the whole batch. For one-shot callers,
+    /// [`do_emit`](Self::do_emit) chains the flush automatically.
+    fn do_emit_no_flush(&self, event: OutgoingEvent) -> Task<Message> {
         {
             let mut state = self.batch.lock();
             if state.depth > 0 {
@@ -550,6 +576,36 @@ impl EventEmitter {
             Ok(()) => Task::none(),
             Err(e) => {
                 log::error!("write error: {e}");
+                iced::exit()
+            }
+        }
+    }
+
+    fn do_emit(&self, event: OutgoingEvent) -> Task<Message> {
+        // Inside an active batch the event goes into the in-memory
+        // buffer and the sink sees nothing until end_batch; skip
+        // flushing in that case.
+        let buffered = {
+            let state = self.batch.lock();
+            state.depth > 0
+        };
+        let emit = self.do_emit_no_flush(event);
+        if buffered {
+            return emit;
+        }
+        Task::batch([emit, self.flush_output()])
+    }
+
+    /// Flush the sink's output buffer.
+    ///
+    /// Returns `Task::none()` on success, `iced::exit()` on a broken
+    /// pipe so the renderer exits cleanly when the host has
+    /// disconnected mid-batch.
+    fn flush_output(&self) -> Task<Message> {
+        match self.with_sink(|sink| sink.flush_output()) {
+            Ok(()) => Task::none(),
+            Err(e) => {
+                log::error!("flush error: {e}");
                 iced::exit()
             }
         }
@@ -1094,5 +1150,206 @@ mod tests {
 
         let _ = emitter.flush_key(&key);
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    /// A sink that accepts writes (so the BufWriter-style coalesced
+    /// path ends up calling `flush_output` once at the end of the
+    /// drain) but reports broken-pipe on the buffer flush. The
+    /// emitter must surface that as an exit task instead of
+    /// swallowing it.
+    struct FlushFailingSink {
+        flushes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        writes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+    impl EventSink for FlushFailingSink {
+        fn emit_event(&mut self, _: OutgoingEvent) -> std::io::Result<()> {
+            self.writes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+        fn emit_effect_response(
+            &mut self,
+            _: plushie_widget_sdk::protocol::EffectResponse,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_query_response(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &serde_json::Value,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_screenshot_response(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: &[u8],
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_hello(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &[&str],
+            _: &[&str],
+            _: &str,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn emit_diagnostic(
+            &mut self,
+            _: plushie_widget_sdk::protocol::DiagnosticMessage,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn flush_output(&mut self) -> std::io::Result<()> {
+            self.flushes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+    }
+
+    /// Coalesce-flush path must surface a broken-pipe-on-flush
+    /// error. With BufWriter wrapping the underlying writer, write
+    /// errors only show up at flush time; the renderer would wedge
+    /// if the flush failure didn't produce an exit task.
+    #[test]
+    fn flush_all_propagates_flush_output_error() {
+        let writes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let flushes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let sink: Arc<SinkMutex> = Arc::new(Mutex::new(Box::new(FlushFailingSink {
+            writes: writes.clone(),
+            flushes: flushes.clone(),
+        })));
+        let mut emitter = EventEmitter::new(sink);
+
+        let key = CoalesceKey::Subscription("on_pointer_move".into());
+        let hint = CoalesceHint::Replace;
+        let _ = emitter.buffer_event(&key, make_event("pointer_moved", ""), &hint);
+        assert_eq!(emitter.pending.len(), 1);
+
+        // Drive the FlushCoalesce timer entry point; the buffered
+        // event drains, the BufWriter flushes, the flush errors,
+        // and the resulting Task carries iced::exit. We can't
+        // introspect the Task directly without running an iced
+        // runtime, but we can prove the flush path ran exactly
+        // once for the whole drained batch.
+        let _task = emitter.flush();
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(flushes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(emitter.pending.is_empty());
+    }
+
+    /// Direct emit path: a coalescable event whose rate limit
+    /// allows immediate dispatch must still flush after writing
+    /// (otherwise the BufWriter holds the bytes indefinitely).
+    #[test]
+    fn coalesce_immediate_path_flushes_after_emit() {
+        let writes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let flushes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let sink: Arc<SinkMutex> = Arc::new(Mutex::new(Box::new(FlushFailingSink {
+            writes: writes.clone(),
+            flushes: flushes.clone(),
+        })));
+        let mut emitter = EventEmitter::new(sink);
+
+        // No rate -> coalesce takes the immediate emit branch.
+        let event = make_event("pointer_moved", "").with_coalesce(CoalesceHint::Replace);
+        let key = CoalesceKey::Subscription("on_pointer_move".into());
+        let _task = emitter.coalesce(key, event);
+
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(flushes.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    /// Drained batch produces one syscall worth of work for the
+    /// whole flush, not one per event.
+    #[test]
+    fn flush_all_uses_single_flush_for_whole_batch() {
+        let writes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let flushes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        struct SuccessSink {
+            writes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+            flushes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        }
+        impl EventSink for SuccessSink {
+            fn emit_event(&mut self, _: OutgoingEvent) -> std::io::Result<()> {
+                self.writes
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            }
+            fn emit_effect_response(
+                &mut self,
+                _: plushie_widget_sdk::protocol::EffectResponse,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn emit_query_response(
+                &mut self,
+                _: &str,
+                _: &str,
+                _: &serde_json::Value,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn emit_screenshot_response(
+                &mut self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: u32,
+                _: u32,
+                _: &[u8],
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn emit_hello(
+                &mut self,
+                _: &str,
+                _: &str,
+                _: &[&str],
+                _: &[&str],
+                _: &str,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn emit_diagnostic(
+                &mut self,
+                _: plushie_widget_sdk::protocol::DiagnosticMessage,
+            ) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> {
+                Ok(())
+            }
+            fn flush_output(&mut self) -> std::io::Result<()> {
+                self.flushes
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let sink: Arc<SinkMutex> = Arc::new(Mutex::new(Box::new(SuccessSink {
+            writes: writes.clone(),
+            flushes: flushes.clone(),
+        })));
+        let mut emitter = EventEmitter::new(sink);
+
+        for i in 0..5 {
+            let key = CoalesceKey::Subscription(format!("sub_{i}"));
+            let _ = emitter.buffer_event(&key, make_event("ev", ""), &CoalesceHint::Replace);
+        }
+        let _task = emitter.flush();
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 5);
+        assert_eq!(flushes.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

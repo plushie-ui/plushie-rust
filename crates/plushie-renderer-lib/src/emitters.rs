@@ -9,7 +9,7 @@
 //! an App instance (startup handshake, headless writer thread):
 //! [`emit_hello`], [`write_output`].
 
-use std::io;
+use std::io::{self, BufWriter, Write};
 use std::sync::{Arc, OnceLock};
 
 use parking_lot::Mutex;
@@ -75,6 +75,22 @@ pub trait EventSink: Send {
 
     /// Write pre-encoded bytes (for stub acks and scripting).
     fn write_raw(&mut self, bytes: &[u8]) -> io::Result<()>;
+
+    /// Flush any buffered output to the underlying transport.
+    ///
+    /// Sinks that buffer (e.g. [`WriterSink`] wraps a `BufWriter` so
+    /// high-frequency `emit_event` calls coalesce into fewer
+    /// syscalls) override this to surface the flush. The default
+    /// `Ok(())` covers in-memory test sinks and direct-mode sinks
+    /// where every emit is already synchronous.
+    ///
+    /// A broken-pipe error here propagates the same way every
+    /// other emit error does: the caller turns it into
+    /// `iced::exit()` so the renderer exits cleanly when the host
+    /// has disconnected.
+    fn flush_output(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -143,10 +159,22 @@ fn with_sink<R>(f: impl FnOnce(&mut dyn EventSink) -> io::Result<R>) -> io::Resu
 ///
 /// Used by the renderer binary and WASM entry points to write
 /// encoded wire protocol messages to stdout or a channel.
+///
+/// The inner writer is wrapped in a `BufWriter` so high-frequency
+/// `emit_event` calls accumulate without paying a syscall per call.
+/// The buffer drains at coalesce-flush boundaries (via the trait's
+/// [`flush_output`](EventSink::flush_output)), and synchronous
+/// response paths (effect/query/screenshot/hello/diagnostic and
+/// `write_raw`) flush themselves before returning so the host sees
+/// the response without further coordination.
 pub struct WriterSink {
-    writer: Box<dyn std::io::Write + Send>,
+    writer: BufWriter<Box<dyn std::io::Write + Send>>,
     codec: plushie_widget_sdk::runtime::Codec,
 }
+
+/// Buffer size for the WriterSink's BufWriter. 8 KiB is the std
+/// default; explicit here so the choice is visible at the call site.
+const WRITER_BUF_CAP: usize = 8 * 1024;
 
 impl WriterSink {
     /// Create a WriterSink with an explicit codec.
@@ -154,15 +182,21 @@ impl WriterSink {
         writer: Box<dyn std::io::Write + Send>,
         codec: plushie_widget_sdk::runtime::Codec,
     ) -> Self {
-        Self { writer, codec }
+        Self {
+            writer: BufWriter::with_capacity(WRITER_BUF_CAP, writer),
+            codec,
+        }
     }
 }
 
 impl EventSink for WriterSink {
     fn emit_event(&mut self, event: OutgoingEvent) -> io::Result<()> {
+        // High-frequency path: the BufWriter holds the bytes until
+        // a flush boundary so a 60 FPS pointer-move stream coalesces
+        // into one syscall per coalesce-flush cycle, not one per
+        // event.
         let bytes = self.codec.encode(&event).map_err(io::Error::other)?;
-        self.writer.write_all(&bytes)?;
-        self.writer.flush()
+        self.writer.write_all(&bytes)
     }
 
     fn emit_effect_response(
@@ -284,6 +318,10 @@ impl EventSink for WriterSink {
 
     fn write_raw(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.writer.write_all(bytes)?;
+        self.writer.flush()
+    }
+
+    fn flush_output(&mut self) -> io::Result<()> {
         self.writer.flush()
     }
 }

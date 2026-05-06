@@ -38,7 +38,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 console_log = "1"
-wasmtimer = "0.4"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

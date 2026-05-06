@@ -3224,7 +3224,6 @@ name = "plushie-renderer"
 version = "0.6.1"
 dependencies = [
  "arboard",
- "base64",
  "env_logger",
  "getrandom 0.3.4",
  "log",
@@ -3275,7 +3274,6 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasmtimer",
 ]
 
 [[package]]

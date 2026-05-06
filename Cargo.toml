@@ -30,8 +30,6 @@ plushie-core = { version = "0.6.1", path = "crates/plushie-core" }
 plushie-core-macros = { version = "0.6.1", path = "crates/plushie-core-macros" }
 plushie-widget-sdk = { version = "0.6.1", path = "crates/plushie-widget-sdk" }
 plushie-renderer-lib = { version = "0.6.1", path = "crates/plushie-renderer-lib" }
-plushie-renderer = { version = "0.6.1", path = "crates/plushie-renderer" }
-plushie-renderer-wasm = { version = "0.6.1", path = "crates/plushie-renderer-wasm" }
 
 # Shared external deps. Per-crate manifests opt in with `.workspace = true`.
 # Entries that need different feature sets per consumer (tokio, iced)

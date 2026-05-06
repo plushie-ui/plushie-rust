@@ -33,7 +33,17 @@ use serde_json::Value;
 ///
 /// Mirrors JSON's type system but without serde allocation overhead.
 /// Primitive values are stored inline (no boxing).
-#[derive(Debug, Clone, PartialEq)]
+///
+/// # Wire-canonical equality across numeric variants
+///
+/// JSON does not distinguish integer from float; the wire collapses
+/// `42` and `42.0` to the same on-wire shape. To keep diff/apply
+/// self-consistent across the wire, equality on `PropValue` treats
+/// `I64(42)`, `U64(42)`, and `F64(42.0)` as equal. Without this,
+/// `tree_diff` produces a spurious `update_props` op whenever a value
+/// passes through a numeric round-trip (animations interpolate to
+/// `F64` while authored props start as `I64`, etc.).
+#[derive(Debug, Clone)]
 pub enum PropValue {
     /// Null.
     Null,
@@ -86,6 +96,33 @@ fn finite_f64_to_f32(value: f64) -> Option<f32> {
     let narrowed = value as f32;
 
     (value.is_finite() && narrowed.is_finite()).then_some(narrowed)
+}
+
+impl PartialEq for PropValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Null, Self::Null) => true,
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::Str(a), Self::Str(b)) => a == b,
+            (Self::Array(a), Self::Array(b)) => a == b,
+            (Self::Object(a), Self::Object(b)) => a == b,
+            // Cross-variant numeric equality: integer-equal values
+            // compare equal regardless of which variant they sit in.
+            (Self::I64(a), Self::I64(b)) => a == b,
+            (Self::U64(a), Self::U64(b)) => a == b,
+            (Self::F64(a), Self::F64(b)) => a == b,
+            (Self::I64(i), Self::U64(u)) | (Self::U64(u), Self::I64(i)) => {
+                u64::try_from(*i).is_ok_and(|iu| iu == *u)
+            }
+            (Self::I64(i), Self::F64(f)) | (Self::F64(f), Self::I64(i)) => {
+                exact_f64_to_i64(*f).is_some_and(|fi| fi == *i)
+            }
+            (Self::U64(u), Self::F64(f)) | (Self::F64(f), Self::U64(u)) => {
+                exact_f64_to_u64(*f).is_some_and(|fu| fu == *u)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl PropValue {

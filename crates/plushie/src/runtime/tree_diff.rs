@@ -217,9 +217,18 @@ fn diff_node(old: &TreeNode, new: &TreeNode, path: &[usize]) -> Vec<PatchOp> {
         }];
     }
 
-    let old_props_val = old.props.to_value();
-    let new_props_val = new.props.to_value();
-    let prop_ops = diff_props(&old_props_val, &new_props_val, path);
+    // Wire-canonical prop equality (numeric variants compare equal,
+    // null entries treated as absent) short-circuits before the JSON
+    // round-trip below. Without this, `42 == 42.0` paths produce a
+    // spurious `update_props` op every render after a numeric
+    // representation change (e.g. animation interpolation).
+    let prop_ops = if old.props == new.props {
+        Vec::new()
+    } else {
+        let old_props_val = old.props.to_value();
+        let new_props_val = new.props.to_value();
+        diff_props(&old_props_val, &new_props_val, path)
+    };
     let child_ops = diff_children(&old.children, &new.children, path);
 
     let mut ops = prop_ops;
@@ -1167,6 +1176,39 @@ mod tests {
         let mut copy = with_null.clone();
         try_apply_patch(&mut copy, &ops).unwrap();
         assert_eq!(copy, with_value);
+    }
+
+    #[test]
+    fn numeric_variant_equal_props_produce_no_patch() {
+        // Wire-canonical numeric equality: 42 (integer) and 42.0
+        // (float) collapse to the same JSON shape, so the diff must
+        // not emit a spurious update_props when only the variant
+        // differs. This covers the animation-interpolation case
+        // (authored I64 vs interpolated F64) and any path that
+        // re-serialises numbers through serde.
+        let mut int_props = plushie_core::protocol::PropMap::new();
+        int_props.insert("size", 18i64);
+        let mut float_props = plushie_core::protocol::PropMap::new();
+        float_props.insert("size", 18.0f64);
+
+        let old = TreeNode {
+            id: "root".to_string(),
+            type_name: "text".to_string(),
+            props: plushie_core::protocol::Props::from(int_props),
+            children: vec![],
+        };
+        let new = TreeNode {
+            id: "root".to_string(),
+            type_name: "text".to_string(),
+            props: plushie_core::protocol::Props::from(float_props),
+            children: vec![],
+        };
+
+        let ops = diff_tree(&old, &new);
+        assert!(
+            ops.is_empty(),
+            "numeric-equal props must not produce a patch, got {ops:?}"
+        );
     }
 
     #[test]

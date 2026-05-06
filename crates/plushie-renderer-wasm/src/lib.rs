@@ -198,7 +198,9 @@ impl PlushieApp {
             .collect();
         let ext_key_refs: Vec<&str> = ext_keys.iter().map(|s| s.as_str()).collect();
 
-        emit_hello("web", "wgpu", &ext_key_refs, &["iced"], "wasm")
+        // The WASM build only enables the tiny-skia iced feature;
+        // wgpu is not compiled in. Report what is actually shipped.
+        emit_hello("web", "tiny-skia", &ext_key_refs, &["iced"], "wasm")
             .map_err(|e| JsValue::from_str(&format!("failed to emit hello: {e}")))?;
 
         // Create the message channel for JS -> renderer communication.

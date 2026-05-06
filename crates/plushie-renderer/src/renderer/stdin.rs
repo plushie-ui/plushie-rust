@@ -26,9 +26,12 @@ pub(crate) static STDIN_RX: Mutex<Option<tokio::sync::mpsc::Receiver<StdinEvent>
 /// (zero CPU when idle).
 pub(crate) fn stdin_subscription() -> impl iced::futures::Stream<Item = StdinEvent> {
     stream::channel(32, async |mut sender| {
+        // Poison recovery on the lock matches the windowed startup
+        // pattern: a panic in a previous holder doesn't invalidate
+        // the slot itself. The double-call guard on `take()` stays.
         let mut rx = STDIN_RX
             .lock()
-            .expect("STDIN_RX lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .take()
             .expect("stdin_subscription: no receiver (called more than once?)");
 

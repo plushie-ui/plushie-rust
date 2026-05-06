@@ -30,7 +30,7 @@ missing_panics_doc = "allow"
 plushie-core = { workspace = true }
 plushie-widget-sdk = { workspace = true }
 plushie-renderer-lib = { workspace = true }
-iced = { version = "0.8", package = "plushie-iced", default-features = false, features = ["advanced", "canvas", "a11y", "tiny-skia"] }
+iced = { workspace = true, features = ["advanced", "canvas", "a11y", "tiny-skia"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"

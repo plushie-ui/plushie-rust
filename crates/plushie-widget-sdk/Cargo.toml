@@ -28,7 +28,7 @@ workspace = true
 [dependencies]
 plushie-core = { workspace = true }
 plushie-core-macros = { workspace = true }
-iced = { version = "0.8", package = "plushie-iced", default-features = false, features = ["advanced", "image-without-codecs", "svg", "canvas", "markdown", "highlighter", "a11y"] }
+iced = { workspace = true, features = ["advanced", "image-without-codecs", "svg", "canvas", "markdown", "highlighter", "a11y"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rmp-serde = { workspace = true }
@@ -48,7 +48,7 @@ qrcode = { version = "0.14", default-features = false }
 usvg = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-iced = { version = "0.8", package = "plushie-iced", default-features = false, features = ["thread-pool", "tiny-skia", "x11", "wayland"] }
+iced = { workspace = true, features = ["thread-pool", "tiny-skia", "x11", "wayland"] }
 
 [dev-dependencies]
-proptest = "1"
+proptest = { workspace = true }

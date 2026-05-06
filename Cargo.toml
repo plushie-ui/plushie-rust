@@ -44,6 +44,19 @@ rmp-serde = "1"
 rmpv = { version = "1", features = ["with-serde"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 
+# iced ships through a fork; per-crate feature sets diverge so the
+# workspace entry just declares the bare version (matching the tokio
+# precedent above). Each crate adds its own feature list.
+iced = { version = "0.8", package = "plushie-iced", default-features = false }
+# Native effect handlers used in `plushie` (direct mode) and
+# `plushie-renderer`. Identical version requirement, so elevate.
+rfd = "0.15"
+arboard = "3"
+notify-rust = "4"
+# Property-test framework used by plushie, plushie-core, and
+# plushie-widget-sdk. Identical version, dev-dep only.
+proptest = "1"
+
 thiserror = "2"
 parking_lot = "0.12"
 # Doubly-linked-list-backed LRU map. Image registry uses it so

@@ -92,15 +92,19 @@ pub fn validate_required_widgets(settings: &Value, native_widgets: &[&str]) {
 /// a `OnceLock` and can only be set once per process lifetime.
 ///
 /// Called during startup, after the Settings message is parsed.
-pub fn apply_validate_props(settings: &Value) {
-    if settings
+/// Returns `true` if the settings asked for validation; tests use
+/// the return value to verify the parse without poking the
+/// process-wide OnceLock.
+pub fn apply_validate_props(settings: &Value) -> bool {
+    let requested = settings
         .get("validate_props")
         .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
+        .unwrap_or(false);
+    if requested {
         plushie_widget_sdk::runtime::set_validate_props(true);
         log::info!("prop validation enabled via settings");
     }
+    requested
 }
 
 /// Decode font data from a JSON value.
@@ -288,4 +292,26 @@ mod tests {
     }
 
     use base64::Engine;
+
+    #[test]
+    fn apply_validate_props_returns_false_when_unset() {
+        let settings = serde_json::json!({});
+        assert!(!apply_validate_props(&settings));
+    }
+
+    #[test]
+    fn apply_validate_props_returns_false_when_explicitly_false() {
+        let settings = serde_json::json!({"validate_props": false});
+        assert!(!apply_validate_props(&settings));
+    }
+
+    #[test]
+    fn apply_validate_props_returns_true_when_requested() {
+        let settings = serde_json::json!({"validate_props": true});
+        // The OnceLock is process-wide; apply_validate_props returning
+        // true is the observable behaviour we care about here. The
+        // side effect on the lock is exercised in startup-mode tests
+        // that run in their own subprocess.
+        assert!(apply_validate_props(&settings));
+    }
 }

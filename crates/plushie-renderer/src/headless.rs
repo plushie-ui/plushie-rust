@@ -1140,6 +1140,7 @@ pub(crate) fn run(
         crate::startup::emit_startup_error(&codec, &e);
         return;
     }
+    plushie_renderer_lib::settings::apply_validate_props(&initial.settings);
 
     // Branch on mode once at the top. Headless uses iced::Renderer
     // (tiny-skia) for real screenshots. Mock uses the null renderer ()

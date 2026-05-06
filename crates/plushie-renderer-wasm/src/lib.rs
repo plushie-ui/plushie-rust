@@ -162,6 +162,7 @@ impl PlushieApp {
         plushie_renderer_lib::emitters::init_sink(Box::new(sink));
 
         let iced_settings = plushie_renderer_lib::settings::parse_iced_settings(&settings);
+        plushie_renderer_lib::settings::apply_validate_props(&settings);
         let font_bytes = plushie_renderer_lib::settings::parse_inline_fonts(&settings);
 
         // Load inline fonts directly into the global font system so they're

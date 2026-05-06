@@ -214,6 +214,7 @@ fn run_inner(
         return Ok(());
     }
     let iced_settings = plushie_renderer_lib::settings::parse_iced_settings(&initial.settings);
+    plushie_renderer_lib::settings::apply_validate_props(&initial.settings);
     let font_bytes = crate::startup::collect_font_bytes(&initial.settings);
 
     // Spawn stdin reader thread with tokio channel.

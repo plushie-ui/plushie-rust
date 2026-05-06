@@ -447,6 +447,22 @@ fn run_wire_inner<A: App>(
             .map_err(|e| crate::Error::WireEncode(format!("snapshot: {e}")))?;
         bridge.send_snapshot(&snapshot_value)?;
 
+        // On restart, abort every SDK-side task tied to the previous
+        // renderer session. Without this, recurring timers, async
+        // results, send_after deliveries, and effect-timeout tasks
+        // accumulate across restarts and fire delayed events into
+        // the new session. The matching renderer-side state (tree,
+        // subscriptions, in-flight effects) is replayed below; the
+        // task replay path runs through the normal subscription diff
+        // and re-issues StartTimer ops, so clearing the timer table
+        // here is safe.
+        if restart_count > 0 {
+            async_mgr.cancel_all_running();
+            async_mgr.clear_all_timers();
+            async_mgr.clear_all_effect_timeouts();
+            async_mgr.clear_all_send_after();
+        }
+
         // Synchronize window lifecycle with the renderer. On restart,
         // reset the tracker so every current window is resent as an
         // `open` op; otherwise replay from whatever the tracker held
@@ -1240,6 +1256,11 @@ struct AsyncTaskManager {
     /// timer-tick event on each fire. Aborted on `stop_timer` or
     /// AsyncTaskManager drop.
     timers: HashMap<String, tokio::task::JoinHandle<()>>,
+    /// In-flight `Command::SendAfter` delivery tasks. Tracked so a
+    /// renderer restart can abort them before they fire delayed
+    /// events from a pre-restart context after the renderer is
+    /// already gone.
+    send_after_handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
 #[cfg(feature = "wire")]
@@ -1269,6 +1290,7 @@ impl AsyncTaskManager {
             running: HashMap::new(),
             effect_timeouts: HashMap::new(),
             timers: HashMap::new(),
+            send_after_handles: Vec::new(),
         }
     }
 
@@ -1421,9 +1443,9 @@ impl AsyncTaskManager {
         let _ = self.tx.send(event);
     }
 
-    fn send_after(&self, delay: std::time::Duration, event: crate::event::Event) {
+    fn send_after(&mut self, delay: std::time::Duration, event: crate::event::Event) {
         let tx = self.tx.clone();
-        self.runtime.handle().spawn(async move {
+        let handle = self.runtime.handle().spawn(async move {
             // tokio::time::sleep doesn't panic in practice, but we
             // route through the panic guard for consistency with the
             // other spawn paths. SendAfter carries a delivery-only
@@ -1433,6 +1455,46 @@ impl AsyncTaskManager {
             let _ = std::panic::AssertUnwindSafe(fut).catch_unwind().await;
             let _ = tx.send(SinkEvent::DelayedEvent(event));
         });
+        // Drop already-completed handles opportunistically so the Vec
+        // stays roughly proportional to in-flight delays rather than
+        // total send_after calls over the session lifetime.
+        self.send_after_handles
+            .retain(|h: &tokio::task::JoinHandle<()>| !h.is_finished());
+        self.send_after_handles.push(handle);
+    }
+
+    /// Abort and forget every in-flight async/stream task. Used on
+    /// renderer restart so long-running futures from a pre-restart
+    /// context do not deliver their results into the new session.
+    fn cancel_all_running(&mut self) {
+        for (_, handle) in self.running.drain() {
+            handle.abort();
+        }
+    }
+
+    /// Abort all recurring timer tasks and clear the table. The new
+    /// session re-issues StartTimer ops via the subscription diff.
+    fn clear_all_timers(&mut self) {
+        for (_, handle) in self.timers.drain() {
+            handle.abort();
+        }
+    }
+
+    /// Abort all pending effect-timeout tasks. The effect tracker is
+    /// flushed separately by the caller.
+    fn clear_all_effect_timeouts(&mut self) {
+        for (_, handle) in self.effect_timeouts.drain() {
+            handle.abort();
+        }
+    }
+
+    /// Abort all pending `send_after` delivery tasks so a delayed
+    /// event from a pre-restart context cannot land after the new
+    /// session has already received its `RendererRestarted` events.
+    fn clear_all_send_after(&mut self) {
+        for handle in self.send_after_handles.drain(..) {
+            handle.abort();
+        }
     }
 
     /// Drain all pending async results and delayed events.
@@ -1766,6 +1828,63 @@ fn apply_wire_sub_ops(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod async_mgr_restart_cleanup_tests {
+    //! AsyncTaskManager state is rebuilt on every renderer restart.
+    //! These tests exercise the cleanup helpers that the restart path
+    //! calls, asserting the SDK-side task tables are empty after the
+    //! cleanup so a delayed event from a pre-restart context cannot
+    //! leak into the new session.
+
+    use super::*;
+    use std::time::Duration;
+
+    fn fresh_mgr() -> AsyncTaskManager {
+        AsyncTaskManager::new(None)
+    }
+
+    #[test]
+    fn cleanup_helpers_clear_all_async_mgr_tables() {
+        let mut mgr = fresh_mgr();
+
+        mgr.start_timer("tick".into(), Duration::from_secs(60));
+        mgr.start_timer("hover".into(), Duration::from_secs(60));
+        mgr.schedule_effect_timeout("wire-1".into(), Duration::from_secs(60));
+        mgr.send_after(
+            Duration::from_secs(60),
+            crate::event::Event::Timer(crate::event::TimerEvent {
+                tag: "delayed".into(),
+                timestamp: 0,
+            }),
+        );
+        mgr.spawn_async(
+            "task-a".into(),
+            Box::new(|| Box::pin(async { Ok(serde_json::Value::Null) })),
+        );
+
+        assert_eq!(mgr.timers.len(), 2);
+        assert_eq!(mgr.effect_timeouts.len(), 1);
+        assert_eq!(mgr.send_after_handles.len(), 1);
+        assert_eq!(mgr.running.len(), 1);
+
+        mgr.cancel_all_running();
+        mgr.clear_all_timers();
+        mgr.clear_all_effect_timeouts();
+        mgr.clear_all_send_after();
+
+        assert!(mgr.timers.is_empty(), "timers should be cleared");
+        assert!(
+            mgr.effect_timeouts.is_empty(),
+            "effect_timeouts should be cleared"
+        );
+        assert!(
+            mgr.send_after_handles.is_empty(),
+            "send_after handles should be cleared"
+        );
+        assert!(mgr.running.is_empty(), "running tasks should be cleared");
+    }
 }
 
 #[cfg(test)]

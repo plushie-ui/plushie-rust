@@ -51,6 +51,13 @@ const EXACT: &[&str] = &[
     // Identity
     "HOME",
     "USER",
+    // Windows: required for DLL loader, --exec resolution, and tempdir.
+    // Harmless on other platforms (just absent from the host env).
+    "SystemRoot",
+    "WINDIR",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
 ];
 
 /// Prefix patterns. Any variable whose name starts with one of these
@@ -129,6 +136,19 @@ mod tests {
         assert!(is_allowed("PLUSHIE_SOCKET"));
         // Future toggles join without a whitelist edit.
         assert!(is_allowed("PLUSHIE_FUTURE_DEBUG_KNOB"));
+    }
+
+    #[test]
+    fn windows_critical_vars_allowed() {
+        // The DLL loader, --exec PATHEXT lookups, and the temp dir
+        // resolver all rely on these. The whitelist is the same on
+        // every platform; on non-Windows hosts they just won't appear
+        // in the env to be passed through.
+        assert!(is_allowed("SystemRoot"));
+        assert!(is_allowed("WINDIR"));
+        assert!(is_allowed("PATHEXT"));
+        assert!(is_allowed("TEMP"));
+        assert!(is_allowed("TMP"));
     }
 
     #[test]

@@ -289,10 +289,21 @@ fn with_clipboard(f: impl FnOnce(&mut arboard::Clipboard) -> (String, Value)) ->
 
 #[cfg(feature = "direct")]
 fn clipboard_read() -> (String, Value) {
-    with_clipboard(|c| match c.get_text() {
+    with_clipboard(|c| classify_clipboard_text(c.get_text()))
+}
+
+/// Map the result of a `get_text` call to the wire (status, value)
+/// shape. An empty clipboard surfaces as `Err(ContentNotAvailable)`
+/// on some backends and `Ok("")` on others; both map to
+/// `{"text": ""}` so apps see one shape regardless of platform.
+/// Aligns with the renderer-mode handler in `plushie-renderer`.
+#[cfg(feature = "direct")]
+fn classify_clipboard_text(result: Result<String, arboard::Error>) -> (String, Value) {
+    match result {
         Ok(text) => ("ok".into(), json!({"text": text})),
+        Err(arboard::Error::ContentNotAvailable) => ("ok".into(), json!({"text": ""})),
         Err(e) => ("error".into(), json!(format!("clipboard read failed: {e}"))),
-    })
+    }
 }
 
 #[cfg(feature = "direct")]
@@ -434,29 +445,57 @@ fn notification(payload: &Value) -> (String, Value) {
     }
 }
 
-#[cfg(all(test, feature = "direct", not(target_os = "linux")))]
+#[cfg(all(test, feature = "direct"))]
 mod tests {
     use super::*;
-    use plushie_core::ops::EffectRequest;
-    use plushie_renderer_lib::EffectHandler;
+
+    #[cfg(not(target_os = "linux"))]
+    mod primary {
+        use super::super::*;
+        use plushie_core::ops::EffectRequest;
+        use plushie_renderer_lib::EffectHandler;
+
+        #[test]
+        fn primary_clipboard_effects_are_unsupported_in_direct_mode() {
+            let handler = DirectEffectHandler;
+
+            let read = handler
+                .handle_sync("read-primary", &EffectRequest::ClipboardReadPrimary)
+                .expect("direct effect handler should return a response");
+            assert_eq!(read.status, "unsupported");
+            assert_eq!(read.id, "read-primary");
+
+            let write = handler
+                .handle_sync(
+                    "write-primary",
+                    &EffectRequest::ClipboardWritePrimary("hello".to_string()),
+                )
+                .expect("direct effect handler should return a response");
+            assert_eq!(write.status, "unsupported");
+            assert_eq!(write.id, "write-primary");
+        }
+    }
 
     #[test]
-    fn primary_clipboard_effects_are_unsupported_in_direct_mode() {
-        let handler = DirectEffectHandler;
+    fn empty_clipboard_returns_ok_with_empty_text() {
+        let (status, value) = classify_clipboard_text(Ok(String::new()));
+        assert_eq!(status, "ok");
+        assert_eq!(value, json!({"text": ""}));
+    }
 
-        let read = handler
-            .handle_sync("read-primary", &EffectRequest::ClipboardReadPrimary)
-            .expect("direct effect handler should return a response");
-        assert_eq!(read.status, "unsupported");
-        assert_eq!(read.id, "read-primary");
+    #[test]
+    fn unavailable_clipboard_normalises_to_empty_text() {
+        let (status, value) = classify_clipboard_text(Err(arboard::Error::ContentNotAvailable));
+        assert_eq!(status, "ok");
+        assert_eq!(value, json!({"text": ""}));
+    }
 
-        let write = handler
-            .handle_sync(
-                "write-primary",
-                &EffectRequest::ClipboardWritePrimary("hello".to_string()),
-            )
-            .expect("direct effect handler should return a response");
-        assert_eq!(write.status, "unsupported");
-        assert_eq!(write.id, "write-primary");
+    #[test]
+    fn other_clipboard_errors_surface_as_error() {
+        let (status, value) = classify_clipboard_text(Err(arboard::Error::Unknown {
+            description: "x".into(),
+        }));
+        assert_eq!(status, "error");
+        assert!(value.as_str().unwrap().starts_with("clipboard read failed"));
     }
 }

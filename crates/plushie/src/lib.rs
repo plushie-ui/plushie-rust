@@ -6,7 +6,7 @@
 //!
 //! # Quick start
 //!
-//! ```ignore
+//! ```no_run
 //! use plushie::prelude::*;
 //!
 //! struct Counter { count: i32 }
@@ -27,15 +27,15 @@
 //!         Command::none()
 //!     }
 //!
-//!     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> impl Into<ViewList> {
+//!     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
 //!         window("main").title("Counter").child(
-//!             column().spacing(8).padding(16).children([
-//!                 text(&format!("Count: {}", model.count)),
-//!                 row().spacing(8).children([
-//!                     button("inc", "+"),
-//!                     button("dec", "-"),
-//!                 ]),
-//!             ])
+//!             column().spacing(8.0).padding(16)
+//!                 .child(text(&format!("Count: {}", model.count)))
+//!                 .child(
+//!                     row().spacing(8.0)
+//!                         .child(button("inc", "+"))
+//!                         .child(button("dec", "-"))
+//!                 )
 //!         ).into()
 //!     }
 //! }

@@ -316,12 +316,16 @@ impl Command {
     /// loop, e.g. kicking off a follow-up update after computing a
     /// value in the current `update`:
     ///
-    /// ```ignore
-    /// Command::dispatch(Event::Widget(WidgetEvent {
+    /// ```no_run
+    /// use plushie::prelude::*;
+    /// use plushie::event::WidgetEvent;
+    /// use serde_json::Value;
+    ///
+    /// let _ = Command::dispatch(Event::Widget(WidgetEvent {
     ///     event_type: EventType::Click,
     ///     scoped_id: ScopedId::new("next", vec![], None),
     ///     value: Value::Null,
-    /// }))
+    /// }));
     /// ```
     pub fn dispatch(event: Event) -> Self {
         Self::send_after(Duration::ZERO, event)
@@ -330,16 +334,19 @@ impl Command {
     /// Run an async task. The result is delivered as
     /// [`AsyncEvent`](crate::event::AsyncEvent).
     ///
-    /// ```ignore
-    /// Command::task("fetch", || async {
-    ///     let data = reqwest::get("https://api.example.com/data")
+    /// ```no_run
+    /// use plushie::command::Command;
+    /// use serde_json::{json, Value};
+    ///
+    /// async fn fetch_text(_url: &str) -> Result<String, String> { Ok(String::new()) }
+    ///
+    /// let _ = Command::task("fetch", || async {
+    ///     let data: Result<Value, Value> = fetch_text("https://api.example.com/data")
     ///         .await
-    ///         .map_err(|e| serde_json::json!(e.to_string()))?
-    ///         .text()
-    ///         .await
-    ///         .map_err(|e| serde_json::json!(e.to_string()))?;
-    ///     Ok(serde_json::json!(data))
-    /// })
+    ///         .map(|t| json!(t))
+    ///         .map_err(|e| json!(e));
+    ///     data
+    /// });
     /// ```
     ///
     /// # Delivery contract
@@ -422,13 +429,18 @@ impl Command {
     /// The task receives a cloneable [`StreamEmitter`] it can pass
     /// around to produce values over time:
     ///
-    /// ```ignore
-    /// Command::stream("import", |emitter| async move {
+    /// ```no_run
+    /// use plushie::command::Command;
+    /// use serde_json::{json, Value};
+    ///
+    /// async fn fetch_lines() -> Result<Vec<Value>, Value> { Ok(vec![]) }
+    ///
+    /// let _ = Command::stream("import", |emitter| async move {
     ///     for line in fetch_lines().await? {
     ///         emitter.emit(line);
     ///     }
-    ///     Ok(serde_json::json!({"done": true}))
-    /// })
+    ///     Ok::<_, Value>(json!({"done": true}))
+    /// });
     /// ```
     ///
     /// Cancel via [`Command::cancel`] with the same tag.
@@ -1258,7 +1270,10 @@ impl Command {
     /// construction. The derive macro generates `to_wire()` which
     /// provides the family string and encoded value.
     ///
-    /// ```ignore
+    /// ```no_run
+    /// use plushie::command::Command;
+    /// use plushie::WidgetCommand;
+    ///
     /// #[derive(WidgetCommand)]
     /// enum GaugeCommand {
     ///     SetValue(f32),
@@ -1266,7 +1281,7 @@ impl Command {
     ///     SetRange { min: f32, max: f32 },
     /// }
     ///
-    /// Command::widget("temp-gauge", GaugeCommand::SetValue(72.0))
+    /// let _ = Command::widget("temp-gauge", GaugeCommand::SetValue(72.0));
     /// ```
     pub fn widget<C: plushie_core::WidgetCommandEncode>(id: &str, cmd: C) -> Self {
         let wc = plushie_core::ops::WidgetCommand::new(id, cmd);
@@ -1301,13 +1316,18 @@ impl Command {
     /// [`WidgetCommand::raw`](plushie_core::ops::WidgetCommand::raw)
     /// for ad-hoc ones:
     ///
-    /// ```ignore
-    /// use plushie_core::ops::WidgetCommand;
+    /// ```no_run
+    /// use plushie::command::{Command, WidgetCommand};
+    /// use plushie::WidgetCommand as WidgetCommandDerive;
+    /// use serde_json::Value;
     ///
-    /// Command::widget_batch(vec![
-    ///     WidgetCommand::new("pane", SelectPane(1)),
+    /// #[derive(WidgetCommandDerive)]
+    /// enum PaneCommand { SelectPane(u32) }
+    ///
+    /// let _ = Command::widget_batch(vec![
+    ///     WidgetCommand::new("pane", PaneCommand::SelectPane(1)),
     ///     WidgetCommand::raw("footer", "refresh", Value::Null),
-    /// ])
+    /// ]);
     /// ```
     pub fn widget_batch(cmds: impl IntoIterator<Item = plushie_core::ops::WidgetCommand>) -> Self {
         Self::Renderer(RendererOp::Commands(cmds.into_iter().collect()))

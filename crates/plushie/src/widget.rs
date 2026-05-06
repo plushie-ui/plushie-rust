@@ -35,10 +35,9 @@
 //!
 //! # Defining a widget
 //!
-//! ```ignore
+//! ```no_run
 //! use plushie::prelude::*;
-//! use plushie::widget::{Widget, EventResult, WidgetView};
-//! use plushie_core::types::{FromNode, UntypedProps};
+//! use plushie::widget::{Widget, EventResult};
 //!
 //! struct StarRating;
 //!
@@ -48,19 +47,21 @@
 //! }
 //!
 //! #[derive(Default)]
-//! struct StarState { hover: Option<usize> }
+//! struct StarState { _hover: Option<usize> }
 //!
 //! impl Widget for StarRating {
 //!     type State = StarState;
 //!     type Props = UntypedProps;
 //!
-//!     fn view(id: &str, props: &UntypedProps, state: &StarState) -> View {
-//!         row().id(id).spacing(4.0).children(
-//!             (0..5).map(|i| button(&format!("star-{i}"), "★"))
-//!         ).into()
+//!     fn view(id: &str, _props: &UntypedProps, _state: &StarState) -> View {
+//!         let mut row_view = row().id(id).spacing(4.0);
+//!         for i in 0..5 {
+//!             row_view = row_view.child(button(&format!("star-{i}"), "*"));
+//!         }
+//!         row_view.into()
 //!     }
 //!
-//!     fn handle_event(event: &Event, state: &mut StarState) -> EventResult {
+//!     fn handle_event(event: &Event, _state: &mut StarState) -> EventResult {
 //!         match event.widget_match() {
 //!             Some(Click(id)) if id.starts_with("star-") => {
 //!                 EventResult::emit_event(StarRatingEvent::Select(1))
@@ -241,12 +242,15 @@ impl EventResult {
     /// The event's variant name becomes the family string (snake_case)
     /// and its payload is encoded via `PlushieType::wire_encode`.
     ///
-    /// ```ignore
+    /// ```no_run
+    /// use plushie::WidgetEvent;
+    /// use plushie::widget::EventResult;
+    ///
     /// #[derive(WidgetEvent)]
     /// enum MyEvent { Select(u64) }
     ///
-    /// EventResult::emit_event(MyEvent::Select(5))
     /// // emits family "select" with payload 5
+    /// let _ = EventResult::emit_event(MyEvent::Select(5));
     /// ```
     pub fn emit_event(event: impl plushie_core::types::WidgetEventEncode) -> Self {
         let (family, value) = event.to_wire();

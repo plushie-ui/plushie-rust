@@ -163,17 +163,41 @@ the view of the authoritative document this session last applied.
 Anything truly per-user (local selection, dark-mode preference, a
 "dirty" flag while drafting) lives here and stays here.
 
-`init` seeds the model from the store and starts a streaming
-command that bridges store broadcasts back into this session's
-update loop:
+`App::init` takes no arguments, so the per-session context (the
+shared store handle and the current user's ID) lives in process
+globals that the session orchestrator populates before
+`run_connect` is called. The store handle is `OnceLock`-installed
+at boot; the user ID comes from an env var the orchestrator sets
+per spawn.
+
+```rust
+use std::sync::{Arc, OnceLock};
+
+static STORE: OnceLock<Arc<Store>> = OnceLock::new();
+
+fn store() -> Arc<Store> {
+    STORE.get().expect("store installed before App::init runs").clone()
+}
+
+fn current_user_id() -> String {
+    std::env::var("PLUSHIE_USER_ID").expect("orchestrator must set PLUSHIE_USER_ID")
+}
+```
+
+`init` then reads from those globals, snapshots the document, and
+starts a streaming command that bridges store broadcasts back into
+this session's update loop:
 
 ```rust
 impl App for Session {
     type Model = Self;
 
-    fn init(opts: Self::Init) -> (Self, Command) {
-        let Session { user_id, shared, .. } = opts;
+    fn init() -> (Self, Command) {
+        let user_id = current_user_id();
+        let shared = store();
         let model = shared.snapshot();
+        let mut rx = shared.register(user_id.clone());
+
         let me = Self {
             user_id: user_id.clone(),
             shared: shared.clone(),
@@ -181,8 +205,6 @@ impl App for Session {
             outbox: None,
         };
 
-        // Register a fresh broadcast channel with the store.
-        let mut rx = shared.register(user_id.clone());
         // Forward each Broadcast into the MVU loop as a StreamEvent
         // tagged "broadcast". The stream stays open for the lifetime
         // of the session; cancel via Command::cancel("broadcast") on
@@ -212,13 +234,14 @@ model, runs the real `update`, and fans a `Broadcast` out to every
 registered session after a successful mutation:
 
 ```rust
+use parking_lot::RwLock as SyncRwLock;
 use tokio::sync::{mpsc, RwLock};
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 pub struct Store {
     inner: Arc<RwLock<Document>>,
-    subscribers: Arc<RwLock<Vec<(String, mpsc::Sender<Broadcast>)>>>,
+    subscribers: Arc<SyncRwLock<Vec<(String, mpsc::Sender<Broadcast>)>>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -228,14 +251,11 @@ pub struct Broadcast {
 }
 
 impl Store {
+    /// Synchronous so a `submit` racing right after `register`
+    /// returns is guaranteed to see the new subscriber.
     pub fn register(&self, user_id: String) -> mpsc::Receiver<Broadcast> {
         let (tx, rx) = mpsc::channel(32);
-        tokio::spawn({
-            let subs = self.subscribers.clone();
-            async move {
-                subs.write().await.push((user_id, tx));
-            }
-        });
+        self.subscribers.write().push((user_id, tx));
         rx
     }
 
@@ -251,7 +271,7 @@ impl Store {
             originator: originator.to_string(),
             model: snapshot,
         };
-        let mut subs = self.subscribers.write().await;
+        let mut subs = self.subscribers.write();
         subs.retain(|(_id, tx)| tx.try_send(bcast.clone()).is_ok());
     }
 }

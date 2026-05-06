@@ -12,7 +12,8 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Ellipsis, Font, Length, LineHeight, Padding, PlushieType, Shaping, Style as CoreStyle,
+    A11y, Ellipsis, Font, HasPopup, Length, LineHeight, Padding, PlushieType, Shaping,
+    Style as CoreStyle,
 };
 
 struct ComboBoxProps {
@@ -106,7 +107,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
         let props = &node.props;
-        crate::prop_helpers::prop_str(props, "placeholder").map(A11yOverrides::with_description)
+        let mut a11y = A11y::new().has_popup(HasPopup::Listbox);
+        if let Some(desc) = crate::prop_helpers::prop_str(props, "placeholder") {
+            a11y = a11y.description(desc);
+        }
+        Some(A11yOverrides::from_core(&a11y))
     }
 
     fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
@@ -315,4 +320,29 @@ fn render_combo_box_with_state<'a, R: PlushieRenderer>(
     }
 
     container(cb).id(widget::Id::from(node.id.clone())).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn infer(props: serde_json::Value) -> Option<A11yOverrides> {
+        let node = crate::testing::node_with_props("cb", "combo_box", props);
+        let widget = ComboBoxWidget::new();
+        <ComboBoxWidget as PlushieWidget<iced::Renderer>>::infer_a11y(&widget, &node)
+    }
+
+    #[test]
+    fn has_popup_listbox_always_present() {
+        let o = infer(json!({})).expect("combo_box should always infer has_popup");
+        assert_eq!(o.core().has_popup, Some(HasPopup::Listbox));
+    }
+
+    #[test]
+    fn placeholder_flows_to_description() {
+        let o = infer(json!({"placeholder": "Pick one"})).expect("placeholder should infer");
+        assert_eq!(o.core().description.as_deref(), Some("Pick one"));
+        assert_eq!(o.core().has_popup, Some(HasPopup::Listbox));
+    }
 }

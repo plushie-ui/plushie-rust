@@ -11,7 +11,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, Padding, PlushieType, Style as CoreStyle};
+use plushie_core::types::{A11y, Length, Padding, PlushieType, Style as CoreStyle};
 
 struct ButtonProps {
     label: Option<String>,
@@ -175,7 +175,28 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
     }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
-        A11yOverrides::from_mnemonic_props(&node.props)
+        let mut a11y = A11y::new();
+        let mut any = false;
+        if let Some(c) = node
+            .props
+            .get_str("mnemonic")
+            .or_else(|| node.props.get_str("access_key"))
+            .and_then(|s| s.chars().next())
+        {
+            a11y = a11y.mnemonic(c);
+            any = true;
+        }
+        let disabled = prop_bool_default(&node.props, "disabled", false)
+            || !prop_bool_default(&node.props, "enabled", true);
+        if disabled {
+            a11y = a11y.disabled(true);
+            any = true;
+        }
+        if any {
+            Some(A11yOverrides::from_core(&a11y))
+        } else {
+            None
+        }
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {

@@ -3,6 +3,7 @@ use iced::{Element, Theme, widget};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
+use crate::a11y::A11yOverrides;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
@@ -11,7 +12,7 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Font, HorizontalAlignment, Length, LineHeight, PlushieType, Shaping, Style as CoreStyle,
+    A11y, Font, HorizontalAlignment, Length, LineHeight, PlushieType, Shaping, Style as CoreStyle,
     Wrapping,
 };
 
@@ -65,6 +66,29 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TogglerWidget {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         render_toggler(node, *ctx)
+    }
+
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        let mut a11y = A11y::new();
+        let mut any = false;
+        if let Some(c) = node
+            .props
+            .get_str("mnemonic")
+            .or_else(|| node.props.get_str("access_key"))
+            .and_then(|s| s.chars().next())
+        {
+            a11y = a11y.mnemonic(c);
+            any = true;
+        }
+        if prop_bool_default(&node.props, "disabled", false) {
+            a11y = a11y.disabled(true);
+            any = true;
+        }
+        if any {
+            Some(A11yOverrides::from_core(&a11y))
+        } else {
+            None
+        }
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
@@ -197,4 +221,39 @@ fn render_toggler<'a, R: PlushieRenderer>(
     }
 
     container(t).id(widget::Id::from(node.id.clone())).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn infer(props: serde_json::Value) -> Option<A11yOverrides> {
+        let node = crate::testing::node_with_props("t", "toggler", props);
+        <TogglerWidget as PlushieWidget<iced::Renderer>>::infer_a11y(&TogglerWidget, &node)
+    }
+
+    #[test]
+    fn disabled_propagates() {
+        let o = infer(json!({"disabled": true})).expect("disabled should infer");
+        assert_eq!(o.core().disabled, Some(true));
+    }
+
+    #[test]
+    fn mnemonic_propagates() {
+        let o = infer(json!({"mnemonic": "T"})).expect("mnemonic should infer");
+        assert_eq!(o.core().mnemonic, Some('T'));
+    }
+
+    #[test]
+    fn disabled_and_mnemonic_combine() {
+        let o = infer(json!({"disabled": true, "mnemonic": "X"})).expect("both should infer");
+        assert_eq!(o.core().disabled, Some(true));
+        assert_eq!(o.core().mnemonic, Some('X'));
+    }
+
+    #[test]
+    fn no_relevant_props_returns_none() {
+        assert!(infer(json!({"label": "Mute"})).is_none());
+    }
 }

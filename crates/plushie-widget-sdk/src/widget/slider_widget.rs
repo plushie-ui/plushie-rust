@@ -3,6 +3,7 @@ use iced::{Element, Theme, widget};
 use serde_json::Value;
 
 use crate::PlushieRenderer;
+use crate::a11y::A11yOverrides;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
@@ -106,6 +107,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SliderWidget {
         handle_slider_message(&mut self.last_values, msg)
     }
 
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        A11yOverrides::from_mnemonic_props(&node.props)
+    }
+
     fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.last_values.retain(|k, _| live_ids.contains(k));
     }
@@ -147,6 +152,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for VerticalSliderWidget {
 
     fn handle_message(&mut self, msg: &Message) -> crate::registry::HandleResult {
         handle_slider_message(&mut self.last_values, msg)
+    }
+
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        A11yOverrides::from_mnemonic_props(&node.props)
     }
 
     fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
@@ -486,7 +495,8 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
 
 #[cfg(test)]
 mod tests {
-    use super::effective_slider_step;
+    use super::*;
+    use serde_json::json;
 
     #[test]
     fn keyboard_step_overrides_base_step() {
@@ -508,5 +518,34 @@ mod tests {
     #[test]
     fn base_step_is_used_without_keyboard_step() {
         assert_eq!(effective_slider_step(Some(2.0), None), Some(2.0));
+    }
+
+    fn infer_slider(props: serde_json::Value) -> Option<A11yOverrides> {
+        let node = crate::testing::node_with_props("s", "slider", props);
+        let widget = SliderWidget::new();
+        <SliderWidget as PlushieWidget<iced::Renderer>>::infer_a11y(&widget, &node)
+    }
+
+    fn infer_vertical(props: serde_json::Value) -> Option<A11yOverrides> {
+        let node = crate::testing::node_with_props("vs", "vertical_slider", props);
+        let widget = VerticalSliderWidget::new();
+        <VerticalSliderWidget as PlushieWidget<iced::Renderer>>::infer_a11y(&widget, &node)
+    }
+
+    #[test]
+    fn slider_mnemonic_propagates() {
+        let o = infer_slider(json!({"mnemonic": "V"})).expect("mnemonic should infer");
+        assert_eq!(o.core().mnemonic, Some('V'));
+    }
+
+    #[test]
+    fn slider_no_mnemonic_returns_none() {
+        assert!(infer_slider(json!({})).is_none());
+    }
+
+    #[test]
+    fn vertical_slider_mnemonic_propagates() {
+        let o = infer_vertical(json!({"mnemonic": "V"})).expect("mnemonic should infer");
+        assert_eq!(o.core().mnemonic, Some('V'));
     }
 }

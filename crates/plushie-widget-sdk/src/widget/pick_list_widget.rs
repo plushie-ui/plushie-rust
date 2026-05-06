@@ -11,7 +11,8 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Ellipsis, Font, Length, LineHeight, Padding, PlushieType, Shaping, Style as CoreStyle,
+    A11y, Ellipsis, Font, HasPopup, Length, LineHeight, Padding, PlushieType, Shaping,
+    Style as CoreStyle,
 };
 
 struct PickListProps {
@@ -67,14 +68,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PickListWidget {
 
     /// Flow the pick_list's `placeholder` prop into
     /// `a11y.description` as a fallback when the author hasn't set
-    /// one. Mirrors combo_box_widget so the two visually-similar
-    /// widgets behave consistently for screen readers. Host SDK
+    /// one, and declare `has_popup: Listbox` so screen readers
+    /// announce the popup affordance. Mirrors combo_box_widget so the
+    /// two visually-similar widgets behave consistently. Host SDK
     /// builders may author this on the tree directly; the fallback
     /// keeps custom widget crates that skip the builder honest.
     fn infer_a11y(&self, node: &TreeNode) -> Option<crate::a11y::A11yOverrides> {
         let props = &node.props;
-        crate::prop_helpers::prop_str(props, "placeholder")
-            .map(crate::a11y::A11yOverrides::with_description)
+        let mut a11y = A11y::new().has_popup(HasPopup::Listbox);
+        if let Some(desc) = crate::prop_helpers::prop_str(props, "placeholder") {
+            a11y = a11y.description(desc);
+        }
+        Some(crate::a11y::A11yOverrides::from_core(&a11y))
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
@@ -212,4 +217,28 @@ fn render_pick_list<'a, R: PlushieRenderer>(
     }
 
     container(pl).id(widget::Id::from(node.id.clone())).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn infer(props: serde_json::Value) -> Option<crate::a11y::A11yOverrides> {
+        let node = crate::testing::node_with_props("pl", "pick_list", props);
+        <PickListWidget as PlushieWidget<iced::Renderer>>::infer_a11y(&PickListWidget, &node)
+    }
+
+    #[test]
+    fn has_popup_listbox_always_present() {
+        let o = infer(json!({})).expect("pick_list should always infer has_popup");
+        assert_eq!(o.core().has_popup, Some(HasPopup::Listbox));
+    }
+
+    #[test]
+    fn placeholder_flows_to_description() {
+        let o = infer(json!({"placeholder": "Choose"})).expect("placeholder should infer");
+        assert_eq!(o.core().description.as_deref(), Some("Choose"));
+        assert_eq!(o.core().has_popup, Some(HasPopup::Listbox));
+    }
 }

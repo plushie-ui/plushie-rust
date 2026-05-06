@@ -2,6 +2,7 @@ use iced::widget::progress_bar;
 use iced::{Element, Theme};
 
 use crate::PlushieRenderer;
+use crate::a11y::A11yOverrides;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
@@ -9,7 +10,7 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, PlushieType, Style as CoreStyle, ValueRange};
+use plushie_core::types::{A11y, Length, PlushieType, Style as CoreStyle, ValueRange};
 
 struct ProgressBarProps {
     range: Option<ValueRange>,
@@ -121,7 +122,67 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ProgressBarWidget {
         pb.into()
     }
 
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        Some(A11yOverrides::from_core(
+            &A11y::new().value(format_progress_value(node)),
+        ))
+    }
+
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(ProgressBarWidget)
+    }
+}
+
+/// Format the progress value as a screen-reader-friendly string.
+///
+/// Returns `"45%"` when the range is the default 0-100, otherwise
+/// `"45/100"` with the configured maximum.
+fn format_progress_value(node: &TreeNode) -> String {
+    let pbp = ProgressBarProps::from_node(node);
+    let range = pbp.range.unwrap_or(ValueRange::new(0.0, 100.0));
+    let raw = pbp.value.unwrap_or(range.min).clamp(range.min, range.max);
+    if (range.min - 0.0).abs() < f32::EPSILON && (range.max - 100.0).abs() < f32::EPSILON {
+        format!("{}%", raw.round() as i64)
+    } else {
+        format!("{}/{}", raw.round() as i64, range.max.round() as i64)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn infer(props: serde_json::Value) -> Option<A11yOverrides> {
+        let node = crate::testing::node_with_props("p", "progress_bar", props);
+        <ProgressBarWidget as PlushieWidget<iced::Renderer>>::infer_a11y(&ProgressBarWidget, &node)
+    }
+
+    #[test]
+    fn percent_format_for_default_range() {
+        let o = infer(json!({"value": 45.0})).expect("progress_bar always infers a value");
+        assert_eq!(o.core().value.as_deref(), Some("45%"));
+    }
+
+    #[test]
+    fn fraction_format_for_non_default_range() {
+        let o = infer(json!({
+            "value": 7.0,
+            "range": [0.0, 10.0]
+        }))
+        .expect("progress_bar always infers a value");
+        assert_eq!(o.core().value.as_deref(), Some("7/10"));
+    }
+
+    #[test]
+    fn missing_value_defaults_to_range_min() {
+        let o = infer(json!({})).expect("progress_bar always infers a value");
+        assert_eq!(o.core().value.as_deref(), Some("0%"));
+    }
+
+    #[test]
+    fn over_range_value_is_clamped() {
+        let o = infer(json!({"value": 250.0})).expect("progress_bar always infers a value");
+        assert_eq!(o.core().value.as_deref(), Some("100%"));
     }
 }

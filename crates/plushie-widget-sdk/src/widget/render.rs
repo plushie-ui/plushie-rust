@@ -442,11 +442,18 @@ mod tests {
     }
 
     #[test]
-    fn a11y_combo_box_without_placeholder_uses_native_role() {
+    fn a11y_combo_box_without_placeholder_declares_has_popup() {
+        // combo_box always declares `has_popup: Listbox` regardless of
+        // placeholder so screen readers announce the popup affordance
+        // even when no description is set. The native role still drives
+        // the announcement; the override only adds the popup hint.
         let node = smoke_node("cb2", "combo_box", serde_json::json!({"value": "selected"}));
-        assert!(
-            infer_a11y_overrides(&node).is_none(),
-            "combo_box should not get a wrapper role"
+        let overrides = infer_a11y_overrides(&node).expect("combo_box always declares has_popup");
+        assert!(overrides.label().is_none());
+        assert!(overrides.description().is_none());
+        assert_eq!(
+            overrides.core().has_popup,
+            Some(plushie_core::types::HasPopup::Listbox)
         );
     }
 
@@ -506,6 +513,10 @@ mod tests {
 
     #[test]
     fn a11y_does_not_infer_roles_for_native_or_pass_through_widgets() {
+        // Native widgets must not get an inferred *role* override
+        // because iced already drives their accessible role. Other
+        // inferred fields (placeholder->description, value, has_popup)
+        // are fine; this guard only checks role.
         for type_name in [
             "button",
             "checkbox",
@@ -545,9 +556,12 @@ mod tests {
                 serde_json::json!({}),
                 vec![smoke_text_child()],
             );
+            let overrides = infer_a11y_overrides(&node);
+            let inferred_role = overrides.as_ref().and_then(|o| o.role());
             assert!(
-                infer_a11y_overrides(&node).is_none(),
-                "{type_name} should not get an inferred wrapper role"
+                inferred_role.is_none(),
+                "{type_name} should not get an inferred wrapper role; got {:?}",
+                inferred_role
             );
         }
     }

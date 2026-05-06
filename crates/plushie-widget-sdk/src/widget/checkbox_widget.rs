@@ -13,7 +13,7 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Font as PlushieFont, Length, LineHeight as PlushieLineHeight, PlushieType, Shaping,
+    A11y, Font as PlushieFont, Length, LineHeight as PlushieLineHeight, PlushieType, Shaping,
     Style as CoreStyle, Wrapping,
 };
 
@@ -68,7 +68,26 @@ impl<R: PlushieRenderer> PlushieWidget<R> for CheckboxWidget {
     }
 
     fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
-        A11yOverrides::from_mnemonic_props(&node.props)
+        let mut a11y = A11y::new();
+        let mut any = false;
+        if let Some(c) = node
+            .props
+            .get_str("mnemonic")
+            .or_else(|| node.props.get_str("access_key"))
+            .and_then(|s| s.chars().next())
+        {
+            a11y = a11y.mnemonic(c);
+            any = true;
+        }
+        if prop_bool_default(&node.props, "disabled", false) {
+            a11y = a11y.disabled(true);
+            any = true;
+        }
+        if any {
+            Some(A11yOverrides::from_core(&a11y))
+        } else {
+            None
+        }
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {

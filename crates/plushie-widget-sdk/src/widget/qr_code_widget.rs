@@ -2,13 +2,14 @@ use iced::widget::canvas;
 use iced::{Element, Length, Point, Size, Theme, mouse};
 
 use crate::PlushieRenderer;
+use crate::a11y::A11yOverrides;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 
-use plushie_core::types::{ErrorCorrection, PlushieType};
+use plushie_core::types::{A11y, ErrorCorrection, PlushieType};
 
 // ---------------------------------------------------------------------------
 // QrCodeProgram (canvas program for drawing QR modules)
@@ -227,11 +228,65 @@ impl<R: PlushieRenderer> PlushieWidget<R> for QrCodeWidget<R> {
         qr_canvas.into()
     }
 
+    fn infer_a11y(&self, node: &TreeNode) -> Option<A11yOverrides> {
+        let qp = QrCodeProps::from_node(node);
+        let mut a11y = A11y::new();
+        let mut any = false;
+        if let Some(label) = qp.alt {
+            a11y = a11y.label(label);
+            any = true;
+        }
+        if let Some(desc) = qp.description {
+            a11y = a11y.description(desc);
+            any = true;
+        }
+        if any {
+            Some(A11yOverrides::from_core(&a11y))
+        } else {
+            None
+        }
+    }
+
     fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.caches.retain(|k, _| live_ids.contains(k));
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(QrCodeWidget::new())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn infer(props: serde_json::Value) -> Option<A11yOverrides> {
+        let node = crate::testing::node_with_props("qr", "qr_code", props);
+        let widget = QrCodeWidget::<iced::Renderer>::new();
+        <QrCodeWidget<iced::Renderer> as PlushieWidget<iced::Renderer>>::infer_a11y(&widget, &node)
+    }
+
+    #[test]
+    fn alt_flows_to_label() {
+        let o = infer(json!({"alt": "Wifi password"})).expect("alt should infer");
+        assert_eq!(o.core().label.as_deref(), Some("Wifi password"));
+    }
+
+    #[test]
+    fn description_flows_to_description() {
+        let o = infer(json!({"description": "Scan to join"})).expect("description should infer");
+        assert_eq!(o.core().description.as_deref(), Some("Scan to join"));
+    }
+
+    #[test]
+    fn alt_and_description_both_propagate() {
+        let o = infer(json!({"alt": "QR", "description": "details"})).expect("both should infer");
+        assert_eq!(o.core().label.as_deref(), Some("QR"));
+        assert_eq!(o.core().description.as_deref(), Some("details"));
+    }
+
+    #[test]
+    fn missing_returns_none() {
+        assert!(infer(json!({})).is_none());
     }
 }

@@ -43,7 +43,11 @@ pub enum Codec {
 - `Codec::Json` frames each message as one UTF-8 JSON object
   terminated by a single `\n`. Messages must not contain embedded
   newlines. The renderer auto-detects JSON when stdin's first
-  byte is `0x7B` (`{`).
+  byte is `0x7B` (`{`). The first byte must be `{` literally:
+  leading whitespace, BOM, or a stray newline before the opening
+  brace routes the stream to MessagePack and the handshake fails.
+  Senders must write the JSON object as the very first bytes on
+  the channel.
 - `Codec::MsgPack` frames each message as a 4-byte big-endian
   unsigned length prefix followed by that many MessagePack bytes.
   Non-`{` first bytes route to MessagePack. Payload size is

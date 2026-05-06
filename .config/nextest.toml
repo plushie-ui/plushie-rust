@@ -8,11 +8,21 @@ success-output = "never"
 [profile.ci]
 inherits = "default"
 fail-fast = false
-# GitHub runners are slower than most local dev boxes, and the wire-mode
-# integration tests spawn subprocesses; bump the slow-test threshold and
-# allow a small number of retries so transient subprocess/timing blips
-# don't fail the pipeline. `status-level = "all"` keeps the CI log
-# useful for post-mortem on the rare flake.
-retries = 2
+# GitHub runners are slower than most local dev boxes; bump the
+# slow-test threshold so a normal compile-then-run window doesn't
+# trip it. `status-level = "all"` keeps the CI log useful for
+# post-mortem on the rare flake.
+#
+# Default retries = 1 surfaces flake quickly. Subprocess wire tests
+# spawn the renderer and can hit transient timing blips on a busy
+# matrix runner; they get retries = 2 via the override below.
+retries = 1
 slow-timeout = { period = "30s" }
 status-level = "all"
+
+# Subprocess-spawning wire tests get a higher retry budget. Match by
+# binary so future tests under the same harness inherit the override
+# without having to enumerate them.
+[[profile.ci.overrides]]
+filter = "binary(=wire_mode) | binary(=wire_connect) | binary(=wire_image_ops) | binary(=automation_replay_windowed) | binary(=session_multiplexing) | binary(=wire_hot_reload)"
+retries = 2

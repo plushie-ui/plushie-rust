@@ -45,7 +45,7 @@ impl App {
         let is_settings = matches!(message, IncomingMessage::Settings { .. });
 
         if is_snapshot {
-            let _ = self.emitter.flush();
+            self.pending_tasks.push(self.emitter.flush());
             self.emitter.clear_widget_rates();
         }
 
@@ -238,8 +238,10 @@ impl App {
         for key in emitter_keys {
             if !active_rate_tags.contains(&key) {
                 self.emitter.remove_subscription_rate(&key);
-                self.emitter
+                let task = self
+                    .emitter
                     .flush_key(&crate::emitter::CoalesceKey::Subscription(key));
+                self.pending_tasks.push(task);
             }
         }
     }

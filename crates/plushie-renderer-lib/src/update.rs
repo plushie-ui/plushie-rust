@@ -369,11 +369,13 @@ impl App {
             StdinEvent::Message(incoming) => {
                 // Flush pending coalesced events on any incoming message.
                 // This serves as a "host is ready" signal and provides
-                // adaptive throughput matching.
-                let _ = self.emitter.flush();
+                // adaptive throughput matching. The flush task may carry
+                // an exit signal if a buffered write hit a broken pipe;
+                // batch it with the per-branch task below.
+                let flush_task = self.emitter.flush();
                 // Handle scripting messages directly instead of passing
                 // them to Core::apply. All other messages fall through.
-                match incoming {
+                let branch_task = match incoming {
                     IncomingMessage::Query {
                         id,
                         target,
@@ -414,7 +416,7 @@ impl App {
                     }
                     IncomingMessage::Reset { id } => {
                         // Flush any pending coalesced events before reset.
-                        let _ = self.emitter.flush();
+                        let pre_reset_flush = self.emitter.flush();
 
                         // Reset core and emit the response.
                         if let Err(e) = crate::scripting::handle_reset(
@@ -428,11 +430,12 @@ impl App {
                         }
 
                         // Close all open windows and clear maps.
-                        let close_tasks: Vec<Task<Message>> = self
+                        let mut close_tasks: Vec<Task<Message>> = self
                             .windows
                             .iced_ids()
                             .map(|&iced_id| window::close(iced_id))
                             .collect();
+                        close_tasks.push(pre_reset_flush);
                         self.windows.clear();
 
                         // Reset remaining App-level state.
@@ -501,7 +504,8 @@ impl App {
                         let tasks: Vec<Task<Message>> = self.pending_tasks.drain(..).collect();
                         Task::batch(tasks)
                     }
-                }
+                };
+                Task::batch([flush_task, branch_task])
             }
             StdinEvent::Warning(msg) => {
                 log::warn!("stdin warning: {msg}");

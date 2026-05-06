@@ -310,8 +310,8 @@ impl EventEmitter {
 
         // No rate limit = emit immediately.
         let Some(rate) = rate else {
-            self.flush_key(&key);
-            return self.do_emit(event);
+            let flush_task = self.flush_key(&key);
+            return Task::batch([flush_task, self.do_emit(event)]);
         };
 
         let min_interval = Duration::from_secs_f64(1.0 / rate as f64);
@@ -330,7 +330,7 @@ impl EventEmitter {
         }
 
         // Buffer the event.
-        self.buffer_event(&key, event, &hint);
+        let buffer_task = self.buffer_event(&key, event, &hint);
 
         // Schedule a flush timer if one isn't already running.
         if !self.flush_scheduled {
@@ -340,52 +340,67 @@ impl EventEmitter {
                 .get(&key)
                 .map(|last| min_interval.saturating_sub(now.duration_since(*last)))
                 .unwrap_or(min_interval);
-            return Task::perform(
-                async move {
-                    platform_sleep(remaining).await;
-                },
-                |_| Message::FlushCoalesce,
-            );
+            return Task::batch([
+                buffer_task,
+                Task::perform(
+                    async move {
+                        platform_sleep(remaining).await;
+                    },
+                    |_| Message::FlushCoalesce,
+                ),
+            ]);
         }
 
-        Task::none()
+        buffer_task
     }
 
     /// Emit a non-coalescable event immediately, flushing pending
     /// events first to preserve ordering.
     pub fn emit_immediate(&mut self, event: OutgoingEvent) -> Task<Message> {
-        self.flush_all();
-        self.do_emit(event)
+        let flush_task = self.flush_all();
+        Task::batch([flush_task, self.do_emit(event)])
     }
 
     /// Flush all pending events. Called by the `Message::FlushCoalesce`
     /// handler.
     pub fn flush(&mut self) -> Task<Message> {
         self.flush_scheduled = false;
-        self.flush_all();
-        Task::none()
+        self.flush_all()
     }
 
     /// Flush pending events for a specific key.
-    pub fn flush_key(&mut self, key: &CoalesceKey) {
+    ///
+    /// Returns any tasks produced by the underlying writes. On a
+    /// broken pipe `do_emit` yields `iced::exit()`; propagating the
+    /// task is what keeps the renderer from wedging when a
+    /// high-frequency coalesced event flushes after the host has
+    /// disconnected.
+    pub fn flush_key(&mut self, key: &CoalesceKey) -> Task<Message> {
         if let Some(pending) = self.pending.remove(key) {
             let now = Instant::now();
             self.last_emits.insert(key.clone(), now);
-            let _ = self.do_emit(pending.into_event());
+            return self.do_emit(pending.into_event());
         }
+        Task::none()
     }
 
     /// Flush all pending events (internal).
-    fn flush_all(&mut self) {
+    fn flush_all(&mut self) -> Task<Message> {
         // `drain()` moves ownership of each `(key, PendingEvent)` pair
         // out of the map without cloning keys - key clones would copy
         // two Strings per entry under `CoalesceKey::Widget`, which for
         // a busy app adds up on every FlushCoalesce tick.
         let drained: Vec<_> = self.pending.drain().collect();
         let now = Instant::now();
+        let mut tasks: Vec<Task<Message>> = Vec::new();
         for (key, pending) in drained {
             self.last_emits.insert(key, now);
-            let _ = self.do_emit(pending.into_event());
+            tasks.push(self.do_emit(pending.into_event()));
+        }
+        if tasks.is_empty() {
+            Task::none()
+        } else {
+            Task::batch(tasks)
         }
     }
 
@@ -401,7 +416,13 @@ impl EventEmitter {
     /// (subscription-tag * widgets) combinations. When the cap is
     /// exceeded we flush the entire pending map and log a diagnostic
     /// with code `emitter_coalesce_cap_exceeded`.
-    fn buffer_event(&mut self, key: &CoalesceKey, event: OutgoingEvent, hint: &CoalesceHint) {
+    fn buffer_event(
+        &mut self,
+        key: &CoalesceKey,
+        event: OutgoingEvent,
+        hint: &CoalesceHint,
+    ) -> Task<Message> {
+        let mut tasks: Vec<Task<Message>> = Vec::new();
         if let Some(existing) = self.pending.get_mut(key) {
             // Check for strategy mismatch. Replace-vs-Replace is always compatible.
             // Accumulate-vs-Accumulate is only compatible when the tracked field
@@ -420,11 +441,11 @@ impl EventEmitter {
             };
             if compatible {
                 existing.merge(event);
-                return;
+                return Task::none();
             }
             // Strategy changed (or Accumulate field list changed); flush the old
             // entry and start fresh.
-            self.flush_key(key);
+            tasks.push(self.flush_key(key));
         }
         if self.pending.len() >= PENDING_CAP {
             // Typed diagnostic emitted through Display so the log line
@@ -436,10 +457,15 @@ impl EventEmitter {
             plushie_widget_sdk::diagnostics::warn(
                 plushie_core::Diagnostic::EmitterCoalesceCapExceeded { cap: PENDING_CAP },
             );
-            self.flush_all();
+            tasks.push(self.flush_all());
         }
         self.pending
             .insert(key.clone(), PendingEvent::from_hint(event, hint));
+        if tasks.is_empty() {
+            Task::none()
+        } else {
+            Task::batch(tasks)
+        }
     }
 
     /// Emit an event through the sink, returning a Result.
@@ -598,6 +624,65 @@ mod tests {
         EventEmitter::new(sink)
     }
 
+    /// Sink that records every emit attempt and always returns
+    /// `BrokenPipe`. Used to verify the flush paths actually call
+    /// the sink (and therefore hit `do_emit`'s error branch, where
+    /// the exit Task is constructed).
+    struct FailingSink {
+        events: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+    impl EventSink for FailingSink {
+        fn emit_event(&mut self, _: OutgoingEvent) -> std::io::Result<()> {
+            self.events
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+        fn emit_effect_response(
+            &mut self,
+            _: plushie_widget_sdk::protocol::EffectResponse,
+        ) -> std::io::Result<()> {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+        fn emit_query_response(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &serde_json::Value,
+        ) -> std::io::Result<()> {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+        fn emit_screenshot_response(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: u32,
+            _: u32,
+            _: &[u8],
+        ) -> std::io::Result<()> {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+        fn emit_hello(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &[&str],
+            _: &[&str],
+            _: &str,
+        ) -> std::io::Result<()> {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+        fn emit_diagnostic(
+            &mut self,
+            _: plushie_widget_sdk::protocol::DiagnosticMessage,
+        ) -> std::io::Result<()> {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+        fn write_raw(&mut self, _: &[u8]) -> std::io::Result<()> {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+    }
+
     fn make_event(family: &str, id: &str) -> OutgoingEvent {
         OutgoingEvent::generic(family, id, None)
     }
@@ -694,10 +779,10 @@ mod tests {
         let hint = CoalesceHint::Replace;
 
         let ev1 = make_event("slide", "w1");
-        emitter.buffer_event(&key, ev1, &hint);
+        let _ = emitter.buffer_event(&key, ev1, &hint);
 
         let ev2 = make_event("slide", "w1");
-        emitter.buffer_event(&key, ev2, &hint);
+        let _ = emitter.buffer_event(&key, ev2, &hint);
 
         assert_eq!(emitter.pending.len(), 1);
     }
@@ -709,10 +794,10 @@ mod tests {
         let hint = CoalesceHint::Accumulate(vec!["delta_x".into(), "delta_y".into()]);
 
         let ev1 = make_event_with_data("scroll", "ma1", json!({"delta_x": 1.0, "delta_y": 2.0}));
-        emitter.buffer_event(&key, ev1, &hint);
+        let _ = emitter.buffer_event(&key, ev1, &hint);
 
         let ev2 = make_event_with_data("scroll", "ma1", json!({"delta_x": 3.0, "delta_y": 4.0}));
-        emitter.buffer_event(&key, ev2, &hint);
+        let _ = emitter.buffer_event(&key, ev2, &hint);
 
         match emitter.pending.get(&key).unwrap() {
             PendingEvent::Accumulate { totals, .. } => {
@@ -881,7 +966,7 @@ mod tests {
 
         // Buffer a coalescable event.
         let ev = make_event("cursor_pos", "w1");
-        emitter.buffer_event(&key, ev, &hint);
+        let _ = emitter.buffer_event(&key, ev, &hint);
         assert_eq!(emitter.pending.len(), 1);
 
         // emit_immediate should flush pending events first (even though
@@ -903,14 +988,14 @@ mod tests {
 
         // Buffer a Replace event.
         let ev1 = make_event_with_data("update", "w1", json!({"x": 1.0}));
-        emitter.buffer_event(&key, ev1, &CoalesceHint::Replace);
+        let _ = emitter.buffer_event(&key, ev1, &CoalesceHint::Replace);
         assert_eq!(emitter.pending.len(), 1);
 
         // Buffer an Accumulate event with the same key (strategy mismatch).
         // The old Replace entry should be flushed and a new Accumulate started.
         let ev2 = make_event_with_data("update", "w1", json!({"dx": 5.0}));
         let acc_hint = CoalesceHint::Accumulate(vec!["dx".into()]);
-        emitter.buffer_event(&key, ev2, &acc_hint);
+        let _ = emitter.buffer_event(&key, ev2, &acc_hint);
 
         // Should still have one pending entry, but now it's Accumulate.
         assert_eq!(emitter.pending.len(), 1);
@@ -933,14 +1018,14 @@ mod tests {
             "w1",
             json!({"x": 10.0, "y": 20.0, "impulse_x": 1.0, "impulse_y": 2.0}),
         );
-        emitter.buffer_event(&key, ev1, &hint);
+        let _ = emitter.buffer_event(&key, ev1, &hint);
 
         let ev2 = make_event_with_data(
             "physics",
             "w1",
             json!({"x": 15.0, "y": 25.0, "impulse_x": 3.0, "impulse_y": 4.0}),
         );
-        emitter.buffer_event(&key, ev2, &hint);
+        let _ = emitter.buffer_event(&key, ev2, &hint);
 
         let result = emitter.pending.remove(&key).unwrap().into_event();
         let value = result.value.unwrap();
@@ -950,5 +1035,49 @@ mod tests {
         // Impulse fields: accumulated.
         assert_eq!(value["impulse_x"], 4.0);
         assert_eq!(value["impulse_y"], 6.0);
+    }
+
+    // -- Broken-pipe propagation through the coalesced flush path --
+
+    /// A buffered, coalesced event must reach the sink when the
+    /// emitter flushes. Pre-fix `flush_all` discarded the Task
+    /// returned by `do_emit`; the broken-pipe error never produced
+    /// an exit signal and the renderer would wedge silently.
+    /// Counting writes through a failing sink covers the path: if
+    /// the sink is hit, the Task carrying `iced::exit()` is the
+    /// only thing the caller can observe, so propagation is the
+    /// load-bearing piece.
+    #[test]
+    fn flush_all_drives_writes_after_buffering() {
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let sink: Arc<SinkMutex> = Arc::new(Mutex::new(Box::new(FailingSink {
+            events: counter.clone(),
+        })));
+        let mut emitter = EventEmitter::new(sink);
+
+        let key = CoalesceKey::Subscription("on_pointer_move".into());
+        let hint = CoalesceHint::Replace;
+        let _ = emitter.buffer_event(&key, make_event("pointer_moved", ""), &hint);
+        assert_eq!(emitter.pending.len(), 1);
+
+        let _ = emitter.flush();
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(emitter.pending.is_empty());
+    }
+
+    #[test]
+    fn flush_key_drives_writes() {
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let sink: Arc<SinkMutex> = Arc::new(Mutex::new(Box::new(FailingSink {
+            events: counter.clone(),
+        })));
+        let mut emitter = EventEmitter::new(sink);
+
+        let key = CoalesceKey::Subscription("on_pointer_move".into());
+        let hint = CoalesceHint::Replace;
+        let _ = emitter.buffer_event(&key, make_event("pointer_moved", ""), &hint);
+
+        let _ = emitter.flush_key(&key);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

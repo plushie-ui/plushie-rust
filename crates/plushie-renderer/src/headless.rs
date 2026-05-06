@@ -1107,6 +1107,7 @@ pub(crate) fn run(
 
     let sink = plushie_renderer_lib::WriterSink::new(writer, codec);
     plushie_renderer_lib::emitters::init_sink(Box::new(sink));
+    plushie_renderer_lib::emitters::install_panic_hook();
 
     let (mode_str, backend) = match mode {
         Mode::Headless => ("headless", "tiny-skia"),

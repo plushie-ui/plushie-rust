@@ -160,6 +160,7 @@ impl PlushieApp {
         let codec = Codec::Json;
         let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), codec);
         plushie_renderer_lib::emitters::init_sink(Box::new(sink));
+        plushie_renderer_lib::emitters::install_panic_hook();
 
         let iced_settings = plushie_renderer_lib::settings::parse_iced_settings(&settings);
         plushie_renderer_lib::settings::apply_validate_props(&settings);

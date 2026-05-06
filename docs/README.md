@@ -32,11 +32,13 @@ Lookup material organized by topic. Each page is self-contained.
 - [App Lifecycle](reference/app-lifecycle.md) - the `App` trait, init/update/view, supervision, startup sequence
 - [Built-in Widgets](reference/built-in-widgets.md) - every widget with props, events, and examples
 - [Canvas](reference/canvas.md) - shapes, layers, groups, transforms, interactive regions
+- [CLI Flags](reference/cli.md) - reserved `--plushie-*` flags layered on `plushie::run`
 - [CLI Commands](reference/cli-commands.md) - `cargo plushie` subcommands: build, download, run, init, new-widget, doctor
 - [Commands and Effects](reference/commands.md) - async, focus, scroll, window ops, platform effects
 - [Composition Patterns](reference/composition-patterns.md) - helper components, memoisation, multi-window
 - [Configuration](reference/configuration.md) - `Settings`, `WindowConfig`, environment variables, feature flags
 - [Custom Widgets](reference/custom-widgets.md) - the `PlushieWidget` trait, derive macros, native crates
+- [Dev Mode](reference/dev.md) - `watch_renderer`, restart policy, in-tree rebuild overlay
 - [Direct vs Wire](reference/direct-vs-wire.md) - in-process iced vs subprocess renderer, feature flags, WASM renderer
 - [Events](reference/events.md) - event types, `widget_match`, scoped ID routing
 - [Scoped IDs](reference/scoped-ids.md) - `#[track_caller]` auto-IDs, explicit IDs, scope paths
@@ -46,6 +48,40 @@ Lookup material organized by topic. Each page is self-contained.
 - [Versioning](reference/versioning.md) - workspace version, wire protocol version, pinning, host-SDK coordination
 - [Windows and Layout](reference/windows-and-layout.md) - `Length`, `Padding`, `Align`, window config, layout containers
 - [Wire Protocol](reference/wire-protocol.md) - MessagePack/JSON framing, message types, transport modes
+
+## By topic
+
+When you know what you want to do but not which page to start on:
+
+**Building UI**: [Layout](reference/windows-and-layout.md),
+[Built-in Widgets](reference/built-in-widgets.md),
+[Themes and Styling](reference/themes-and-styling.md),
+[Canvas](reference/canvas.md),
+[Composition Patterns](reference/composition-patterns.md).
+
+**Reacting to input**: [Events](reference/events.md),
+[Subscriptions](reference/subscriptions.md),
+[Scoped IDs](reference/scoped-ids.md),
+[Accessibility](reference/accessibility.md).
+
+**Side effects and async**: [Commands and Effects](reference/commands.md),
+[App Lifecycle](reference/app-lifecycle.md).
+
+**Animation**: [Animation](reference/animation.md).
+
+**Testing and automation**: [Testing](reference/testing.md),
+[CLI Flags](reference/cli.md).
+
+**Custom widgets**: [Custom Widgets](reference/custom-widgets.md),
+[CLI Commands](reference/cli-commands.md).
+
+**Deployment**: [Direct vs Wire](reference/direct-vs-wire.md),
+[Configuration](reference/configuration.md),
+[Versioning](reference/versioning.md),
+[Wire Protocol](reference/wire-protocol.md).
+
+**Development workflow**: [Dev Mode](reference/dev.md),
+[CLI Commands](reference/cli-commands.md).
 
 ## Other resources
 

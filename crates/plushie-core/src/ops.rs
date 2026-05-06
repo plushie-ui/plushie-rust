@@ -1036,24 +1036,40 @@ pub fn is_known_effect_kind(kind: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectRequestValidationError {
     /// The effect kind is not built in.
-    UnknownKind { kind: String },
+    UnknownKind {
+        /// Effect kind string from the request (unrecognized).
+        kind: String,
+    },
     /// The payload is not a JSON object.
     InvalidPayload {
+        /// Effect kind string for which the payload was rejected.
         kind: String,
+        /// Human-readable description of the expected payload shape.
         expected: &'static str,
     },
     /// A required field was absent.
-    MissingField { kind: String, field: &'static str },
+    MissingField {
+        /// Effect kind string the missing field belongs to.
+        kind: String,
+        /// Name of the absent field.
+        field: &'static str,
+    },
     /// A field was present with the wrong JSON type.
     InvalidFieldType {
+        /// Effect kind string the field belongs to.
         kind: String,
+        /// Name of the field with the wrong type.
         field: &'static str,
+        /// Human-readable description of the expected JSON type.
         expected: &'static str,
     },
     /// A field had the right JSON type but not an accepted value.
     InvalidFieldValue {
+        /// Effect kind string the field belongs to.
         kind: String,
+        /// Name of the field with the rejected value.
         field: &'static str,
+        /// Human-readable description of why the value was rejected.
         detail: String,
     },
 }

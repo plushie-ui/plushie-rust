@@ -58,7 +58,8 @@ Two things make the loop feel fast in practice:
 The pad cannot compile user-typed source, so it does the next best
 thing: it bakes a catalogue of example views into the binary and
 picks one to render. Each entry in the catalogue is a plain Rust
-module that implements a small trait:
+module that implements a small trait the demo defines for itself
+(`Experiment` is a user-defined name, not part of plushie):
 
 ```rust
 use plushie::prelude::*;

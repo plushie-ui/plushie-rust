@@ -40,7 +40,7 @@ relative to 0.6.1.
 - **Canonical renderer env whitelist.** The renderer subprocess inherits
   only an explicit list of environment variables (names and prefixes).
   Custom vars must match a documented prefix or be passed via a
-  supported hook. See `docs/protocol.md`.
+  supported hook. See `docs/reference/wire-protocol.md`.
 - **Diagnostic wire format.** Diagnostics emitted by the renderer use
   the typed `Diagnostic` enum with structured variants instead of
   free-form strings. Host SDKs that pattern-match diagnostic text

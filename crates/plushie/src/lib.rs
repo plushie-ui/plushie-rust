@@ -344,6 +344,15 @@ impl From<()> for ViewList {
 /// - [`window_config`](App::window_config): Per-window defaults.
 /// - [`handle_renderer_exit`](App::handle_renderer_exit): React to
 ///   renderer crashes (wire mode only).
+///
+/// # `Event` is non-exhaustive
+///
+/// The [`Event`] enum is `#[non_exhaustive]` so new variants can land
+/// without a major version bump. Match expressions in `update` need
+/// a wildcard arm (`_ => {}`) even when every current variant is
+/// covered, otherwise the compiler refuses to build. The widget
+/// match accessors ([`Event::widget_match`], `as_widget`, `as_key_press`,
+/// etc.) sidestep the issue when only widget-style events matter.
 pub trait App: Send + 'static {
     /// Application state. Owned by the runtime, passed to all callbacks.
     type Model: Send + 'static;
@@ -719,6 +728,33 @@ pub fn run_connect<A: App>(opts: ConnectOpts) -> Result {
         token,
     };
     runner::wire::run_connect::<A>(resolved)
+}
+
+/// Run the app by connecting to a renderer on a caller-provided
+/// tokio runtime.
+///
+/// Mirrors [`run_connect`] for callers that already own a runtime;
+/// SDK-local async tasks are spawned on the supplied
+/// [`tokio::runtime::Handle`] instead of a privately owned one.
+///
+/// # Errors
+///
+/// Same as [`run_connect`].
+#[cfg(feature = "wire")]
+pub fn run_connect_with_runtime<A: App>(
+    opts: ConnectOpts,
+    runtime: tokio::runtime::Handle,
+) -> Result {
+    let token = opts
+        .token
+        .clone()
+        .or_else(|| std::env::var("PLUSHIE_TOKEN").ok())
+        .or_else(read_token_from_stdin);
+    let resolved = ConnectOpts {
+        socket: opts.socket,
+        token,
+    };
+    runner::wire::run_connect_with_runtime::<A>(resolved, runtime)
 }
 
 /// Best-effort read of a newline-terminated JSON token line from stdin.

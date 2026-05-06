@@ -18,6 +18,13 @@ children. The ID is required: canvas carries renderer-side state
 (focus, drag) and scopes its child events. It takes the usual
 `width` and `height` like any other widget.
 
+The shape builders (`canvas`, `layer`, `rect`, `circle`, `line`,
+`path`, `canvas_text`, `group`, `interactive`, the path-command
+helpers, `linear_gradient`), the color and style types
+(`Color`, `CursorStyle`, `LineCap`, `LineJoin`, `FillRule`), and
+the accessibility types (`A11y`, `Role`) all come from
+`plushie::prelude::*`. The examples below assume that import.
+
 ```rust
 use plushie::prelude::*;
 

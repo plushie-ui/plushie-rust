@@ -238,9 +238,13 @@ impl EventEmitter {
         self.subscription_rates.insert(kind.to_string(), rate);
     }
 
-    /// Remove rate tracking for a subscription kind.
+    /// Remove rate tracking for a subscription kind. Also drops the
+    /// matching `last_emits` entry so the timestamp map doesn't
+    /// accumulate stale keys for unsubscribed streams.
     pub fn remove_subscription_rate(&mut self, kind: &str) {
         self.subscription_rates.remove(kind);
+        self.last_emits
+            .remove(&CoalesceKey::Subscription(kind.to_string()));
     }
 
     /// Set the rate for a specific widget (from `event_rate` prop).
@@ -248,9 +252,13 @@ impl EventEmitter {
         self.widget_rates.insert(widget_id.to_string(), rate);
     }
 
-    /// Clear all widget rates (called on Snapshot, tree replaced).
+    /// Clear all widget rates (called on Snapshot, tree replaced). Also
+    /// drops widget-keyed `last_emits` entries so timestamps for nodes
+    /// that didn't survive the snapshot don't linger.
     pub fn clear_widget_rates(&mut self) {
         self.widget_rates.clear();
+        self.last_emits
+            .retain(|key, _| !matches!(key, CoalesceKey::Widget(_, _)));
     }
 
     /// Check whether a widget rate is already cached.

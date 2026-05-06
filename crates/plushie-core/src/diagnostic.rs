@@ -253,9 +253,16 @@ pub enum Diagnostic {
         /// the original `std::time::Duration` for Display parity.
         deadline_debug: String,
     },
-    /// The leaked dash-segment cache reached its entry cap.
+    /// The leaked dash-segment cache reached its entry cap. New
+    /// patterns past the cap fall back to undashed rendering.
     DashCacheCapExceeded {
         /// Cap value (max cache entries).
+        max: usize,
+    },
+    /// A canvas dash pattern exceeded the per-pattern segment limit
+    /// and was dropped in favor of undashed rendering.
+    DashSegmentsCapExceeded {
+        /// Cap value (max segments per pattern).
         max: usize,
     },
     /// The renderer-lib event coalesce map hit its cap and was
@@ -512,7 +519,13 @@ impl std::fmt::Display for Diagnostic {
             ),
             Self::DashCacheCapExceeded { max } => write!(
                 f,
-                "dash_cache_cap_exceeded: cache full ({max} entries); new patterns leak uncached"
+                "dash_cache_cap_exceeded: cache full ({max} entries); \
+                 new patterns fall back to undashed rendering"
+            ),
+            Self::DashSegmentsCapExceeded { max } => write!(
+                f,
+                "dash_segments_cap_exceeded: pattern exceeded {max} segments; \
+                 falling back to undashed rendering"
             ),
             Self::EmitterCoalesceCapExceeded { cap } => write!(
                 f,

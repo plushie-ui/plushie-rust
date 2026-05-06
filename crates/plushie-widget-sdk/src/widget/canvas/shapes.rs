@@ -229,8 +229,8 @@ fn intern_dash_segments(segments: Vec<f32>) -> Option<&'static [f32]> {
 
     if segments.len() > MAX_DASH_SEGMENTS {
         if !SEGMENTS_WARNED.swap(true, Ordering::Relaxed) {
-            crate::diagnostics::info(plushie_core::Diagnostic::DashCacheCapExceeded {
-                max: MAX_DASH_CACHE,
+            crate::diagnostics::info(plushie_core::Diagnostic::DashSegmentsCapExceeded {
+                max: MAX_DASH_SEGMENTS,
             });
         }
         return None;

@@ -10,6 +10,39 @@ use crate::App;
 use crate::constants::*;
 use crate::emitter::CoalesceKey;
 
+/// True when the incoming message must observe wire-ordering
+/// against the coalesce buffer. Anything tree-affecting,
+/// state-mutating, or response-bearing returns true; setup-only
+/// subscription and effect-stub bookkeeping returns false so a
+/// rapid stream of those messages doesn't collapse the coalesce
+/// window for unrelated event streams.
+fn incoming_requires_flush(message: &IncomingMessage) -> bool {
+    match message {
+        IncomingMessage::Subscribe { .. }
+        | IncomingMessage::Unsubscribe { .. }
+        | IncomingMessage::RegisterEffectStub { .. }
+        | IncomingMessage::UnregisterEffectStub { .. } => false,
+        IncomingMessage::Snapshot { .. }
+        | IncomingMessage::Patch { .. }
+        | IncomingMessage::Effect { .. }
+        | IncomingMessage::WidgetOp { .. }
+        | IncomingMessage::WindowOp { .. }
+        | IncomingMessage::SystemOp { .. }
+        | IncomingMessage::SystemQuery { .. }
+        | IncomingMessage::Settings { .. }
+        | IncomingMessage::Query { .. }
+        | IncomingMessage::Interact { .. }
+        | IncomingMessage::TreeHash { .. }
+        | IncomingMessage::Screenshot { .. }
+        | IncomingMessage::Reset { .. }
+        | IncomingMessage::ImageOp { .. }
+        | IncomingMessage::Command { .. }
+        | IncomingMessage::Commands { .. }
+        | IncomingMessage::AdvanceFrame { .. }
+        | IncomingMessage::LoadFont { .. } => true,
+    }
+}
+
 /// Best-effort emit of a `session_error` carrying a write-failure
 /// reason, mirroring the panic-hook pattern: the host gets one
 /// final structured event before the renderer exits, so it can tell
@@ -382,12 +415,24 @@ impl App {
     pub fn handle_stdin(&mut self, event: StdinEvent) -> Task<Message> {
         match event {
             StdinEvent::Message(incoming) => {
-                // Flush pending coalesced events on any incoming message.
-                // This serves as a "host is ready" signal and provides
-                // adaptive throughput matching. The flush task may carry
-                // an exit signal if a buffered write hit a broken pipe;
-                // batch it with the per-branch task below.
-                let flush_task = self.emitter.flush();
+                // Flush pending coalesced events only on messages whose
+                // semantics depend on the host having seen everything we
+                // queued before this point. Subscribe / Unsubscribe /
+                // RegisterEffectStub / UnregisterEffectStub are pure
+                // setup; flushing on every one of them under a rapid
+                // subscription stream collapses the coalesce window for
+                // unrelated streams. Tree, widget, window, system,
+                // command, image, font, screenshot, query, interact,
+                // reset, and animation-frame messages all do depend on
+                // wire ordering relative to coalesced events. The
+                // flush task may carry an exit signal if a buffered
+                // write hit a broken pipe; batch it with the
+                // per-branch task below.
+                let flush_task = if incoming_requires_flush(&incoming) {
+                    self.emitter.flush()
+                } else {
+                    Task::none()
+                };
                 // Handle scripting messages directly instead of passing
                 // them to Core::apply. All other messages fall through.
                 let branch_task = match incoming {

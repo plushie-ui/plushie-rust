@@ -340,8 +340,15 @@ fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> &str {
 /// behaviour without touching the process-global panic hook.
 fn emit_panic_events(msg: &str, location: &str) {
     if let Some(sink_lock) = EVENT_SINK.get() {
-        // sink lock is the innermost; no nested locks held here.
-        let mut guard = sink_lock.lock();
+        // The panicking thread may already hold the sink lock (e.g. a
+        // panic inside `do_emit`'s sink call). Blocking on the same
+        // lock would deadlock the process before the default panic
+        // hook runs and stderr loses everything. Skip the structured
+        // emit if the lock is held; the default hook still produces a
+        // human-readable backtrace.
+        let Some(mut guard) = sink_lock.try_lock() else {
+            return;
+        };
 
         let error_event = plushie_widget_sdk::protocol::OutgoingEvent::generic(
             "session_error",

@@ -269,6 +269,32 @@ fn canvas_stroke_parse() {
 }
 
 #[test]
+fn dash_pattern_within_caps_is_applied() {
+    let stroke_val = json!({
+        "color": "#ff0000",
+        "width": 1.0,
+        "dash": {"segments": [4.0, 2.0], "offset": 0}
+    });
+    let stroke = parse_canvas_stroke(&stroke_val);
+    assert_eq!(stroke.line_dash.segments, &[4.0, 2.0]);
+}
+
+#[test]
+fn dash_pattern_exceeding_segment_cap_is_dropped() {
+    // 65 segments exceeds MAX_DASH_SEGMENTS (64); the dash should be
+    // ignored rather than allocated, so line_dash stays at its default
+    // (empty segments) and no `Box::leak` runs for this pattern.
+    let segments: Vec<f64> = (0..65).map(|i| (i + 1) as f64).collect();
+    let stroke_val = json!({
+        "color": "#ff0000",
+        "width": 1.0,
+        "dash": {"segments": segments, "offset": 0}
+    });
+    let stroke = parse_canvas_stroke(&stroke_val);
+    assert!(stroke.line_dash.segments.is_empty());
+}
+
+#[test]
 fn canvas_gradient_parse() {
     let fill_val = json!({
         "type": "linear",

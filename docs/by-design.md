@@ -382,25 +382,19 @@ to mint `'static` slices for iced types that demand them. The
 caches are capped at 1024 entries.
 
 The accepted design is that the *cache* is bounded; the contract
-is "up to 1024 unique inputs over the process lifetime." Beyond
-that, new inputs should fall through to a non-leaking path
-(per-call allocation, structured rejection, or an arena that can
-free), not silently leak past the cap.
+is "up to 1024 unique inputs leak over the process lifetime, no
+more." Past the cap, the interner returns `None` and the caller
+falls back to a non-leaking default (no dash for strokes,
+`Family::SansSerif` for fonts). A one-time info diagnostic fires
+on the first cap hit. Dash patterns are also bounded per-entry by
+a 64-segment cap so a single oversized pattern cannot dominate
+the cache budget.
 
 Declined:
 
 - Replacing the intern caches with an `Arc<str>` or arena-based
   approach as a refactoring goal in itself. The current shape
   is correct for its bounded contract.
-
-In scope:
-
-- Past-cap behavior that *still leaks* every additional unique
-  input. That is unbounded growth in a long-running process,
-  which violates the bounded-cap contract and is a real bug.
-  The fix is to make past-cap inputs not leak (per-call
-  allocation, fall back to default, or eviction), not to redesign
-  the cache.
 
 Revisit if iced ever accepts non-`'static` slices for the
 relevant types.

@@ -195,59 +195,66 @@ pub(super) fn parse_canvas_stroke_themed(
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(0);
-        // LineDash borrows segments, but we need 'static. Intern via a
-        // global cache so identical patterns reuse the same allocation and
-        // we only leak once per unique dash pattern (not per render).
-        let segments: &'static [f32] = intern_dash_segments(segments);
-        stroke.line_dash = canvas::LineDash { segments, offset };
+        if let Some(segments) = intern_dash_segments(segments) {
+            stroke.line_dash = canvas::LineDash { segments, offset };
+        }
     }
     stroke
 }
 
-/// Maximum number of unique dash patterns cached. Beyond this limit,
-/// new patterns are still leaked (LineDash requires `'static` segments)
-/// but not inserted into the cache, bounding the HashMap's memory.
+/// Maximum number of unique dash patterns cached. Past this cap, new
+/// patterns are dropped (rendered as solid strokes) so the leak is
+/// bounded by the cap.
 const MAX_DASH_CACHE: usize = 1024;
 
-/// Intern a dash segment array so that identical patterns share one
-/// leaked allocation. Without this, every re-render of a dashed stroke
-/// leaked a fresh `Box<[f32]>` via `Box::leak`.
-///
-/// When the cache reaches [`MAX_DASH_CACHE`] entries, new unique
-/// patterns still get a leaked slice (LineDash requires `'static`
-/// segments) but are not inserted into the cache. A one-time info
-/// diagnostic is logged when this limit is hit.
-fn intern_dash_segments(segments: Vec<f32>) -> &'static [f32] {
+/// Maximum dash-segment count per pattern. Patterns with more segments
+/// are rejected so a single oversized pattern cannot dominate the cache
+/// budget.
+const MAX_DASH_SEGMENTS: usize = 64;
+
+/// Intern a dash segment array so identical patterns share one leaked
+/// allocation. The cache is capped at [`MAX_DASH_CACHE`] entries; past
+/// the cap, returns `None` and the caller drops the dash style.
+/// Patterns longer than [`MAX_DASH_SEGMENTS`] are also rejected. A
+/// one-time info diagnostic fires the first time either cap is hit.
+fn intern_dash_segments(segments: Vec<f32>) -> Option<&'static [f32]> {
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{LazyLock, Mutex};
 
     static CACHE: LazyLock<Mutex<HashMap<Vec<u32>, &'static [f32]>>> =
         LazyLock::new(|| Mutex::new(HashMap::new()));
-    static WARNED: AtomicBool = AtomicBool::new(false);
+    static CACHE_WARNED: AtomicBool = AtomicBool::new(false);
+    static SEGMENTS_WARNED: AtomicBool = AtomicBool::new(false);
+
+    if segments.len() > MAX_DASH_SEGMENTS {
+        if !SEGMENTS_WARNED.swap(true, Ordering::Relaxed) {
+            crate::diagnostics::info(plushie_core::Diagnostic::DashCacheCapExceeded {
+                max: MAX_DASH_CACHE,
+            });
+        }
+        return None;
+    }
 
     let key: Vec<u32> = segments.iter().map(|s| s.to_bits()).collect();
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
 
     if let Some(existing) = cache.get(&key) {
-        return existing;
+        return Some(existing);
     }
 
-    let leaked: &'static [f32] = Box::leak(segments.into_boxed_slice());
-
     if cache.len() >= MAX_DASH_CACHE {
-        if !WARNED.swap(true, Ordering::Relaxed) {
-            // The atomic guards the emit to once per process; patterns
-            // past this point still leak uncached.
+        if !CACHE_WARNED.swap(true, Ordering::Relaxed) {
             crate::diagnostics::info(plushie_core::Diagnostic::DashCacheCapExceeded {
                 max: MAX_DASH_CACHE,
             });
         }
-        return leaked;
+        return None;
     }
 
+    let leaked: &'static [f32] = Box::leak(segments.into_boxed_slice());
     cache.insert(key, leaked);
-    leaked
+    Some(leaked)
 }
 
 /// Build an iced `Path` from typed path commands.
@@ -633,8 +640,9 @@ fn typed_canvas_stroke(s: &canvas_types::Stroke, theme: &iced::Theme) -> canvas:
                 .map(iced_convert::line_join)
                 .unwrap_or(canvas::LineJoin::Miter),
         );
-    if let Some(ref dash) = s.dash {
-        let segments = intern_dash_segments(dash.segments.clone());
+    if let Some(ref dash) = s.dash
+        && let Some(segments) = intern_dash_segments(dash.segments.clone())
+    {
         out.line_dash = canvas::LineDash {
             segments,
             offset: dash.offset as usize,

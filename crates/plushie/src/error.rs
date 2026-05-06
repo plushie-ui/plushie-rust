@@ -111,3 +111,140 @@ impl Error {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Display strings on Error variants are part of the SDK's
+    //! observable surface: they appear in logs, error dialogs, and
+    //! exception chains in host bindings. A regression that drops
+    //! the source path from `Spawn` or the byte counts from
+    //! `BufferOverflow` makes a real-user error report harder to
+    //! interpret. Pin every variant.
+
+    use super::*;
+
+    #[test]
+    fn spawn_helper_carries_binary_and_source() {
+        let inner = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+        let err = Error::spawn("/path/to/renderer", inner);
+        match &err {
+            Error::Spawn { binary, source } => {
+                assert_eq!(binary, "/path/to/renderer");
+                assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
+            }
+            other => panic!("expected Spawn, got {other:?}"),
+        }
+        let display = err.to_string();
+        assert!(display.contains("/path/to/renderer"));
+        assert!(display.contains("no such file"));
+    }
+
+    #[test]
+    fn io_variant_display_includes_inner_message() {
+        let inner = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "writer hung up");
+        let err = Error::Io(inner);
+        let display = err.to_string();
+        assert!(display.contains("io error"));
+        assert!(display.contains("writer hung up"));
+    }
+
+    #[test]
+    fn protocol_version_mismatch_display_lists_both_versions() {
+        let err = Error::ProtocolVersionMismatch {
+            expected: 1,
+            got: Some(2),
+        };
+        let display = err.to_string();
+        assert!(display.contains("expected 1"));
+        assert!(display.contains("Some(2)"));
+
+        // Unknown remote version case still produces a readable
+        // string; no panic, no Some/None confusion in the wire log.
+        let none = Error::ProtocolVersionMismatch {
+            expected: 1,
+            got: None,
+        };
+        assert!(none.to_string().contains("None"));
+    }
+
+    #[test]
+    fn wire_decode_and_encode_display_carry_inner_message() {
+        let decode = Error::WireDecode("unexpected EOF".into());
+        assert!(decode.to_string().contains("unexpected EOF"));
+
+        let encode = Error::WireEncode("frame too big".into());
+        assert!(encode.to_string().contains("frame too big"));
+    }
+
+    #[test]
+    fn renderer_exit_carries_exit_reason() {
+        let err = Error::RendererExit(ExitReason::Shutdown);
+        let display = err.to_string();
+        assert!(display.contains("renderer exited"));
+        assert!(display.contains("Shutdown"));
+    }
+
+    #[test]
+    fn startup_iced_invalid_settings_display() {
+        for (err, expected_substring) in [
+            (Error::Startup("settings parse failed".into()), "startup"),
+            (Error::Iced("daemon init".into()), "iced"),
+            (
+                Error::InvalidSettings("unknown field foo".into()),
+                "invalid settings",
+            ),
+        ] {
+            let display = err.to_string();
+            assert!(
+                display.contains(expected_substring),
+                "{err:?}: expected substring `{expected_substring}` in `{display}`",
+            );
+        }
+    }
+
+    #[test]
+    fn no_runner_feature_display_is_actionable() {
+        let err = Error::NoRunnerFeature;
+        let display = err.to_string();
+        assert!(display.contains("direct"));
+        assert!(display.contains("wire"));
+        assert!(display.contains("plushie::run"));
+    }
+
+    #[test]
+    fn binary_not_found_display_carries_hint() {
+        let err = Error::BinaryNotFound {
+            hint: "set PLUSHIE_RENDERER or build the binary with cargo build -p plushie-renderer"
+                .into(),
+        };
+        let display = err.to_string();
+        assert!(display.contains("PLUSHIE_RENDERER"));
+        assert!(display.contains("renderer binary not found"));
+    }
+
+    #[test]
+    fn buffer_overflow_display_lists_size_and_limit() {
+        let err = Error::BufferOverflow {
+            size: 100_000_000,
+            limit: 67_108_864,
+        };
+        let display = err.to_string();
+        assert!(display.contains("100000000"));
+        assert!(display.contains("67108864"));
+    }
+
+    #[test]
+    fn io_from_conversion_works_via_question_mark() {
+        // Error::Io has #[from], so an io::Error converts via ? in
+        // user code. Pin the conversion shape.
+        fn perform() -> std::result::Result<(), Error> {
+            let _: std::fs::File =
+                std::fs::File::open("/this/path/should/never/exist/plushie-error-test")?;
+            Ok(())
+        }
+        match perform().unwrap_err() {
+            Error::Io(_) => {}
+            other => panic!("expected Io, got {other:?}"),
+        }
+    }
+}

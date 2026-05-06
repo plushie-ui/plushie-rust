@@ -30,10 +30,41 @@ fn arb_props() -> impl Strategy<Value = Props> {
     })
 }
 
+/// Sample of leaf-shaped widget type names. The diff treats type
+/// changes as a node replacement (different ops than a prop update),
+/// so a wider set surfaces more type-change paths in proptest runs.
+const LEAF_TYPE_NAMES: &[&str] = &[
+    "text",
+    "button",
+    "spacer",
+    "image",
+    "checkbox",
+    "toggler",
+    "rule",
+    "qr_code",
+    "progress_bar",
+    "svg",
+];
+
+/// Sample of container-shaped widget type names. Containers carry
+/// children, so type changes here exercise a different code path
+/// than leaf type changes.
+const CONTAINER_TYPE_NAMES: &[&str] = &[
+    "column",
+    "row",
+    "container",
+    "stack",
+    "scrollable",
+    "grid",
+    "tooltip",
+    "themed",
+    "layer",
+];
+
 fn arb_tree() -> impl Strategy<Value = TreeNode> {
     let leaf = (
         "[a-z][a-z0-9_]{0,4}",
-        prop::sample::select(vec!["text", "button", "spacer"]),
+        prop::sample::select(LEAF_TYPE_NAMES),
         arb_props(),
     )
         .prop_map(|(id, type_name, props)| TreeNode {
@@ -50,7 +81,7 @@ fn arb_tree() -> impl Strategy<Value = TreeNode> {
         |inner| {
             (
                 "[a-z][a-z0-9_]{0,4}",
-                prop::sample::select(vec!["column", "row", "container"]),
+                prop::sample::select(CONTAINER_TYPE_NAMES),
                 arb_props(),
                 prop::collection::vec(inner, 0..4),
             )

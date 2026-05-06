@@ -72,6 +72,27 @@ fn validate_protocol_version(settings: &serde_json::Value) -> Result<(), String>
     }
 }
 
+/// Parse a settings JSON string and validate the protocol version.
+///
+/// Centralizes the two-step "parse then validate" sequence the
+/// WASM constructor runs before wiring up its output sink. Pulled
+/// into a free function so it can be unit-tested without spinning
+/// up the iced daemon or touching the global sink: the constructor
+/// proper still calls into this and routes its errors to JsValue.
+///
+/// # Errors
+///
+/// Returns a human-readable error string when the JSON does not
+/// parse or when the protocol version is missing, malformed, or
+/// mismatched. The same message is what the WASM caller sees as
+/// a `JsValue` error.
+fn parse_and_validate_settings(settings_json: &str) -> Result<serde_json::Value, String> {
+    let settings: serde_json::Value =
+        serde_json::from_str(settings_json).map_err(|e| format!("invalid settings JSON: {e}"))?;
+    validate_protocol_version(&settings)?;
+    Ok(settings)
+}
+
 /// WASM plushie renderer handle.
 ///
 /// Created via the constructor, which initializes the renderer and
@@ -150,10 +171,8 @@ impl PlushieApp {
         // version before wiring up the event sink. Error paths here
         // return Err(JsValue) directly to the caller; they must not
         // route through a half-initialised sink.
-        let settings: serde_json::Value = serde_json::from_str(settings_json)
-            .map_err(|e| JsValue::from_str(&format!("invalid settings JSON: {e}")))?;
-
-        validate_protocol_version(&settings).map_err(|e| JsValue::from_str(&e))?;
+        let settings =
+            parse_and_validate_settings(settings_json).map_err(|e| JsValue::from_str(&e))?;
 
         // Settings validated. Safe to initialise the output sink now.
         let writer = WebOutputWriter::try_new(on_event)?;
@@ -369,6 +388,67 @@ mod tests {
         });
 
         let err = validate_protocol_version(&settings).unwrap_err();
+        assert!(err.contains("protocol version mismatch"));
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_and_validate_settings: the WASM entry point's gating step.
+    //
+    // These tests pin the error shapes a WASM host caller receives
+    // before anything is wired up, so a regression that changed the
+    // error wording (and broke a host's user-facing log) shows up
+    // immediately.
+    // -----------------------------------------------------------------------
+
+    use super::parse_and_validate_settings;
+
+    #[test]
+    fn parse_and_validate_settings_accepts_valid_json() {
+        let v = plushie_widget_sdk::protocol::PROTOCOL_VERSION;
+        let json = format!(r#"{{"protocol_version": {v}, "default_text_size": 14}}"#);
+        let settings = parse_and_validate_settings(&json).expect("valid settings");
+        assert_eq!(settings["default_text_size"], 14);
+    }
+
+    #[test]
+    fn parse_and_validate_settings_rejects_invalid_json_syntax() {
+        let err = parse_and_validate_settings("{not valid json}").unwrap_err();
+        assert!(
+            err.starts_with("invalid settings JSON"),
+            "unexpected error: {err}",
+        );
+    }
+
+    #[test]
+    fn parse_and_validate_settings_rejects_truncated_json() {
+        // Incomplete JSON: a frame cut mid-payload would land here.
+        let err = parse_and_validate_settings("{\"protocol_version\":").unwrap_err();
+        assert!(err.starts_with("invalid settings JSON"));
+    }
+
+    #[test]
+    fn parse_and_validate_settings_rejects_non_object_root() {
+        // Top-level array, string, or number is not a Settings object.
+        // The protocol_version field can't be read from a non-object,
+        // so validation surfaces a missing-version error.
+        let err = parse_and_validate_settings("[1, 2, 3]").unwrap_err();
+        assert!(
+            err.contains("missing or invalid protocol_version"),
+            "got: {err}",
+        );
+    }
+
+    #[test]
+    fn parse_and_validate_settings_rejects_missing_protocol_version() {
+        let err = parse_and_validate_settings("{}").unwrap_err();
+        assert!(err.contains("missing or invalid protocol_version"));
+    }
+
+    #[test]
+    fn parse_and_validate_settings_rejects_protocol_version_mismatch() {
+        let v = plushie_widget_sdk::protocol::PROTOCOL_VERSION + 1;
+        let json = format!(r#"{{"protocol_version": {v}}}"#);
+        let err = parse_and_validate_settings(&json).unwrap_err();
         assert!(err.contains("protocol version mismatch"));
     }
 }

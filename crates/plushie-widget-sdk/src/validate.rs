@@ -1124,6 +1124,99 @@ mod tests {
         assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     }
 
+    // -----------------------------------------------------------------------
+    // PropType::Color rejection: color expects a string or an object
+    // (`{"r": ..., "g": ..., "b": ...}` shape). Numbers and bools must
+    // produce a typed mismatch warning rather than silently accepting
+    // an invalid color through the JSON layer.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn color_prop_rejects_numeric_value() {
+        let node = make_node("text", json!({"content": "hi", "color": 42}));
+        let warnings = collect_prop_warnings(&node);
+        assert_eq!(
+            warnings.len(),
+            1,
+            "expected one prop_type_mismatch, got: {warnings:?}",
+        );
+        assert!(warnings[0].contains("prop_type_mismatch"));
+        assert!(warnings[0].contains("color"));
+        assert!(warnings[0].contains("string or object color"));
+    }
+
+    #[test]
+    fn color_prop_rejects_boolean_value() {
+        let node = make_node("text", json!({"content": "hi", "color": true}));
+        let warnings = collect_prop_warnings(&node);
+        assert_eq!(warnings.len(), 1, "got: {warnings:?}");
+        assert!(warnings[0].contains("color"));
+    }
+
+    #[test]
+    fn color_prop_accepts_string_and_object() {
+        let string_node = make_node("text", json!({"content": "hi", "color": "#ff0000"}));
+        assert!(
+            collect_prop_warnings(&string_node).is_empty(),
+            "string color should validate clean",
+        );
+        let object_node = make_node(
+            "text",
+            json!({"content": "hi", "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}}),
+        );
+        assert!(
+            collect_prop_warnings(&object_node).is_empty(),
+            "object color should validate clean",
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // PropType::Length rejection: length expects a number (pixels) or
+    // a string (e.g. "fill", "shrink", "100"). Booleans must produce
+    // a typed mismatch.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn length_prop_rejects_boolean_value() {
+        let node = make_node("button", json!({"label": "ok", "width": true}));
+        let warnings = collect_prop_warnings(&node);
+        assert_eq!(warnings.len(), 1, "got: {warnings:?}");
+        assert!(warnings[0].contains("prop_type_mismatch"));
+        assert!(warnings[0].contains("width"));
+        assert!(warnings[0].contains("string or number length"));
+    }
+
+    #[test]
+    fn length_prop_accepts_number_and_string() {
+        for width in [json!(100), json!(100.0), json!("fill"), json!("shrink")] {
+            let node = make_node("button", json!({"label": "ok", "width": width.clone()}));
+            assert!(
+                collect_prop_warnings(&node).is_empty(),
+                "width={width} should validate clean, got warnings: {:?}",
+                collect_prop_warnings(&node),
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Unknown type names: a node whose `type_name` isn't in the
+    // validation schema must produce no warnings (forward-compat with
+    // host-registered widgets).
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn unknown_type_name_produces_no_warnings() {
+        let node = make_node(
+            "host_widget_not_in_schema",
+            json!({"any_prop": 42, "another": "value"}),
+        );
+        let warnings = collect_prop_warnings(&node);
+        assert!(
+            warnings.is_empty(),
+            "unknown type names should bypass validation; got {warnings:?}",
+        );
+    }
+
     #[test]
     fn invalid_enum_literal_emits_allowed_values() {
         let node = make_node("text", json!({"content": "Hello", "align_x": "sideways"}));

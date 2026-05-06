@@ -370,6 +370,127 @@ fn widget_view_cache_skips_view_when_key_unchanged() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// memo() view caching
+//
+// The `memo()` view builder wraps a subtree in a `__memo__` marker
+// node that records the deps hash. Normalization compares the hash
+// against the previous render to decide whether to re-walk the
+// subtree. The view function still runs (it's pure, the SDK can't
+// short-circuit it without thread-local trickery), but the cached
+// expansion path is observable: on a cache hit, the memo subtree's
+// normalized children must match what they were last cycle.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn memo_marker_node_is_present_in_view_tree() {
+    use plushie::test::TestSession;
+
+    struct MemoApp {
+        revision: u32,
+    }
+
+    impl App for MemoApp {
+        type Model = Self;
+
+        fn init() -> (Self, Command) {
+            (MemoApp { revision: 0 }, Command::none())
+        }
+
+        fn update(_model: &mut Self, _event: Event) -> Command {
+            Command::none()
+        }
+
+        fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+            window("main")
+                .child(plushie::ui::memo("header", model.revision, || {
+                    text("memoised content").id("memo-content").into()
+                }))
+                .into()
+        }
+    }
+
+    let session = TestSession::<MemoApp>::start();
+    // The memo subtree is observable as a normal node in the
+    // tree; the marker `__memo__` type is internal and gets
+    // stripped during normalization, so the visible content is
+    // what we assert on.
+    session.assert_text("memo-content", "memoised content");
+}
+
+#[test]
+fn memo_subtree_survives_unchanged_deps_across_renders() {
+    use plushie::test::TestSession;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static EXPENSIVE_BUILDS: AtomicUsize = AtomicUsize::new(0);
+
+    struct DepsApp {
+        revision: u32,
+        unrelated_state: u32,
+    }
+
+    impl App for DepsApp {
+        type Model = Self;
+
+        fn init() -> (Self, Command) {
+            EXPENSIVE_BUILDS.store(0, Ordering::SeqCst);
+            (
+                DepsApp {
+                    revision: 0,
+                    unrelated_state: 0,
+                },
+                Command::none(),
+            )
+        }
+
+        fn update(_model: &mut Self, _event: Event) -> Command {
+            Command::none()
+        }
+
+        fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+            window("main")
+                .child(
+                    column().spacing(4.0).children([
+                        plushie::ui::memo("section", model.revision, || {
+                            EXPENSIVE_BUILDS.fetch_add(1, Ordering::SeqCst);
+                            text("memo body").id("memo-body").into()
+                        }),
+                        text(&format!("unrelated: {}", model.unrelated_state))
+                            .id("unrelated")
+                            .into(),
+                    ]),
+                )
+                .into()
+        }
+    }
+
+    let mut session = TestSession::<DepsApp>::start();
+    let after_init = EXPENSIVE_BUILDS.load(Ordering::SeqCst);
+    assert!(after_init >= 1, "view ran at least once at init");
+
+    // Bumping unrelated_state triggers a re-render. The memo's
+    // `view_fn` closure still runs (it's pure, the SDK can't
+    // skip it); the load-bearing observable here is that the
+    // memo subtree's content is still rendered correctly. A
+    // regression in the memo cache that produced wrong subtree
+    // content would surface as missing or stale memo content.
+    session.model_mut().unrelated_state = 5;
+    session.rerender();
+    session.assert_text("memo-body", "memo body");
+    session.assert_text("unrelated", "unrelated: 5");
+
+    // Bumping the dep invalidates the cache. The memo body still
+    // renders because the closure runs every time anyway; the
+    // contract here is that no diagnostic fires from the
+    // invalidation path and the tree reflects both the changed
+    // memo deps and the unrelated state.
+    session.model_mut().revision = 7;
+    session.rerender();
+    session.assert_text("memo-body", "memo body");
+    session.assert_text("unrelated", "unrelated: 5");
+}
+
 #[test]
 fn widget_without_cache_key_always_re_runs_view() {
     // Sanity check: the default `Widget::cache_key` returns None, so

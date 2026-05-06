@@ -1,7 +1,7 @@
 //! Direct mode runner: in-process rendering via iced.
 //!
 //! Embeds the plushie renderer directly in the application binary.
-//! The user's [`App::view()`] produces a [`View`] which is normalized,
+//! The user's [`App::view()`](crate::App::view) produces a [`View`](crate::View) which is normalized,
 //! rendered through the renderer, and displayed by iced.
 //!
 //! All iced Messages are delegated to the renderer-lib's

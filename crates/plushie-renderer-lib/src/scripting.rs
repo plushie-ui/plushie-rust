@@ -45,7 +45,7 @@ pub fn parse_selector(selector: &Value) -> Option<Selector> {
 
 /// Parse key and modifiers from an interact payload.
 ///
-/// Supports three formats via [`KeyPress::from_wire`]:
+/// Supports three formats via [`plushie_core::key::KeyPress::from_wire`]:
 /// 1. Combined combo string: `{"combo": "Ctrl+s"}`
 /// 2. Explicit key + modifiers: `{"key": "s", "modifiers": {"ctrl": true}}`
 /// 3. Combined key field: `{"key": "ctrl+s"}`

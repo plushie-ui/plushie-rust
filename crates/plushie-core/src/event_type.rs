@@ -5,7 +5,7 @@
 //! renderer (event construction).
 //!
 //! The variant list and the variant to family-string mapping are
-//! expressed once via the [`event_types!`] macro; adding a variant
+//! expressed once via the `event_types!` macro; adding a variant
 //! means adding one line, and the enum definition, `from_family`,
 //! and `as_family` stay in lock-step.
 use std::collections::HashMap;

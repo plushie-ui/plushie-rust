@@ -8,8 +8,8 @@
 //!    `--plushie-help`. Perfect for apps that don't need a custom CLI.
 //!
 //! 2. **Curated path.** Build your own CLI (clap, lexopt, whatever)
-//!    and dispatch directly to the public primitives:
-//!    [`crate::run`], [`crate::run_connect`], [`crate::run_spawn`], and
+//!    and dispatch directly to the public primitives: [`crate::run`],
+//!    `run_connect` and `run_spawn` (both wire-feature only), and
 //!    the [`crate::automation::cli`] helpers (`script`, `replay`,
 //!    `inspect`). The easy path is a thin wrapper over those.
 //!

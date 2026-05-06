@@ -1,6 +1,7 @@
 //! Widget operations: focus, scroll, cursor, pane grid, font loading,
-//! tree hash queries, image management. Dispatched from [`CoreEffect::WidgetOp`]
-//! via the `op` string and JSON `payload`.
+//! tree hash queries, image management. Dispatched from the widget SDK's
+//! `Dispatch::WidgetOp` core effect via the `op` string and JSON
+//! `payload`.
 
 use iced::Task;
 

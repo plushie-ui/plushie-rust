@@ -315,7 +315,7 @@ impl Event {
     ///
     /// Returns a [`WidgetMatch`] variant with the widget ID and
     /// typed primary value. Ideal for simple update functions and
-    /// [`Widget::handle_event`](crate::Widget::handle_event).
+    /// [`Widget::handle_event`](crate::widget::Widget::handle_event).
     ///
     /// ```ignore
     /// match event.widget_match() {
@@ -797,10 +797,8 @@ pub struct StreamEvent {
 /// Effects without an explicit `timeout` on the issuing
 /// [`Command`](crate::command::Command) fall back to a
 /// per-kind default: 120 s for file dialogs, 5 s for clipboard and
-/// notifications, 30 s for unknown kinds. See
-/// [`plushie::runner::effect_tracker::default_timeout`](crate::runner::effect_tracker::default_timeout)
-/// (internal) or pass an explicit `Duration` on the `Effect` command
-/// to override.
+/// notifications, 30 s for unknown kinds. Pass an explicit
+/// `Duration` on the `Effect` command to override.
 #[derive(Debug, Clone)]
 pub struct EffectEvent {
     /// Effect tag used to correlate the result with the originating command.

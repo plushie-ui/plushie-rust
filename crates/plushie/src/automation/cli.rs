@@ -61,7 +61,8 @@ pub fn script<A: App>(path: &str) -> Result {
 ///
 /// Returns [`Error::InvalidSettings`] when the file cannot be read
 /// or parsed. Propagates renderer-discovery, spawn, handshake, and
-/// framing errors from [`crate::automation::runner_wire::run_windowed`].
+/// framing errors from `crate::automation::runner_wire::run_windowed`
+/// (wire feature only).
 /// Instruction failures surface as [`Error::Startup`] with a one-line
 /// summary.
 pub fn replay<A: App>(path: &str) -> Result {

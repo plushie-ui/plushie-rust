@@ -55,7 +55,7 @@ pub fn parse_iced_settings(settings: &Value) -> iced::Settings {
 /// registered widgets.
 ///
 /// Looks at the `required_widgets` array in the Settings JSON and
-/// emits a [`Diagnostic::RequiredWidgetsMissing`] diagnostic listing
+/// emits a [`plushie_core::diagnostic::Diagnostic::RequiredWidgetsMissing`] diagnostic listing
 /// any type names the renderer does not know about. Both the built-in
 /// widget set and the `native_widgets` argument contribute to the
 /// "known" pool. Non-fatal: the caller keeps running regardless.

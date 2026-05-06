@@ -91,7 +91,7 @@ fn node_to_value(node: &TreeNode) -> Value {
 /// land the whole structure in the `ReplaceNode` slow path even when
 /// the underlying authored shape was unchanged, because IDs won't
 /// line up. Callers that keep a long-lived `current_tree` should
-/// rerun [`crate::runtime::normalize::normalize`] whenever a
+/// rerun the runtime's tree normalization step whenever a
 /// normalization rule changes.
 pub fn diff_tree(old: &TreeNode, new: &TreeNode) -> Vec<PatchOp> {
     if old.id != new.id {

@@ -1,8 +1,8 @@
 //! Automation script runner.
 //!
 //! Executes parsed `.plushie` file instructions against a
-//! [`TestSession`](crate::test::TestSession). Each instruction
-//! maps to a TestSession method call.
+//! [`TestSession`]. Each instruction maps to a TestSession method
+//! call.
 //!
 //! ```ignore
 //! let file = plushie::automation::file::parse_file("test.plushie")?;
@@ -17,13 +17,12 @@
 //! [`crate::automation::Backend`]). [`run_with_backend`] honours that
 //! field and dispatches to the matching path:
 //!
-//! - `Mock` / `Headless` run through a headless
-//!   [`TestSession`](crate::test::TestSession) without spawning a
-//!   renderer. This is the fast in-process path the CLI's
-//!   `--plushie-script` uses.
+//! - `Mock` / `Headless` run through a headless [`TestSession`]
+//!   without spawning a renderer. This is the fast in-process path
+//!   the CLI's `--plushie-script` uses.
 //! - `Windowed` spawns the real `plushie-renderer` binary so the user
 //!   can watch the script execute. Implemented in
-//!   [`crate::automation::runner_wire`] and gated on the `wire`
+//!   `crate::automation::runner_wire` and gated on the `wire`
 //!   feature.
 
 use crate::App;

@@ -218,7 +218,7 @@ pub enum IncomingMessage {
     ///
     /// Typed binary message: in MessagePack mode, font bytes travel as
     /// native binary instead of base64 string. JSON mode continues to
-    /// accept base64 strings via [`deserialize_binary_field`].
+    /// accept base64 strings.
     LoadFont {
         /// Payload.
         #[serde(default)]
@@ -242,8 +242,8 @@ pub struct LoadFontPayload {
 /// Payload of an [`IncomingMessage::ImageOp`] message.
 ///
 /// Fields are union-style: individual ops use a subset. `data` and
-/// `pixels` accept base64-encoded strings and serde byte arrays; see
-/// [`deserialize_binary_field`].
+/// `pixels` accept base64-encoded strings (JSON mode) and serde byte
+/// arrays (MessagePack mode).
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ImageOpPayload {
     #[serde(default)]

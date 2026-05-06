@@ -59,8 +59,8 @@
 //!   `target/plushie/bin/`, then `PATH`.
 //!
 //! When both features are enabled, direct wins. Pass an explicit
-//! renderer path via [`run_with_renderer`] to force a specific wire
-//! binary.
+//! renderer path via `run_with_renderer` (wire feature only) to
+//! force a specific wire binary.
 //!
 //! Builds with neither runner feature are supported for library,
 //! query, and test-session APIs, but cannot launch an app. In that
@@ -415,10 +415,9 @@ pub trait App: Send + 'static {
         WindowConfig::default()
     }
 
-    /// Called synchronously before [`run`] (or
-    /// [`run_with_renderer`]) returns [`Error::RendererExit`] when
-    /// the renderer subprocess exits. Wire mode only; direct mode
-    /// never calls this.
+    /// Called synchronously before [`run`] (or `run_with_renderer`)
+    /// returns [`Error::RendererExit`] when the renderer subprocess
+    /// exits. Wire mode only; direct mode never calls this.
     ///
     /// Use this hook to save state, log diagnostics, or clean up
     /// model-side resources. The typed error coordinates
@@ -466,7 +465,8 @@ pub type Result = std::result::Result<(), Error>;
 /// - `wire`: spawns a renderer binary and talks stdin/stdout.
 ///
 /// When both features are enabled, `direct` wins. To force wire mode
-/// against a specific binary, use [`run_with_renderer`].
+/// against a specific binary, use `run_with_renderer` (available
+/// when the `wire` feature is enabled).
 ///
 /// # Wire binary discovery
 ///

@@ -239,10 +239,11 @@ pub enum RendererOp {
 pub enum WindowOp {
     /// Open a new window with the given initial settings.
     ///
-    /// `settings` is a JSON object with the subset of
-    /// [`WINDOW_PROP_KEYS`] keys the host wants to specify; any
-    /// unspecified field falls back to iced's defaults. Runtime-only
-    /// fields like `icon_data` are nested under their usual keys.
+    /// `settings` is a JSON object with the subset of window
+    /// settings keys the host wants to specify (`title`, `size`,
+    /// `position`, `resizable`, `decorations`, etc.); any unspecified
+    /// field falls back to iced's defaults. Runtime-only fields
+    /// like `icon_data` are nested under their usual keys.
     Open {
         /// Target window ID.
         window_id: String,

@@ -1654,12 +1654,41 @@ fn run_multiplexed<R: PlushieRenderer>(
                                         }
                                         None => Session::<R>::new(mode, writer),
                                     };
+                                    // Cap the per-message wait so a host
+                                    // disconnect during inject_and_capture
+                                    // does not strand the session thread on
+                                    // a non-cancelable rx.recv. 30s is
+                                    // long enough for slow CI but short
+                                    // enough that a stuck session unblocks
+                                    // within a normal test run.
+                                    const READ_TIMEOUT: std::time::Duration =
+                                        std::time::Duration::from_secs(30);
+                                    let mut session_disconnected = false;
                                     for msg in &rx {
-                                        let mut read_next = || rx.recv().ok();
-                                        if let Err(e) =
-                                            handle_message(&mut session, &sid, msg, &mut read_next)
-                                        {
+                                        let mut disconnected_during_read = false;
+                                        let mut read_next = || -> Option<IncomingMessage> {
+                                            match rx.recv_timeout(READ_TIMEOUT) {
+                                                Ok(m) => Some(m),
+                                                Err(_) => {
+                                                    disconnected_during_read = true;
+                                                    None
+                                                }
+                                            }
+                                        };
+                                        let res =
+                                            handle_message(&mut session, &sid, msg, &mut read_next);
+                                        if disconnected_during_read {
+                                            log::warn!(
+                                                "session '{sid}': read timed out or \
+                                                 channel disconnected during interact"
+                                            );
+                                            session_disconnected = true;
+                                        }
+                                        if let Err(e) = res {
                                             log::error!("session '{sid}': write error: {e}");
+                                            break;
+                                        }
+                                        if session_disconnected {
                                             break;
                                         }
                                     }

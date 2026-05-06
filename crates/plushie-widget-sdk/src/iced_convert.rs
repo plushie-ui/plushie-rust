@@ -314,7 +314,10 @@ pub fn font(f: &types::Font) -> iced::Font {
             "cursive" => iced::font::Family::Cursive,
             "fantasy" => iced::font::Family::Fantasy,
             "default" | "sans_serif" | "" => iced::font::Family::SansSerif,
-            other => iced::font::Family::Name(intern_font_family(other)),
+            other => match intern_font_family(other) {
+                Some(name) => iced::font::Family::Name(name),
+                None => iced::font::Family::SansSerif,
+            },
         };
     }
 

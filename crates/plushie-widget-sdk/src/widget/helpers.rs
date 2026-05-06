@@ -38,19 +38,22 @@ pub use crate::prop_helpers::*;
 /// are truncated with a warning.
 const MAX_FONT_FAMILY_LEN: usize = 256;
 
-/// Maximum number of unique custom font family names cached. Beyond this
-/// limit, new names are still leaked (iced requires `'static` family
-/// names) but not inserted into the cache, bounding the HashMap's memory.
+/// Maximum number of unique custom font family names cached. Past the
+/// cap, new names are not interned and the caller falls back to a
+/// default family.
 const MAX_FONT_FAMILY_CACHE: usize = 1024;
 
-/// Intern a custom font family name so identical strings share one leaked
-/// allocation. Names exceeding [`MAX_FONT_FAMILY_LEN`] are truncated.
-/// The cache is bounded to [`MAX_FONT_FAMILY_CACHE`] entries.
+/// Intern a custom font family name so identical strings share one
+/// leaked allocation. Names exceeding [`MAX_FONT_FAMILY_LEN`] are
+/// truncated. Past [`MAX_FONT_FAMILY_CACHE`] unique names the interner
+/// returns `None`; the caller falls back to a default family rather
+/// than leaking. A one-time info diagnostic fires the first time the
+/// cap is hit.
 ///
-/// Exposed through [`intern_font_family_public`] so the fonts module can
-/// reach it; widget-sdk internals continue to call this via the
+/// Exposed through [`intern_font_family_public`] so the fonts module
+/// can reach it; widget-sdk internals continue to call this via the
 /// `pub(crate)` path.
-pub(crate) fn intern_font_family(name: &str) -> &'static str {
+pub(crate) fn intern_font_family(name: &str) -> Option<&'static str> {
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{LazyLock, Mutex};
@@ -76,30 +79,27 @@ pub(crate) fn intern_font_family(name: &str) -> &'static str {
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
 
     if let Some(existing) = cache.get(name) {
-        return existing;
+        return Some(existing);
     }
-
-    let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
 
     if cache.len() >= MAX_FONT_FAMILY_CACHE {
         if !WARNED.swap(true, Ordering::Relaxed) {
-            // The atomic guards the emit to once per process; names
-            // past this point still leak uncached.
             crate::diagnostics::info(plushie_core::Diagnostic::FontCacheCapExceeded {
                 max: MAX_FONT_FAMILY_CACHE,
             });
         }
-        return leaked;
+        return None;
     }
 
+    let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
     cache.insert(name.to_owned(), leaked);
-    leaked
+    Some(leaked)
 }
 
 /// Public wrapper around [`intern_font_family`] for sibling modules
 /// (e.g. [`crate::fonts`]) that need the interner without exposing the
 /// rest of `widget::helpers`.
-pub fn intern_font_family_public(name: &str) -> &'static str {
+pub fn intern_font_family_public(name: &str) -> Option<&'static str> {
     intern_font_family(name)
 }
 

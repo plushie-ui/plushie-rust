@@ -18,13 +18,18 @@ static LOADED_FAMILIES: LazyLock<RwLock<HashSet<&'static str>>> =
 
 /// Record that a font family has been registered with iced.
 ///
-/// Called by the renderer when a `LoadFont` command completes. Idempotent:
-/// calling with the same family twice is a no-op.
+/// Called by the renderer when a `LoadFont` command completes.
+/// Idempotent: calling with the same family twice is a no-op. If the
+/// family-name intern cache is full, the family is not recorded; the
+/// font load itself still succeeds with iced but resolution falls back
+/// to the default family.
 pub fn register_loaded_family(family: &str) {
     if family.is_empty() {
         return;
     }
-    let interned = crate::widget::helpers::intern_font_family_public(family);
+    let Some(interned) = crate::widget::helpers::intern_font_family_public(family) else {
+        return;
+    };
     let mut guard = LOADED_FAMILIES.write().unwrap_or_else(|e| e.into_inner());
     guard.insert(interned);
 }

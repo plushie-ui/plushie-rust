@@ -717,11 +717,11 @@ fn resolve_font_with_fallback(v: &Value) -> Font {
         if matches!(*name, "monospace") {
             return Font::MONOSPACE;
         }
-        if crate::fonts::is_loaded(name) {
+        if crate::fonts::is_loaded(name)
+            && let Some(interned) = crate::widget::helpers::intern_font_family_public(name)
+        {
             return Font {
-                family: iced::font::Family::Name(
-                    crate::widget::helpers::intern_font_family_public(name),
-                ),
+                family: iced::font::Family::Name(interned),
                 ..Font::DEFAULT
             };
         }

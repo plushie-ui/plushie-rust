@@ -10,6 +10,24 @@ use crate::App;
 use crate::constants::*;
 use crate::emitter::CoalesceKey;
 
+/// Best-effort emit of a `session_error` carrying a write-failure
+/// reason, mirroring the panic-hook pattern: the host gets one
+/// final structured event before the renderer exits, so it can tell
+/// a clean shutdown from a write-side crash. Failures here are
+/// swallowed because the sink is already broken.
+fn emit_write_failure(emitter: &crate::emitter::EventEmitter, where_: &str, err: &std::io::Error) {
+    let event = OutgoingEvent::generic(
+        "session_error",
+        "",
+        Some(serde_json::json!({
+            "code": "renderer_write_failed",
+            "where": where_,
+            "error": err.to_string(),
+        })),
+    );
+    let _ = emitter.emit_event(event);
+}
+
 impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         // Fan subscription-source messages out to widgets that asked
@@ -390,6 +408,7 @@ impl App {
                             selector,
                         ) {
                             log::error!("write error: {e}");
+                            emit_write_failure(&self.emitter, "query", &e);
                             return iced::exit();
                         }
                         Task::none()
@@ -410,6 +429,7 @@ impl App {
                             payload,
                         ) {
                             log::error!("write error: {e}");
+                            emit_write_failure(&self.emitter, "interact", &e);
                             return iced::exit();
                         }
                         Task::none()
@@ -426,6 +446,7 @@ impl App {
                             id,
                         ) {
                             log::error!("write error: {e}");
+                            emit_write_failure(&self.emitter, "reset", &e);
                             return iced::exit();
                         }
 
@@ -459,6 +480,7 @@ impl App {
                             name,
                         ) {
                             log::error!("write error: {e}");
+                            emit_write_failure(&self.emitter, "tree_hash", &e);
                             return iced::exit();
                         }
                         Task::none()

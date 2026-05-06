@@ -14,10 +14,10 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  # CI gate. Runs the same checks the per-PR pipeline runs so a tag
-  # cannot bypass a failing main. Subsequent build / publish jobs
+  # CI gate. Mirrors the Linux PR pipeline so a tag push cannot
+  # bypass main being green. Subsequent build / publish jobs
   # `needs: [ci]`, so a red gate prevents asset upload and crates.io
-  # publish.
+  # publish. Cross-OS coverage runs in the build matrix below.
   ci:
     name: CI gate
     runs-on: ubuntu-latest
@@ -37,17 +37,35 @@ jobs:
           sudo apt-get install -y libxkbcommon-dev libwayland-dev \
             libx11-dev cmake libfontconfig1-dev libfreetype-dev pkg-config
 
-      - name: Check
+      - name: Check (default features)
         run: cargo check --workspace --all-targets --locked
+
+      - name: Check (no default features)
+        run: cargo check --workspace --no-default-features --all-targets --locked
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked
+
+      - name: Clippy (wire feature)
+        run: cargo clippy -p plushie --all-targets --features wire --locked
 
       - name: Format
         run: cargo fmt --check
 
       - name: Test
         run: cargo nextest run --workspace --profile ci --locked
+
+      - name: Doc
+        run: cargo doc --workspace --no-deps --locked
+
+      - name: Package
+        run: cargo package --workspace --no-verify --allow-dirty
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --version 0.19.4 --locked
+
+      - name: Deny
+        run: cargo deny check
 
   build:
     name: Build (${{ matrix.target }})

@@ -9,10 +9,9 @@
 //! [`ImageRegistry`] reference to resolve them through
 //! [`ImageRegistry::get`].
 
-use std::sync::Mutex;
-
 use iced::widget::image;
 use lru::LruCache;
+use parking_lot::Mutex;
 
 /// Maximum number of images the registry will hold.
 const MAX_IMAGES: usize = 4096;
@@ -132,14 +131,11 @@ impl ImageRegistry {
         MAX_TOTAL_BYTES
     }
 
-    fn entries_lock(&self) -> std::sync::MutexGuard<'_, LruCache<String, ImageEntry>> {
-        match self.entries.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                log::warn!("image registry: recovering from poisoned LRU lock");
-                poisoned.into_inner()
-            }
-        }
+    fn entries_lock(&self) -> parking_lot::MutexGuard<'_, LruCache<String, ImageEntry>> {
+        // parking_lot::Mutex never poisons; no manual recovery
+        // needed here. The lock is held only long enough to
+        // promote, peek, or insert one entry.
+        self.entries.lock()
     }
 
     /// Pop the least-recently-used entry whose name does not match

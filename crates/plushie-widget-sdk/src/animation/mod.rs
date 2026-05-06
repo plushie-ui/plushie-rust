@@ -144,6 +144,11 @@ pub struct CompletionEvent {
 pub struct TransitionManager {
     /// Active animations keyed by (widget_id, prop_name).
     active: HashMap<(String, String), ActiveAnimation>,
+    /// Set of widget IDs that have at least one active animation.
+    /// Maintained incrementally on start/complete so the per-frame
+    /// `interpolated_props.retain` filter doesn't have to rebuild
+    /// it from `active.keys()` every advance.
+    active_widget_ids: HashSet<String>,
     /// Ghost manager for exit animations.
     pub ghosts: GhostManager,
     /// Last frame timestamp for delta calculation (daemon mode).
@@ -165,6 +170,7 @@ impl TransitionManager {
     pub fn new() -> Self {
         Self {
             active: HashMap::new(),
+            active_widget_ids: HashSet::new(),
             ghosts: GhostManager::new(),
             last_tick: None,
             last_headless_ms: None,
@@ -180,6 +186,7 @@ impl TransitionManager {
     /// Clears all state (used on snapshot/reset).
     pub fn clear(&mut self) {
         self.active.clear();
+        self.active_widget_ids.clear();
         self.ghosts.clear();
         self.last_tick = None;
         self.last_headless_ms = None;
@@ -194,6 +201,8 @@ impl TransitionManager {
     ) {
         self.active
             .retain(|(widget_id, _), _| live_ids.contains(widget_id));
+        self.active_widget_ids
+            .retain(|widget_id| live_ids.contains(widget_id));
         interpolated_props.retain(|widget_id, _| live_ids.contains(widget_id));
     }
 
@@ -232,13 +241,15 @@ impl TransitionManager {
             }
         }
 
-        // Remove finished animations
-        self.active.retain(|_, anim| !is_finished(anim));
+        // Remove finished animations and the corresponding widget
+        // entries in `active_widget_ids` when no other animation
+        // remains for that widget.
+        self.retain_unfinished();
 
-        // Clean up interpolated props for widgets with no active animations
-        let active_widgets: std::collections::HashSet<&String> =
-            self.active.keys().map(|(wid, _)| wid).collect();
-        interpolated_props.retain(|widget_id, _| active_widgets.contains(widget_id));
+        // Clean up interpolated props for widgets with no active
+        // animations. The set is maintained incrementally so the
+        // per-frame retain doesn't pay for a fresh allocation.
+        interpolated_props.retain(|widget_id, _| self.active_widget_ids.contains(widget_id));
 
         completions
     }
@@ -277,14 +288,31 @@ impl TransitionManager {
             }
         }
 
-        self.active.retain(|_, anim| !is_finished(anim));
-
-        // Clean up interpolated props for widgets with no active animations
-        let active_widgets: std::collections::HashSet<&String> =
-            self.active.keys().map(|(wid, _)| wid).collect();
-        interpolated_props.retain(|widget_id, _| active_widgets.contains(widget_id));
+        self.retain_unfinished();
+        interpolated_props.retain(|widget_id, _| self.active_widget_ids.contains(widget_id));
 
         completions
+    }
+
+    /// Drop finished animations and rebuild `active_widget_ids`
+    /// from the survivors. The retain happens once; the membership
+    /// rebuild only runs when at least one animation finished, so
+    /// the steady-state advance pays nothing extra.
+    fn retain_unfinished(&mut self) {
+        let mut had_completion = false;
+        self.active.retain(|_, anim| {
+            let alive = !is_finished(anim);
+            if !alive {
+                had_completion = true;
+            }
+            alive
+        });
+        if had_completion {
+            self.active_widget_ids.clear();
+            for (wid, _) in self.active.keys() {
+                self.active_widget_ids.insert(wid.clone());
+            }
+        }
     }
 
     /// Registers a new animation from a detected descriptor.
@@ -294,13 +322,21 @@ impl TransitionManager {
         prop_name: String,
         animation: ActiveAnimation,
     ) {
+        self.active_widget_ids.insert(widget_id.clone());
         self.active.insert((widget_id, prop_name), animation);
     }
 
     /// Cancels an animation on a specific widget+prop.
     pub fn cancel(&mut self, widget_id: &str, prop_name: &str) {
-        self.active
-            .remove(&(widget_id.to_string(), prop_name.to_string()));
+        let key = (widget_id.to_string(), prop_name.to_string());
+        if self.active.remove(&key).is_some() && !self.has_active_for_widget(widget_id) {
+            self.active_widget_ids.remove(widget_id);
+        }
+    }
+
+    /// True when at least one active animation belongs to `widget_id`.
+    fn has_active_for_widget(&self, widget_id: &str) -> bool {
+        self.active.keys().any(|(wid, _)| wid == widget_id)
     }
 
     /// Returns the current interpolated value for a widget+prop, if animating.

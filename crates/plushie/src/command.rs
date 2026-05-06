@@ -41,6 +41,14 @@ pub type StreamTaskFn = Box<
 /// Runtime-specific sinks are installed when the command begins
 /// executing. Until then (and in test mode), emits are buffered
 /// locally and drained by the runner.
+///
+/// The sink closure runs outside the internal lock, so panicking
+/// in the closure does not poison the emitter. A consequence is
+/// that if a sink closure invokes `emit` reentrantly (directly or
+/// indirectly through another clone of this emitter on the same
+/// thread), the reentrant call sees a placeholder no-op closure
+/// and silently drops the value. Sinks should not call `emit` on
+/// the same emitter while delivering a value.
 #[derive(Clone)]
 pub struct StreamEmitter {
     tag: String,

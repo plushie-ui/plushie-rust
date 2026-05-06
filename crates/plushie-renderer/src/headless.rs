@@ -1682,6 +1682,20 @@ fn run_multiplexed<R: PlushieRenderer>(
                                                 "session '{sid}': read timed out or \
                                                  channel disconnected during interact"
                                             );
+                                            let error = serde_json::json!({
+                                                "type": "event",
+                                                "session": sid,
+                                                "family": "session_error",
+                                                "id": "",
+                                                "data": {
+                                                    "code": "host_disconnect",
+                                                    "error": "host stopped delivering messages \
+                                                     during interact"
+                                                }
+                                            });
+                                            if let Ok(bytes) = codec.encode(&error) {
+                                                let _ = closed_writer_tx.try_send(bytes);
+                                            }
                                             session_disconnected = true;
                                         }
                                         if let Err(e) = res {

@@ -10,6 +10,7 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 readme = "README.md"
+publish = false
 
 [lib]
 name = "plushie_renderer_lib"

@@ -3263,7 +3263,7 @@ name = "plushie-renderer-wasm"
 version = "0.6.1"
 dependencies = [
  "console_log",
- "futures",
+ "futures-channel",
  "js-sys",
  "log",
  "plushie-core",

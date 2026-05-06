@@ -54,7 +54,7 @@ use output::WebOutputWriter;
 
 /// Global message receiver slot. Initialized by the [`PlushieApp`]
 /// constructor, consumed once by the message subscription.
-static MSG_RX: Mutex<Option<futures::channel::mpsc::UnboundedReceiver<String>>> = Mutex::new(None);
+static MSG_RX: Mutex<Option<futures_channel::mpsc::UnboundedReceiver<String>>> = Mutex::new(None);
 
 fn validate_protocol_version(settings: &serde_json::Value) -> Result<(), String> {
     let expected = plushie_widget_sdk::protocol::PROTOCOL_VERSION;
@@ -86,7 +86,7 @@ fn validate_protocol_version(settings: &serde_json::Value) -> Result<(), String>
 /// redesigned output path.
 #[wasm_bindgen]
 pub struct PlushieApp {
-    sender: futures::channel::mpsc::UnboundedSender<String>,
+    sender: futures_channel::mpsc::UnboundedSender<String>,
 }
 
 #[wasm_bindgen]
@@ -205,7 +205,7 @@ impl PlushieApp {
             .map_err(|e| JsValue::from_str(&format!("failed to emit hello: {e}")))?;
 
         // Create the message channel for JS -> renderer communication.
-        let (sender, receiver) = futures::channel::mpsc::unbounded::<String>();
+        let (sender, receiver) = futures_channel::mpsc::unbounded::<String>();
         *MSG_RX.lock().expect("MSG_RX lock") = Some(receiver);
 
         // Pack init data into a Mutex so the Fn closure can move it out once.

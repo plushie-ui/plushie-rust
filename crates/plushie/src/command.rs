@@ -10,9 +10,9 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 
+use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::event::Event;
@@ -66,29 +66,29 @@ impl StreamEmitter {
 
     /// Replace the underlying delivery mechanism with a sink closure.
     /// Any buffered values are flushed through the new sink in order.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the inner mutex is poisoned (only happens if another
-    /// thread panicked while holding it).
     pub fn attach_sink(&self, mut sink: Box<dyn FnMut(String, Value) + Send>) {
-        let mut guard = self.inner.lock().unwrap();
-        if let StreamEmitterInner::Buffer(values) = &mut *guard {
-            for v in values.drain(..) {
-                sink(self.tag.clone(), v);
+        // Take ownership of the buffered values without holding the
+        // lock during user code. Drain-then-call: a panic in the
+        // sink closure cannot poison the lock (parking_lot has no
+        // poison surface) or strand other clones of the emitter.
+        let buffered: Vec<Value> = {
+            let mut guard = self.inner.lock();
+            match &mut *guard {
+                StreamEmitterInner::Buffer(values) => std::mem::take(values),
+                StreamEmitterInner::Sink(_) => Vec::new(),
             }
+        };
+        for v in buffered {
+            sink(self.tag.clone(), v);
         }
+        let mut guard = self.inner.lock();
         *guard = StreamEmitterInner::Sink(sink);
     }
 
     /// Drain buffered values. Only meaningful when the emitter is
     /// still in buffer mode; returns empty otherwise.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the inner mutex is poisoned.
     pub fn drain_buffer(&self) -> Vec<Value> {
-        let mut guard = self.inner.lock().unwrap();
+        let mut guard = self.inner.lock();
         match &mut *guard {
             StreamEmitterInner::Buffer(v) => std::mem::take(v),
             StreamEmitterInner::Sink(_) => Vec::new(),
@@ -103,16 +103,57 @@ impl StreamEmitter {
     /// Emit an intermediate value to the runtime. Delivered as
     /// [`StreamEvent`](crate::event::StreamEvent) with this emitter's
     /// tag.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the inner mutex is poisoned.
     pub fn emit(&self, value: impl Into<Value>) {
         let value = value.into();
-        let mut guard = self.inner.lock().unwrap();
-        match &mut *guard {
-            StreamEmitterInner::Buffer(buf) => buf.push(value),
-            StreamEmitterInner::Sink(sink) => sink(self.tag.clone(), value),
+        // Buffer mode: push under the lock and return.
+        // Sink mode: swap the sink out, release the lock, invoke,
+        // then put it back. Drain-then-call keeps the sink call out
+        // of the critical section: a panic in the sink unwinds past
+        // the (already released) lock instead of poisoning it, and
+        // re-entrant emits from clones don't deadlock.
+        let sink = {
+            let mut guard = self.inner.lock();
+            match &mut *guard {
+                StreamEmitterInner::Buffer(buf) => {
+                    buf.push(value);
+                    return;
+                }
+                StreamEmitterInner::Sink(_) => {
+                    let placeholder: Box<dyn FnMut(String, Value) + Send> = Box::new(|_, _| {});
+                    match std::mem::replace(&mut *guard, StreamEmitterInner::Sink(placeholder)) {
+                        StreamEmitterInner::Sink(s) => s,
+                        StreamEmitterInner::Buffer(_) => unreachable!(),
+                    }
+                }
+            }
+        };
+
+        // Carry the sink through a Drop guard so an unwind through
+        // the sink call still reinstalls it for cloned emitters.
+        // Without this the placeholder above would silently swallow
+        // future values from any other clone.
+        struct Restore<'a> {
+            inner: &'a Mutex<StreamEmitterInner>,
+            sink: Option<Box<dyn FnMut(String, Value) + Send>>,
+        }
+        impl Drop for Restore<'_> {
+            fn drop(&mut self) {
+                if let Some(sink) = self.sink.take() {
+                    let mut guard = self.inner.lock();
+                    *guard = StreamEmitterInner::Sink(sink);
+                }
+            }
+        }
+
+        let mut restore = Restore {
+            inner: &self.inner,
+            sink: Some(sink),
+        };
+        // Call through the option. On panic, Drop sees Some(sink)
+        // and reinstalls it. The explicit Drop at end of scope
+        // performs the same reinstall on the success path.
+        if let Some(sink) = restore.sink.as_mut() {
+            sink(self.tag.clone(), value);
         }
     }
 

@@ -580,6 +580,131 @@ impl App for LoopApp {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Full MVU cycle: init -> command -> async event -> update -> subscribe ->
+// timer event -> view reflects state. Pins the load-bearing happy path.
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+struct LifecycleApp {
+    /// Set when the async fetch task fired by `init` resolves.
+    fetched: Option<String>,
+    /// Set when the `tick` subscription delivers a timer event.
+    ticks: u32,
+    /// Toggled to enable the timer subscription only after the
+    /// async fetch completes; pins that subscriptions track model
+    /// changes through the same update cycle that consumes commands.
+    ticking: bool,
+}
+
+impl App for LifecycleApp {
+    type Model = Self;
+
+    fn init() -> (Self, Command) {
+        // init returns a Command::task, mirroring real apps that
+        // kick off a fetch on startup. The result lands as
+        // Event::Async(..).
+        (
+            Self::default(),
+            Command::task("startup_fetch", || async { Ok(json!({"greeting": "hi"})) }),
+        )
+    }
+
+    fn update(model: &mut Self, event: Event) -> Command {
+        if let Some(a) = event.as_async()
+            && a.tag == "startup_fetch"
+            && let Ok(value) = &a.result
+            && let Some(g) = value.get("greeting").and_then(|v| v.as_str())
+        {
+            model.fetched = Some(g.to_string());
+            // Flip the timer subscription on now that the fetch has
+            // landed; the next subscription diff picks it up.
+            model.ticking = true;
+        }
+        if let Event::Timer(t) = &event
+            && t.tag == "tick"
+        {
+            model.ticks += 1;
+        }
+        Command::none()
+    }
+
+    fn subscribe(model: &Self) -> Vec<Subscription> {
+        if model.ticking {
+            vec![Subscription::every(
+                std::time::Duration::from_millis(16),
+                "tick",
+            )]
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+        let header = match &model.fetched {
+            Some(g) => g.clone(),
+            None => "loading".into(),
+        };
+        window("main")
+            .child(
+                column()
+                    .spacing(8.0)
+                    .child(text(&header).id("header"))
+                    .child(text(&format!("ticks: {}", model.ticks)).id("counter")),
+            )
+            .into()
+    }
+}
+
+#[test]
+fn lifecycle_init_async_subscribe_timer_view() {
+    use plushie::runtime_internals::SubOp;
+
+    let mut session = TestSession::<LifecycleApp>::start();
+
+    // After init: the async task ran inline (TestSession drains
+    // pending_async at startup), so the fetch resolved and
+    // `fetched` is populated. `ticking` is now true.
+    assert_eq!(session.model().fetched.as_deref(), Some("hi"));
+    assert!(session.model().ticking);
+
+    // The initial view was built before run_pending_async fired
+    // the async result through update. Force a re-render so the
+    // tree reflects the resolved model (mirrors the renderer's
+    // own diff-after-event cycle).
+    session.rerender();
+    session.assert_text("header", "hi");
+    session.assert_text("counter", "ticks: 0");
+
+    // Subscriptions are diff'd on every dispatch, but `start` itself
+    // doesn't run a diff. Drive a no-op dispatch to flush the
+    // subscription manager and pick up the new "tick" sub.
+    session.advance_subscriptions();
+    let started_tick = session
+        .last_subscription_ops()
+        .iter()
+        .any(|op| matches!(op, SubOp::StartTimer { tag, .. } if tag == "tick"));
+    assert!(
+        started_tick,
+        "expected a Subscribe op for the `tick` subscription after the fetch settled, got: {:?}",
+        session.last_subscription_ops(),
+    );
+
+    // Simulate the renderer firing the timer subscription.
+    session.dispatch(Event::Timer(plushie::event::TimerEvent {
+        tag: "tick".into(),
+        timestamp: 16,
+    }));
+    session.dispatch(Event::Timer(plushie::event::TimerEvent {
+        tag: "tick".into(),
+        timestamp: 32,
+    }));
+
+    // The model and the view both show the accumulated ticks.
+    assert_eq!(session.model().ticks, 2);
+    session.assert_text("counter", "ticks: 2");
+}
+
 #[test]
 fn dispatch_depth_limit_stops_pathological_update_loop() {
     let mut session = TestSession::<LoopApp>::start().allow_diagnostics();

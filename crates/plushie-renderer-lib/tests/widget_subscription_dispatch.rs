@@ -229,6 +229,67 @@ fn animation_frame_messages_route_back_to_widget_handle_message() {
 }
 
 #[test]
+fn host_and_widget_subscriptions_coexist_for_the_same_kind() {
+    // The host (via App::subscribe over the wire) and a widget (via
+    // PlushieWidget::subscriptions) can both ask for the same event
+    // kind. They route through different in-renderer dispatchers but
+    // both must fire when the underlying iced event arrives.
+    //
+    // This test is the load-bearing piece of the App + widget
+    // subscription contract: a widget declaring its own subscription
+    // must not be silently displaced by a host subscription on the
+    // same kind, and vice versa.
+    use plushie_widget_sdk::protocol::IncomingMessage;
+    use plushie_widget_sdk::runtime::StdinEvent;
+
+    let counter = Arc::new(AtomicUsize::new(0));
+    let (mut app, events) = build_app(counter.clone());
+
+    // Register the widget subscription via the tree.
+    let mut tree = root_with(vec![tick_node("t1")]);
+    let mut shared = SharedState::new();
+    app.registry
+        .prepare_walk(&mut tree, &mut shared, &Theme::Dark);
+    assert!(app.registry.has_widget_subscription("on_animation_frame"));
+
+    // Register a host-level subscription for the same kind. The
+    // App's update loop applies the Subscribe message into the
+    // engine's active_subscriptions table.
+    let _task = app.update(Message::Stdin(StdinEvent::Message(
+        IncomingMessage::Subscribe {
+            kind: "on_animation_frame".to_string(),
+            tag: "host_anim".to_string(),
+            window_id: None,
+            max_rate: None,
+        },
+    )));
+
+    // Drive an animation frame. The widget's handle_message must
+    // run (proves widget subscription survived); the host
+    // subscription should also produce a wire event tagged
+    // "host_anim".
+    let _task = app.update(Message::AnimationFrame(iced::time::Instant::now()));
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "widget subscription must still fire when a host sub exists for the same kind",
+    );
+
+    let captured = events.lock().unwrap();
+    let host_event = captured
+        .iter()
+        .find(|e| e.tag.as_deref() == Some("host_anim"));
+    assert!(
+        host_event.is_some(),
+        "host subscription should produce its own animation_frame event, got: {:?}",
+        captured
+            .iter()
+            .map(|e| (e.family.as_str(), e.tag.as_deref()))
+            .collect::<Vec<_>>(),
+    );
+}
+
+#[test]
 fn subscription_stops_when_widget_leaves_tree() {
     let counter = Arc::new(AtomicUsize::new(0));
     let (mut app, _events) = build_app(counter.clone());

@@ -284,6 +284,30 @@ fn empty_to_nonempty_produces_only_additions() {
 }
 
 #[test]
+fn advance_subscriptions_twice_with_unchanged_set_emits_nothing() {
+    // Idempotency: a no-op diff must produce no ops at all. The
+    // renderer-side dispatcher relies on this to avoid duplicate
+    // Subscribe messages flooding the wire when nothing has changed.
+    let mut session = TestSession::<SubscribeApp>::start();
+    session.model_mut().listen_keys = true;
+    session.advance_subscriptions();
+    assert_eq!(session.last_subscription_ops().len(), 1);
+
+    // Second advance with the same model state.
+    session.advance_subscriptions();
+    assert!(
+        session.last_subscription_ops().is_empty(),
+        "no-op diff produced ops: {:?}",
+        session.last_subscription_ops(),
+    );
+
+    // The active set is unchanged.
+    let active = session.active_subscriptions();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].kind(), "on_key_press");
+}
+
+#[test]
 fn nonempty_to_empty_removes_all_subscriptions() {
     let mut session = TestSession::<SubscribeApp>::start();
     session.model_mut().ticking = true;

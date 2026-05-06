@@ -3942,4 +3942,109 @@ mod tests {
         // instead of unwinding out of render_node.
         let _elem = registry.render_node(&node, &ctx);
     }
+
+    /// A widget that panics on render once, then succeeds on
+    /// subsequent renders. Models the realistic "widget hits a
+    /// transient bug, then recovers" path.
+    struct FlakyButton {
+        panicked_once: std::cell::Cell<bool>,
+    }
+
+    impl PlushieWidget<iced::Renderer> for FlakyButton {
+        fn type_names(&self) -> &[&str] {
+            &["button"]
+        }
+
+        fn render<'a>(
+            &'a self,
+            _node: &'a TreeNode,
+            _ctx: &RenderCtx<'a, iced::Renderer>,
+        ) -> Element<'a, Message, Theme, iced::Renderer> {
+            if !self.panicked_once.replace(true) {
+                panic!("transient render panic");
+            }
+            iced::widget::text("recovered").into()
+        }
+
+        fn fresh_for_session(&self) -> Box<dyn PlushieWidget<iced::Renderer>> {
+            Box::new(FlakyButton {
+                panicked_once: std::cell::Cell::new(false),
+            })
+        }
+    }
+
+    #[test]
+    fn widget_render_panic_isolates_and_next_render_still_works() {
+        // BDD: given a registry with a widget that panics on its
+        // first render, when we render twice in a row, then the
+        // first render produces a placeholder and the second render
+        // produces the recovered output. The renderer is not torn
+        // down by either call.
+        //
+        // This is the load-bearing test for the resilience promise:
+        // a panicking widget must not stop the render loop. The
+        // existing per-call isolation tests prove the catch_unwind
+        // boundary works; this test layers on the temporal continuity
+        // a real renderer relies on.
+        let mut registry = WidgetRegistry::<iced::Renderer>::new();
+        registry.register_set(&crate::widget::widget_set::iced_widget_set());
+        registry.register(Box::new(FlakyButton {
+            panicked_once: std::cell::Cell::new(false),
+        }));
+
+        let mut node = leaf("flaky", "button");
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = iced::Theme::Dark;
+
+        // First render: widget panics, registry catches, placeholder
+        // returned. Drop the resulting Element before reborrowing
+        // caches for the next prepare pass.
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        {
+            let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
+            let _placeholder = registry.render_node(&node, &ctx);
+        }
+
+        // Second render of the same node: widget no longer panics,
+        // real output flows. The registry held no stale state from
+        // the panic.
+        registry.prepare_walk(&mut node, &mut caches, &theme);
+        {
+            let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
+            let _recovered = registry.render_node(&node, &ctx);
+        }
+        // We don't introspect the iced::Element; the test passes if
+        // both calls return without unwinding. A regression in
+        // catch_unwind plumbing would unwind the test thread.
+    }
+
+    #[test]
+    fn widget_render_panic_does_not_block_other_widgets_in_same_tree() {
+        // A panicking widget in one node must not prevent its
+        // siblings from rendering. The renderer walks the tree
+        // node-by-node; isolation is per-node.
+        let mut registry = WidgetRegistry::<iced::Renderer>::new();
+        registry.register_set(&crate::widget::widget_set::iced_widget_set());
+        registry.register(Box::new(PanickingButton));
+
+        // Build a single tree with a panicking button next to a
+        // healthy text node so prepare_walk sees both at once. Text
+        // is a built-in / trusted widget; the panicking button is
+        // an untrusted override.
+        let mut root = tree(vec![leaf("bad", "button"), leaf("good", "text")]);
+        let mut caches = crate::shared_state::SharedState::new();
+        let images = crate::image_registry::ImageRegistry::new();
+        let theme = iced::Theme::Dark;
+        registry.prepare_walk(&mut root, &mut caches, &theme);
+
+        {
+            let ctx = test_render_ctx(&caches, &images, &theme, &registry, "");
+            let bad_node = &root.children[0];
+            let good_node = &root.children[1];
+            let _bad_placeholder = registry.render_node(bad_node, &ctx);
+            let _good_render = registry.render_node(good_node, &ctx);
+        }
+        // Both calls returned without unwinding; the contract holds.
+    }
 }

@@ -273,7 +273,15 @@ impl From<PropValue> for Value {
         match v {
             PropValue::Null => Value::Null,
             PropValue::Bool(b) => Value::Bool(b),
-            PropValue::F64(f) => serde_json::json!(f),
+            PropValue::F64(f) => {
+                if !f.is_finite() {
+                    log::warn!(
+                        "non-finite f64 ({f}) in PropValue silently encoded as JSON null; \
+                         caller passed an invalid value through `From<f32>`/`From<f64>`"
+                    );
+                }
+                serde_json::json!(f)
+            }
             PropValue::I64(i) => Value::Number(i.into()),
             PropValue::U64(u) => Value::Number(u.into()),
             PropValue::Str(s) => Value::String(s),

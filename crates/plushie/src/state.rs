@@ -117,7 +117,12 @@ impl State {
     }
 
     /// Commit the active transaction. Revision becomes
-    /// pre-transaction revision + 1.
+    /// pre-transaction revision + 1, regardless of how many puts ran
+    /// inside the transaction. This is asymmetric with
+    /// [`rollback_transaction`], which restores the exact pre-
+    /// transaction revision: a successful commit advances by exactly
+    /// one revision so subscribers see a single change-tick for the
+    /// whole batch.
     ///
     /// # Errors
     ///

@@ -235,6 +235,10 @@ pub struct Tween {
     /// When true, each loop iteration reverses direction (ping-pong).
     pub auto_reverse: bool,
     started_at: Option<u64>,
+    /// Timestamp of the last `advance` call. Only meaningful in spring
+    /// mode; the timed mode reads `started_at` for elapsed-time math
+    /// and does not update this field. `restart_cycle` therefore
+    /// leaves `last_timestamp` alone in timed mode by design.
     last_timestamp: Option<u64>,
     value: Option<f64>,
     finished: bool,

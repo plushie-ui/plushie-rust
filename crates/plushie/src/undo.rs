@@ -296,6 +296,12 @@ impl<T: Clone + Send + 'static> UndoStack<T> {
     ///
     /// Mutations through this reference are invisible to the undo
     /// system. Use `apply` or `push` to track changes.
+    ///
+    /// Subsequent `undo` and `redo` calls operate on whatever state
+    /// `current_mut` left behind, not the state captured at the
+    /// time of the original `apply`. The reversal closures still run
+    /// against the live `current` value, so an out-of-band mutation
+    /// here lands as the starting point for the next undo or redo.
     pub fn current_mut(&mut self) -> &mut T {
         &mut self.current
     }

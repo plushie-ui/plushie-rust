@@ -741,8 +741,8 @@ fn resolve_ref(raw: &str, scope: &str) -> String {
 }
 
 /// Walk the tree, emit `missing_accessible_name` diagnostics for
-/// interactive widgets that would render without any name a screen
-/// reader can announce.
+/// interactive or visual widgets that would render without any name a
+/// screen reader can announce.
 ///
 /// Checked widget types:
 ///
@@ -750,6 +750,11 @@ fn resolve_ref(raw: &str, scope: &str) -> String {
 ///   prop, `a11y.label`, or `a11y.labelled_by`.
 /// - `toggler`, `checkbox`: same as above (their native role is
 ///   announced, but the *name* still needs to come from somewhere).
+/// - `image`, `svg`: need `alt`, `a11y.label`, or `a11y.labelled_by`.
+///   Skipped when `decorative: true` (the author has explicitly
+///   marked it ignorable for AT).
+/// - `qr_code`: needs `alt`, `description`, or an `a11y.label` /
+///   `a11y.description` override.
 ///
 /// Canvas interactive elements have their own diagnostic in
 /// `canvas/interaction.rs`; this check skips them.
@@ -771,14 +776,41 @@ fn check_missing_accessible_name(node: &TreeNode, warnings: &mut Vec<Diagnostic>
 fn widget_requires_accessible_name(type_name: &str) -> bool {
     matches!(
         type_name,
-        "button" | "toggler" | "checkbox" | "pointer_area"
+        "button" | "toggler" | "checkbox" | "pointer_area" | "image" | "svg" | "qr_code"
     )
 }
 
 /// Returns true if the node carries any source of accessible name.
 fn has_accessible_name(node: &TreeNode) -> bool {
+    // A widget marked `decorative: true` opts out of the check; the
+    // author has stated AT should ignore it. Only meaningful for
+    // image / svg today; the prop is ignored on widget types that
+    // don't honour it.
+    if matches!(node.type_name.as_str(), "image" | "svg")
+        && node
+            .props
+            .get_value("decorative")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    {
+        return true;
+    }
     // A `label` prop (checkbox / toggler carry their text here).
     if node.props.get_str("label").is_some_and(|s| !s.is_empty()) {
+        return true;
+    }
+    // image / svg use `alt`; qr_code accepts `alt` or `description`.
+    if matches!(node.type_name.as_str(), "image" | "svg" | "qr_code")
+        && node.props.get_str("alt").is_some_and(|s| !s.is_empty())
+    {
+        return true;
+    }
+    if node.type_name == "qr_code"
+        && node
+            .props
+            .get_str("description")
+            .is_some_and(|s| !s.is_empty())
+    {
         return true;
     }
     // An a11y override with label or labelled_by.
@@ -794,6 +826,16 @@ fn has_accessible_name(node: &TreeNode) -> bool {
             .get("labelled_by")
             .and_then(|v| v.as_str())
             .is_some_and(|s| !s.is_empty())
+        {
+            return true;
+        }
+        // qr_code also accepts an `a11y.description` since its
+        // payload is data, not a textual name.
+        if node.type_name == "qr_code"
+            && a11y
+                .get("description")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.is_empty())
         {
             return true;
         }
@@ -1514,6 +1556,159 @@ mod tests {
         );
         let (_result, warnings) = normalize(&tree);
         assert!(warnings.is_empty(), "got {warnings:?}");
+    }
+
+    fn has_missing_name(warnings: &[Diagnostic], scoped_id: &str) -> bool {
+        warnings.iter().any(|w| {
+            matches!(
+                w,
+                Diagnostic::MissingAccessibleName { id, .. } if id == scoped_id
+            )
+        })
+    }
+
+    #[test]
+    fn image_without_alt_or_decorative_warns() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "logo",
+                "image",
+                json!({"source": "/logo.png"}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            has_missing_name(&warnings, "root/logo"),
+            "expected missing_accessible_name for unlabelled image, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn image_with_alt_does_not_warn() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "logo",
+                "image",
+                json!({"source": "/logo.png", "alt": "Company logo"}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            !has_missing_name(&warnings, "root/logo"),
+            "got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn decorative_image_does_not_warn() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "deco",
+                "image",
+                json!({"source": "/divider.png", "decorative": true}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            !has_missing_name(&warnings, "root/deco"),
+            "got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn svg_without_alt_or_decorative_warns() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "icon",
+                "svg",
+                json!({"source": "/icon.svg"}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            has_missing_name(&warnings, "root/icon"),
+            "expected missing_accessible_name for unlabelled svg, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn svg_with_a11y_label_does_not_warn() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "icon",
+                "svg",
+                json!({"source": "/icon.svg", "a11y": {"label": "Settings"}}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            !has_missing_name(&warnings, "root/icon"),
+            "got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn qr_code_without_name_or_description_warns() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "wifi",
+                "qr_code",
+                json!({"data": "WIFI:T:WPA;..."}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            has_missing_name(&warnings, "root/wifi"),
+            "expected missing_accessible_name for unlabelled qr_code, got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn qr_code_with_description_does_not_warn() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "wifi",
+                "qr_code",
+                json!({"data": "WIFI:T:WPA;...", "description": "Scan to join wifi"}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            !has_missing_name(&warnings, "root/wifi"),
+            "got {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn qr_code_with_alt_does_not_warn() {
+        let tree = node(
+            "root",
+            "column",
+            vec![node_with_props(
+                "wifi",
+                "qr_code",
+                json!({"data": "WIFI:T:WPA;...", "alt": "Wifi"}),
+            )],
+        );
+        let (_result, warnings) = normalize(&tree);
+        assert!(
+            !has_missing_name(&warnings, "root/wifi"),
+            "got {warnings:?}"
+        );
     }
 
     #[test]

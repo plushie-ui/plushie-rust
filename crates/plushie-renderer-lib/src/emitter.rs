@@ -51,7 +51,7 @@ const PENDING_CAP: usize = 4096;
 // ---------------------------------------------------------------------------
 
 /// Identifies a stream of events that can be coalesced together.
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum CoalesceKey {
     /// Subscription event keyed by entry tag (e.g. "on_pointer_move" or
     /// "on_pointer_move:main" for window-scoped subscriptions).
@@ -398,7 +398,14 @@ impl EventEmitter {
         // out of the map without cloning keys - key clones would copy
         // two Strings per entry under `CoalesceKey::Widget`, which for
         // a busy app adds up on every FlushCoalesce tick.
-        let drained: Vec<_> = self.pending.drain().collect();
+        //
+        // Sort by `CoalesceKey` before emitting so flush order is
+        // deterministic across runs. `HashMap::drain` returns entries
+        // in an unspecified, randomised order; tests and replay tools
+        // need a stable sequence to reproduce host-visible event
+        // streams.
+        let mut drained: Vec<_> = self.pending.drain().collect();
+        drained.sort_by(|(a, _), (b, _)| a.cmp(b));
         let now = Instant::now();
         let mut tasks: Vec<Task<Message>> = Vec::new();
         for (key, pending) in drained {

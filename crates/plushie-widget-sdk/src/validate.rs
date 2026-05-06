@@ -318,7 +318,7 @@ fn check_numeric_range(
             id: node_id.to_string(),
             type_name: type_name.to_string(),
             prop: prop_name.to_string(),
-            raw,
+            raw: format_finite_or_label(raw),
             clamped,
             non_finite: true,
         };
@@ -340,13 +340,29 @@ fn check_numeric_range(
             id: node_id.to_string(),
             type_name: type_name.to_string(),
             prop: prop_name.to_string(),
-            raw,
+            raw: format_finite_or_label(raw),
             clamped,
             non_finite: false,
         };
         Some((diag.to_string(), clamped))
     } else {
         None
+    }
+}
+
+/// Format an `f64` for the `raw` field of `PropRangeExceeded`. Finite
+/// values use the standard `Display` form; non-finite values become
+/// the labels `"NaN"`, `"inf"`, or `"-inf"` so the diagnostic
+/// round-trips through JSON without losing information.
+fn format_finite_or_label(value: f64) -> String {
+    if value.is_nan() {
+        "NaN".to_string()
+    } else if value == f64::INFINITY {
+        "inf".to_string()
+    } else if value == f64::NEG_INFINITY {
+        "-inf".to_string()
+    } else {
+        value.to_string()
     }
 }
 

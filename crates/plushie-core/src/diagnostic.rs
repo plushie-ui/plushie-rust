@@ -137,8 +137,12 @@ pub enum Diagnostic {
         type_name: String,
         /// Prop name.
         prop: String,
-        /// Raw (pre-clamp) value as it appeared on the wire.
-        raw: f64,
+        /// Raw (pre-clamp) value as it appeared on the wire, captured
+        /// as a string so non-finite f64 values (`"NaN"`, `"inf"`,
+        /// `"-inf"`) round-trip cleanly through JSON. JSON has no
+        /// non-finite number representation, so storing this as `f64`
+        /// would lose information at serialization time.
+        raw: String,
         /// Clamped value stored back into the prop.
         clamped: f64,
         /// True when the raw value was non-finite (NaN or Inf);
@@ -715,7 +719,7 @@ mod tests {
             id: "slider-1".into(),
             type_name: "slider".into(),
             prop: "value".into(),
-            raw: 200.0,
+            raw: "200".into(),
             clamped: 100.0,
             non_finite: false,
         };
@@ -728,11 +732,12 @@ mod tests {
             id: "slider-1".into(),
             type_name: "slider".into(),
             prop: "value".into(),
-            raw: f64::INFINITY,
+            raw: "inf".into(),
             clamped: 0.0,
             non_finite: true,
         };
         assert!(non_finite.to_string().contains("(non-finite)"));
+        assert!(non_finite.to_string().contains("inf"));
     }
 
     #[test]

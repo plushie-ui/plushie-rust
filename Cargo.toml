@@ -48,6 +48,9 @@ image = "0.25"
 
 thiserror = "2"
 parking_lot = "0.12"
+# Doubly-linked-list-backed LRU map. Image registry uses it so
+# touch and evict are both O(1) under the per-image-cap workload.
+lru = "0.16"
 strum = { version = "0.26", features = ["derive"] }
 # Pin usvg explicitly so RustSec advisories against the SVG parser
 # surface at the workspace dep resolution layer. iced's svg pipeline

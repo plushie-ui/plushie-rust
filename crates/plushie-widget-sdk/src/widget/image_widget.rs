@@ -71,7 +71,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ImageWidget {
             Some(Value::Object(obj)) => {
                 if let Some(name) = obj.get("handle").and_then(|v| v.as_str()) {
                     match ctx.images.get(name) {
-                        Some(h) => h.clone(),
+                        Some(h) => h,
                         None => {
                             log::warn!("[id={}] image: unknown registry handle: {name}", node.id);
                             iced::widget::image::Handle::from_bytes(vec![])

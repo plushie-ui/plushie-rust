@@ -36,6 +36,7 @@ rmpv = { workspace = true }
 image = { workspace = true }
 log = { workspace = true }
 parking_lot = { workspace = true }
+lru = { workspace = true }
 base64 = { workspace = true }
 qrcode = { version = "0.14", default-features = false }
 # Keep a direct dep on usvg so the workspace-level pin actually

@@ -9,12 +9,10 @@
 //! [`ImageRegistry`] reference to resolve them through
 //! [`ImageRegistry::get`].
 
-use std::{
-    collections::HashMap,
-    sync::{Mutex, MutexGuard},
-};
+use std::sync::Mutex;
 
 use iced::widget::image;
+use lru::LruCache;
 
 /// Maximum number of images the registry will hold.
 const MAX_IMAGES: usize = 4096;
@@ -58,23 +56,33 @@ fn sniff_image_format(data: &[u8]) -> Option<&'static str> {
 /// lock, which is not a guarantee that callers may mutate the registry
 /// concurrently.
 pub struct ImageRegistry {
-    handles: HashMap<String, image::Handle>,
-    /// Per-image byte size tracking (parallel to `handles`).
-    sizes: HashMap<String, usize>,
-    /// Names ordered from least recently used to most recently used.
-    lru: Mutex<Vec<String>>,
+    /// Name -> (handle, byte cost). The LRU ordering keeps eviction
+    /// O(1): `pop_lru` pulls the least recently touched candidate
+    /// without scanning, and `get_or_peek` reorders the candidate
+    /// chain on access.
+    entries: Mutex<LruCache<String, ImageEntry>>,
     #[cfg(test)]
     max_total_bytes: usize,
-    /// Running total of all image bytes in the registry.
+    /// Running total of all image bytes in the registry. Maintained
+    /// alongside `entries` so we don't have to walk the LRU to read
+    /// the aggregate size.
     total_bytes: usize,
+}
+
+#[derive(Clone)]
+struct ImageEntry {
+    handle: image::Handle,
+    bytes: usize,
 }
 
 impl std::fmt::Debug for ImageRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let guard = self.entries_lock();
+        let names: Vec<&String> = guard.iter().map(|(name, _)| name).collect();
         f.debug_struct("ImageRegistry")
-            .field("count", &self.handles.len())
+            .field("count", &guard.len())
             .field("total_bytes", &self.total_bytes)
-            .field("names", &self.handles.keys().collect::<Vec<_>>())
+            .field("names", &names)
             .finish()
     }
 }
@@ -88,10 +96,12 @@ impl Default for ImageRegistry {
 impl ImageRegistry {
     /// Create an empty image registry.
     pub fn new() -> Self {
+        // Use an unbounded LRU and run our own count + byte-budget
+        // checks in `make_room_for`. Letting `LruCache` auto-evict
+        // would lose the size-aware logic that drops the largest
+        // candidate that is not currently being inserted.
         Self {
-            handles: HashMap::new(),
-            sizes: HashMap::new(),
-            lru: Mutex::new(Vec::new()),
+            entries: Mutex::new(LruCache::unbounded()),
             #[cfg(test)]
             max_total_bytes: MAX_TOTAL_BYTES,
             total_bytes: 0,
@@ -122,8 +132,8 @@ impl ImageRegistry {
         MAX_TOTAL_BYTES
     }
 
-    fn lru_lock(&self) -> MutexGuard<'_, Vec<String>> {
-        match self.lru.lock() {
+    fn entries_lock(&self) -> std::sync::MutexGuard<'_, LruCache<String, ImageEntry>> {
+        match self.entries.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
                 log::warn!("image registry: recovering from poisoned LRU lock");
@@ -132,53 +142,50 @@ impl ImageRegistry {
         }
     }
 
-    fn touch(&self, name: &str) {
-        let mut lru = self.lru_lock();
-        if let Some(index) = lru.iter().position(|existing| existing == name) {
-            lru.remove(index);
-        }
-        lru.push(name.to_owned());
-    }
-
-    fn evict_lru_except(&mut self, name: &str) -> bool {
-        let evicted = {
-            let mut lru = self.lru_lock();
-            let mut evicted = None;
-            while let Some(candidate) = lru.first().cloned() {
-                lru.remove(0);
-                if candidate != name && self.handles.contains_key(&candidate) {
-                    evicted = Some(candidate);
-                    break;
-                }
+    /// Pop the least-recently-used entry whose name does not match
+    /// the in-flight insert. Returns the (name, bytes) of the
+    /// evicted entry so the caller can update `total_bytes`.
+    fn evict_lru_except(&mut self, name: &str) -> Option<(String, usize)> {
+        let mut guard = self.entries_lock();
+        // Walk the LRU end forward looking for an entry that isn't
+        // the one we're making room for. The crate's `pop_lru`
+        // returns the oldest, but we may need to skip past the
+        // self-name to honour evict_lru_except's contract. In
+        // practice the self-name is at the MRU end by construction,
+        // so this loop runs at most twice.
+        let mut skipped: Vec<(String, ImageEntry)> = Vec::new();
+        let evicted = loop {
+            let Some((candidate_name, candidate_entry)) = guard.pop_lru() else {
+                break None;
+            };
+            if candidate_name == name {
+                skipped.push((candidate_name, candidate_entry));
+                continue;
             }
-            evicted
+            break Some((candidate_name, candidate_entry));
         };
-
-        if let Some(evicted) = evicted {
-            self.remove_entry(&evicted);
-            true
-        } else {
-            false
+        // Restore any entries we skipped over so they keep their
+        // (now-MRU) position relative to the rest. Re-inserting via
+        // `put` puts them back at the MRU end which is fine here:
+        // the only one we skip is the self-name, which is already
+        // the most recently touched.
+        for (n, e) in skipped {
+            guard.put(n, e);
         }
-    }
-
-    fn remove_entry(&mut self, name: &str) {
-        self.handles.remove(name);
-        if let Some(size) = self.sizes.remove(name) {
-            self.total_bytes -= size;
-        }
-        self.lru_lock().retain(|existing| existing != name);
+        evicted.map(|(n, e)| (n, e.bytes))
     }
 
     fn projected_total(&self, name: &str, new_bytes: usize) -> usize {
-        self.total_bytes - self.sizes.get(name).copied().unwrap_or(0) + new_bytes
+        let existing = self.entries_lock().peek(name).map(|e| e.bytes).unwrap_or(0);
+        self.total_bytes - existing + new_bytes
     }
 
     fn projected_count(&self, name: &str) -> usize {
-        if self.handles.contains_key(name) {
-            self.handles.len()
+        let guard = self.entries_lock();
+        if guard.contains(name) {
+            guard.len()
         } else {
-            self.handles.len() + 1
+            guard.len() + 1
         }
     }
 
@@ -199,16 +206,21 @@ impl ImageRegistry {
         while self.projected_count(name) > MAX_IMAGES
             || self.projected_total(name, new_bytes) > max_total_bytes
         {
-            if !self.evict_lru_except(name) {
-                let msg = format!(
-                    "image registry: cannot make room for '{}' \
-                     (bytes={new_bytes}, count={}, total={}, limit={max_total_bytes})",
-                    name,
-                    self.handles.len(),
-                    self.total_bytes
-                );
-                log::error!("{msg}");
-                return Err(msg);
+            match self.evict_lru_except(name) {
+                Some((_, evicted_bytes)) => {
+                    self.total_bytes -= evicted_bytes;
+                }
+                None => {
+                    let msg = format!(
+                        "image registry: cannot make room for '{}' \
+                         (bytes={new_bytes}, count={}, total={}, limit={max_total_bytes})",
+                        name,
+                        self.entries_lock().len(),
+                        self.total_bytes
+                    );
+                    log::error!("{msg}");
+                    return Err(msg);
+                }
             }
         }
 
@@ -218,13 +230,18 @@ impl ImageRegistry {
     /// Insert a handle and update size tracking. Handles replacement of
     /// existing entries by subtracting the old size first.
     fn insert(&mut self, name: &str, handle: image::Handle, byte_count: usize) {
-        if let Some(old_size) = self.sizes.get(name) {
-            self.total_bytes -= old_size;
+        let entry = ImageEntry {
+            handle,
+            bytes: byte_count,
+        };
+        let displaced_bytes = {
+            let mut guard = self.entries_lock();
+            guard.put(name.to_owned(), entry).map(|old| old.bytes)
+        };
+        if let Some(bytes) = displaced_bytes {
+            self.total_bytes -= bytes;
         }
-        self.handles.insert(name.to_owned(), handle);
-        self.sizes.insert(name.to_owned(), byte_count);
         self.total_bytes += byte_count;
-        self.touch(name);
     }
 
     fn validate_encoded_image(name: &str, data: &[u8]) -> Result<(), String> {
@@ -344,32 +361,49 @@ impl ImageRegistry {
 
     /// Remove a named image handle.
     pub fn delete(&mut self, name: &str) {
-        self.remove_entry(name);
+        let removed_bytes = self.entries_lock().pop(name).map(|entry| entry.bytes);
+        if let Some(bytes) = removed_bytes {
+            self.total_bytes -= bytes;
+        }
     }
 
-    /// Look up a named image handle.
+    /// Look up a named image handle, cloning it for the caller.
     ///
-    /// This takes `&self` so widgets can resolve images during render.
-    /// A successful lookup records LRU usage under an internal lock; it
-    /// does not make registry mutation safe from shared references.
-    pub fn get(&self, name: &str) -> Option<&image::Handle> {
-        let handle = self.handles.get(name);
-        if handle.is_some() {
-            self.touch(name);
-        }
-        handle
+    /// Takes `&self` so widgets can resolve images during render. The
+    /// internal LRU promotion runs under a small lock; that lock does
+    /// not make registry mutation safe from shared references.
+    /// Cloning the [`image::Handle`] is cheap (it wraps an `Arc<Bytes>`
+    /// internally), so the call site doesn't pay for a borrow into
+    /// the LRU.
+    pub fn get(&self, name: &str) -> Option<image::Handle> {
+        // `LruCache::get` promotes the entry to MRU and returns a
+        // reference. We clone immediately so the lock can be released
+        // and the caller doesn't need to hold the registry lock for
+        // the lifetime of the handle.
+        self.entries_lock().get(name).map(|e| e.handle.clone())
     }
 
     /// Return the names of all registered image handles.
     pub fn handle_names(&self) -> Vec<String> {
-        self.handles.keys().cloned().collect()
+        self.entries_lock()
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// Number of images currently in the registry.
+    pub fn len(&self) -> usize {
+        self.entries_lock().len()
+    }
+
+    /// True when the registry is empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries_lock().is_empty()
     }
 
     /// Remove all registered image handles.
     pub fn clear(&mut self) {
-        self.handles.clear();
-        self.sizes.clear();
-        self.lru_lock().clear();
+        self.entries_lock().clear();
         self.total_bytes = 0;
     }
 
@@ -692,11 +726,11 @@ mod tests {
                 "image {i} should succeed"
             );
         }
-        assert_eq!(reg.handles.len(), MAX_IMAGES);
+        assert_eq!(reg.len(), MAX_IMAGES);
 
         assert!(reg.create_from_rgba("one_more", 1, 1, vec![0; 4]).is_ok());
 
-        assert_eq!(reg.handles.len(), MAX_IMAGES);
+        assert_eq!(reg.len(), MAX_IMAGES);
         assert!(reg.get("one_more").is_some());
         assert!(reg.get("img_0").is_none());
     }
@@ -709,7 +743,7 @@ mod tests {
             let _ = reg.create_from_rgba(&name, 1, 1, vec![0; 4]);
         }
         assert!(reg.create_from_rgba("img_0", 1, 2, vec![0; 8]).is_ok());
-        assert_eq!(reg.handles.len(), MAX_IMAGES);
+        assert_eq!(reg.len(), MAX_IMAGES);
         assert!(reg.get("img_0").is_some());
     }
 

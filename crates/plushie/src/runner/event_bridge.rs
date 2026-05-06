@@ -189,12 +189,15 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
                 },
                 scope: sid.scope,
                 text: json_str_opt(value, "text"),
-                cursor: value["cursor"].as_array().and_then(|arr: &Vec<Value>| {
-                    Some((
-                        arr.first()?.as_u64()? as usize,
-                        arr.get(1)?.as_u64()? as usize,
-                    ))
-                }),
+                cursor: {
+                    let cursor = &value["cursor"];
+                    let start = cursor["start"].as_u64();
+                    let end = cursor["end"].as_u64();
+                    match (start, end) {
+                        (Some(s), Some(e)) => Some((s as usize, e as usize)),
+                        _ => None,
+                    }
+                },
                 captured: event.captured.unwrap_or(false),
                 window_id: None,
             }))
@@ -714,5 +717,44 @@ mod tests {
         };
         let sdk = sink_event_to_sdk(query).unwrap();
         assert!(matches!(sdk, Event::System(_)));
+    }
+
+    #[test]
+    fn ime_preedit_cursor_survives_wire_round_trip() {
+        // Construct via the public serializer, route the value field through
+        // a JSON Value (the same shape the wire layer hands the parser),
+        // then convert. Catches drift between the emitted wire shape and
+        // the parser in this module.
+        let event =
+            OutgoingEvent::ime_preedit("editor".to_string(), "konnichiwa".to_string(), Some(2..5));
+        let value_json = serde_json::to_value(event.value.as_ref().unwrap()).unwrap();
+
+        let mut rebuilt = make_tagged("ime_preedit", "editor");
+        rebuilt.value = Some(value_json);
+        let sdk = outgoing_to_sdk_event(rebuilt).expect("ime event");
+        match sdk {
+            Event::Ime(ime) => {
+                assert_eq!(ime.event_type, ImeEventType::Preedit);
+                assert_eq!(ime.text.as_deref(), Some("konnichiwa"));
+                assert_eq!(ime.cursor, Some((2, 5)));
+            }
+            other => panic!("expected ime event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ime_preedit_without_cursor_is_none() {
+        let event = OutgoingEvent::ime_preedit("editor".to_string(), "hello".to_string(), None);
+        let value_json = serde_json::to_value(event.value.as_ref().unwrap()).unwrap();
+
+        let mut rebuilt = make_tagged("ime_preedit", "editor");
+        rebuilt.value = Some(value_json);
+        let sdk = outgoing_to_sdk_event(rebuilt).expect("ime event");
+        match sdk {
+            Event::Ime(ime) => {
+                assert_eq!(ime.cursor, None);
+            }
+            other => panic!("expected ime event, got {other:?}"),
+        }
     }
 }

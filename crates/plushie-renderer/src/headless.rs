@@ -1196,10 +1196,27 @@ fn load_fonts_from_settings(settings: &serde_json::Value) {
     let Some(fonts) = settings.get("fonts").and_then(|v| v.as_array()) else {
         return;
     };
+    let max_bytes = plushie_renderer_lib::constants::MAX_FONT_BYTES;
+    let max_count = plushie_renderer_lib::constants::MAX_LOADED_FONTS;
     for font_val in fonts {
         if let Some(path) = font_val.as_str() {
             match std::fs::read(path) {
+                Ok(bytes) if bytes.is_empty() => {
+                    log::warn!("font file is empty, skipping: {path}");
+                }
+                Ok(bytes) if bytes.len() > max_bytes => {
+                    log::warn!(
+                        "font {path} ({} bytes) exceeds {max_bytes} byte limit, rejecting",
+                        bytes.len(),
+                    );
+                }
                 Ok(bytes) => {
+                    if !plushie_renderer_lib::constants::try_reserve_font_slot() {
+                        log::warn!(
+                            "font {path} dropped: process-wide cap of {max_count} fonts reached",
+                        );
+                        continue;
+                    }
                     load_font_bytes(bytes);
                     log::info!("loaded font: {path}");
                 }

@@ -291,10 +291,27 @@ pub(crate) fn collect_font_bytes(settings: &Value) -> Vec<Vec<u8>> {
     let mut font_bytes = plushie_renderer_lib::settings::parse_inline_fonts(settings);
 
     if let Some(fonts) = settings.get("fonts").and_then(|v| v.as_array()) {
+        let max_bytes = plushie_renderer_lib::constants::MAX_FONT_BYTES;
+        let max_count = plushie_renderer_lib::constants::MAX_LOADED_FONTS;
         for font_val in fonts {
             if let Some(path) = font_val.as_str() {
                 match std::fs::read(path) {
+                    Ok(bytes) if bytes.is_empty() => {
+                        log::warn!("font file is empty, skipping: {path}");
+                    }
+                    Ok(bytes) if bytes.len() > max_bytes => {
+                        log::warn!(
+                            "font {path} ({} bytes) exceeds {max_bytes} byte limit, rejecting",
+                            bytes.len(),
+                        );
+                    }
                     Ok(bytes) => {
+                        if !plushie_renderer_lib::constants::try_reserve_font_slot() {
+                            log::warn!(
+                                "font {path} dropped: process-wide cap of {max_count} fonts reached",
+                            );
+                            continue;
+                        }
                         log::info!("loaded font: {path}");
                         font_bytes.push(bytes);
                     }

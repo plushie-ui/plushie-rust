@@ -178,6 +178,36 @@ fn toggle_on_in_multi_mode_sets_anchor() {
     assert_eq!(sel.count(), 3);
 }
 
+#[test]
+fn set_order_prunes_missing_selections_and_clears_dropped_anchor() {
+    // The underlying list lost "b" and "d". After set_order, only the
+    // surviving selection ("c") remains, and the anchor (which was
+    // "d") is cleared so the next range_select starts fresh instead
+    // of spanning from a stale, no-longer-present id.
+    let mut sel = Selection::new(SelectionMode::Multi, item_ids());
+    sel.select_extend("b");
+    sel.select_extend("c");
+    sel.select_extend("d"); // also moves the anchor here
+
+    sel.set_order(vec!["a".to_string(), "c".to_string(), "e".to_string()]);
+
+    assert!(sel.is_selected("c"));
+    assert!(!sel.is_selected("b"));
+    assert!(!sel.is_selected("d"));
+    assert_eq!(sel.count(), 1);
+
+    // No anchor: range_select from "c" to "e" only catches "e" plus
+    // the new single-select fallback would land on "e" alone. We
+    // re-anchor explicitly and verify the order vector is what drives
+    // ranges now.
+    sel.range_select("e");
+    // No anchor was preserved across set_order, so range_select
+    // degrades to a plain select on the target id.
+    assert!(sel.is_selected("e"));
+    assert!(!sel.is_selected("c"));
+    assert_eq!(sel.count(), 1);
+}
+
 // ---------------------------------------------------------------------------
 // UndoStack
 // ---------------------------------------------------------------------------

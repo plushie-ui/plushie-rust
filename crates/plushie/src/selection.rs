@@ -18,6 +18,13 @@ pub enum SelectionMode {
 /// Items are identified by string IDs. The `order` vector defines
 /// the display order, used by `range_select` to determine which
 /// items fall between the anchor and target.
+///
+/// When the underlying list of items changes (rows added, removed,
+/// reordered) call [`Selection::set_order`] with the new ID list.
+/// That replaces the order vector, drops any selected IDs that no
+/// longer exist, and clears the anchor if it is no longer present
+/// so a later [`Selection::range_select`] doesn't span from a stale,
+/// removed id.
 #[derive(Debug, Clone)]
 pub struct Selection {
     mode: SelectionMode,
@@ -85,6 +92,25 @@ impl Selection {
     /// Select all items in the order list.
     pub fn select_all(&mut self) {
         self.selected = self.order.iter().cloned().collect();
+    }
+
+    /// Replace the underlying order with a new list of IDs.
+    ///
+    /// Drops any currently-selected IDs that aren't in `new_order`
+    /// and clears the anchor if it's no longer present. Use this when
+    /// the data behind the list changes (rows added, removed, or
+    /// reordered) so subsequent `range_select` calls don't span from
+    /// a stale anchor and selection state stays consistent with the
+    /// visible items.
+    pub fn set_order(&mut self, new_order: Vec<String>) {
+        let valid: HashSet<&str> = new_order.iter().map(String::as_str).collect();
+        self.selected.retain(|id| valid.contains(id.as_str()));
+        if let Some(anchor) = &self.anchor
+            && !valid.contains(anchor.as_str())
+        {
+            self.anchor = None;
+        }
+        self.order = new_order;
     }
 
     /// Remove all items from the selection.

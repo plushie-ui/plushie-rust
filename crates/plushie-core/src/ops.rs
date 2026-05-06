@@ -588,13 +588,8 @@ impl WindowOp {
             "show_system_menu" => Some(Self::ShowSystemMenu(wid())),
             "set_icon" => {
                 use base64::Engine as _;
-                let b64 = payload
-                    .get("data")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let data = base64::engine::general_purpose::STANDARD
-                    .decode(b64)
-                    .unwrap_or_default();
+                let b64 = payload.get("data").and_then(|v| v.as_str())?;
+                let data = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
                 let width = payload.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
                 let height = payload.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
                 Some(Self::SetIcon {

@@ -142,7 +142,7 @@ impl ImageRegistry {
 
     fn evict_lru_except(&mut self, name: &str) -> bool {
         let evicted = {
-            let mut lru = self.lru.lock().expect("image registry LRU lock poisoned");
+            let mut lru = self.lru_lock();
             let mut evicted = None;
             while let Some(candidate) = lru.first().cloned() {
                 lru.remove(0);

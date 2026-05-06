@@ -11,7 +11,7 @@
 use std::cell::Cell;
 use std::sync::OnceLock;
 
-use serde_json::Value;
+use plushie_core::protocol::PropValue;
 
 use crate::protocol::TreeNode;
 
@@ -83,14 +83,20 @@ enum PropType {
     Any,
 }
 
-fn prop_type_matches(val: &Value, expected: PropType) -> bool {
+fn prop_type_matches(val: &PropValue, expected: PropType) -> bool {
     match expected {
-        PropType::Str => val.is_string(),
-        PropType::Number => val.is_number(),
-        PropType::Bool => val.is_boolean(),
-        PropType::Array => val.is_array(),
-        PropType::Color => val.is_string() || val.is_object(),
-        PropType::Length => val.is_string() || val.is_number(),
+        PropType::Str => matches!(val, PropValue::Str(_)),
+        PropType::Number => matches!(
+            val,
+            PropValue::F64(_) | PropValue::I64(_) | PropValue::U64(_)
+        ),
+        PropType::Bool => matches!(val, PropValue::Bool(_)),
+        PropType::Array => matches!(val, PropValue::Array(_)),
+        PropType::Color => matches!(val, PropValue::Str(_) | PropValue::Object(_)),
+        PropType::Length => matches!(
+            val,
+            PropValue::Str(_) | PropValue::F64(_) | PropValue::I64(_) | PropValue::U64(_)
+        ),
         PropType::OneOf(values) => val.as_str().is_some_and(|s| values.contains(&s)),
         PropType::Any => true,
     }
@@ -306,10 +312,16 @@ fn check_numeric_range(
     node_id: &str,
     type_name: &str,
     prop_name: &str,
-    val: &Value,
+    val: &PropValue,
     range: NumericRange,
 ) -> Option<(String, f64)> {
-    let raw = val.as_f64()?;
+    // Non-finite f64 inputs short-circuit through PropValue::as_f64,
+    // so handle them via the explicit F64 match below.
+    let raw = match val {
+        PropValue::F64(f) => *f,
+        PropValue::I64(_) | PropValue::U64(_) => val.as_f64()?,
+        _ => return None,
+    };
     if !raw.is_finite() {
         // Non-finite values should have been filtered upstream. Treat
         // them as out-of-range and clamp to zero.
@@ -897,27 +909,27 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
         _ => return Vec::new(), // Unknown widget type, skip validation
     };
 
-    let props_cow = node.props.as_value_cow();
-    let props = match props_cow.as_object() {
-        Some(p) => p,
-        None => return Vec::new(),
-    };
+    let prop_map = node.props.as_prop_map();
 
     let expected_names: Vec<&str> = expected.iter().map(|(name, _)| *name).collect();
     let mut warnings = Vec::new();
 
-    for (key, val) in props {
+    // Iterate the PropMap in place. The previous shape cloned the
+    // entire map into a serde_json::Value just to drive this loop;
+    // the validation pass runs in debug builds on every render, so
+    // the clone showed up in profiles.
+    for (key, val) in prop_map.iter() {
         // Skip props accepted by all widget types.
-        if UNIVERSAL_PROPS.contains(&key.as_str()) {
+        if UNIVERSAL_PROPS.contains(&key) {
             continue;
         }
-        match expected.iter().find(|(name, _)| name == key) {
+        match expected.iter().find(|(name, _)| *name == key) {
             Some((_, expected_type)) => {
                 if !prop_type_matches(val, *expected_type) {
                     let diag = plushie_core::Diagnostic::PropTypeMismatch {
                         id: node.id.clone(),
                         type_name: node.type_name.clone(),
-                        prop: key.clone(),
+                        prop: key.to_string(),
                         value_debug: format!("{val:?}"),
                         expected_debug: prop_type_expected_debug(*expected_type),
                     };
@@ -936,7 +948,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
                 let diag = plushie_core::Diagnostic::PropUnknown {
                     id: node.id.clone(),
                     type_name: node.type_name.clone(),
-                    prop: key.clone(),
+                    prop: key.to_string(),
                     known_debug: format!("{expected_names:?}"),
                 };
                 warnings.push(diag.to_string());

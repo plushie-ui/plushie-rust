@@ -3556,6 +3556,7 @@ dependencies = [
  "base64",
  "image",
  "log",
+ "parking_lot",
  "plushie-core",
  "plushie-core-macros",
  "plushie-iced",

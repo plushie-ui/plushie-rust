@@ -10,13 +10,15 @@ use crate::render_ctx::RenderCtx;
 use crate::svg_guard::{self, DecodeOutcome};
 use crate::widget::helpers::*;
 
+use parking_lot::Mutex;
 use plushie_core::types::{Color, ContentFit, Length, PlushieType};
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 /// Paths that failed the SVG guard. Re-validation is skipped for
 /// known-bad paths so the guard doesn't burn CPU every frame on a
-/// stuck or malicious source.
+/// stuck or malicious source. parking_lot::Mutex avoids the
+/// poisoning surface of std::sync::Mutex; the cache is throwaway
+/// hot-path memoisation, not state we need to fence on a panic.
 static FAILED_PATHS: Mutex<Option<HashMap<String, DecodeFailure>>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +61,7 @@ impl SvgWidget {
         }
         // Fast path: already known-bad; skip re-parse.
         {
-            let guard = FAILED_PATHS.lock().expect("FAILED_PATHS lock");
+            let guard = FAILED_PATHS.lock();
             if let Some(map) = guard.as_ref()
                 && map.contains_key(source)
             {
@@ -100,14 +102,14 @@ impl SvgWidget {
     }
 
     fn record_failure(source: &str, kind: DecodeFailure) {
-        let mut guard = FAILED_PATHS.lock().expect("FAILED_PATHS lock");
+        let mut guard = FAILED_PATHS.lock();
         guard
             .get_or_insert_with(HashMap::new)
             .insert(source.to_string(), kind);
     }
 
     fn is_failed(source: &str) -> bool {
-        let guard = FAILED_PATHS.lock().expect("FAILED_PATHS lock");
+        let guard = FAILED_PATHS.lock();
         guard.as_ref().is_some_and(|m| m.contains_key(source))
     }
 }

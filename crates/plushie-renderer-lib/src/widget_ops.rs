@@ -9,9 +9,7 @@ use plushie_widget_sdk::runtime::Message;
 
 use crate::App;
 
-use std::sync::atomic::Ordering;
-
-use crate::constants::{LOADED_FONT_COUNT, MAX_FONT_BYTES, MAX_LOADED_FONTS};
+use crate::constants::{MAX_FONT_BYTES, MAX_LOADED_FONTS};
 
 // ---------------------------------------------------------------------------
 // Widget operations (impl App)
@@ -211,14 +209,13 @@ impl App {
                         MAX_FONT_BYTES
                     );
                     Task::none()
-                } else if LOADED_FONT_COUNT.load(Ordering::Relaxed) >= MAX_LOADED_FONTS {
+                } else if !crate::constants::try_reserve_font_slot() {
                     log::warn!(
                         "load_font: already loaded {MAX_LOADED_FONTS} fonts, \
                          rejecting to prevent unbounded memory growth"
                     );
                     Task::none()
                 } else {
-                    LOADED_FONT_COUNT.fetch_add(1, Ordering::Relaxed);
                     plushie_widget_sdk::fonts::register_loaded_family(family);
                     let family_for_log = family.to_string();
                     iced::font::load(data).map(move |result| {

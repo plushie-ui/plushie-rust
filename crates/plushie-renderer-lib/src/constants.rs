@@ -57,3 +57,31 @@ pub const MAX_LOADED_FONTS: u32 = 256;
 /// Shared between the dynamic `load_font` widget op and the startup
 /// inline-font path so both participate in the same cap.
 pub static LOADED_FONT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Atomically reserve a single font slot against the process-wide
+/// cap. Returns true if a slot was reserved; the caller is now
+/// responsible for actually loading the font. Returns false when
+/// the cap is exhausted.
+///
+/// Uses compare_exchange instead of `load + fetch_add` so concurrent
+/// callers cannot race past the cap. The dynamic load_font widget op,
+/// the headless `load_font` payload path, and the file-path startup
+/// loader all share this gate.
+pub fn try_reserve_font_slot() -> bool {
+    use std::sync::atomic::Ordering;
+    let mut current = LOADED_FONT_COUNT.load(Ordering::Relaxed);
+    loop {
+        if current >= MAX_LOADED_FONTS {
+            return false;
+        }
+        match LOADED_FONT_COUNT.compare_exchange(
+            current,
+            current + 1,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return true,
+            Err(actual) => current = actual,
+        }
+    }
+}

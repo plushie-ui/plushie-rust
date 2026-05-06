@@ -1213,13 +1213,6 @@ fn load_fonts_from_settings(settings: &serde_json::Value) {
 
 use plushie_renderer_lib::constants::MAX_FONT_BYTES;
 
-/// Maximum number of runtime font loads per process lifetime. Each
-/// load permanently leaks font bytes into the global font system.
-const MAX_LOADED_FONTS: u32 = 256;
-
-/// Process-wide counter of runtime font loads (headless mode).
-static LOADED_FONT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-
 /// Load a font from a `load_font` WidgetOp payload (base64 or binary data).
 ///
 /// Every outcome is logged with a `[code=...]` tag so host SDKs can
@@ -1256,9 +1249,10 @@ fn load_font_from_payload<R: PlushieRenderer>(
         );
         return;
     }
-    if LOADED_FONT_COUNT.load(std::sync::atomic::Ordering::Relaxed) >= MAX_LOADED_FONTS {
+    if !plushie_renderer_lib::constants::try_reserve_font_slot() {
+        let max = plushie_renderer_lib::constants::MAX_LOADED_FONTS;
         let msg = format!(
-            "load_font rejected: process-wide cap of {MAX_LOADED_FONTS} fonts reached \
+            "load_font rejected: process-wide cap of {max} fonts reached \
              (this session has loaded {})",
             session.fonts_loaded
         );
@@ -1274,7 +1268,6 @@ fn load_font_from_payload<R: PlushieRenderer>(
         let _ = session.writer.emit(&event.with_session(session_id));
         return;
     }
-    LOADED_FONT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     session.fonts_loaded = session.fonts_loaded.saturating_add(1);
     let len = bytes.len();
     load_font_bytes(bytes);

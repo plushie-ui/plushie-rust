@@ -408,6 +408,22 @@ fn emit_panic_events(msg: &str, location: &str) {
     }
 }
 
+// The renderer's panic hook, the headless session worker, and every
+// `catch_unwind` site downstream rely on `panic = "unwind"`. Building
+// with `panic = "abort"` would silently make `catch_unwind` a no-op,
+// collapse widget panic isolation in the renderer, collapse session
+// isolation in headless multiplexing, and turn the wire-visible
+// `session_error` + `session_closed` panic signal into a process-
+// wide abort. Surface the conflict at compile time, next to the
+// hook that explains the why.
+#[cfg(panic = "abort")]
+compile_error!(
+    "plushie-renderer-lib requires `panic = \"unwind\"` because catch_unwind \
+     in the panic hook is load-bearing for widget panic isolation and \
+     multiplexed-session isolation. Building with `panic = \"abort\"` would \
+     silently make this a no-op."
+);
+
 /// Install a process-wide panic hook that emits `session_error` +
 /// `session_closed` events before the default hook runs.
 ///

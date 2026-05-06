@@ -26,6 +26,21 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+// `run_guarded_view` and `run_guarded_update` rely on `catch_unwind`
+// to stop a panic in the user's `A::view` or `A::update` from
+// killing the process; the consecutive-panic counter and the
+// frozen-UI overlay are the user-visible recovery surface. Building
+// with `panic = "abort"` would silently make `catch_unwind` a no-op
+// and turn every callback panic into an abort. Surface the conflict
+// at compile time, next to the guards that explain the why.
+#[cfg(panic = "abort")]
+compile_error!(
+    "plushie requires `panic = \"unwind\"` because catch_unwind in \
+     run_guarded_view / run_guarded_update is load-bearing for the \
+     SDK's view+update panic recovery and the frozen-UI overlay. \
+     Building with `panic = \"abort\"` would silently make this a no-op."
+);
+
 use plushie_core::protocol::{PropMap, PropValue, Props, TreeNode};
 
 use crate::App;

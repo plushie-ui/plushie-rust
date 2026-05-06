@@ -246,6 +246,12 @@ impl<A: App> DirectApp<A> {
         let mut tasks = Vec::new();
         let mut delivered = false;
         for sink_event in events {
+            // A completed async/stream task no longer needs its handle.
+            // Drop it before dispatch so the running_tasks map doesn't
+            // accumulate stale entries across the session lifetime.
+            if let SinkEvent::AsyncResult { tag, .. } = &sink_event {
+                self.running_tasks.remove(tag);
+            }
             let sdk_event = match sink_event {
                 // Effect responses are resolved via the tracker to
                 // recover the user's tag and the effect kind for

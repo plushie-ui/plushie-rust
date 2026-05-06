@@ -596,6 +596,30 @@ impl Core {
                     height: payload.height,
                 }));
             }
+            IncomingMessage::LoadFont { payload } => {
+                log::debug!("load_font: family={}", payload.family);
+                // Re-emit as the existing WidgetOp dispatch path so the
+                // shared "load_font" handler (renderer-lib widget_ops
+                // and headless's `load_font_from_payload`) keeps a
+                // single applied site. The typed message's win is a
+                // clean wire shape and native msgpack binary; the
+                // internal dispatch shape is unchanged.
+                let data_json = match payload.data {
+                    Some(bytes) => {
+                        use base64::Engine;
+                        Value::String(base64::engine::general_purpose::STANDARD.encode(&bytes))
+                    }
+                    None => Value::Null,
+                };
+                let payload_value = serde_json::json!({
+                    "family": payload.family,
+                    "data": data_json,
+                });
+                effects.push(CoreEffect::Dispatch(Dispatch::WidgetOp {
+                    op: "load_font".to_string(),
+                    payload: payload_value,
+                }));
+            }
             // Scripting messages handled by the renderer binary (daemon /
             // headless), not by Core. Listed explicitly so adding a new
             // IncomingMessage variant produces a compile error here instead

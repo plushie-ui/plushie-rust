@@ -214,6 +214,29 @@ pub enum IncomingMessage {
         /// Event kind string used on the wire.
         kind: String,
     },
+    /// Load a font at runtime.
+    ///
+    /// Typed binary message: in MessagePack mode, font bytes travel as
+    /// native binary instead of base64 string. JSON mode continues to
+    /// accept base64 strings via [`deserialize_binary_field`].
+    LoadFont {
+        /// Payload.
+        #[serde(default)]
+        payload: LoadFontPayload,
+    },
+}
+
+/// Payload of an [`IncomingMessage::LoadFont`] message.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct LoadFontPayload {
+    /// Font family name to register the loaded data under.
+    #[serde(default)]
+    pub family: String,
+    /// Font bytes. TrueType (.ttf), OpenType (.otf), or TrueType
+    /// Collection (.ttc); variable fonts supported. fontdb sniffs the
+    /// format from the bytes themselves.
+    #[serde(default, deserialize_with = "deserialize_binary_field")]
+    pub data: Option<Vec<u8>>,
 }
 
 /// Payload of an [`IncomingMessage::ImageOp`] message.
@@ -752,5 +775,29 @@ mod tests {
         }))
         .unwrap();
         assert!(matches!(msg, IncomingMessage::AdvanceFrame { .. }));
+    }
+
+    #[test]
+    fn deserialize_load_font_with_base64_data() {
+        use base64::Engine as _;
+        let bytes: Vec<u8> = vec![0x00, 0x01, 0x02, 0x03];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+        let msg: IncomingMessage = serde_json::from_value(json!({
+            "type": "load_font",
+            "payload": {
+                "family": "Inter",
+                "data": b64,
+            }
+        }))
+        .unwrap();
+
+        match msg {
+            IncomingMessage::LoadFont { payload } => {
+                assert_eq!(payload.family, "Inter");
+                assert_eq!(payload.data, Some(bytes));
+            }
+            other => panic!("expected LoadFont, got {other:?}"),
+        }
     }
 }

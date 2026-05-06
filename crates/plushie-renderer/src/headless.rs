@@ -407,6 +407,7 @@ impl<R: PlushieRenderer> Session<R> {
                             IncomingMessage::SystemOp { .. } => "system_op",
                             IncomingMessage::SystemQuery { .. } => "system_query",
                             IncomingMessage::ImageOp { .. } => "image_op",
+                            IncomingMessage::LoadFont { .. } => "load_font",
                             IncomingMessage::Subscribe { .. } => "subscribe",
                             IncomingMessage::Unsubscribe { .. } => "unsubscribe",
                             IncomingMessage::TreeHash { .. } => "tree_hash",
@@ -556,6 +557,7 @@ fn handle_message<R: PlushieRenderer>(
         | IncomingMessage::SystemQuery { .. }
         | IncomingMessage::Settings { .. }
         | IncomingMessage::ImageOp { .. }
+        | IncomingMessage::LoadFont { .. }
         | IncomingMessage::RegisterEffectStub { .. }
         | IncomingMessage::UnregisterEffectStub { .. } => {
             let effects = s.core.apply(msg);

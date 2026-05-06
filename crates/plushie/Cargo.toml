@@ -14,7 +14,7 @@ categories = ["gui", "rendering"]
 [features]
 default = ["direct"]
 direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "dep:plushie-widget-sdk", "plushie-widget-sdk?/tokio"]
-wire = ["dep:rmp-serde", "dep:base64"]
+wire = ["dep:rmp-serde", "dep:rmpv", "dep:base64"]
 dev = ["dep:notify", "dep:cargo_metadata"]
 
 [package.metadata.docs.rs]
@@ -31,6 +31,7 @@ serde_json = { workspace = true }
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "process", "io-util", "time"] }
 rmp-serde = { workspace = true, optional = true }
+rmpv = { workspace = true, optional = true }
 rfd = { version = "0.15", optional = true }
 arboard = { version = "3", optional = true }
 notify-rust = { version = "4", optional = true }

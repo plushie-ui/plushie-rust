@@ -1703,10 +1703,7 @@ fn execute_wire_renderer_op(
                 },
             }),
         ),
-        RendererOp::LoadFont { family, bytes } => bridge.send_widget_op(
-            "load_font",
-            &json!({"family": family, "data": base64_encode(bytes)}),
-        ),
+        RendererOp::LoadFont { family, bytes } => bridge.send_load_font(family, bytes),
         RendererOp::Subscribe {
             kind,
             tag,

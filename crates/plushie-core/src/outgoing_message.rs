@@ -192,6 +192,17 @@ pub enum OutgoingMessage {
         /// Payload.
         payload: Value,
     },
+    /// Load Font.
+    ///
+    /// Typed binary message: in MessagePack mode, font bytes travel as
+    /// native binary instead of base64 string. JSON mode encodes
+    /// `payload.data` as a base64 string.
+    LoadFont {
+        /// Session.
+        session: String,
+        /// Payload.
+        payload: Value,
+    },
 }
 
 #[cfg(test)]

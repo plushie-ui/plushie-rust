@@ -379,6 +379,7 @@ fn message_variant_name(msg: &IncomingMessage) -> &'static str {
         IncomingMessage::Screenshot { .. } => "screenshot",
         IncomingMessage::Reset { .. } => "reset",
         IncomingMessage::ImageOp { .. } => "image_op",
+        IncomingMessage::LoadFont { .. } => "load_font",
         IncomingMessage::Command { .. } => "command",
         IncomingMessage::Commands { .. } => "commands",
         IncomingMessage::AdvanceFrame { .. } => "advance_frame",

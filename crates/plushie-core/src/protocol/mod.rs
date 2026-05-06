@@ -23,7 +23,7 @@ pub fn json_protocol_version(value: &serde_json::Value) -> Option<u32> {
     value.as_u64().and_then(|v| u32::try_from(v).ok())
 }
 
-pub use incoming::IncomingMessage;
+pub use incoming::{ImageOpPayload, IncomingMessage, LoadFontPayload};
 pub use outgoing::{
     CoalesceHint, DiagnosticLevel, DiagnosticMessage, EffectResponse, EffectStubAck,
     InteractResponse, KeyModifiers, OutgoingEvent, QueryResponse, ResetResponse,

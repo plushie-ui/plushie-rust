@@ -286,6 +286,62 @@ impl Bridge {
         Ok(())
     }
 
+    /// Send a `load_font` message with native binary encoding in MsgPack
+    /// mode and base64-string encoding in JSON mode.
+    ///
+    /// Mirrors the renderer's `encode_binary_message` strategy for
+    /// outgoing image-data frames: the typed `OutgoingMessage::LoadFont`
+    /// variant cannot express native msgpack binary through the
+    /// `serde_json::Value` payload alone, so this helper bypasses the
+    /// generic `send` path on MsgPack to write the bytes as
+    /// `rmpv::Value::Binary` directly.
+    pub fn send_load_font(&mut self, family: &str, bytes: &[u8]) -> crate::Result {
+        let codec = self.codec;
+        let writer = self.writer_mut().map_err(crate::Error::Io)?;
+
+        match codec {
+            Codec::Json => {
+                use base64::Engine;
+                let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+                let message = OutgoingMessage::LoadFont {
+                    session: String::new(),
+                    payload: serde_json::json!({
+                        "family": family,
+                        "data": b64,
+                    }),
+                };
+                let json = serde_json::to_string(&message)
+                    .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
+                writeln!(writer, "{json}")?;
+                writer.flush()?;
+            }
+            Codec::MsgPack => {
+                use rmpv::Value as V;
+
+                let payload = V::Map(vec![
+                    (V::String("family".into()), V::String(family.into())),
+                    (V::String("data".into()), V::Binary(bytes.to_vec())),
+                ]);
+                let message = V::Map(vec![
+                    (V::String("type".into()), V::String("load_font".into())),
+                    (V::String("session".into()), V::String(String::new().into())),
+                    (V::String("payload".into()), payload),
+                ]);
+
+                let mut buf = Vec::new();
+                rmpv::encode::write_value(&mut buf, &message)
+                    .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
+                let len = u32::try_from(buf.len())
+                    .map_err(|_| crate::Error::WireEncode("frame exceeds 4 GiB".into()))?;
+                writer.write_all(&len.to_be_bytes())?;
+                writer.write_all(&buf)?;
+                writer.flush()?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Send a settings message.
     pub fn send_settings(&mut self, settings: &Value) -> crate::Result {
         self.send(&OutgoingMessage::Settings {

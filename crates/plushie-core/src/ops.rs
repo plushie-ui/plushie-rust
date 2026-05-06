@@ -1134,11 +1134,18 @@ impl FileDialogOpts {
 }
 
 /// Options for desktop notifications.
+///
+/// `timeout` travels over the wire as `u64` milliseconds. Values
+/// beyond `u64::MAX` (~584 million years) saturate to `u64::MAX`
+/// rather than wrapping; in practice every realistic duration fits.
 #[derive(Debug, Default)]
 pub struct NotificationOpts {
     /// Path or name of the notification icon.
     pub icon: Option<String>,
     /// How long the notification should be displayed.
+    ///
+    /// Encoded as `u64` milliseconds on the wire. Values larger than
+    /// the `u64` millisecond range saturate to `u64::MAX`.
     pub timeout: Option<Duration>,
     /// Urgency level for the notification.
     pub urgency: Option<NotificationUrgency>,
@@ -1317,7 +1324,7 @@ pub fn effect_request_to_wire(request: &EffectRequest) -> (&'static str, Value) 
                 payload["icon"] = json!(icon);
             }
             if let Some(ref timeout) = opts.timeout {
-                payload["timeout"] = json!(timeout.as_millis() as u64);
+                payload["timeout"] = json!(u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX));
             }
             if let Some(ref urgency) = opts.urgency {
                 payload["urgency"] = json!(urgency);

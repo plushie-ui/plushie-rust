@@ -29,6 +29,7 @@
 //! assert_eq!(stack.current(), "initial");
 //! ```
 
+use std::collections::VecDeque;
 use std::fmt;
 use std::time::Instant;
 
@@ -43,7 +44,7 @@ use std::time::Instant;
 pub struct UndoStack<T: Clone + Send + 'static> {
     current: T,
     max_size: usize,
-    undo_stack: Vec<UndoEntry<T>>,
+    undo_stack: VecDeque<UndoEntry<T>>,
     redo_stack: Vec<UndoEntry<T>>,
 }
 
@@ -129,7 +130,7 @@ impl<T: Clone + Send + 'static> UndoStack<T> {
         Self {
             current: initial,
             max_size,
-            undo_stack: Vec::new(),
+            undo_stack: VecDeque::new(),
             redo_stack: Vec::new(),
         }
     }
@@ -191,11 +192,11 @@ impl<T: Clone + Send + 'static> UndoStack<T> {
         // Try coalescing with the top entry.
         if let Some(ref key) = cmd.coalesce_key
             && cmd.coalesce_window_ms > 0
-            && let Some(top) = self.undo_stack.last()
+            && let Some(top) = self.undo_stack.back()
             && top.coalesce_key.as_deref() == Some(key)
             && top.timestamp.elapsed().as_millis() < cmd.coalesce_window_ms as u128
         {
-            let top = self.undo_stack.pop().unwrap();
+            let top = self.undo_stack.pop_back().unwrap();
 
             // Compose: composed_apply(m) = cmd.apply(top.apply(m))
             let top_apply = top.apply_fn;
@@ -213,7 +214,7 @@ impl<T: Clone + Send + 'static> UndoStack<T> {
                 top_undo(&intermediate)
             });
 
-            self.undo_stack.push(UndoEntry {
+            self.undo_stack.push_back(UndoEntry {
                 apply_fn: composed_apply,
                 undo_fn: composed_undo,
                 label: top.label,
@@ -243,7 +244,7 @@ impl<T: Clone + Send + 'static> UndoStack<T> {
         label: Option<String>,
         coalesce_key: Option<String>,
     ) {
-        self.undo_stack.push(UndoEntry {
+        self.undo_stack.push_back(UndoEntry {
             apply_fn,
             undo_fn,
             label,
@@ -254,14 +255,14 @@ impl<T: Clone + Send + 'static> UndoStack<T> {
         self.redo_stack.clear();
 
         if self.undo_stack.len() > self.max_size {
-            self.undo_stack.remove(0);
+            self.undo_stack.pop_front();
         }
     }
 
     /// Reverse the last change by calling its undo function.
     /// Returns `false` if at the bottom of the history.
     pub fn undo(&mut self) -> bool {
-        match self.undo_stack.pop() {
+        match self.undo_stack.pop_back() {
             Some(entry) => {
                 let old_state = (entry.undo_fn)(&self.current);
                 self.redo_stack.push(entry);
@@ -278,7 +279,7 @@ impl<T: Clone + Send + 'static> UndoStack<T> {
         match self.redo_stack.pop() {
             Some(entry) => {
                 let new_state = (entry.apply_fn)(&self.current);
-                self.undo_stack.push(entry);
+                self.undo_stack.push_back(entry);
                 self.current = new_state;
                 true
             }

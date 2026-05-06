@@ -369,38 +369,50 @@ impl TransitionManager {
     /// Apply the per-node scan for a single node. Separated so
     /// [`ScanTransform`] and the renderer's combined prepare+scan walk
     /// can both drive it.
+    ///
+    /// Iterates the [`PropMap`] in place rather than converting to a
+    /// JSON `Value` first. Most nodes are not animated, and the JSON
+    /// conversion was a per-node clone of the entire prop set just to
+    /// check whether any value happened to be an animation descriptor.
     pub(crate) fn scan_node_inner(&mut self, node: &crate::protocol::TreeNode) {
-        let props_cow = node.props.as_value_cow();
-        if let Some(props) = props_cow.as_object() {
-            for (key, value) in props {
-                // Skip internal props
-                if key.starts_with("__") || key == "exit" {
-                    continue;
+        let prop_map = node.props.as_prop_map();
+        for (key, value) in prop_map.iter() {
+            // Skip internal props
+            if key.starts_with("__") || key == "exit" {
+                continue;
+            }
+
+            if is_descriptor_prop(value) {
+                let old_value = self.current_value(&node.id, key).and_then(|v| match v {
+                    AnimValue::Number(n) => Some(*n),
+                    _ => None,
+                });
+
+                // Convert just the descriptor value once, so
+                // parse_descriptor can keep working on
+                // serde_json::Value without rewriting every parser.
+                let json_value = serde_json::Value::from(value.clone());
+                if let Some(new_anim) = parse_descriptor(&json_value, old_value) {
+                    let target_same = self
+                        .active
+                        .get(&(node.id.clone(), key.to_string()))
+                        .map(|existing| targets_match(existing, &new_anim))
+                        .unwrap_or(false);
+
+                    if !target_same {
+                        self.start_animation(node.id.clone(), key.to_string(), new_anim);
+                    }
                 }
-
-                if is_descriptor(value) {
-                    let old_value = self.current_value(&node.id, key).and_then(|v| match v {
-                        AnimValue::Number(n) => Some(*n),
-                        _ => None,
-                    });
-
-                    if let Some(new_anim) = parse_descriptor(value, old_value) {
-                        let target_same = self
-                            .active
-                            .get(&(node.id.clone(), key.clone()))
-                            .map(|existing| targets_match(existing, &new_anim))
-                            .unwrap_or(false);
-
-                        if !target_same {
-                            self.start_animation(node.id.clone(), key.clone(), new_anim);
-                        }
-                    }
-                } else {
-                    // Raw value: cancel any active animation for this prop
-                    let anim_key = (node.id.clone(), key.clone());
-                    if self.active.contains_key(&anim_key) {
-                        self.active.remove(&anim_key);
-                    }
+            } else if self.active_widget_ids.contains(node.id.as_str()) {
+                // Raw value, and this widget has at least one active
+                // animation: cancel any animation on this prop. The
+                // active_widget_ids fast-path skips the owned-key
+                // allocation for the overwhelmingly common case of a
+                // node that isn't animating anything.
+                let anim_key = (node.id.clone(), key.to_string());
+                if self.active.remove(&anim_key).is_some() && !self.has_active_for_widget(&node.id)
+                {
+                    self.active_widget_ids.remove(&node.id);
                 }
             }
         }
@@ -645,6 +657,20 @@ pub fn is_descriptor(value: &Value) -> bool {
         .and_then(|t| t.as_str())
         .map(|t| matches!(t, "transition" | "spring" | "sequence"))
         .unwrap_or(false)
+}
+
+/// `is_descriptor` for native `PropValue` so the per-node scan
+/// doesn't have to convert the whole prop map to JSON just to
+/// detect descriptor objects.
+pub(crate) fn is_descriptor_prop(value: &plushie_core::protocol::PropValue) -> bool {
+    use plushie_core::protocol::PropValue;
+    let PropValue::Object(map) = value else {
+        return false;
+    };
+    matches!(
+        map.get("type").and_then(PropValue::as_str),
+        Some("transition" | "spring" | "sequence")
+    )
 }
 
 /// Parses a transition descriptor from a prop value.

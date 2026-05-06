@@ -292,9 +292,6 @@ fn window_event(event_type: WindowEventType, event: &OutgoingEvent) -> Event {
         y: value["y"].as_f64().map(|v| v as f32),
         width: value["width"].as_f64().map(|v| v as f32),
         height: value["height"].as_f64().map(|v| v as f32),
-        position: value["position"].as_array().and_then(|arr: &Vec<Value>| {
-            Some((arr.first()?.as_f64()? as f32, arr.get(1)?.as_f64()? as f32))
-        }),
         path: json_str_opt(value, "path"),
         scale_factor: value["scale_factor"].as_f64().map(|v| v as f32),
     })
@@ -739,6 +736,59 @@ mod tests {
                 assert_eq!(ime.cursor, Some((2, 5)));
             }
             other => panic!("expected ime event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn window_opened_carries_top_level_xy() {
+        let event = OutgoingEvent::window_opened(
+            "windows".to_string(),
+            "main".to_string(),
+            Some((100.0, 200.0)),
+            800.0,
+            600.0,
+            1.5,
+        );
+        let value_json = serde_json::to_value(event.value.as_ref().unwrap()).unwrap();
+
+        let mut rebuilt = make_tagged("window_opened", "windows");
+        rebuilt.value = Some(value_json);
+        let sdk = outgoing_to_sdk_event(rebuilt).expect("window event");
+        match sdk {
+            Event::Window(w) => {
+                assert_eq!(w.event_type, WindowEventType::Opened);
+                assert_eq!(w.window_id, "main");
+                assert_eq!(w.x, Some(100.0));
+                assert_eq!(w.y, Some(200.0));
+                assert_eq!(w.width, Some(800.0));
+                assert_eq!(w.height, Some(600.0));
+                assert_eq!(w.scale_factor, Some(1.5));
+            }
+            other => panic!("expected window event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn window_opened_without_position_omits_xy() {
+        let event = OutgoingEvent::window_opened(
+            "windows".to_string(),
+            "main".to_string(),
+            None,
+            800.0,
+            600.0,
+            1.0,
+        );
+        let value_json = serde_json::to_value(event.value.as_ref().unwrap()).unwrap();
+
+        let mut rebuilt = make_tagged("window_opened", "windows");
+        rebuilt.value = Some(value_json);
+        let sdk = outgoing_to_sdk_event(rebuilt).expect("window event");
+        match sdk {
+            Event::Window(w) => {
+                assert_eq!(w.x, None);
+                assert_eq!(w.y, None);
+            }
+            other => panic!("expected window event, got {other:?}"),
         }
     }
 

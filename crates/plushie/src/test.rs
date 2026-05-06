@@ -1385,7 +1385,6 @@ impl<A: App> WindowScope<'_, A> {
             y: None,
             width: Some(width),
             height: Some(height),
-            position: None,
             path: None,
             scale_factor: None,
         });
@@ -1433,7 +1432,6 @@ fn window_lifecycle(window_id: &str, event_type: crate::event::WindowEventType) 
         y: None,
         width: None,
         height: None,
-        position: None,
         path: None,
         scale_factor: None,
     })

@@ -258,8 +258,8 @@ through `plushie_core::key`, which accepts both snake-case
 `window_unfocused`, `window_rescaled`, `file_hovered`,
 `file_dropped`, `files_hovered_left`.
 
-`window_opened` carries `window_id`, optional `position`,
-`width`, `height`, and `scale_factor`. Other window events
+`window_opened` carries `window_id`, optional top-level `x` and
+`y`, `width`, `height`, and `scale_factor`. Other window events
 carry `window_id` plus the changed fields.
 
 ### Animation and theme

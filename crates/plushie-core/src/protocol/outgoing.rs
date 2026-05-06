@@ -431,16 +431,20 @@ impl OutgoingEvent {
         height: f32,
         scale_factor: f32,
     ) -> Self {
-        let pos =
-            position.map(|(x, y)| serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y)}));
+        // x/y mirror window_moved/window_resized: top-level fields, absent
+        // when the platform did not report a position.
+        let mut value = serde_json::json!({
+            "window_id": window_id,
+            "width": sanitize_f32(width),
+            "height": sanitize_f32(height),
+            "scale_factor": sanitize_f32(scale_factor),
+        });
+        if let Some((x, y)) = position {
+            value["x"] = serde_json::json!(sanitize_f32(x));
+            value["y"] = serde_json::json!(sanitize_f32(y));
+        }
         Self {
-            value: Some(serde_json::json!({
-                "window_id": window_id,
-                "position": pos,
-                "width": sanitize_f32(width),
-                "height": sanitize_f32(height),
-                "scale_factor": sanitize_f32(scale_factor),
-            })),
+            value: Some(value),
             ..Self::tagged("window_opened", tag)
         }
     }

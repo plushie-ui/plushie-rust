@@ -298,7 +298,6 @@ pub struct WindowEvent {
     pub y: Option<f32>,
     pub width: Option<f32>,
     pub height: Option<f32>,
-    pub position: Option<(f32, f32)>,
     pub path: Option<String>,
     pub scale_factor: Option<f32>,
 }

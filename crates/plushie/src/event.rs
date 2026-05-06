@@ -713,8 +713,6 @@ pub struct WindowEvent {
     pub width: Option<f32>,
     /// Window height (for resize events).
     pub height: Option<f32>,
-    /// Window position as (x, y) (for move events).
-    pub position: Option<(f32, f32)>,
     /// File path (for file drop events).
     pub path: Option<String>,
     /// DPI scale factor (for rescale events).

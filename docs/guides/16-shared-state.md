@@ -72,7 +72,7 @@ plushie = { version = "0.6.1", default-features = false, features = ["wire"] }
 ```
 
 The `wire` feature pulls in the socket transport
-(`crate::runner::socket`). It parses three address shapes:
+(`plushie::runner::socket`). It parses three address shapes:
 
 - `:4567` binds TCP on `127.0.0.1:4567`.
 - `0.0.0.0:4567` binds TCP on an arbitrary interface.

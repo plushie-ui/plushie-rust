@@ -66,7 +66,7 @@ impl App for Counter {
     }
 }
 
-fn main() -> plushie::Result<()> {
+fn main() -> plushie::Result {
     plushie::run::<Counter>()
 }
 ```

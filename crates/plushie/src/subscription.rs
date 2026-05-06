@@ -6,6 +6,14 @@
 
 use std::time::Duration;
 
+/// Subscription op produced by the runtime when diffing the subscription
+/// list returned by [`App::subscribe`](crate::App::subscribe).
+///
+/// Surfaced through [`TestSession::last_subscription_ops`](crate::test::TestSession::last_subscription_ops)
+/// so tests can assert which subscriptions were started or stopped after
+/// a model change.
+pub use crate::runtime::subscriptions::SubOp;
+
 /// A subscription to an event source.
 ///
 /// Construct via the named constructors (`every`, `on_key_press`, etc.).

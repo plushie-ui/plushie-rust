@@ -150,6 +150,22 @@ fn deselect_removes_specific_item() {
 }
 
 #[test]
+fn deselect_clears_anchor_when_anchor_is_deselected() {
+    let mut sel = Selection::new(SelectionMode::Multi, item_ids());
+    sel.select_extend("b");
+    // After select_extend, anchor is "b"; deselecting it should clear
+    // the anchor so a follow-up range_select doesn't span from the
+    // stale id.
+    sel.deselect("b");
+    sel.range_select("d");
+    // With no anchor, range_select degrades to single select.
+    assert!(sel.is_selected("d"));
+    assert!(!sel.is_selected("b"));
+    assert!(!sel.is_selected("c"));
+    assert_eq!(sel.count(), 1);
+}
+
+#[test]
 fn toggle_on_in_multi_mode_sets_anchor() {
     let mut sel = Selection::new(SelectionMode::Multi, item_ids());
     sel.toggle("b");

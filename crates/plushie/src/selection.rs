@@ -71,9 +71,15 @@ impl Selection {
         }
     }
 
-    /// Remove a specific item from the selection.
+    /// Remove a specific item from the selection. If the deselected
+    /// item was the range anchor, the anchor is cleared so a later
+    /// `range_select` doesn't span from a stale, no-longer-selected
+    /// id.
     pub fn deselect(&mut self, id: &str) {
         self.selected.remove(id);
+        if self.anchor.as_deref() == Some(id) {
+            self.anchor = None;
+        }
     }
 
     /// Select all items in the order list.

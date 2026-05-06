@@ -142,12 +142,19 @@ pub struct CompletionEvent {
 
 /// Main animation manager. Tracks all active animations and ghosts.
 pub struct TransitionManager {
-    /// Active animations keyed by (widget_id, prop_name).
-    active: HashMap<(String, String), ActiveAnimation>,
+    /// Active animations nested as widget_id -> prop_name -> animation.
+    /// Lookups dominate (per-frame `current_value`, scan-time cancel
+    /// checks) so the nested layout lets cancel and current_value
+    /// hit the inner map without allocating an owned `(String, String)`
+    /// key just to probe a `HashMap`.
+    active: HashMap<String, HashMap<String, ActiveAnimation>>,
     /// Set of widget IDs that have at least one active animation.
     /// Maintained incrementally on start/complete so the per-frame
     /// `interpolated_props.retain` filter doesn't have to rebuild
-    /// it from `active.keys()` every advance.
+    /// it from `active.keys()` every advance. Equivalent to
+    /// `active.keys()` by construction; kept as a separate set so
+    /// the scan_node_inner short-circuit and the per-frame retain
+    /// don't have to walk the outer map.
     active_widget_ids: HashSet<String>,
     /// Ghost manager for exit animations.
     pub ghosts: GhostManager,
@@ -200,7 +207,7 @@ impl TransitionManager {
         interpolated_props: &mut HashMap<String, serde_json::Map<String, Value>>,
     ) {
         self.active
-            .retain(|(widget_id, _), _| live_ids.contains(widget_id));
+            .retain(|widget_id, _| live_ids.contains(widget_id));
         self.active_widget_ids
             .retain(|widget_id| live_ids.contains(widget_id));
         interpolated_props.retain(|widget_id, _| live_ids.contains(widget_id));
@@ -222,22 +229,22 @@ impl TransitionManager {
 
         let mut completions = Vec::new();
 
-        // Advance each active animation
-        for ((widget_id, prop_name), anim) in &mut self.active {
-            let (value, finished) = advance_animation(anim, dt);
+        // Advance every active animation. The bulk-iterate cost of the
+        // nested for-loop is acceptable because lookups (current_value,
+        // cancel) dominate at 60 FPS; the bulk path runs once per frame.
+        for (widget_id, props) in &mut self.active {
+            let entry = interpolated_props.entry(widget_id.clone()).or_default();
+            for (prop_name, anim) in props.iter_mut() {
+                let (value, finished) = advance_animation(anim, dt);
+                entry.insert(prop_name.clone(), value.to_json());
 
-            // Write to interpolated props cache
-            interpolated_props
-                .entry(widget_id.clone())
-                .or_default()
-                .insert(prop_name.clone(), value.to_json());
-
-            if finished && let Some(tag) = completion_tag(anim) {
-                completions.push(CompletionEvent {
-                    widget_id: widget_id.clone(),
-                    prop_name: prop_name.clone(),
-                    tag,
-                });
+                if finished && let Some(tag) = completion_tag(anim) {
+                    completions.push(CompletionEvent {
+                        widget_id: widget_id.clone(),
+                        prop_name: prop_name.clone(),
+                        tag,
+                    });
+                }
             }
         }
 
@@ -271,20 +278,19 @@ impl TransitionManager {
 
         let mut completions = Vec::new();
 
-        for ((widget_id, prop_name), anim) in &mut self.active {
-            let (value, finished) = advance_animation(anim, dt);
+        for (widget_id, props) in &mut self.active {
+            let entry = interpolated_props.entry(widget_id.clone()).or_default();
+            for (prop_name, anim) in props.iter_mut() {
+                let (value, finished) = advance_animation(anim, dt);
+                entry.insert(prop_name.clone(), value.to_json());
 
-            interpolated_props
-                .entry(widget_id.clone())
-                .or_default()
-                .insert(prop_name.clone(), value.to_json());
-
-            if finished && let Some(tag) = completion_tag(anim) {
-                completions.push(CompletionEvent {
-                    widget_id: widget_id.clone(),
-                    prop_name: prop_name.clone(),
-                    tag,
-                });
+                if finished && let Some(tag) = completion_tag(anim) {
+                    completions.push(CompletionEvent {
+                        widget_id: widget_id.clone(),
+                        prop_name: prop_name.clone(),
+                        tag,
+                    });
+                }
             }
         }
 
@@ -300,16 +306,17 @@ impl TransitionManager {
     /// the steady-state advance pays nothing extra.
     fn retain_unfinished(&mut self) {
         let mut had_completion = false;
-        self.active.retain(|_, anim| {
-            let alive = !is_finished(anim);
-            if !alive {
+        self.active.retain(|_, props| {
+            let before = props.len();
+            props.retain(|_, anim| !is_finished(anim));
+            if props.len() != before {
                 had_completion = true;
             }
-            alive
+            !props.is_empty()
         });
         if had_completion {
             self.active_widget_ids.clear();
-            for (wid, _) in self.active.keys() {
+            for wid in self.active.keys() {
                 self.active_widget_ids.insert(wid.clone());
             }
         }
@@ -323,26 +330,28 @@ impl TransitionManager {
         animation: ActiveAnimation,
     ) {
         self.active_widget_ids.insert(widget_id.clone());
-        self.active.insert((widget_id, prop_name), animation);
+        self.active
+            .entry(widget_id)
+            .or_default()
+            .insert(prop_name, animation);
     }
 
     /// Cancels an animation on a specific widget+prop.
     pub fn cancel(&mut self, widget_id: &str, prop_name: &str) {
-        let key = (widget_id.to_string(), prop_name.to_string());
-        if self.active.remove(&key).is_some() && !self.has_active_for_widget(widget_id) {
+        if let Some(props) = self.active.get_mut(widget_id)
+            && props.remove(prop_name).is_some()
+            && props.is_empty()
+        {
+            self.active.remove(widget_id);
             self.active_widget_ids.remove(widget_id);
         }
-    }
-
-    /// True when at least one active animation belongs to `widget_id`.
-    fn has_active_for_widget(&self, widget_id: &str) -> bool {
-        self.active.keys().any(|(wid, _)| wid == widget_id)
     }
 
     /// Returns the current interpolated value for a widget+prop, if animating.
     pub fn current_value(&self, widget_id: &str, prop_name: &str) -> Option<&AnimValue> {
         self.active
-            .get(&(widget_id.to_string(), prop_name.to_string()))
+            .get(widget_id)
+            .and_then(|props| props.get(prop_name))
             .map(|anim| match anim {
                 ActiveAnimation::Single(s) => &s.current,
                 ActiveAnimation::Sequence(seq) => &seq.steps[seq.current_step].current,
@@ -395,7 +404,8 @@ impl TransitionManager {
                 if let Some(new_anim) = parse_descriptor(&json_value, old_value) {
                     let target_same = self
                         .active
-                        .get(&(node.id.clone(), key.to_string()))
+                        .get(node.id.as_str())
+                        .and_then(|props| props.get(key))
                         .map(|existing| targets_match(existing, &new_anim))
                         .unwrap_or(false);
 
@@ -406,14 +416,10 @@ impl TransitionManager {
             } else if self.active_widget_ids.contains(node.id.as_str()) {
                 // Raw value, and this widget has at least one active
                 // animation: cancel any animation on this prop. The
-                // active_widget_ids fast-path skips the owned-key
-                // allocation for the overwhelmingly common case of a
-                // node that isn't animating anything.
-                let anim_key = (node.id.clone(), key.to_string());
-                if self.active.remove(&anim_key).is_some() && !self.has_active_for_widget(&node.id)
-                {
-                    self.active_widget_ids.remove(&node.id);
-                }
+                // active_widget_ids fast-path skips the inner map
+                // probe for the overwhelmingly common case of a node
+                // that isn't animating anything.
+                self.cancel(&node.id, key);
             }
         }
     }

@@ -707,44 +707,51 @@ impl<A: App> DirectApp<A> {
 
 /// Apply the user's `A::settings()` to the renderer.
 ///
-/// Converts the SDK's `Settings` struct to the wire-format JSON that
-/// `Core::apply(IncomingMessage::Settings)` expects. Also applies
-/// settings that Core doesn't handle (theme, scale factor).
+/// Routes through [`plushie_core::settings::Settings::to_wire_json`]
+/// so direct mode and wire mode consume the exact same canonical
+/// shape. Anything Core knows how to interpret from the JSON
+/// (default_font, default_text_size, default_event_rate, widget_config)
+/// is forwarded via `IncomingMessage::Settings`. Renderer-app-level
+/// fields that live outside Core (scale_factor, theme) are applied
+/// here from the typed [`Settings`] struct.
 fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
-    let settings = A::settings();
+    use plushie_widget_sdk::protocol::IncomingMessage;
+    use plushie_widget_sdk::runtime::{CoreEffect, StateChange};
 
-    // Apply settings directly to renderer fields (no JSON round-trip).
-    renderer.core.default_font = settings.default_font.map(|family| {
-        if family == "monospace" {
-            plushie_widget_sdk::iced::Font::MONOSPACE
-        } else {
-            plushie_widget_sdk::iced::Font::DEFAULT
-        }
+    let settings = A::settings();
+    let wire_json = settings.to_wire_json();
+
+    // Push into Core via the same path the renderer binary takes.
+    let effects = renderer.core.apply(IncomingMessage::Settings {
+        settings: wire_json,
     });
-    renderer.core.default_text_size = settings.default_text_size;
-    renderer.core.default_event_rate = settings.default_event_rate;
+    for effect in effects {
+        match effect {
+            CoreEffect::StateChange(StateChange::WidgetConfig(config)) => {
+                let ctx = plushie_widget_sdk::registry::InitCtx {
+                    config: &config,
+                    theme: &renderer.theme,
+                    default_text_size: renderer.core.default_text_size,
+                    default_font: renderer.core.default_font,
+                };
+                renderer.registry.init_all(&ctx);
+            }
+            other => {
+                log::warn!("unexpected effect from initial Settings: {other:?}");
+            }
+        }
+    }
+
+    // Mirror the emitter's default-rate cache (Core stores the value
+    // but the emitter holds a separate copy used during dispatch).
     renderer
         .emitter
-        .set_default_rate(settings.default_event_rate);
+        .set_default_rate(renderer.core.default_event_rate);
 
+    // Renderer-app-level fields not owned by Core.
     if let Some(sf) = settings.scale_factor {
         renderer.scale_factor = plushie_renderer_lib::app::validate_scale_factor(sf);
     }
-
-    // Widget config: initialize native widgets if config is provided.
-    if !settings.widget_config.is_empty() {
-        let config =
-            serde_json::to_value(&settings.widget_config).unwrap_or(serde_json::Value::Null);
-        let ctx = plushie_widget_sdk::registry::InitCtx {
-            config: &config,
-            theme: &renderer.theme,
-            default_text_size: renderer.core.default_text_size,
-            default_font: renderer.core.default_font,
-        };
-        renderer.registry.init_all(&ctx);
-    }
-
-    // Theme (not handled by Core for initial settings).
     if let Some(theme) = settings.theme {
         use plushie_core::types::{PlushieType, Theme};
         match &theme {
@@ -772,19 +779,13 @@ fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
 /// [`crate::Error::Startup`] when settings validation rejects
 /// the configuration.
 pub fn run<A: App>() -> crate::Result {
-    // Build iced daemon settings from the user's A::settings().
-    // These are startup-only values that can't change after launch.
-    let settings = A::settings();
-    let mut iced_settings = plushie_widget_sdk::iced::Settings::default();
-    if let Some(aa) = settings.antialiasing {
-        iced_settings.antialiasing = aa;
-    }
-    if let Some(vsync) = settings.vsync {
-        iced_settings.vsync = vsync;
-    }
-    if let Some(size) = settings.default_text_size {
-        iced_settings.default_text_size = plushie_widget_sdk::iced::Pixels(size);
-    }
+    // Build iced daemon settings from the user's A::settings() via
+    // the canonical wire JSON. These are startup-only values that
+    // can't change after launch. Going through `to_wire_json` plus
+    // `parse_iced_settings` keeps the field translation in lockstep
+    // with the renderer binary's Settings handshake.
+    let canonical = A::settings().to_wire_json();
+    let iced_settings = plushie_renderer_lib::settings::parse_iced_settings(&canonical);
 
     plushie_widget_sdk::iced::daemon(
         DirectApp::<A>::init,

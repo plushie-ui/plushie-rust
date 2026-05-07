@@ -213,20 +213,14 @@ fn send_current_tree<A: App>(bridge: &mut Bridge, session: &TestSession<A>) -> P
 }
 
 fn build_automation_settings<A: App>() -> serde_json::Value {
-    let app_settings = A::settings();
-    let mut json = serde_json::json!({
-        "protocol_version": plushie_core::protocol::PROTOCOL_VERSION,
-    });
-
-    if let Some(ref font) = app_settings.default_font {
-        json["default_font"] = serde_json::json!(font);
-    }
-    if let Some(size) = app_settings.default_text_size {
-        json["default_text_size"] = serde_json::json!(size);
-    }
-    if let Some(theme) = app_settings.theme {
-        use plushie_core::types::PlushieType;
-        json["theme"] = serde_json::Value::from(theme.wire_encode());
+    // Use the canonical wire shape so this stays in lockstep with the
+    // production wire-mode Settings handshake.
+    let mut json = A::settings().to_wire_json();
+    if let serde_json::Value::Object(ref mut map) = json {
+        map.insert(
+            "protocol_version".to_string(),
+            serde_json::json!(plushie_core::protocol::PROTOCOL_VERSION),
+        );
     }
     json
 }

@@ -1747,45 +1747,17 @@ fn base64_encode(data: &[u8]) -> String {
 }
 
 /// Build settings JSON from the App trait for the wire protocol.
+///
+/// Defers to [`plushie_core::settings::Settings::to_wire_json`] for
+/// the body shape and tacks on the `protocol_version` envelope field.
 fn build_settings<A: App>() -> Value {
-    let settings = A::settings();
-    let mut json = serde_json::json!({
-        "protocol_version": plushie_core::protocol::PROTOCOL_VERSION,
-    });
-
-    if let Some(ref font) = settings.default_font {
-        json["default_font"] = serde_json::json!(font);
+    let mut json = A::settings().to_wire_json();
+    if let Value::Object(ref mut map) = json {
+        map.insert(
+            "protocol_version".to_string(),
+            serde_json::json!(plushie_core::protocol::PROTOCOL_VERSION),
+        );
     }
-    if let Some(size) = settings.default_text_size {
-        json["default_text_size"] = serde_json::json!(size);
-    }
-    if let Some(antialiasing) = settings.antialiasing {
-        json["antialiasing"] = serde_json::json!(antialiasing);
-    }
-    if let Some(vsync) = settings.vsync {
-        json["vsync"] = serde_json::json!(vsync);
-    }
-    if let Some(scale) = settings.scale_factor {
-        json["scale_factor"] = serde_json::json!(scale);
-    }
-    if let Some(rate) = settings.default_event_rate {
-        json["default_event_rate"] = serde_json::json!(rate);
-    }
-    if !settings.fonts.is_empty() {
-        json["fonts"] = serde_json::json!(settings.fonts);
-    }
-    if !settings.widget_config.is_empty() {
-        json["widget_config"] =
-            serde_json::to_value(&settings.widget_config).unwrap_or(Value::Null);
-    }
-    if !settings.required_widgets.is_empty() {
-        json["required_widgets"] = serde_json::json!(settings.required_widgets);
-    }
-    if let Some(theme) = settings.theme {
-        use plushie_core::types::PlushieType;
-        json["theme"] = Value::from(theme.wire_encode());
-    }
-
     json
 }
 

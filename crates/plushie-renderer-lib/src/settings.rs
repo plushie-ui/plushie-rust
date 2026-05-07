@@ -4,38 +4,58 @@
 //! font data, and validation flags from the host's Settings JSON message.
 //! This module centralizes that parsing so each platform only handles
 //! platform-specific concerns (file I/O, environment variables, etc.).
+//!
+//! The Settings JSON shape consumed here is canonical and produced
+//! by [`plushie_core::settings::Settings::to_wire_json`]. Cross-SDK
+//! senders are expected to produce the same shape.
 
+use serde::Deserialize;
 use serde_json::Value;
+
+/// `default_font` shape inside the canonical Settings JSON.
+///
+/// Mirrors what [`plushie_core::settings::Settings::to_wire_json`]
+/// emits: an object carrying at least a `family` key. A bare-string
+/// `default_font` is rejected here so the wire shape stays canonical;
+/// the widget SDK's `deny_unknown_fields` pass surfaces the
+/// corresponding diagnostic to the host.
+#[derive(Debug, Default, Deserialize)]
+struct DefaultFontShape {
+    #[serde(default)]
+    family: Option<String>,
+}
 
 /// Parse iced-level settings from the host's Settings JSON.
 ///
 /// Extracts `antialiasing`, `vsync`, `default_text_size`, and
-/// `default_font` from the settings object and returns a configured
-/// `iced::Settings`. Fields that are absent or have invalid types
-/// fall back to iced defaults (antialiasing off, vsync on).
+/// `default_font` from the canonical Settings shape and returns a
+/// configured `iced::Settings`. Missing or malformed fields fall
+/// back to iced defaults (antialiasing off, vsync on); shape errors
+/// are surfaced separately by `plushie_widget_sdk::engine`'s
+/// `deny_unknown_fields` pass.
 ///
 /// Called early in the startup flow, before the iced daemon launches.
 pub fn parse_iced_settings(settings: &Value) -> iced::Settings {
     let antialiasing = settings
         .get("antialiasing")
-        .and_then(|v| v.as_bool())
+        .and_then(Value::as_bool)
         .unwrap_or(false);
     let vsync = settings
         .get("vsync")
-        .and_then(|v| v.as_bool())
+        .and_then(Value::as_bool)
         .unwrap_or(true);
     let default_text_size = settings
         .get("default_text_size")
-        .and_then(|v| v.as_f64())
+        .and_then(Value::as_f64)
         .map(|s| iced::Pixels(s as f32));
-    let default_font = settings.get("default_font").map(|v| {
-        let family = v.get("family").and_then(|f| f.as_str());
-        if family == Some("monospace") {
-            iced::Font::MONOSPACE
-        } else {
-            iced::Font::DEFAULT
-        }
-    });
+    let default_font = settings
+        .get("default_font")
+        .cloned()
+        .and_then(|v| serde_json::from_value::<DefaultFontShape>(v).ok())
+        .map(|font| match font.family.as_deref() {
+            Some("monospace") => iced::Font::MONOSPACE,
+            _ => iced::Font::DEFAULT,
+        });
 
     let mut iced_settings = iced::Settings {
         antialiasing,

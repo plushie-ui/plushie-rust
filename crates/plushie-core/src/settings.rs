@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::types::Theme;
+use crate::types::{PlushieType, Theme};
 
 /// Application-level settings.
 ///
@@ -37,6 +37,71 @@ pub struct Settings {
     /// diagnostic. Non-fatal by design; host SDKs decide whether to
     /// warn or halt based on the diagnostic.
     pub required_widgets: Vec<String>,
+}
+
+impl Settings {
+    /// Encode the settings into the canonical wire-format JSON object.
+    ///
+    /// This is the single source of truth for the Settings JSON shape.
+    /// Both wire mode (subprocess renderer over stdin/stdout) and
+    /// direct mode (in-process renderer) feed the renderer through
+    /// this same canonical shape, so any new field added to
+    /// [`Settings`] must be handled here once and is automatically
+    /// honoured by every code path that ingests the JSON.
+    ///
+    /// The shape mirrors what [`crate::protocol::IncomingMessage::Settings`]
+    /// expects: e.g. `default_font` is an object with a `family` key,
+    /// not a bare string. Fields whose value is `None` (or empty
+    /// collection) are omitted from the output so the renderer
+    /// applies its own defaults.
+    ///
+    /// `protocol_version` is intentionally not included: it lives in
+    /// the outer message envelope, not the Settings payload, and is
+    /// added by the caller (wire mode prepends it before sending).
+    pub fn to_wire_json(&self) -> Value {
+        let mut obj = Map::new();
+
+        if let Some(ref font) = self.default_font {
+            let mut font_obj = Map::new();
+            font_obj.insert("family".to_string(), Value::String(font.clone()));
+            obj.insert("default_font".to_string(), Value::Object(font_obj));
+        }
+        if let Some(size) = self.default_text_size {
+            obj.insert("default_text_size".to_string(), serde_json::json!(size));
+        }
+        if let Some(antialiasing) = self.antialiasing {
+            obj.insert("antialiasing".to_string(), Value::Bool(antialiasing));
+        }
+        if let Some(vsync) = self.vsync {
+            obj.insert("vsync".to_string(), Value::Bool(vsync));
+        }
+        if let Some(scale) = self.scale_factor {
+            obj.insert("scale_factor".to_string(), serde_json::json!(scale));
+        }
+        if let Some(rate) = self.default_event_rate {
+            obj.insert("default_event_rate".to_string(), serde_json::json!(rate));
+        }
+        if !self.fonts.is_empty() {
+            obj.insert("fonts".to_string(), serde_json::json!(self.fonts));
+        }
+        if !self.widget_config.is_empty() {
+            obj.insert(
+                "widget_config".to_string(),
+                serde_json::to_value(&self.widget_config).unwrap_or(Value::Null),
+            );
+        }
+        if !self.required_widgets.is_empty() {
+            obj.insert(
+                "required_widgets".to_string(),
+                serde_json::json!(self.required_widgets),
+            );
+        }
+        if let Some(ref theme) = self.theme {
+            obj.insert("theme".to_string(), Value::from(theme.wire_encode()));
+        }
+
+        Value::Object(obj)
+    }
 }
 
 /// Per-window defaults. Returned from the SDK's `App::window_config`
@@ -167,5 +232,71 @@ impl Default for RestartPolicy {
             restart_delay: Duration::from_millis(100),
             heartbeat_interval: Some(Duration::from_secs(30)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Theme;
+
+    #[test]
+    fn empty_settings_serialize_to_empty_object() {
+        let json = Settings::default().to_wire_json();
+        assert_eq!(json, serde_json::json!({}));
+    }
+
+    #[test]
+    fn default_font_is_an_object_with_family() {
+        // The renderer expects `default_font` as an object so it can
+        // also carry a fallback chain. A bare string was a latent bug
+        // that broke runtime resolution.
+        let settings = Settings {
+            default_font: Some("monospace".into()),
+            ..Default::default()
+        };
+        let json = settings.to_wire_json();
+        assert_eq!(
+            json.get("default_font"),
+            Some(&serde_json::json!({"family": "monospace"}))
+        );
+    }
+
+    #[test]
+    fn populated_settings_serialize_round_trip() {
+        let settings = Settings {
+            default_font: Some("monospace".into()),
+            default_text_size: Some(15.0),
+            antialiasing: Some(true),
+            vsync: Some(false),
+            scale_factor: Some(1.25),
+            theme: Some(Theme::Named("dark".into())),
+            fonts: vec!["/tmp/a.ttf".into()],
+            default_event_rate: Some(60),
+            widget_config: HashMap::from([("gauge".into(), serde_json::json!({"k": 1}))]),
+            required_widgets: vec!["gauge".into()],
+        };
+        let json = settings.to_wire_json();
+        let obj = json.as_object().expect("object");
+        assert_eq!(
+            obj.get("default_font"),
+            Some(&serde_json::json!({"family": "monospace"}))
+        );
+        assert_eq!(obj.get("default_text_size"), Some(&serde_json::json!(15.0)));
+        assert_eq!(obj.get("antialiasing"), Some(&serde_json::json!(true)));
+        assert_eq!(obj.get("vsync"), Some(&serde_json::json!(false)));
+        assert_eq!(obj.get("scale_factor"), Some(&serde_json::json!(1.25)));
+        assert_eq!(obj.get("theme"), Some(&serde_json::json!("dark")));
+        assert_eq!(obj.get("fonts"), Some(&serde_json::json!(["/tmp/a.ttf"])));
+        assert_eq!(obj.get("default_event_rate"), Some(&serde_json::json!(60)));
+        assert_eq!(
+            obj.get("widget_config"),
+            Some(&serde_json::json!({"gauge": {"k": 1}}))
+        );
+        assert_eq!(
+            obj.get("required_widgets"),
+            Some(&serde_json::json!(["gauge"]))
+        );
+        assert!(obj.get("protocol_version").is_none());
     }
 }

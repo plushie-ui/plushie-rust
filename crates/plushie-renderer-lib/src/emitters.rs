@@ -169,7 +169,7 @@ fn with_sink<R>(f: impl FnOnce(&mut dyn EventSink) -> io::Result<R>) -> io::Resu
 /// the response without further coordination.
 pub struct WriterSink {
     writer: BufWriter<Box<dyn std::io::Write + Send>>,
-    codec: plushie_widget_sdk::runtime::Codec,
+    codec: plushie_renderer_engine::Codec,
 }
 
 /// Buffer size for the WriterSink's BufWriter. 8 KiB is the std
@@ -180,7 +180,7 @@ impl WriterSink {
     /// Create a WriterSink with an explicit codec.
     pub fn new(
         writer: Box<dyn std::io::Write + Send>,
-        codec: plushie_widget_sdk::runtime::Codec,
+        codec: plushie_renderer_engine::Codec,
     ) -> Self {
         Self {
             writer: BufWriter::with_capacity(WRITER_BUF_CAP, writer),
@@ -611,7 +611,7 @@ mod tests {
     fn writer_sink_screenshot_response_json_includes_structured_fields_and_base64_rgba() {
         let writer = SharedBuffer::default();
         let output = writer.0.clone();
-        let mut sink = WriterSink::new(Box::new(writer), plushie_widget_sdk::runtime::Codec::Json);
+        let mut sink = WriterSink::new(Box::new(writer), plushie_renderer_engine::Codec::Json);
 
         sink.emit_screenshot_response("sc1", "homepage", "d4e5f6", 2, 3, &[0, 1, 2, 3])
             .unwrap();
@@ -637,7 +637,7 @@ mod tests {
     fn writer_sink_screenshot_response_omits_rgba_when_empty() {
         let writer = SharedBuffer::default();
         let output = writer.0.clone();
-        let mut sink = WriterSink::new(Box::new(writer), plushie_widget_sdk::runtime::Codec::Json);
+        let mut sink = WriterSink::new(Box::new(writer), plushie_renderer_engine::Codec::Json);
 
         sink.emit_screenshot_response("sc1", "mock", "", 0, 0, &[])
             .unwrap();
@@ -655,16 +655,13 @@ mod tests {
     fn writer_sink_screenshot_response_msgpack_round_trips_rgba() {
         let writer = SharedBuffer::default();
         let output = writer.0.clone();
-        let mut sink = WriterSink::new(
-            Box::new(writer),
-            plushie_widget_sdk::runtime::Codec::MsgPack,
-        );
+        let mut sink = WriterSink::new(Box::new(writer), plushie_renderer_engine::Codec::MsgPack);
 
         sink.emit_screenshot_response("sc1", "homepage", "d4e5f6", 2, 3, &[0, 1, 2, 3])
             .unwrap();
 
         let bytes = output.lock().unwrap().clone();
-        let parsed: serde_json::Value = plushie_widget_sdk::runtime::Codec::MsgPack
+        let parsed: serde_json::Value = plushie_renderer_engine::Codec::MsgPack
             .decode(&bytes[4..])
             .unwrap();
         assert_eq!(parsed["type"], "screenshot_response");

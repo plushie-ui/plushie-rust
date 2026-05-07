@@ -4,8 +4,8 @@
 use iced::{Subscription, Task};
 use parking_lot::Mutex;
 
+use plushie_renderer_engine::Codec;
 use plushie_widget_sdk::protocol::IncomingMessage;
-use plushie_widget_sdk::runtime::Codec;
 use plushie_widget_sdk::runtime::{Message, StdinEvent};
 
 use plushie_renderer_lib::App;

@@ -29,6 +29,7 @@ missing_panics_doc = "allow"
 [dependencies]
 plushie-core = { workspace = true }
 plushie-widget-sdk = { workspace = true }
+plushie-renderer-engine = { workspace = true }
 plushie-renderer-lib = { workspace = true }
 iced = { workspace = true, features = ["advanced", "canvas", "a11y", "tiny-skia"] }
 parking_lot = { workspace = true }

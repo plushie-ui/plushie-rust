@@ -20,10 +20,10 @@ use smol_str::SmolStr;
 
 use serde_json::Value;
 
+use plushie_renderer_engine::Codec;
 use plushie_widget_sdk::protocol::{
     InteractResponse, OutgoingEvent, QueryResponse, ResetResponse, TreeHashResponse, TreeNode,
 };
-use plushie_widget_sdk::runtime::Codec;
 use plushie_widget_sdk::runtime::Core;
 
 // ---------------------------------------------------------------------------

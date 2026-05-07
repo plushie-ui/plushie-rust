@@ -21,8 +21,8 @@
 
 use std::io::BufRead;
 
+use plushie_renderer_engine::Codec;
 use plushie_widget_sdk::protocol::{IncomingMessage, SessionMessage};
-use plushie_widget_sdk::runtime::Codec;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 

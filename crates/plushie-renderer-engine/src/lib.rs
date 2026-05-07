@@ -24,3 +24,7 @@
 //!       v
 //! plushie-renderer-lib
 //! ```
+
+pub use crate::codec::{Codec, MAX_MESSAGE_SIZE};
+
+mod codec;

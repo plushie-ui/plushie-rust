@@ -29,13 +29,13 @@ use iced::mouse;
 use iced::{Event, Size, Theme};
 use serde::Serialize;
 
+use plushie_renderer_engine::Codec;
 use plushie_widget_sdk::PlushieRenderer;
 use plushie_widget_sdk::image_registry::ImageRegistry;
 use plushie_widget_sdk::protocol::{
     IncomingMessage, OutgoingEvent, ScreenshotResponse, SessionMessage,
 };
 use plushie_widget_sdk::render_ctx::RenderCtx;
-use plushie_widget_sdk::runtime::Codec;
 use plushie_widget_sdk::runtime::Core;
 use plushie_widget_sdk::runtime::Message;
 

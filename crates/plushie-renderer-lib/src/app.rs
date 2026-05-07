@@ -74,7 +74,7 @@ pub struct App {
     pub current_modifiers: keyboard::Modifiers,
     /// Wire protocol codec. Used for encoding stub acks and scripting
     /// responses. Stored here so these paths don't need the global.
-    pub codec: plushie_widget_sdk::runtime::Codec,
+    pub codec: plushie_renderer_engine::Codec,
 }
 
 impl App {
@@ -99,13 +99,13 @@ impl App {
             effect_handler,
             transition_manager: plushie_widget_sdk::animation::TransitionManager::new(),
             current_modifiers: keyboard::Modifiers::default(),
-            codec: plushie_widget_sdk::runtime::Codec::MsgPack,
+            codec: plushie_renderer_engine::Codec::MsgPack,
         }
     }
 
     /// Set the wire protocol codec. Called during startup after
     /// codec negotiation. Defaults to MsgPack.
-    pub fn set_codec(&mut self, codec: plushie_widget_sdk::runtime::Codec) {
+    pub fn set_codec(&mut self, codec: plushie_renderer_engine::Codec) {
         self.codec = codec;
     }
 

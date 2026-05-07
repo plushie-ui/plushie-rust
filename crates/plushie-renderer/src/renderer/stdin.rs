@@ -8,8 +8,8 @@ use iced::futures::SinkExt;
 use iced::stream;
 use parking_lot::Mutex;
 
+use plushie_renderer_engine::Codec;
 use plushie_widget_sdk::protocol::IncomingMessage;
-use plushie_widget_sdk::runtime::Codec;
 use plushie_widget_sdk::runtime::StdinEvent;
 
 /// The generic reader type used throughout the transport layer.

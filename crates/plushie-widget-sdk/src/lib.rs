@@ -86,8 +86,6 @@ pub mod runtime;
 
 // -- Private implementation modules --
 #[allow(missing_docs)]
-mod codec;
-#[allow(missing_docs)]
 mod engine;
 pub mod image_registry;
 #[allow(missing_docs)]

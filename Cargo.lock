@@ -3227,6 +3227,7 @@ dependencies = [
  "plushie-core",
  "plushie-iced",
  "plushie-iced-test",
+ "plushie-renderer-engine",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
  "serde",
@@ -3239,10 +3240,12 @@ dependencies = [
 name = "plushie-renderer-engine"
 version = "0.6.1"
 dependencies = [
+ "base64",
  "log",
  "plushie-core",
  "plushie-iced",
  "plushie-widget-sdk",
+ "proptest",
  "rmp-serde",
  "rmpv",
  "serde",
@@ -3260,6 +3263,7 @@ dependencies = [
  "parking_lot",
  "plushie-core",
  "plushie-iced",
+ "plushie-renderer-engine",
  "plushie-widget-sdk",
  "rfd",
  "serde",
@@ -3281,6 +3285,7 @@ dependencies = [
  "parking_lot",
  "plushie-core",
  "plushie-iced",
+ "plushie-renderer-engine",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
  "serde",

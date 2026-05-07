@@ -4,7 +4,6 @@
 //! and the Rust SDK direct runner without making the widget SDK's
 //! implementation modules part of the public API.
 
-pub use crate::codec::{Codec, MAX_MESSAGE_SIZE};
 pub use crate::engine::{Core, CoreEffect, Dispatch, Emit, StateChange, SubscriptionEntry};
 pub use crate::image_registry::ImageRegistry;
 pub use crate::message::{

@@ -35,6 +35,7 @@ missing_panics_doc = "allow"
 [dependencies]
 plushie-core = { workspace = true }
 plushie-widget-sdk = { workspace = true }
+plushie-renderer-engine = { workspace = true }
 iced = { workspace = true, features = ["advanced", "canvas", "a11y"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

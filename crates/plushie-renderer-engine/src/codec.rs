@@ -843,7 +843,7 @@ mod tests {
     #[test]
     fn msgpack_external_incoming_settings() {
         // This is exactly what a host sends: a plain map with "type":"settings".
-        use crate::protocol::IncomingMessage;
+        use plushie_core::protocol::IncomingMessage;
         let external = json!({"type": "settings", "settings": {"antialiasing": false}});
         let bytes = rmp_serde::to_vec_named(&external).unwrap();
         let decoded: IncomingMessage = Codec::MsgPack.decode(&bytes).unwrap();
@@ -852,7 +852,7 @@ mod tests {
 
     #[test]
     fn msgpack_external_incoming_snapshot() {
-        use crate::protocol::IncomingMessage;
+        use plushie_core::protocol::IncomingMessage;
         let external = json!({"type": "snapshot", "tree": {"id": "root", "type": "column", "props": {}, "children": []}});
         let bytes = rmp_serde::to_vec_named(&external).unwrap();
         let decoded: IncomingMessage = Codec::MsgPack.decode(&bytes).unwrap();
@@ -901,9 +901,9 @@ mod tests {
         let mut buf = Vec::new();
         rmpv::encode::write_value(&mut buf, &msg).unwrap();
 
-        let decoded: crate::protocol::IncomingMessage = Codec::MsgPack.decode(&buf).unwrap();
+        let decoded: plushie_core::protocol::IncomingMessage = Codec::MsgPack.decode(&buf).unwrap();
         match decoded {
-            crate::protocol::IncomingMessage::ImageOp { op, payload } => {
+            plushie_core::protocol::IncomingMessage::ImageOp { op, payload } => {
                 assert_eq!(op, "create_image");
                 assert_eq!(payload.handle, "test_img");
                 assert_eq!(payload.pixels, Some(pixel_bytes));
@@ -918,8 +918,8 @@ mod tests {
     #[test]
     fn msgpack_image_op_with_base64_string() {
         // JSON mode: binary data arrives as base64-encoded string.
-        use crate::protocol::IncomingMessage;
         use base64::Engine as _;
+        use plushie_core::protocol::IncomingMessage;
 
         let pixel_bytes: Vec<u8> = vec![255, 0, 0, 255];
         let b64 = base64::engine::general_purpose::STANDARD.encode(&pixel_bytes);
@@ -1475,8 +1475,8 @@ mod tests {
 
     mod op_roundtrip {
         use super::*;
-        use crate::protocol::IncomingMessage;
         use plushie_core::outgoing_message::OutgoingMessage;
+        use plushie_core::protocol::IncomingMessage;
         use std::io::Cursor;
 
         fn roundtrip(codec: Codec, msg: &OutgoingMessage) -> IncomingMessage {
@@ -1690,7 +1690,7 @@ mod tests {
             fn from_value_into_incoming_message_never_panics(
                 val in arb_json_value(),
             ) {
-                let result = serde_json::from_value::<crate::protocol::IncomingMessage>(val);
+                let result = serde_json::from_value::<plushie_core::protocol::IncomingMessage>(val);
                 let _ = result;
             }
 
@@ -1709,7 +1709,7 @@ mod tests {
                     "op": op,
                     "payload": payload,
                 });
-                let _ = serde_json::from_value::<crate::protocol::IncomingMessage>(envelope);
+                let _ = serde_json::from_value::<plushie_core::protocol::IncomingMessage>(envelope);
             }
         }
     }

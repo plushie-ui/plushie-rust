@@ -36,6 +36,7 @@ path = "src/main.rs"
 [dependencies]
 plushie-core = { workspace = true }
 plushie-widget-sdk = { workspace = true }
+plushie-renderer-engine = { workspace = true }
 plushie-renderer-lib = { workspace = true }
 env_logger = "0.11"
 log = { workspace = true }

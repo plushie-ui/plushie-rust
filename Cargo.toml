@@ -48,8 +48,11 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # workspace entry just declares the bare version (matching the tokio
 # precedent above). Each crate adds its own feature list.
 iced = { version = "0.8", package = "plushie-iced", default-features = false }
-# Native effect handlers used in `plushie` (direct mode) and
-# `plushie-renderer`. Identical version requirement, so elevate.
+# Native effect handlers. Used by `plushie-renderer-lib`'s
+# `effects::native` module, which is the single source of truth for
+# native (non-wasm) file dialog, clipboard, and notification effects.
+# The renderer binary and `plushie`'s direct mode both consume that
+# module, so neither lists these deps directly.
 rfd = "0.15"
 arboard = "3"
 notify-rust = "4"

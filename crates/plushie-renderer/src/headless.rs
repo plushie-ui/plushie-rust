@@ -8,7 +8,7 @@
 //! protocol-level testing from any language.
 //!
 //! Both modes read framed messages from stdin, process them through
-//! [`Core`](plushie_widget_sdk::runtime::Core), and write responses to stdout.
+//! [`Core`](plushie_renderer_engine::Core), and write responses to stdout.
 //! No iced daemon, no windows, no GPU. Both modes maintain a persistent
 //! renderer and UI cache. Headless uses `iced::Renderer` (tiny-skia)
 //! for real screenshots, mock uses the null renderer `()` for speed.
@@ -30,13 +30,13 @@ use iced::{Event, Size, Theme};
 use serde::Serialize;
 
 use plushie_renderer_engine::Codec;
+use plushie_renderer_engine::Core;
 use plushie_widget_sdk::PlushieRenderer;
 use plushie_widget_sdk::image_registry::ImageRegistry;
 use plushie_widget_sdk::protocol::{
     IncomingMessage, OutgoingEvent, ScreenshotResponse, SessionMessage,
 };
 use plushie_widget_sdk::render_ctx::RenderCtx;
-use plushie_widget_sdk::runtime::Core;
 use plushie_widget_sdk::runtime::Message;
 
 use plushie_renderer_lib::scripting::{interaction_to_iced_events, resolve_widget_id};
@@ -427,7 +427,7 @@ impl<R: PlushieRenderer> Session<R> {
                     }
                     let effects = self.core.apply(msg);
                     for effect in effects {
-                        use plushie_widget_sdk::runtime::{CoreEffect, StateChange};
+                        use plushie_renderer_engine::{CoreEffect, StateChange};
                         match effect {
                             CoreEffect::StateChange(StateChange::ThemeChanged(t, chrome)) => {
                                 self.theme = t;
@@ -563,7 +563,7 @@ fn handle_message<R: PlushieRenderer>(
             let effects = s.core.apply(msg);
 
             for effect in effects {
-                use plushie_widget_sdk::runtime::{CoreEffect, Dispatch, Emit, StateChange};
+                use plushie_renderer_engine::{CoreEffect, Dispatch, Emit, StateChange};
                 match effect {
                     CoreEffect::Emit(Emit::Event(event)) => {
                         s.writer.emit(&event.with_session(session_id))?;

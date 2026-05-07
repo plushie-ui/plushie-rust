@@ -715,8 +715,8 @@ impl<A: App> DirectApp<A> {
 /// fields that live outside Core (scale_factor, theme) are applied
 /// here from the typed [`Settings`] struct.
 fn apply_settings<A: App>(renderer: &mut plushie_renderer_lib::App) {
+    use plushie_renderer_engine::{CoreEffect, StateChange};
     use plushie_widget_sdk::protocol::IncomingMessage;
-    use plushie_widget_sdk::runtime::{CoreEffect, StateChange};
 
     let settings = A::settings();
     let wire_json = settings.to_wire_json();

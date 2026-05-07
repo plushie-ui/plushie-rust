@@ -96,9 +96,10 @@ pub(crate) fn intern_font_family(name: &str) -> Option<&'static str> {
     Some(leaked)
 }
 
-/// Public wrapper around [`intern_font_family`] for sibling modules
-/// (e.g. [`crate::fonts`]) that need the interner without exposing the
-/// rest of `widget::helpers`.
+/// Public wrapper around the private font-family interner. Sibling
+/// modules (e.g. [`crate::fonts`]) and the `plushie-renderer-engine`
+/// crate need the interner without exposing the rest of
+/// `widget::helpers`.
 pub fn intern_font_family_public(name: &str) -> Option<&'static str> {
     intern_font_family(name)
 }

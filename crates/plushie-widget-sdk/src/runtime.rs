@@ -1,10 +1,11 @@
-//! Renderer and direct-mode support API.
+//! Renderer-internal support surface.
 //!
-//! This module exposes the pieces needed by the Plushie renderer crates
-//! and the Rust SDK direct runner without making the widget SDK's
-//! implementation modules part of the public API.
+//! Re-exports widget-sdk implementation pieces needed by the Plushie
+//! renderer crates (`plushie-renderer-engine`, `plushie-renderer-lib`,
+//! `plushie-renderer`, `plushie-renderer-wasm`) and the Rust SDK
+//! direct-mode runner. Widget authors should not reach into this
+//! module; the public widget-author API lives in [`crate::prelude`].
 
-pub use crate::engine::{Core, CoreEffect, Dispatch, Emit, StateChange, SubscriptionEntry};
 pub use crate::image_registry::ImageRegistry;
 pub use crate::message::{
     KeyEventData, Message, StdinEvent, serialize_key, serialize_location, serialize_modifiers,
@@ -15,7 +16,8 @@ pub use crate::theming::{
     ThemeChrome, ThemeResolution, resolve_theme, resolve_theme_and_chrome_only, resolve_theme_only,
     resolve_theme_resolution, resolve_theme_with_chrome,
 };
-pub use crate::validate::{is_validate_props_enabled, set_validate_props};
+pub use crate::validate::{collect_prop_warnings, is_validate_props_enabled, set_validate_props};
+pub use crate::widget::helpers::intern_font_family_public;
 pub use crate::widget::render::render;
 pub use crate::widget::widget_set::{IcedWidgetSet, iced_widget_set};
 

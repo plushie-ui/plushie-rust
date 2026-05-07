@@ -37,7 +37,7 @@ pub fn validate_scale_factor(sf: f32) -> f32 {
 /// state, widget registry, and all runtime state needed to translate
 /// between the wire protocol and iced's update/view cycle.
 pub struct App {
-    pub core: plushie_widget_sdk::runtime::Core,
+    pub core: plushie_renderer_engine::Core,
     pub theme: Theme,
     pub theme_chrome: ThemeChrome,
     /// Widget ops and effects return iced Tasks, but `apply()` doesn't
@@ -84,7 +84,7 @@ impl App {
         sink: Arc<SinkMutex>,
     ) -> Self {
         Self {
-            core: plushie_widget_sdk::runtime::Core::new(),
+            core: plushie_renderer_engine::Core::new(),
             theme: DEFAULT_THEME,
             theme_chrome: ThemeChrome::default(),
             pending_tasks: Vec::new(),
@@ -344,7 +344,7 @@ pub(crate) fn dispatch_widget_subscription_into(
 /// checker to take a whole-self mutable borrow, which conflicts
 /// with the live `&str` into windows.
 pub(crate) fn coalesce_subscription_into(
-    core: &plushie_widget_sdk::runtime::Core,
+    core: &plushie_renderer_engine::Core,
     emitter: &mut EventEmitter,
     key: &str,
     window_id: Option<&str>,

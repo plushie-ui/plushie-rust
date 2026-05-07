@@ -175,11 +175,11 @@ pub(crate) fn cached_style_overrides<'a>(
 
 /// Hash a serde_json::Value recursively without allocating a serialized string.
 /// Each variant is discriminated by a type tag byte to avoid collisions.
-/// Recursion is bounded by [`MAX_HASH_DEPTH`].
+/// Recursion is bounded by an internal maximum hash depth.
 ///
 /// NOTE: DefaultHasher output is not stable across Rust versions or builds.
 /// These hashes must never be persisted or compared across process restarts.
-pub(crate) fn hash_json_value(v: &serde_json::Value, h: &mut impl std::hash::Hasher) {
+pub fn hash_json_value(v: &serde_json::Value, h: &mut impl std::hash::Hasher) {
     hash_json_value_inner(v, h, 0);
 }
 

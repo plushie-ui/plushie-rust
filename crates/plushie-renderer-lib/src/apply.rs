@@ -3,8 +3,8 @@
 
 use std::io;
 
+use plushie_renderer_engine::CoreEffect;
 use plushie_widget_sdk::protocol::IncomingMessage;
-use plushie_widget_sdk::runtime::CoreEffect;
 
 use crate::App;
 
@@ -58,7 +58,7 @@ impl App {
             self.cleanup_subscription_rates();
         }
         for effect in effects {
-            use plushie_widget_sdk::runtime::{Dispatch, Emit, StateChange};
+            use plushie_renderer_engine::{Dispatch, Emit, StateChange};
             match effect {
                 CoreEffect::Emit(Emit::Event(event)) => self.emitter.emit_event(event)?,
                 CoreEffect::Emit(Emit::EffectResponse(response)) => {

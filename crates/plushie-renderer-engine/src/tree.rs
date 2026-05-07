@@ -8,8 +8,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::protocol::{PatchOp, TreeNode};
-use crate::shared_state::MAX_TREE_DEPTH;
+use plushie_core::protocol::{PatchOp, TreeNode};
+use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
 
 /// Retained tree store. Holds the current root node (if any) and supports
 /// full replacement (snapshot) and incremental patch application.
@@ -257,7 +257,7 @@ impl Tree {
                 }
             }
             other => {
-                crate::diagnostics::error(plushie_core::Diagnostic::UnknownPatchOp {
+                plushie_core::diagnostics::error(plushie_core::Diagnostic::UnknownPatchOp {
                     op: other.to_string(),
                     payload: patch_op_payload(op),
                 });
@@ -451,7 +451,7 @@ fn find_window_recursive<'a>(
     depth: usize,
 ) -> Option<&'a TreeNode> {
     if depth > MAX_TREE_DEPTH {
-        crate::diagnostics::warn(plushie_core::Diagnostic::TreeDepthExceeded {
+        plushie_core::diagnostics::warn(plushie_core::Diagnostic::TreeDepthExceeded {
             id: node.id.clone(),
             max_depth: MAX_TREE_DEPTH,
         });
@@ -470,7 +470,7 @@ fn find_window_recursive<'a>(
 
 fn collect_window_ids_recursive(node: &TreeNode, ids: &mut Vec<String>, depth: usize) {
     if depth > MAX_TREE_DEPTH {
-        crate::diagnostics::warn(plushie_core::Diagnostic::TreeDepthExceeded {
+        plushie_core::diagnostics::warn(plushie_core::Diagnostic::TreeDepthExceeded {
             id: node.id.clone(),
             max_depth: MAX_TREE_DEPTH,
         });
@@ -577,8 +577,8 @@ fn navigate_mut<'a>(root: &'a mut TreeNode, path: &[usize]) -> Result<&'a mut Tr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::PatchOp;
-    use crate::testing::{node, node_with_children, node_with_props};
+    use plushie_core::protocol::PatchOp;
+    use plushie_widget_sdk::testing::{node, node_with_children, node_with_props};
     use serde_json::json;
 
     fn make_patch_op(op: &str, path: Vec<usize>, rest: serde_json::Value) -> PatchOp {

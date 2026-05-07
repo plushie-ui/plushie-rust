@@ -2964,6 +2964,7 @@ dependencies = [
  "parking_lot",
  "plushie-core",
  "plushie-core-macros",
+ "plushie-renderer-engine",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
  "proptest",

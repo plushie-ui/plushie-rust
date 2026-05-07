@@ -6,8 +6,10 @@
 //! everything a widget author needs; [`iced`] is re-exported so widgets
 //! don't need a direct iced dependency.
 //!
-//! This crate also provides the rendering engine, wire protocol, and
-//! widget infrastructure used internally by the `plushie` binary.
+//! Beyond the public widget-author surface, this crate also re-exports
+//! the widget infrastructure that the renderer crates and the Rust SDK
+//! direct-mode runner need internally. Those re-exports live in
+//! [`runtime`] and are not part of the widget-author API.
 //!
 //! ## Dependencies
 //!
@@ -36,14 +38,18 @@
 //! - [`render_ctx`] - [`render_ctx::RenderCtx`], the core rendering context for all widgets
 //! - [`testing`] - test factory helpers
 //!
-//! **Renderer and direct-mode support API:**
-//! - [`runtime`] - renderer loop, messages, codec, built-in widget set,
-//!   theme resolution, validation flag, and canvas query helpers
+//! **Renderer-internal support API:**
+//! - [`runtime`] - widget messages, theme resolution, built-in widget
+//!   set, validation flag, render entry point, and canvas query helpers
 //! - [`protocol`] - wire protocol facade over `plushie-core`
 //! - [`image_registry`] - image handle cache used by [`render_ctx::RenderCtx`]
 //!
+//! The renderer state engine, retained tree, and wire codec live in the
+//! sibling crate `plushie-renderer-engine`; widget authors do not
+//! depend on it.
+//!
 //! **Private implementation modules:**
-//! `engine`, `tree`, `message`, `widget`, `codec`, and `theming`
+//! `message`, `widget`, and `theming`
 
 #![deny(missing_docs)]
 
@@ -85,16 +91,12 @@ pub(crate) mod validate;
 pub mod runtime;
 
 // -- Private implementation modules --
-#[allow(missing_docs)]
-mod engine;
 pub mod image_registry;
 #[allow(missing_docs)]
 mod message;
 pub mod protocol;
 #[allow(missing_docs)]
 mod theming;
-#[allow(missing_docs)]
-mod tree;
 #[allow(missing_docs)]
 mod widget;
 

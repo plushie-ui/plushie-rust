@@ -10,9 +10,9 @@ use std::collections::HashMap;
 use iced::Font;
 use serde_json::Value;
 
-use crate::protocol::{IncomingMessage, OutgoingEvent};
-use crate::shared_state::SharedState;
-use crate::theming;
+use plushie_core::protocol::{IncomingMessage, OutgoingEvent};
+use plushie_widget_sdk::runtime::{self as runtime, SharedState};
+
 use crate::tree::Tree;
 
 /// Side effects produced by [`Core::apply`] that the host must handle.
@@ -47,9 +47,9 @@ pub enum Emit {
     /// Widget or subscription event.
     Event(OutgoingEvent),
     /// Response to an effect request (stub or synthetic).
-    EffectResponse(crate::protocol::EffectResponse),
+    EffectResponse(plushie_core::protocol::EffectResponse),
     /// Acknowledgement that an effect stub registration changed.
-    StubAck(crate::protocol::EffectStubAck),
+    StubAck(plushie_core::protocol::EffectStubAck),
 }
 
 /// Platform or widget operations the host must execute on Core's
@@ -130,7 +130,7 @@ pub enum StateChange {
     ///
     /// The host should update its cached theme and set
     /// `theme_follows_system = false`.
-    ThemeChanged(iced::Theme, crate::theming::ThemeChrome),
+    ThemeChanged(iced::Theme, runtime::ThemeChrome),
 
     /// The root theme was set to `"system"`: the app-level theme
     /// should follow the OS preference.
@@ -138,7 +138,7 @@ pub enum StateChange {
 
     /// Nodes removed during a patch that had "exit" props.
     /// The host should promote these to ghost nodes for exit animations.
-    ExitNodes(Vec<(String, usize, crate::protocol::TreeNode)>),
+    ExitNodes(Vec<(String, usize, plushie_core::protocol::TreeNode)>),
 
     /// Widget configuration received from the host's Settings message.
     ///
@@ -181,7 +181,7 @@ pub struct Core {
     /// Cached resolved theme from the root node's `theme` prop.
     /// Only re-resolved when the raw JSON value changes.
     pub cached_theme: Option<iced::Theme>,
-    pub cached_theme_chrome: crate::theming::ThemeChrome,
+    pub cached_theme_chrome: runtime::ThemeChrome,
     /// Content hash of the last resolved theme prop, used for change
     /// detection. Replaces the previous `to_string()` approach which
     /// allocated and compared a full JSON string on every check.
@@ -198,7 +198,7 @@ pub struct Core {
     ///
     /// `Some(true)` enables validation for this session.
     /// `None` falls back to the process-wide
-    /// [`is_validate_props_enabled`](crate::validate::is_validate_props_enabled)
+    /// [`is_validate_props_enabled`](runtime::is_validate_props_enabled)
     /// check (which itself defaults to `cfg(debug_assertions)` when
     /// no global value has been set). `validate_props: false` in
     /// Settings does not disable validation; it leaves the fallback in
@@ -223,7 +223,7 @@ impl Core {
             default_text_size: None,
             default_font: None,
             cached_theme: None,
-            cached_theme_chrome: crate::theming::ThemeChrome::default(),
+            cached_theme_chrome: runtime::ThemeChrome::default(),
             cached_theme_hash: None,
             settings_applied: false,
             effect_stubs: HashMap::new(),
@@ -238,8 +238,8 @@ impl Core {
     pub fn is_validate_props_enabled(&self) -> bool {
         match self.validate_props {
             Some(true) => true,
-            None => crate::validate::is_validate_props_enabled(),
-            Some(false) => crate::validate::is_validate_props_enabled(),
+            None => runtime::is_validate_props_enabled(),
+            Some(false) => runtime::is_validate_props_enabled(),
         }
     }
 
@@ -308,7 +308,7 @@ impl Core {
     /// Compute the canonical SHA-256 hash of the current tree.
     /// Returns the hex-encoded hash string, or an empty string if no tree.
     pub fn tree_hash(&self) -> String {
-        match crate::protocol::canonical_tree_hash(self.tree.root()) {
+        match plushie_core::protocol::canonical_tree_hash(self.tree.root()) {
             Ok(hash) => hash,
             Err(e) => {
                 log::error!("tree_hash: serialization failed: {e}");
@@ -328,15 +328,15 @@ impl Core {
         use std::hash::Hasher;
 
         let mut hasher = DefaultHasher::new();
-        crate::shared_state::hash_json_value(theme_val, &mut hasher);
+        plushie_widget_sdk::shared_state::hash_json_value(theme_val, &mut hasher);
         let hash = hasher.finish();
 
         if self.cached_theme_hash == Some(hash) {
             // Theme prop unchanged, skip resolution.
             return;
         }
-        match theming::resolve_theme_resolution(theme_val) {
-            theming::ThemeResolution::Theme(theme, chrome) => {
+        match runtime::resolve_theme_resolution(theme_val) {
+            runtime::ThemeResolution::Theme(theme, chrome) => {
                 self.cached_theme_hash = Some(hash);
                 self.cached_theme = Some(theme.clone());
                 self.cached_theme_chrome = chrome;
@@ -344,13 +344,13 @@ impl Core {
                     theme, chrome,
                 )));
             }
-            theming::ThemeResolution::System => {
+            runtime::ThemeResolution::System => {
                 self.cached_theme_hash = Some(hash);
                 self.cached_theme = None;
-                self.cached_theme_chrome = crate::theming::ThemeChrome::default();
+                self.cached_theme_chrome = runtime::ThemeChrome::default();
                 effects.push(CoreEffect::StateChange(StateChange::ThemeFollowsSystem));
             }
-            theming::ThemeResolution::Invalid => self.clear_cached_theme(effects),
+            runtime::ThemeResolution::Invalid => self.clear_cached_theme(effects),
         }
     }
 
@@ -360,7 +360,7 @@ impl Core {
         }
 
         self.cached_theme = None;
-        self.cached_theme_chrome = crate::theming::ThemeChrome::default();
+        self.cached_theme_chrome = runtime::ThemeChrome::default();
         self.cached_theme_hash = None;
         effects.push(CoreEffect::StateChange(StateChange::ThemeFollowsSystem));
     }
@@ -446,12 +446,12 @@ impl Core {
                 {
                     log::warn!("invalid effect request: {err}");
                     effects.push(CoreEffect::Emit(Emit::EffectResponse(
-                        crate::protocol::EffectResponse::error(id, err.to_string()),
+                        plushie_core::protocol::EffectResponse::error(id, err.to_string()),
                     )));
                 } else if let Some(stub_response) = self.effect_stubs.get(&kind) {
                     log::debug!("effect stub hit: {kind} ({id})");
                     effects.push(CoreEffect::Emit(Emit::EffectResponse(
-                        crate::protocol::EffectResponse::ok(id, stub_response.clone()),
+                        plushie_core::protocol::EffectResponse::ok(id, stub_response.clone()),
                     )));
                 } else {
                     effects.push(CoreEffect::Dispatch(Dispatch::Effect {
@@ -567,7 +567,7 @@ impl Core {
                 self.default_text_size = settings
                     .get("default_text_size")
                     .and_then(|v| v.as_f64())
-                    .map(crate::prop_helpers::f64_to_f32);
+                    .map(plushie_widget_sdk::prop_helpers::f64_to_f32);
                 self.default_font = settings.get("default_font").map(resolve_font_with_fallback);
                 // Per-session validate_props override. Only `true`
                 // forces validation on for this session. `false`
@@ -682,12 +682,12 @@ impl Core {
                     log::info!("effect stub registered: {kind}");
                     self.effect_stubs.insert(kind.clone(), response);
                     effects.push(CoreEffect::Emit(Emit::StubAck(
-                        crate::protocol::EffectStubAck::registered(kind),
+                        plushie_core::protocol::EffectStubAck::registered(kind),
                     )));
                 } else {
                     log::warn!("unknown effect stub kind: {kind}");
                     effects.push(CoreEffect::Emit(Emit::StubAck(
-                        crate::protocol::EffectStubAck::register_error(kind),
+                        plushie_core::protocol::EffectStubAck::register_error(kind),
                     )));
                 }
             }
@@ -696,12 +696,12 @@ impl Core {
                     log::info!("effect stub unregistered: {kind}");
                     self.effect_stubs.remove(&kind);
                     effects.push(CoreEffect::Emit(Emit::StubAck(
-                        crate::protocol::EffectStubAck::unregistered(kind),
+                        plushie_core::protocol::EffectStubAck::unregistered(kind),
                     )));
                 } else {
                     log::warn!("unknown effect stub kind: {kind}");
                     effects.push(CoreEffect::Emit(Emit::StubAck(
-                        crate::protocol::EffectStubAck::unregister_error(kind),
+                        plushie_core::protocol::EffectStubAck::unregister_error(kind),
                     )));
                 }
             }
@@ -713,14 +713,17 @@ impl Core {
     /// Walk the tree and emit prop validation warnings as wire events.
     /// Called after Snapshot and Patch when validate_props is enabled.
     fn emit_prop_validation_warnings(
-        root: &crate::protocol::TreeNode,
+        root: &plushie_core::protocol::TreeNode,
         effects: &mut Vec<CoreEffect>,
     ) {
         Self::validate_node_recursive(root, effects);
     }
 
-    fn validate_node_recursive(node: &crate::protocol::TreeNode, effects: &mut Vec<CoreEffect>) {
-        let warnings = crate::validate::collect_prop_warnings(node);
+    fn validate_node_recursive(
+        node: &plushie_core::protocol::TreeNode,
+        effects: &mut Vec<CoreEffect>,
+    ) {
+        let warnings = runtime::collect_prop_warnings(node);
         if !warnings.is_empty() {
             effects.push(CoreEffect::Emit(Emit::Event(OutgoingEvent::generic(
                 "prop_validation",
@@ -744,7 +747,7 @@ impl Core {
 ///
 /// Resolution order per name:
 /// 1. Built-in shortcut: `monospace` -> `Font::MONOSPACE`.
-/// 2. Runtime-loaded family via [`crate::fonts::is_loaded`] (populated
+/// 2. Runtime-loaded family via [`plushie_widget_sdk::fonts::is_loaded`] (populated
 ///    by `Command::load_font` at execution time).
 /// 3. Fall through to the next name in the chain and emit a
 ///    `font_family_not_found` diagnostic.
@@ -768,15 +771,15 @@ fn resolve_font_with_fallback(v: &Value) -> Font {
         if matches!(*name, "monospace") {
             return Font::MONOSPACE;
         }
-        if crate::fonts::is_loaded(name)
-            && let Some(interned) = crate::widget::helpers::intern_font_family_public(name)
+        if plushie_widget_sdk::fonts::is_loaded(name)
+            && let Some(interned) = runtime::intern_font_family_public(name)
         {
             return Font {
                 family: iced::font::Family::Name(interned),
                 ..Font::DEFAULT
             };
         }
-        crate::diagnostics::warn(plushie_core::Diagnostic::FontFamilyNotFound {
+        plushie_core::diagnostics::warn(plushie_core::Diagnostic::FontFamilyNotFound {
             family: (*name).to_string(),
         });
     }
@@ -825,7 +828,7 @@ fn validate_wire_settings(settings: &Value) {
     match serde_json::from_value::<WireSettings>(settings.clone()) {
         Ok(_) => {}
         Err(e) => {
-            crate::diagnostics::error(plushie_core::Diagnostic::InvalidSettings {
+            plushie_core::diagnostics::error(plushie_core::Diagnostic::InvalidSettings {
                 detail: e.to_string(),
             });
         }
@@ -835,8 +838,8 @@ fn validate_wire_settings(settings: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{IncomingMessage, PatchOp, TreeNode};
-    use crate::testing::{
+    use plushie_core::protocol::{IncomingMessage, PatchOp, TreeNode};
+    use plushie_widget_sdk::testing::{
         node as make_node, node_with_children as make_node_with_children,
         node_with_props as make_node_with_props,
     };
@@ -1472,7 +1475,7 @@ mod tests {
         assert_eq!(core.validate_props, None);
         assert_eq!(
             core.is_validate_props_enabled(),
-            crate::validate::is_validate_props_enabled()
+            runtime::is_validate_props_enabled()
         );
         if cfg!(debug_assertions) {
             assert!(core.is_validate_props_enabled());

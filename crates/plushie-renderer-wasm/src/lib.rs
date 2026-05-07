@@ -263,7 +263,7 @@ impl PlushieApp {
 
                     let effects = app.core.apply(IncomingMessage::Settings { settings });
                     for effect in effects {
-                        use plushie_widget_sdk::runtime::{CoreEffect, StateChange};
+                        use plushie_renderer_engine::{CoreEffect, StateChange};
                         if let CoreEffect::StateChange(StateChange::WidgetConfig(config)) = effect {
                             let ctx = plushie_widget_sdk::registry::InitCtx {
                                 config: &config,

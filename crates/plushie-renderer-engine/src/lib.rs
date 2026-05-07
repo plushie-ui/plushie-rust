@@ -26,5 +26,8 @@
 //! ```
 
 pub use crate::codec::{Codec, MAX_MESSAGE_SIZE};
+pub use crate::engine::{Core, CoreEffect, Dispatch, Emit, StateChange, SubscriptionEntry};
 
 mod codec;
+mod engine;
+pub mod tree;

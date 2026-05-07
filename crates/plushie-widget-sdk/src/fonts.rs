@@ -1,8 +1,8 @@
 //! Loaded-font registry.
 //!
 //! Tracks font family names that have been registered with iced via
-//! runtime `LoadFont` commands. `default_font` resolution in
-//! [`crate::runtime::Core`] consults this registry before emitting a
+//! runtime `LoadFont` commands. `default_font` resolution in the
+//! renderer-engine `Core` consults this registry before emitting a
 //! `font_family_not_found` diagnostic so app-loaded fonts resolve
 //! without round-tripping through font-file metadata parsing.
 //!

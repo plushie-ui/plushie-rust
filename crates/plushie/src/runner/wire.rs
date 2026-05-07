@@ -1640,12 +1640,10 @@ fn execute_wire_renderer_op(
             bridge.send_effect(&wire_id, kind, &payload)
         }
         RendererOp::Image(image_op) => {
-            // Wire op names must match the renderer's `apply_op`
-            // dispatch in `plushie-widget-sdk::image_registry`, which
-            // keys on `create_image` / `update_image` / `delete_image`.
-            // `list` and `clear` route through the widget_op channel
-            // because the renderer's image registry does not own them
-            // directly.
+            // Wire op names match the renderer's typed `IncomingMessage::ImageOp`
+            // dispatch, which routes `create_image` / `update_image` /
+            // `delete_image` to the image registry and `list` / `clear`
+            // to the registry-level handlers.
             let (op, payload) = match image_op {
                 ImageOp::Create { handle, data } => (
                     "create_image",
@@ -1676,12 +1674,8 @@ fn execute_wire_renderer_op(
                            "width": width, "height": height}),
                 ),
                 ImageOp::Delete(handle) => ("delete_image", json!({"handle": handle})),
-                ImageOp::List { tag } => {
-                    return bridge.send_widget_op("list_images", &json!({"tag": tag}));
-                }
-                ImageOp::Clear => {
-                    return bridge.send_widget_op("clear_images", &json!({}));
-                }
+                ImageOp::List { tag } => ("list", json!({"tag": tag})),
+                ImageOp::Clear => ("clear", json!({})),
                 _ => {
                     log::warn!("wire mode: unhandled ImageOp variant; op skipped");
                     return Ok(());

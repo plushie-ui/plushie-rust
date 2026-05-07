@@ -194,7 +194,7 @@ impl App {
                 Task::none()
             }
             ImageOp::List { tag } => {
-                self.handle_widget_op("list_images", &serde_json::json!({"target": tag}))
+                self.handle_widget_op("list_images", &serde_json::json!({"tag": tag}))
             }
             ImageOp::Clear => self.handle_widget_op("clear_images", &serde_json::json!({})),
             _ => Task::none(),

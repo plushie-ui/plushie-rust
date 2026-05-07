@@ -99,11 +99,13 @@ pub enum Dispatch {
     /// Typed system-wide query.
     SystemQuery(plushie_core::ops::SystemQuery),
 
-    /// Image registry operation (create, update, delete).
+    /// Image registry operation that targets a specific handle.
     ///
     /// # Known ops
     ///
-    /// `create_from_bytes`, `create_from_rgba`, `delete`
+    /// `create_image`, `update_image`, `delete_image`. Registry-level
+    /// ops without per-image fields (`list`, `clear`) re-emit as
+    /// `WidgetOp` and share the existing handlers.
     Image {
         op: String,
         handle: String,
@@ -587,14 +589,39 @@ impl Core {
             }
             IncomingMessage::ImageOp { op, payload } => {
                 log::debug!("image_op: {op} ({handle})", handle = payload.handle);
-                effects.push(CoreEffect::Dispatch(Dispatch::Image {
-                    op,
-                    handle: payload.handle,
-                    data: payload.data,
-                    pixels: payload.pixels,
-                    width: payload.width,
-                    height: payload.height,
-                }));
+                match op.as_str() {
+                    // `list` and `clear` are registry-level ops with no
+                    // per-image fields. Re-emit through the existing
+                    // widget-op handlers so the shared logic stays in
+                    // one place; the typed wire shape replaces the old
+                    // `widget_op` envelope on the wire.
+                    "list" => {
+                        let payload_value = match payload.tag {
+                            Some(tag) => serde_json::json!({"tag": tag}),
+                            None => Value::Null,
+                        };
+                        effects.push(CoreEffect::Dispatch(Dispatch::WidgetOp {
+                            op: "list_images".to_string(),
+                            payload: payload_value,
+                        }));
+                    }
+                    "clear" => {
+                        effects.push(CoreEffect::Dispatch(Dispatch::WidgetOp {
+                            op: "clear_images".to_string(),
+                            payload: Value::Null,
+                        }));
+                    }
+                    _ => {
+                        effects.push(CoreEffect::Dispatch(Dispatch::Image {
+                            op,
+                            handle: payload.handle,
+                            data: payload.data,
+                            pixels: payload.pixels,
+                            width: payload.width,
+                            height: payload.height,
+                        }));
+                    }
+                }
             }
             IncomingMessage::LoadFont { payload } => {
                 log::debug!("load_font: family={}", payload.family);

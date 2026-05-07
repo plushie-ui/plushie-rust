@@ -184,14 +184,14 @@ impl OutgoingEvent {
     }
 
     /// Helper to build a subscription-tagged event with no widget id.
-    pub fn tagged(family: impl Into<String>, tag: String) -> Self {
+    pub fn tagged(family: impl Into<String>, tag: impl Into<String>) -> Self {
         Self {
             message_type: "event",
             session: String::new(),
             family: family.into(),
             id: String::new(),
             value: None,
-            tag: Some(tag),
+            tag: Some(tag.into()),
             modifiers: None,
             captured: None,
             coalesce: None,
@@ -223,28 +223,28 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `click`.
-    pub fn click(id: String) -> Self {
+    pub fn click(id: impl Into<String>) -> Self {
         Self::bare("click", id)
     }
 
     /// Set or construct `input`.
-    pub fn input(id: String, value: String) -> Self {
+    pub fn input(id: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
-            value: Some(Value::String(value)),
+            value: Some(Value::String(value.into())),
             ..Self::bare("input", id)
         }
     }
 
     /// Set or construct `submit`.
-    pub fn submit(id: String, value: String) -> Self {
+    pub fn submit(id: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
-            value: Some(Value::String(value)),
+            value: Some(Value::String(value.into())),
             ..Self::bare("submit", id)
         }
     }
 
     /// Set or construct `toggle`.
-    pub fn toggle(id: String, checked: bool) -> Self {
+    pub fn toggle(id: impl Into<String>, checked: bool) -> Self {
         Self {
             value: Some(Value::Bool(checked)),
             ..Self::bare("toggle", id)
@@ -252,7 +252,7 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `slide`.
-    pub fn slide(id: String, value: f64) -> Self {
+    pub fn slide(id: impl Into<String>, value: f64) -> Self {
         Self {
             value: Some(serde_json::json!(sanitize_f64(value))),
             coalesce: Some(CoalesceHint::Replace),
@@ -261,7 +261,7 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `slide_release`.
-    pub fn slide_release(id: String, value: f64) -> Self {
+    pub fn slide_release(id: impl Into<String>, value: f64) -> Self {
         Self {
             value: Some(serde_json::json!(sanitize_f64(value))),
             ..Self::bare("slide_release", id)
@@ -269,9 +269,9 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `select`.
-    pub fn select(id: String, value: String) -> Self {
+    pub fn select(id: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
-            value: Some(Value::String(value)),
+            value: Some(Value::String(value.into())),
             ..Self::bare("select", id)
         }
     }
@@ -284,7 +284,7 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     /// Set or construct `modifiers_changed`.
-    pub fn modifiers_changed(tag: String, modifiers: KeyModifiers) -> Self {
+    pub fn modifiers_changed(tag: impl Into<String>, modifiers: KeyModifiers) -> Self {
         Self {
             modifiers: Some(modifiers),
             coalesce: Some(CoalesceHint::Replace),
@@ -297,7 +297,7 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     /// Set or construct `cursor_moved`.
-    pub fn cursor_moved(tag: String, x: f32, y: f32) -> Self {
+    pub fn cursor_moved(tag: impl Into<String>, x: f32, y: f32) -> Self {
         Self {
             value: Some(serde_json::json!({"x": sanitize_f32(x), "y": sanitize_f32(y)})),
             coalesce: Some(CoalesceHint::Replace),
@@ -306,33 +306,33 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `cursor_entered`.
-    pub fn cursor_entered(tag: String) -> Self {
+    pub fn cursor_entered(tag: impl Into<String>) -> Self {
         Self::tagged("cursor_entered", tag)
     }
 
     /// Set or construct `cursor_left`.
-    pub fn cursor_left(tag: String) -> Self {
+    pub fn cursor_left(tag: impl Into<String>) -> Self {
         Self::tagged("cursor_left", tag)
     }
 
     /// Set or construct `button_pressed`.
-    pub fn button_pressed(tag: String, button: String) -> Self {
+    pub fn button_pressed(tag: impl Into<String>, button: impl Into<String>) -> Self {
         Self {
-            value: Some(Value::String(button)),
+            value: Some(Value::String(button.into())),
             ..Self::tagged("button_pressed", tag)
         }
     }
 
     /// Set or construct `button_released`.
-    pub fn button_released(tag: String, button: String) -> Self {
+    pub fn button_released(tag: impl Into<String>, button: impl Into<String>) -> Self {
         Self {
-            value: Some(Value::String(button)),
+            value: Some(Value::String(button.into())),
             ..Self::tagged("button_released", tag)
         }
     }
 
     /// Set or construct `wheel_scrolled`.
-    pub fn wheel_scrolled(tag: String, delta_x: f32, delta_y: f32, unit: &str) -> Self {
+    pub fn wheel_scrolled(tag: impl Into<String>, delta_x: f32, delta_y: f32, unit: &str) -> Self {
         Self {
             value: Some(serde_json::json!({
                 "delta_x": sanitize_f32(delta_x),
@@ -351,7 +351,7 @@ impl OutgoingEvent {
     // Touch events
     // -----------------------------------------------------------------------
 
-    fn touch_event(family: &str, tag: String, finger_id: u64, x: f32, y: f32) -> Self {
+    fn touch_event(family: &str, tag: impl Into<String>, finger_id: u64, x: f32, y: f32) -> Self {
         Self {
             value: Some(serde_json::json!({
                 "id": finger_id,
@@ -363,12 +363,12 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `finger_pressed`.
-    pub fn finger_pressed(tag: String, finger_id: u64, x: f32, y: f32) -> Self {
+    pub fn finger_pressed(tag: impl Into<String>, finger_id: u64, x: f32, y: f32) -> Self {
         Self::touch_event("finger_pressed", tag, finger_id, x, y)
     }
 
     /// Set or construct `finger_moved`.
-    pub fn finger_moved(tag: String, finger_id: u64, x: f32, y: f32) -> Self {
+    pub fn finger_moved(tag: impl Into<String>, finger_id: u64, x: f32, y: f32) -> Self {
         Self {
             coalesce: Some(CoalesceHint::Replace),
             ..Self::touch_event("finger_moved", tag, finger_id, x, y)
@@ -376,12 +376,12 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `finger_lifted`.
-    pub fn finger_lifted(tag: String, finger_id: u64, x: f32, y: f32) -> Self {
+    pub fn finger_lifted(tag: impl Into<String>, finger_id: u64, x: f32, y: f32) -> Self {
         Self::touch_event("finger_lifted", tag, finger_id, x, y)
     }
 
     /// Set or construct `finger_lost`.
-    pub fn finger_lost(tag: String, finger_id: u64, x: f32, y: f32) -> Self {
+    pub fn finger_lost(tag: impl Into<String>, finger_id: u64, x: f32, y: f32) -> Self {
         Self::touch_event("finger_lost", tag, finger_id, x, y)
     }
 
@@ -390,31 +390,35 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     /// Set or construct `ime_opened`.
-    pub fn ime_opened(tag: String) -> Self {
+    pub fn ime_opened(tag: impl Into<String>) -> Self {
         Self::tagged("ime_opened", tag)
     }
 
     /// Set or construct `ime_preedit`.
-    pub fn ime_preedit(tag: String, text: String, cursor: Option<std::ops::Range<usize>>) -> Self {
+    pub fn ime_preedit(
+        tag: impl Into<String>,
+        text: impl Into<String>,
+        cursor: Option<std::ops::Range<usize>>,
+    ) -> Self {
         let cursor_val = cursor
             .map(|r| serde_json::json!({"start": r.start, "end": r.end}))
             .unwrap_or(serde_json::Value::Null);
         Self {
-            value: Some(serde_json::json!({"text": text, "cursor": cursor_val})),
+            value: Some(serde_json::json!({"text": text.into(), "cursor": cursor_val})),
             ..Self::tagged("ime_preedit", tag)
         }
     }
 
     /// Set or construct `ime_commit`.
-    pub fn ime_commit(tag: String, text: String) -> Self {
+    pub fn ime_commit(tag: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
-            value: Some(serde_json::json!({"text": text})),
+            value: Some(serde_json::json!({"text": text.into()})),
             ..Self::tagged("ime_commit", tag)
         }
     }
 
     /// Set or construct `ime_closed`.
-    pub fn ime_closed(tag: String) -> Self {
+    pub fn ime_closed(tag: impl Into<String>) -> Self {
         Self::tagged("ime_closed", tag)
     }
 
@@ -424,8 +428,8 @@ impl OutgoingEvent {
 
     /// Set or construct `window_opened`.
     pub fn window_opened(
-        tag: String,
-        window_id: String,
+        tag: impl Into<String>,
+        window_id: impl Into<String>,
         position: Option<(f32, f32)>,
         width: f32,
         height: f32,
@@ -434,7 +438,7 @@ impl OutgoingEvent {
         // x/y mirror window_moved/window_resized: top-level fields, absent
         // when the platform did not report a position.
         let mut value = serde_json::json!({
-            "window_id": window_id,
+            "window_id": window_id.into(),
             "width": sanitize_f32(width),
             "height": sanitize_f32(height),
             "scale_factor": sanitize_f32(scale_factor),
@@ -450,28 +454,33 @@ impl OutgoingEvent {
     }
 
     /// Window event carrying only a window_id in its value payload.
-    fn window_event(family: &str, tag: String, window_id: String) -> Self {
+    fn window_event(family: &str, tag: impl Into<String>, window_id: impl Into<String>) -> Self {
         Self {
-            value: Some(serde_json::json!({"window_id": window_id})),
+            value: Some(serde_json::json!({"window_id": window_id.into()})),
             ..Self::tagged(family, tag)
         }
     }
 
     /// Set or construct `window_closed`.
-    pub fn window_closed(tag: String, window_id: String) -> Self {
+    pub fn window_closed(tag: impl Into<String>, window_id: impl Into<String>) -> Self {
         Self::window_event("window_closed", tag, window_id)
     }
 
     /// Set or construct `window_close_requested`.
-    pub fn window_close_requested(tag: String, window_id: String) -> Self {
+    pub fn window_close_requested(tag: impl Into<String>, window_id: impl Into<String>) -> Self {
         Self::window_event("window_close_requested", tag, window_id)
     }
 
     /// Set or construct `window_moved`.
-    pub fn window_moved(tag: String, window_id: String, x: f32, y: f32) -> Self {
+    pub fn window_moved(
+        tag: impl Into<String>,
+        window_id: impl Into<String>,
+        x: f32,
+        y: f32,
+    ) -> Self {
         Self {
             value: Some(serde_json::json!({
-                "window_id": window_id,
+                "window_id": window_id.into(),
                 "x": sanitize_f32(x),
                 "y": sanitize_f32(y),
             })),
@@ -480,10 +489,15 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `window_resized`.
-    pub fn window_resized(tag: String, window_id: String, width: f32, height: f32) -> Self {
+    pub fn window_resized(
+        tag: impl Into<String>,
+        window_id: impl Into<String>,
+        width: f32,
+        height: f32,
+    ) -> Self {
         Self {
             value: Some(serde_json::json!({
-                "window_id": window_id,
+                "window_id": window_id.into(),
                 "width": sanitize_f32(width),
                 "height": sanitize_f32(height),
             })),
@@ -492,20 +506,24 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `window_focused`.
-    pub fn window_focused(tag: String, window_id: String) -> Self {
+    pub fn window_focused(tag: impl Into<String>, window_id: impl Into<String>) -> Self {
         Self::window_event("window_focused", tag, window_id)
     }
 
     /// Set or construct `window_unfocused`.
-    pub fn window_unfocused(tag: String, window_id: String) -> Self {
+    pub fn window_unfocused(tag: impl Into<String>, window_id: impl Into<String>) -> Self {
         Self::window_event("window_unfocused", tag, window_id)
     }
 
     /// Set or construct `window_rescaled`.
-    pub fn window_rescaled(tag: String, window_id: String, scale_factor: f32) -> Self {
+    pub fn window_rescaled(
+        tag: impl Into<String>,
+        window_id: impl Into<String>,
+        scale_factor: f32,
+    ) -> Self {
         Self {
             value: Some(serde_json::json!({
-                "window_id": window_id,
+                "window_id": window_id.into(),
                 "scale_factor": sanitize_f32(scale_factor),
             })),
             ..Self::tagged("window_rescaled", tag)
@@ -513,29 +531,37 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `file_hovered`.
-    pub fn file_hovered(tag: String, window_id: String, path: String) -> Self {
+    pub fn file_hovered(
+        tag: impl Into<String>,
+        window_id: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
         Self {
             value: Some(serde_json::json!({
-                "window_id": window_id,
-                "path": path,
+                "window_id": window_id.into(),
+                "path": path.into(),
             })),
             ..Self::tagged("file_hovered", tag)
         }
     }
 
     /// Set or construct `file_dropped`.
-    pub fn file_dropped(tag: String, window_id: String, path: String) -> Self {
+    pub fn file_dropped(
+        tag: impl Into<String>,
+        window_id: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
         Self {
             value: Some(serde_json::json!({
-                "window_id": window_id,
-                "path": path,
+                "window_id": window_id.into(),
+                "path": path.into(),
             })),
             ..Self::tagged("file_dropped", tag)
         }
     }
 
     /// Set or construct `files_hovered_left`.
-    pub fn files_hovered_left(tag: String, window_id: String) -> Self {
+    pub fn files_hovered_left(tag: impl Into<String>, window_id: impl Into<String>) -> Self {
         Self::window_event("files_hovered_left", tag, window_id)
     }
 
@@ -544,7 +570,7 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     /// Set or construct `animation_frame`.
-    pub fn animation_frame(tag: String, timestamp_millis: u64) -> Self {
+    pub fn animation_frame(tag: impl Into<String>, timestamp_millis: u64) -> Self {
         Self {
             value: Some(serde_json::json!({"timestamp": timestamp_millis})),
             coalesce: Some(CoalesceHint::Replace),
@@ -553,9 +579,9 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `theme_changed`.
-    pub fn theme_changed(tag: String, mode: String) -> Self {
+    pub fn theme_changed(tag: impl Into<String>, mode: impl Into<String>) -> Self {
         Self {
-            value: Some(Value::String(mode)),
+            value: Some(Value::String(mode.into())),
             coalesce: Some(CoalesceHint::Replace),
             ..Self::tagged("theme_changed", tag)
         }
@@ -567,7 +593,7 @@ impl OutgoingEvent {
     /// consistency with other canvas events. The `value` payload carries
     /// the full diagnostic detail including the optional `element_id`.
     pub fn diagnostic(
-        canvas_id: String,
+        canvas_id: impl Into<String>,
         element_id: Option<String>,
         level: &str,
         code: &str,
@@ -589,9 +615,9 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     /// Set or construct `pane_resized`.
-    pub fn pane_resized(id: String, split: String, ratio: f32) -> Self {
+    pub fn pane_resized(id: impl Into<String>, split: impl Into<String>, ratio: f32) -> Self {
         Self {
-            value: Some(serde_json::json!({"split": split, "ratio": sanitize_f32(ratio)})),
+            value: Some(serde_json::json!({"split": split.into(), "ratio": sanitize_f32(ratio)})),
             coalesce: Some(CoalesceHint::Replace),
             ..Self::bare("pane_resized", id)
         }
@@ -599,14 +625,14 @@ impl OutgoingEvent {
 
     /// Set or construct `pane_dragged`.
     pub fn pane_dragged(
-        id: String,
+        id: impl Into<String>,
         kind: &str,
-        pane: String,
+        pane: impl Into<String>,
         target: Option<String>,
         region: Option<&str>,
         edge: Option<&str>,
     ) -> Self {
-        let mut val = serde_json::json!({"action": kind, "pane": pane});
+        let mut val = serde_json::json!({"action": kind, "pane": pane.into()});
         if let Some(t) = target {
             val["target"] = serde_json::json!(t);
         }
@@ -623,17 +649,17 @@ impl OutgoingEvent {
     }
 
     /// Set or construct `pane_clicked`.
-    pub fn pane_clicked(id: String, pane: String) -> Self {
+    pub fn pane_clicked(id: impl Into<String>, pane: impl Into<String>) -> Self {
         Self {
-            value: Some(serde_json::json!({"pane": pane})),
+            value: Some(serde_json::json!({"pane": pane.into()})),
             ..Self::bare("pane_clicked", id)
         }
     }
 
     /// Set or construct `pane_focus_cycle`.
-    pub fn pane_focus_cycle(id: String, pane: String) -> Self {
+    pub fn pane_focus_cycle(id: impl Into<String>, pane: impl Into<String>) -> Self {
         Self {
-            value: Some(serde_json::json!({"pane": pane})),
+            value: Some(serde_json::json!({"pane": pane.into()})),
             ..Self::bare("pane_focus_cycle", id)
         }
     }
@@ -643,9 +669,9 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     /// Set or construct `paste`.
-    pub fn paste(id: String, text: String) -> Self {
+    pub fn paste(id: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
-            value: Some(Value::String(text)),
+            value: Some(Value::String(text.into())),
             ..Self::bare("paste", id)
         }
     }
@@ -659,12 +685,12 @@ impl OutgoingEvent {
     /// Produces the same event shape as real key_press events: `key` in
     /// `value.key`, modifiers in the top-level `modifiers` field. Missing
     /// modifier fields default to `false`.
-    pub fn scripting_key_press(key: String, modifiers_json: Value) -> Self {
+    pub fn scripting_key_press(key: impl Into<String>, modifiers_json: Value) -> Self {
         let mods: KeyModifiers =
             serde_json::from_value(modifiers_json).unwrap_or(KeyModifiers::default());
         Self {
             modifiers: Some(mods),
-            value: Some(serde_json::json!({"key": key})),
+            value: Some(serde_json::json!({"key": key.into()})),
             ..Self::bare("key_press", String::new())
         }
     }
@@ -674,12 +700,12 @@ impl OutgoingEvent {
     /// Produces the same event shape as real key_release events: `key` in
     /// `value.key`, modifiers in the top-level `modifiers` field. Missing
     /// modifier fields default to `false`.
-    pub fn scripting_key_release(key: String, modifiers_json: Value) -> Self {
+    pub fn scripting_key_release(key: impl Into<String>, modifiers_json: Value) -> Self {
         let mods: KeyModifiers =
             serde_json::from_value(modifiers_json).unwrap_or(KeyModifiers::default());
         Self {
             modifiers: Some(mods),
-            value: Some(serde_json::json!({"key": key})),
+            value: Some(serde_json::json!({"key": key.into()})),
             ..Self::bare("key_release", String::new())
         }
     }
@@ -719,9 +745,9 @@ impl OutgoingEvent {
     // -----------------------------------------------------------------------
 
     /// Set or construct `option_hovered`.
-    pub fn option_hovered(id: String, value: String) -> Self {
+    pub fn option_hovered(id: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
-            value: Some(Value::String(value)),
+            value: Some(Value::String(value.into())),
             ..Self::bare("option_hovered", id)
         }
     }
@@ -733,7 +759,7 @@ impl OutgoingEvent {
     #[allow(clippy::too_many_arguments)]
     /// Set or construct `scroll`.
     pub fn scroll(
-        id: String,
+        id: impl Into<String>,
         abs_x: f32,
         abs_y: f32,
         rel_x: f32,
@@ -780,7 +806,7 @@ impl OutgoingEvent {
     /// `pointer_type`: `"mouse"`, `"touch"`, or `"pen"`.
     /// `finger`: finger ID when `pointer_type` is `"touch"`, `None` otherwise.
     pub fn pointer_press(
-        id: String,
+        id: impl Into<String>,
         x: f32,
         y: f32,
         button: &str,
@@ -806,7 +832,7 @@ impl OutgoingEvent {
 
     /// Unified pointer release event.
     pub fn pointer_release(
-        id: String,
+        id: impl Into<String>,
         x: f32,
         y: f32,
         button: &str,
@@ -832,7 +858,7 @@ impl OutgoingEvent {
 
     /// Unified pointer move event (coalesceable).
     pub fn pointer_move(
-        id: String,
+        id: impl Into<String>,
         x: f32,
         y: f32,
         pointer_type: &str,
@@ -857,7 +883,7 @@ impl OutgoingEvent {
 
     /// Unified pointer scroll event (coalesceable, accumulates deltas).
     pub fn pointer_scroll(
-        id: String,
+        id: impl Into<String>,
         x: f32,
         y: f32,
         delta_x: f32,
@@ -883,18 +909,18 @@ impl OutgoingEvent {
     }
 
     /// Unified pointer enter event (no data payload).
-    pub fn pointer_enter(id: String) -> Self {
+    pub fn pointer_enter(id: impl Into<String>) -> Self {
         Self::bare("enter", id)
     }
 
     /// Unified pointer exit event (no data payload).
-    pub fn pointer_exit(id: String) -> Self {
+    pub fn pointer_exit(id: impl Into<String>) -> Self {
         Self::bare("exit", id)
     }
 
     /// Unified pointer double-click event.
     pub fn pointer_double_click(
-        id: String,
+        id: impl Into<String>,
         x: f32,
         y: f32,
         pointer_type: &str,
@@ -912,7 +938,7 @@ impl OutgoingEvent {
     }
 
     /// Unified resize event (for sensor widgets).
-    pub fn resize(id: String, width: f32, height: f32) -> Self {
+    pub fn resize(id: impl Into<String>, width: f32, height: f32) -> Self {
         Self {
             value: Some(serde_json::json!({
                 "width": sanitize_f32(width),
@@ -1460,7 +1486,7 @@ mod tests {
 
     #[test]
     fn animation_frame_serializes_timestamp_object() {
-        let event = OutgoingEvent::animation_frame("anim".to_string(), 16_000).with_session("s1");
+        let event = OutgoingEvent::animation_frame("anim", 16_000).with_session("s1");
 
         assert_eq!(
             serde_json::to_value(event).unwrap(),
@@ -1512,7 +1538,7 @@ mod tests {
 
     #[test]
     fn cursor_moved_serializes_with_position_value_and_replace_hint() {
-        let event = OutgoingEvent::cursor_moved("mouse".into(), 10.0, 20.0).with_session("s1");
+        let event = OutgoingEvent::cursor_moved("mouse", 10.0, 20.0).with_session("s1");
         assert!(matches!(event.coalesce_hint(), Some(CoalesceHint::Replace)));
 
         assert_eq!(
@@ -1530,8 +1556,8 @@ mod tests {
 
     #[test]
     fn cursor_entered_left_serialize_without_value() {
-        let entered = OutgoingEvent::cursor_entered("mouse".into()).with_session("s1");
-        let left = OutgoingEvent::cursor_left("mouse".into()).with_session("s1");
+        let entered = OutgoingEvent::cursor_entered("mouse").with_session("s1");
+        let left = OutgoingEvent::cursor_left("mouse").with_session("s1");
         for (event, family) in [(entered, "cursor_entered"), (left, "cursor_left")] {
             let val = serde_json::to_value(event).unwrap();
             assert_eq!(val["family"], family);
@@ -1543,12 +1569,12 @@ mod tests {
 
     #[test]
     fn button_pressed_released_carry_button_string() {
-        let pressed = OutgoingEvent::button_pressed("mouse".into(), "left".into());
+        let pressed = OutgoingEvent::button_pressed("mouse", "left");
         assert_eq!(
             serde_json::to_value(pressed).unwrap()["value"],
             json!("left"),
         );
-        let released = OutgoingEvent::button_released("mouse".into(), "right".into());
+        let released = OutgoingEvent::button_released("mouse", "right");
         assert_eq!(
             serde_json::to_value(released).unwrap()["family"],
             "button_released",
@@ -1557,7 +1583,7 @@ mod tests {
 
     #[test]
     fn wheel_scrolled_serializes_with_accumulate_hint() {
-        let event = OutgoingEvent::wheel_scrolled("mouse".into(), 1.0, 2.0, "pixel");
+        let event = OutgoingEvent::wheel_scrolled("mouse", 1.0, 2.0, "pixel");
         match event.coalesce_hint() {
             Some(CoalesceHint::Accumulate(fields)) => {
                 assert_eq!(fields, &vec!["delta_x".to_string(), "delta_y".to_string()]);
@@ -1575,7 +1601,7 @@ mod tests {
     #[test]
     fn modifiers_changed_carries_modifiers_with_replace_hint() {
         let event = OutgoingEvent::modifiers_changed(
-            "kbd".into(),
+            "kbd",
             KeyModifiers {
                 shift: true,
                 ctrl: true,
@@ -1594,7 +1620,7 @@ mod tests {
 
     #[test]
     fn theme_changed_serializes_with_string_mode_and_replace_hint() {
-        let event = OutgoingEvent::theme_changed("theme".into(), "dark".into());
+        let event = OutgoingEvent::theme_changed("theme", "dark");
         assert!(matches!(event.coalesce_hint(), Some(CoalesceHint::Replace)));
         let val = serde_json::to_value(event).unwrap();
         assert_eq!(val["family"], "theme_changed");
@@ -1604,24 +1630,21 @@ mod tests {
     #[test]
     fn window_event_constructors_share_window_event_shape() {
         for (event, family) in [
+            (OutgoingEvent::window_closed("win", "main"), "window_closed"),
             (
-                OutgoingEvent::window_closed("win".into(), "main".into()),
-                "window_closed",
-            ),
-            (
-                OutgoingEvent::window_close_requested("win".into(), "main".into()),
+                OutgoingEvent::window_close_requested("win", "main"),
                 "window_close_requested",
             ),
             (
-                OutgoingEvent::window_focused("win".into(), "main".into()),
+                OutgoingEvent::window_focused("win", "main"),
                 "window_focused",
             ),
             (
-                OutgoingEvent::window_unfocused("win".into(), "main".into()),
+                OutgoingEvent::window_unfocused("win", "main"),
                 "window_unfocused",
             ),
             (
-                OutgoingEvent::files_hovered_left("win".into(), "main".into()),
+                OutgoingEvent::files_hovered_left("win", "main"),
                 "files_hovered_left",
             ),
         ] {
@@ -1634,14 +1657,8 @@ mod tests {
 
     #[test]
     fn window_opened_includes_position_when_provided() {
-        let with_pos = OutgoingEvent::window_opened(
-            "win".into(),
-            "main".into(),
-            Some((50.0, 75.0)),
-            800.0,
-            600.0,
-            2.0,
-        );
+        let with_pos =
+            OutgoingEvent::window_opened("win", "main", Some((50.0, 75.0)), 800.0, 600.0, 2.0);
         let val = serde_json::to_value(with_pos).unwrap();
         assert_eq!(val["family"], "window_opened");
         assert_eq!(val["value"]["window_id"], "main");
@@ -1656,8 +1673,7 @@ mod tests {
     fn window_opened_omits_position_when_absent() {
         // Top-level x/y are absent rather than zero when the platform
         // didn't report a position; mirrors the documented contract.
-        let without_pos =
-            OutgoingEvent::window_opened("win".into(), "main".into(), None, 800.0, 600.0, 1.0);
+        let without_pos = OutgoingEvent::window_opened("win", "main", None, 800.0, 600.0, 1.0);
         let val = serde_json::to_value(without_pos).unwrap();
         assert!(val["value"].get("x").is_none());
         assert!(val["value"].get("y").is_none());
@@ -1671,22 +1687,22 @@ mod tests {
     fn finger_event_constructors_share_payload_shape() {
         for (event, family, expects_replace) in [
             (
-                OutgoingEvent::finger_pressed("touch".into(), 7, 1.0, 2.0),
+                OutgoingEvent::finger_pressed("touch", 7, 1.0, 2.0),
                 "finger_pressed",
                 false,
             ),
             (
-                OutgoingEvent::finger_moved("touch".into(), 7, 1.0, 2.0),
+                OutgoingEvent::finger_moved("touch", 7, 1.0, 2.0),
                 "finger_moved",
                 true,
             ),
             (
-                OutgoingEvent::finger_lifted("touch".into(), 7, 1.0, 2.0),
+                OutgoingEvent::finger_lifted("touch", 7, 1.0, 2.0),
                 "finger_lifted",
                 false,
             ),
             (
-                OutgoingEvent::finger_lost("touch".into(), 7, 1.0, 2.0),
+                OutgoingEvent::finger_lost("touch", 7, 1.0, 2.0),
                 "finger_lost",
                 false,
             ),
@@ -1719,7 +1735,7 @@ mod tests {
     #[test]
     fn pointer_scroll_carries_accumulate_hint_for_deltas() {
         let event = OutgoingEvent::pointer_scroll(
-            "scroller".into(),
+            "scroller",
             5.0,
             10.0,
             1.5,
@@ -1741,13 +1757,13 @@ mod tests {
     fn coalesce_hint_persists_after_with_session() {
         // `with_session` rebuilds the struct via the builder pattern;
         // verify the hint isn't dropped on the way through.
-        let event = OutgoingEvent::cursor_moved("mouse".into(), 0.0, 0.0).with_session("s1");
+        let event = OutgoingEvent::cursor_moved("mouse", 0.0, 0.0).with_session("s1");
         assert!(matches!(event.coalesce_hint(), Some(CoalesceHint::Replace)));
     }
 
     #[test]
     fn take_coalesce_consumes_hint_only_once() {
-        let mut event = OutgoingEvent::cursor_moved("mouse".into(), 0.0, 0.0);
+        let mut event = OutgoingEvent::cursor_moved("mouse", 0.0, 0.0);
         assert!(event.take_coalesce().is_some());
         // Second take returns None; the hint is already consumed by
         // the renderer's coalesce pipeline.
@@ -1759,7 +1775,7 @@ mod tests {
         // The hint is renderer-internal metadata; it must not leak
         // onto the wire. Pin the contract explicitly here so a future
         // serde tweak can't quietly start exposing it.
-        let event = OutgoingEvent::cursor_moved("mouse".into(), 0.0, 0.0);
+        let event = OutgoingEvent::cursor_moved("mouse", 0.0, 0.0);
         let val = serde_json::to_value(event).unwrap();
         assert!(val.get("coalesce").is_none());
         let object = val.as_object().unwrap();

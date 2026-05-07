@@ -909,26 +909,26 @@ mod tests {
     #[test]
     fn constructors_set_replace_hint() {
         let events = vec![
-            OutgoingEvent::slide("s1".into(), 0.5),
-            OutgoingEvent::cursor_moved("t".into(), 1.0, 2.0),
+            OutgoingEvent::slide("s1", 0.5),
+            OutgoingEvent::cursor_moved("t", 1.0, 2.0),
             OutgoingEvent::pointer_move(
-                "m1".into(),
+                "m1",
                 1.0,
                 2.0,
                 "mouse",
                 None,
                 plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
-            OutgoingEvent::resize("s1".into(), 100.0, 200.0),
-            OutgoingEvent::pane_resized("p1".into(), "s0".into(), 0.5),
-            OutgoingEvent::animation_frame("t".into(), 16000),
-            OutgoingEvent::theme_changed("t".into(), "dark".into()),
-            OutgoingEvent::finger_moved("t".into(), 1, 10.0, 20.0),
+            OutgoingEvent::resize("s1", 100.0, 200.0),
+            OutgoingEvent::pane_resized("p1", "s0", 0.5),
+            OutgoingEvent::animation_frame("t", 16000),
+            OutgoingEvent::theme_changed("t", "dark"),
+            OutgoingEvent::finger_moved("t", 1, 10.0, 20.0),
             OutgoingEvent::modifiers_changed(
-                "t".into(),
+                "t",
                 plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
-            OutgoingEvent::scroll("s1".into(), 0.0, 0.0, 0.0, 0.0, 100.0, 200.0, 300.0, 400.0),
+            OutgoingEvent::scroll("s1", 0.0, 0.0, 0.0, 0.0, 100.0, 200.0, 300.0, 400.0),
         ];
         for event in events {
             assert!(
@@ -942,9 +942,9 @@ mod tests {
     #[test]
     fn constructors_set_accumulate_hint() {
         let events = vec![
-            OutgoingEvent::wheel_scrolled("t".into(), 0.0, -3.0, "line"),
+            OutgoingEvent::wheel_scrolled("t", 0.0, -3.0, "line"),
             OutgoingEvent::pointer_scroll(
-                "m1".into(),
+                "m1",
                 0.0,
                 0.0,
                 0.0,
@@ -965,15 +965,15 @@ mod tests {
     #[test]
     fn constructors_set_no_hint_for_discrete() {
         let events = vec![
-            OutgoingEvent::click("b1".into()),
-            OutgoingEvent::input("i1".into(), "text".into()),
-            OutgoingEvent::submit("f1".into(), "data".into()),
-            OutgoingEvent::toggle("c1".into(), true),
-            OutgoingEvent::select("p1".into(), "opt".into()),
-            OutgoingEvent::paste("i1".into(), "text".into()),
-            OutgoingEvent::slide_release("s1".into(), 0.5),
+            OutgoingEvent::click("b1"),
+            OutgoingEvent::input("i1", "text"),
+            OutgoingEvent::submit("f1", "data"),
+            OutgoingEvent::toggle("c1", true),
+            OutgoingEvent::select("p1", "opt"),
+            OutgoingEvent::paste("i1", "text"),
+            OutgoingEvent::slide_release("s1", 0.5),
             OutgoingEvent::pointer_press(
-                "c1".into(),
+                "c1",
                 1.0,
                 2.0,
                 "Left",
@@ -982,7 +982,7 @@ mod tests {
                 plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
             OutgoingEvent::pointer_release(
-                "c1".into(),
+                "c1",
                 1.0,
                 2.0,
                 "Left",
@@ -990,16 +990,16 @@ mod tests {
                 None,
                 plushie_widget_sdk::protocol::KeyModifiers::default(),
             ),
-            OutgoingEvent::option_hovered("cb1".into(), "opt".into()),
-            OutgoingEvent::cursor_entered("t".into()),
-            OutgoingEvent::cursor_left("t".into()),
-            OutgoingEvent::button_pressed("t".into(), "Left".into()),
-            OutgoingEvent::button_released("t".into(), "Left".into()),
-            OutgoingEvent::pointer_enter("m1".into()),
-            OutgoingEvent::pointer_exit("m1".into()),
-            OutgoingEvent::pane_clicked("pg1".into(), "pane_a".into()),
-            OutgoingEvent::pane_focus_cycle("pg1".into(), "pane_a".into()),
-            OutgoingEvent::pane_dragged("pg1".into(), "picked", "pane_a".into(), None, None, None),
+            OutgoingEvent::option_hovered("cb1", "opt"),
+            OutgoingEvent::cursor_entered("t"),
+            OutgoingEvent::cursor_left("t"),
+            OutgoingEvent::button_pressed("t", "Left"),
+            OutgoingEvent::button_released("t", "Left"),
+            OutgoingEvent::pointer_enter("m1"),
+            OutgoingEvent::pointer_exit("m1"),
+            OutgoingEvent::pane_clicked("pg1", "pane_a"),
+            OutgoingEvent::pane_focus_cycle("pg1", "pane_a"),
+            OutgoingEvent::pane_dragged("pg1", "picked", "pane_a", None, None, None),
         ];
         for event in events {
             assert!(

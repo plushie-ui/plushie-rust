@@ -5,6 +5,7 @@ members = [
     "crates/plushie-core",
     "crates/plushie-core-macros",
     "crates/plushie-widget-sdk",
+    "crates/plushie-renderer-engine",
     "crates/plushie-renderer-lib",
     "crates/plushie-renderer",
     "crates/plushie-renderer-wasm",
@@ -29,6 +30,7 @@ categories = ["gui", "rendering"]
 plushie-core = { version = "0.6.1", path = "crates/plushie-core" }
 plushie-core-macros = { version = "0.6.1", path = "crates/plushie-core-macros" }
 plushie-widget-sdk = { version = "0.6.1", path = "crates/plushie-widget-sdk" }
+plushie-renderer-engine = { version = "0.6.1", path = "crates/plushie-renderer-engine" }
 plushie-renderer-lib = { version = "0.6.1", path = "crates/plushie-renderer-lib" }
 
 # Shared external deps. Per-crate manifests opt in with `.workspace = true`.

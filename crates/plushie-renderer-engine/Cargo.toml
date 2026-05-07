@@ -1,0 +1,43 @@
+[package]
+name = "plushie-renderer-engine"
+description = "Renderer-internal state engine and wire codec for Plushie"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+publish = false
+
+[lib]
+name = "plushie_renderer_engine"
+path = "src/lib.rs"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+unreachable_patterns = "deny"
+
+# Internal crate: documentation of error/panic cases is tracked in-code
+# where relevant, not on every fallible helper. The public-surface
+# crates (plushie, plushie-widget-sdk, plushie-core) still enforce the
+# workspace-level warn.
+[lints.clippy]
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+[dependencies]
+plushie-core = { workspace = true }
+plushie-widget-sdk = { workspace = true }
+iced = { workspace = true, features = ["advanced"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rmp-serde = { workspace = true }
+rmpv = { workspace = true }
+log = { workspace = true }

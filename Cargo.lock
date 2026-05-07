@@ -3236,6 +3236,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "plushie-renderer-engine"
+version = "0.6.1"
+dependencies = [
+ "log",
+ "plushie-core",
+ "plushie-iced",
+ "plushie-widget-sdk",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "plushie-renderer-lib"
 version = "0.6.1"
 dependencies = [

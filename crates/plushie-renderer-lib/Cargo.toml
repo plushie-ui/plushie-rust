@@ -47,6 +47,12 @@ parking_lot = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 iced = { workspace = true, features = ["thread-pool", "tiny-skia", "x11", "wayland", "sysinfo", "linux-theme-detection"] }
 tokio = { workspace = true, features = ["time"] }
+# Native effect implementations (file dialogs, clipboard, notifications)
+# live here so the renderer binary and the in-process direct mode of the
+# `plushie` SDK share one source of truth.
+rfd = { workspace = true }
+arboard = { workspace = true }
+notify-rust = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasmtimer = "0.4"

@@ -11,6 +11,12 @@ use std::pin::Pin;
 use plushie_core::ops::EffectRequest;
 use plushie_widget_sdk::protocol::EffectResponse;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod native;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use native::NativeEffectHandler;
+
 /// Handler for platform-specific side effects.
 ///
 /// Native implementations use rfd (file dialogs), arboard (clipboard),

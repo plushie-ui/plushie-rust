@@ -46,6 +46,11 @@ pub use app::validate_scale_factor;
 /// Trait for platform-specific side effects. See [`effects::EffectHandler`].
 pub use effects::EffectHandler;
 
+/// Native (rfd + arboard + notify-rust) effect handler. See
+/// [`effects::native::NativeEffectHandler`].
+#[cfg(not(target_arch = "wasm32"))]
+pub use effects::NativeEffectHandler;
+
 /// Pluggable output for renderer events. See [`emitters::EventSink`].
 pub use emitters::EventSink;
 /// An EventSink that encodes via a codec and writes to a writer.

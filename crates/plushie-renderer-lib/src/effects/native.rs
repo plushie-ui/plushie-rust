@@ -617,6 +617,177 @@ mod tests {
         }
     }
 
+    /// Convergence: the trait impl path (`NativeEffectHandler::handle_sync`,
+    /// used by the SDK in direct mode and by the renderer daemon for sync
+    /// effects) and the free-function path (`handle_effect`, used by the
+    /// renderer's headless dispatcher) must produce identical responses
+    /// for the same input.
+    ///
+    /// Before consolidation, the SDK's `DirectEffectHandler` and the
+    /// renderer's `NativeEffectHandler` each carried their own copy of
+    /// these handlers and quietly drifted (the clipboard
+    /// `ContentNotAvailable` handling diverged for a while). With one
+    /// shared implementation, the two entry points can only diverge if
+    /// the trait impl wraps the free function differently. This test
+    /// pins the wrapper down.
+    #[test]
+    fn trait_impl_matches_free_function_for_all_sync_kinds() {
+        use plushie_core::ops::{EffectRequest, NotificationOpts};
+
+        // One typed EffectRequest per sync kind. Async (file dialog)
+        // requests have a separate convergence path covered below.
+        let sync_requests: Vec<(&str, EffectRequest)> = vec![
+            ("clipboard_read", EffectRequest::ClipboardRead),
+            (
+                "clipboard_write",
+                EffectRequest::ClipboardWrite("hello".to_string()),
+            ),
+            ("clipboard_read_html", EffectRequest::ClipboardReadHtml),
+            (
+                "clipboard_write_html",
+                EffectRequest::ClipboardWriteHtml {
+                    html: "<b>hi</b>".to_string(),
+                    alt_text: Some("hi".to_string()),
+                },
+            ),
+            ("clipboard_clear", EffectRequest::ClipboardClear),
+            (
+                "clipboard_read_primary",
+                EffectRequest::ClipboardReadPrimary,
+            ),
+            (
+                "clipboard_write_primary",
+                EffectRequest::ClipboardWritePrimary("primary".to_string()),
+            ),
+            (
+                "notification",
+                EffectRequest::Notification {
+                    title: "Test".to_string(),
+                    body: "body".to_string(),
+                    opts: NotificationOpts::new()
+                        .icon("dialog-information")
+                        .timeout(std::time::Duration::from_millis(3000))
+                        .sound("message-new-instant"),
+                },
+            ),
+        ];
+
+        let handler = NativeEffectHandler;
+        for (kind, request) in &sync_requests {
+            let id = format!("converge-{kind}");
+
+            // Path A: SDK / renderer-daemon path through the trait impl.
+            let trait_resp = handler
+                .handle_sync(&id, request)
+                .expect("sync request must produce a response");
+
+            // Path B: Renderer headless path through the free function.
+            // Synthesise the same wire (kind, payload) the trait impl
+            // produces internally so the two paths see identical input.
+            let (wire_kind, payload) = plushie_core::ops::effect_request_to_wire(request);
+            assert_eq!(
+                wire_kind, *kind,
+                "wire kind mismatch for {kind} (typed -> wire)"
+            );
+            let fn_resp = handle_effect(id.clone(), wire_kind, &payload);
+
+            // Identity envelope: id, message_type, and status must agree.
+            assert_eq!(trait_resp.id, fn_resp.id, "id mismatch for {kind}");
+            assert_eq!(
+                trait_resp.message_type, fn_resp.message_type,
+                "message_type mismatch for {kind}"
+            );
+            assert_eq!(
+                trait_resp.status, fn_resp.status,
+                "status mismatch for {kind}"
+            );
+
+            // Shape of the optional payload fields must agree (presence
+            // and structure). We don't assert byte-equal values because
+            // the OS clipboard / notification daemon is shared static
+            // state and the second call may observe a transient change
+            // (e.g. a cursor in the test text). Status agreement plus
+            // the same field being populated is the guarantee.
+            assert_eq!(
+                trait_resp.result.is_some(),
+                fn_resp.result.is_some(),
+                "result presence mismatch for {kind}"
+            );
+            assert_eq!(
+                trait_resp.error.is_some(),
+                fn_resp.error.is_some(),
+                "error presence mismatch for {kind}"
+            );
+        }
+    }
+
+    /// Convergence for async (file dialog) effects. Async paths route
+    /// through `NativeEffectHandler::is_async` to decide whether to
+    /// dispatch via tokio. We don't actually await the dialog futures
+    /// (they would spin up a real file picker), but we do confirm that
+    /// every async effect kind is recognised by both `is_async_effect`
+    /// (the headless path) and `NativeEffectHandler::is_async` (the
+    /// daemon path). A divergence here would route effects down the
+    /// wrong path silently, the same class of bug the consolidation is
+    /// meant to prevent.
+    #[test]
+    fn async_routing_agrees_between_trait_impl_and_free_function() {
+        use plushie_core::ops::EffectRequest;
+
+        let async_requests: Vec<(&str, EffectRequest)> = vec![
+            ("file_open", EffectRequest::FileOpen(Default::default())),
+            (
+                "file_open_multiple",
+                EffectRequest::FileOpenMultiple(Default::default()),
+            ),
+            ("file_save", EffectRequest::FileSave(Default::default())),
+            (
+                "directory_select",
+                EffectRequest::DirectorySelect(Default::default()),
+            ),
+            (
+                "directory_select_multiple",
+                EffectRequest::DirectorySelectMultiple(Default::default()),
+            ),
+        ];
+
+        let handler = NativeEffectHandler;
+        for (wire_kind, request) in &async_requests {
+            assert!(
+                handler.is_async(request),
+                "trait impl should route {wire_kind} async"
+            );
+            assert!(
+                is_async_effect(wire_kind),
+                "free function should route {wire_kind} async"
+            );
+        }
+
+        // Sync requests must NOT be routed async by either side.
+        let sync_examples: Vec<(&str, EffectRequest)> = vec![
+            ("clipboard_read", EffectRequest::ClipboardRead),
+            ("clipboard_clear", EffectRequest::ClipboardClear),
+            (
+                "notification",
+                EffectRequest::Notification {
+                    title: String::new(),
+                    body: String::new(),
+                    opts: plushie_core::ops::NotificationOpts::default(),
+                },
+            ),
+        ];
+        for (wire_kind, request) in &sync_examples {
+            assert!(
+                !handler.is_async(request),
+                "trait impl should route {wire_kind} sync"
+            );
+            assert!(
+                !is_async_effect(wire_kind),
+                "free function should route {wire_kind} sync"
+            );
+        }
+    }
+
     /// Verify that empty payloads don't cause panics; handlers should
     /// defensively unwrap_or on missing fields.
     #[test]

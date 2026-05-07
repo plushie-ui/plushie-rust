@@ -723,6 +723,14 @@ fn handle_message<R: PlushieRenderer>(
                         });
                         s.writer.emit(&resp)?;
                     }
+                    CoreEffect::Dispatch(Dispatch::WidgetOp { ref op, .. })
+                        if op == "clear_images" =>
+                    {
+                        // Mirror windowed-mode `widget_ops::clear_images` so a
+                        // follow-up list_images in the same mock or headless
+                        // session reflects the cleared state.
+                        s.images = ImageRegistry::new();
+                    }
                     CoreEffect::Dispatch(Dispatch::WidgetOp { .. }) => {}
                     CoreEffect::Dispatch(Dispatch::Window(_))
                     | CoreEffect::Dispatch(Dispatch::WindowQuery(_))

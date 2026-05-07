@@ -31,7 +31,7 @@ struct DefaultFontShape {
 /// `default_font` from the canonical Settings shape and returns a
 /// configured `iced::Settings`. Missing or malformed fields fall
 /// back to iced defaults (antialiasing off, vsync on); shape errors
-/// are surfaced separately by `plushie_widget_sdk::engine`'s
+/// are surfaced separately by `plushie_renderer_engine::Core`'s
 /// `deny_unknown_fields` pass.
 ///
 /// Called early in the startup flow, before the iced daemon launches.

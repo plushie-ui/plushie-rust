@@ -263,7 +263,7 @@ impl App {
             return Task::none();
         };
         self.emit_subscription_for_window(SUB_IME, Some(window_id), captured, |tag| {
-            OutgoingEvent::ime_preedit(tag, text.clone(), cursor.clone())
+            OutgoingEvent::ime_preedit(tag, text.as_str(), cursor.clone())
         })
     }
 
@@ -277,7 +277,7 @@ impl App {
             return Task::none();
         };
         self.emit_subscription_for_window(SUB_IME, Some(window_id), captured, |tag| {
-            OutgoingEvent::ime_commit(tag, text.clone())
+            OutgoingEvent::ime_commit(tag, text.as_str())
         })
     }
 
@@ -293,23 +293,28 @@ impl App {
     /// Emit a window event to all matching entries across the catch-all
     /// window subscription and the event-specific subscription (if registered),
     /// filtered by window_id scope.
+    ///
+    /// The closure receives `(tag, window_id)` as `&str` slices; the
+    /// event constructor allocates the owned strings internally via
+    /// `impl Into<String>`. Earlier versions cloned both at the call
+    /// site before passing them in.
     fn emit_window_event(
         &self,
         specific_key: Option<&str>,
-        event_fn: impl Fn(String, String) -> OutgoingEvent,
+        event_fn: impl Fn(&str, &str) -> OutgoingEvent,
         window_id: String,
     ) -> io::Result<()> {
         let wid = Some(window_id.as_str());
         // Emit for catch-all SUB_WINDOW_EVENT entries
         for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
             self.emitter
-                .emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
+                .emit_event(event_fn(entry.tag.as_str(), window_id.as_str()))?;
         }
         // Emit for specific key entries (e.g. SUB_WINDOW_MOVE)
         if let Some(key) = specific_key {
             for entry in self.core.matching_entries(key, wid) {
                 self.emitter
-                    .emit_event(event_fn(entry.tag.clone(), window_id.clone()))?;
+                    .emit_event(event_fn(entry.tag.as_str(), window_id.as_str()))?;
             }
         }
         Ok(())
@@ -331,8 +336,8 @@ impl App {
                     let pos = position.map(|p| (p.x, p.y));
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
                         self.emitter.emit_event(OutgoingEvent::window_opened(
-                            entry.tag.clone(),
-                            window_id.clone(),
+                            entry.tag.as_str(),
+                            window_id.as_str(),
                             pos,
                             size.width,
                             size.height,
@@ -341,8 +346,8 @@ impl App {
                     }
                     for entry in self.core.matching_entries(SUB_WINDOW_OPEN, wid) {
                         self.emitter.emit_event(OutgoingEvent::window_opened(
-                            entry.tag.clone(),
-                            window_id.clone(),
+                            entry.tag.as_str(),
+                            window_id.as_str(),
                             pos,
                             size.width,
                             size.height,
@@ -354,8 +359,8 @@ impl App {
                     let wid = Some(window_id.as_str());
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
                         self.emitter.emit_event(OutgoingEvent::window_closed(
-                            entry.tag.clone(),
-                            window_id.clone(),
+                            entry.tag.as_str(),
+                            window_id.as_str(),
                         ))?;
                     }
                 }
@@ -377,8 +382,8 @@ impl App {
                     let wid = Some(window_id.as_str());
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
                         self.emitter.emit_event(OutgoingEvent::window_rescaled(
-                            entry.tag.clone(),
-                            window_id.clone(),
+                            entry.tag.as_str(),
+                            window_id.as_str(),
                             factor,
                         ))?;
                     }
@@ -386,14 +391,14 @@ impl App {
                 window::Event::Focused => {
                     self.emit_window_event(
                         Some(SUB_WINDOW_FOCUS),
-                        OutgoingEvent::window_focused,
+                        |tag, jid| OutgoingEvent::window_focused(tag, jid),
                         window_id,
                     )?;
                 }
                 window::Event::Unfocused => {
                     self.emit_window_event(
                         Some(SUB_WINDOW_UNFOCUS),
-                        OutgoingEvent::window_unfocused,
+                        |tag, jid| OutgoingEvent::window_unfocused(tag, jid),
                         window_id,
                     )?;
                 }
@@ -402,9 +407,9 @@ impl App {
                     let path_str = path_to_string(path);
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
                         self.emitter.emit_event(OutgoingEvent::file_hovered(
-                            entry.tag.clone(),
-                            window_id.clone(),
-                            path_str.clone(),
+                            entry.tag.as_str(),
+                            window_id.as_str(),
+                            path_str.as_str(),
                         ))?;
                     }
                 }
@@ -413,9 +418,9 @@ impl App {
                     let path_str = path_to_string(path);
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
                         self.emitter.emit_event(OutgoingEvent::file_dropped(
-                            entry.tag.clone(),
-                            window_id.clone(),
-                            path_str.clone(),
+                            entry.tag.as_str(),
+                            window_id.as_str(),
+                            path_str.as_str(),
                         ))?;
                     }
                 }
@@ -423,8 +428,8 @@ impl App {
                     let wid = Some(window_id.as_str());
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
                         self.emitter.emit_event(OutgoingEvent::files_hovered_left(
-                            entry.tag.clone(),
-                            window_id.clone(),
+                            entry.tag.as_str(),
+                            window_id.as_str(),
                         ))?;
                     }
                 }

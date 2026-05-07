@@ -611,8 +611,8 @@ fn handle_message<R: PlushieRenderer>(
                         ) {
                             s.writer.emit(
                                 &plushie_widget_sdk::protocol::OutgoingEvent::theme_changed(
-                                    entry.tag.clone(),
-                                    mode_str.to_string(),
+                                    entry.tag.as_str(),
+                                    mode_str,
                                 )
                                 .with_session(session_id),
                             )?;
@@ -946,7 +946,7 @@ fn handle_message<R: PlushieRenderer>(
             {
                 s.writer.emit(
                     &plushie_widget_sdk::protocol::OutgoingEvent::animation_frame(
-                        entry.tag.clone(),
+                        entry.tag.as_str(),
                         timestamp,
                     )
                     .with_session(session_id),

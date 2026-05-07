@@ -211,8 +211,8 @@ impl App {
                     .map(|entry| {
                         self.emitter
                             .emit_direct(OutgoingEvent::window_close_requested(
-                                entry.tag.clone(),
-                                owned_window_id.clone(),
+                                entry.tag.as_str(),
+                                owned_window_id.as_str(),
                             ))
                     })
                     .collect();
@@ -227,8 +227,8 @@ impl App {
                         .into_iter()
                         .map(|entry| {
                             self.emitter.emit_direct(OutgoingEvent::window_closed(
-                                entry.tag.clone(),
-                                window_id.clone(),
+                                entry.tag.as_str(),
+                                window_id.as_str(),
                             ))
                         })
                         .collect();
@@ -284,7 +284,7 @@ impl App {
                     let epoch = *self.animation_epoch.get_or_insert(instant);
                     let millis = u64::try_from(instant.duration_since(epoch).as_millis())
                         .unwrap_or(u64::MAX);
-                    let event = OutgoingEvent::animation_frame(entry.tag.clone(), millis);
+                    let event = OutgoingEvent::animation_frame(entry.tag.as_str(), millis);
                     self.emitter.coalesce(
                         CoalesceKey::Subscription(SUB_ANIMATION_FRAME.to_string()),
                         event,
@@ -308,8 +308,7 @@ impl App {
                         iced::theme::Mode::Dark => "dark",
                         _ => "system",
                     };
-                    let event =
-                        OutgoingEvent::theme_changed(entry.tag.clone(), mode_str.to_string());
+                    let event = OutgoingEvent::theme_changed(entry.tag.as_str(), mode_str);
                     self.emitter.coalesce(
                         CoalesceKey::Subscription(SUB_THEME_CHANGE.to_string()),
                         event,

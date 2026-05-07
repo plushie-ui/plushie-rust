@@ -178,11 +178,15 @@ impl App {
     /// Emit a subscription event to all matching entries (specific kind +
     /// catch-all SUB_EVENT), filtered by window_id. The event_fn is called
     /// once per matching entry with the entry's tag.
+    ///
+    /// `event_fn` receives the tag as `&str`; the OutgoingEvent constructor
+    /// allocates the owned tag internally via `impl Into<String>`. Earlier
+    /// versions cloned the tag at the call site before passing it in.
     pub fn emit_subscription(
         &self,
         key: &str,
         captured: bool,
-        event_fn: impl Fn(String) -> OutgoingEvent,
+        event_fn: impl Fn(&str) -> OutgoingEvent,
     ) -> Task<Message> {
         self.emit_subscription_for_window(key, None, captured, event_fn)
     }
@@ -193,7 +197,7 @@ impl App {
         key: &str,
         window_id: Option<&str>,
         captured: bool,
-        event_fn: impl Fn(String) -> OutgoingEvent,
+        event_fn: impl Fn(&str) -> OutgoingEvent,
     ) -> Task<Message> {
         let entries = self
             .core
@@ -205,14 +209,14 @@ impl App {
             1 => {
                 let entry = &entries[0];
                 self.emitter
-                    .emit_direct(event_fn(entry.tag.clone()).with_captured(captured))
+                    .emit_direct(event_fn(entry.tag.as_str()).with_captured(captured))
             }
             _ => {
                 let tasks: Vec<_> = entries
                     .into_iter()
                     .map(|entry| {
                         self.emitter
-                            .emit_direct(event_fn(entry.tag.clone()).with_captured(captured))
+                            .emit_direct(event_fn(entry.tag.as_str()).with_captured(captured))
                     })
                     .collect();
                 Task::batch(tasks)
@@ -260,7 +264,7 @@ impl App {
         &mut self,
         key: &str,
         captured: bool,
-        event_fn: impl Fn(String) -> OutgoingEvent,
+        event_fn: impl Fn(&str) -> OutgoingEvent,
     ) -> Task<Message> {
         coalesce_subscription_into(&self.core, &mut self.emitter, key, None, captured, event_fn)
     }
@@ -273,7 +277,7 @@ impl App {
         key: &str,
         window_id: Option<&str>,
         captured: bool,
-        event_fn: impl Fn(String) -> OutgoingEvent,
+        event_fn: impl Fn(&str) -> OutgoingEvent,
     ) -> Task<Message> {
         coalesce_subscription_into(
             &self.core,
@@ -345,24 +349,28 @@ pub(crate) fn coalesce_subscription_into(
     key: &str,
     window_id: Option<&str>,
     captured: bool,
-    event_fn: impl Fn(String) -> OutgoingEvent,
+    event_fn: impl Fn(&str) -> OutgoingEvent,
 ) -> Task<Message> {
     let entries = core.matching_entries_with_catchall(key, SUB_EVENT, window_id);
     // Fast paths for the common 0- and 1-entry cases avoid
     // allocating a `Vec` and a `Task::batch` per high-frequency
     // event (cursor move, scroll, etc.).
+    //
+    // The closure receives `&str`; the event constructor allocates
+    // the owned tag internally via `impl Into<String>`. Earlier
+    // versions cloned the tag at the call site before passing it in.
     match entries.len() {
         0 => Task::none(),
         1 => {
             let entry = &entries[0];
-            let event = event_fn(entry.tag.clone()).with_captured(captured);
+            let event = event_fn(entry.tag.as_str()).with_captured(captured);
             emitter.coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
         }
         _ => {
             let tasks: Vec<_> = entries
                 .into_iter()
                 .map(|entry| {
-                    let event = event_fn(entry.tag.clone()).with_captured(captured);
+                    let event = event_fn(entry.tag.as_str()).with_captured(captured);
                     emitter.coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
                 })
                 .collect();

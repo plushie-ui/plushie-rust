@@ -18,10 +18,12 @@ relative to 0.6.1.
   `window_op` with `op: "close"` and a `window_id` field. The renderer
   no longer handles the old widget_op form.
 - **Workspace restructured into per-role crates.** The former single
-  renderer crate is split across `plushie-core`, `plushie-renderer-lib`,
-  `plushie-renderer` (native binary), `plushie-renderer-wasm`,
-  `plushie-widget-sdk`, and `plushie` (app SDK). Workspace crates now
-  live under `crates/`.
+  renderer crate is split across `plushie-core`, `plushie-renderer-engine`,
+  `plushie-renderer-lib`, `plushie-renderer` (native binary),
+  `plushie-renderer-wasm`, `plushie-widget-sdk`, and `plushie` (app SDK).
+  Workspace crates now live under `crates/`. The pure renderer state
+  engine (`Core`), retained tree, and wire codec live in
+  `plushie-renderer-engine`; widget authors do not depend on it.
 - **`Props` representation unified.** The `Props` enum (Typed vs Wire
   variants) collapses to a single `PropMap`. SDK builders, prop
   helpers, and widget renderers now operate on one representation.

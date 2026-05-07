@@ -495,6 +495,42 @@ chose.
 
 ---
 
+## Platform effect implementations live in `plushie-renderer-lib`
+
+The native rfd/arboard/notify-rust effect implementations sit in
+`plushie-renderer-lib::effects::native`, gated on
+`cfg(not(target_arch = "wasm32"))`. The `plushie-renderer` binary
+and direct mode in the `plushie` SDK both consume the single
+`NativeEffectHandler` type from that module instead of each
+maintaining their own copy.
+
+Why renderer-lib and not a separate `plushie-effects-impl` crate:
+the trait that bounds these implementations (`EffectHandler`)
+already lives here, the wasm and native sides already split via
+target-cfg in this crate, and the impls are not large enough to
+justify a fifth public-facing crate. Both runners depend on
+renderer-lib already.
+
+Why a concrete shared type and not default trait method bodies on
+`EffectHandler`: there is currently only one native implementation
+shape (rfd + arboard + notify-rust). Default trait methods would
+ship that single implementation as the default for every consumer
+of the trait, including the wasm `WebEffectHandler`, which would
+then need to override every method to opt out. A standalone
+struct keeps the trait neutral and lets each target pick its own
+handler.
+
+The duplication this resolved had already produced a quiet
+divergence (clipboard `ContentNotAvailable` was handled in one
+copy and not the other) before the consolidation. Future native
+effect work lands in one place.
+
+Revisit if a second meaningfully different native handler shape
+appears (e.g. a sandboxed/no-OS variant for testing) that doesn't
+fit a single struct.
+
+---
+
 ## Ephemeral concerns that are not bugs
 
 A handful of patterns get flagged repeatedly as "fragile" or

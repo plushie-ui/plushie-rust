@@ -13,7 +13,7 @@ categories = ["gui", "rendering"]
 
 [features]
 default = ["direct"]
-direct = ["dep:plushie-renderer-lib", "dep:rfd", "dep:arboard", "dep:notify-rust", "dep:plushie-widget-sdk", "plushie-widget-sdk?/tokio"]
+direct = ["dep:plushie-renderer-lib", "dep:plushie-widget-sdk", "plushie-widget-sdk?/tokio"]
 wire = ["dep:rmp-serde", "dep:rmpv", "dep:base64"]
 dev = ["dep:notify", "dep:cargo_metadata"]
 
@@ -32,9 +32,6 @@ futures = { version = "0.3", default-features = false, features = ["std", "async
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "process", "io-util", "time"] }
 rmp-serde = { workspace = true, optional = true }
 rmpv = { workspace = true, optional = true }
-rfd = { workspace = true, optional = true }
-arboard = { workspace = true, optional = true }
-notify-rust = { workspace = true, optional = true }
 log = { workspace = true }
 base64 = { workspace = true, optional = true }
 parking_lot = { workspace = true }

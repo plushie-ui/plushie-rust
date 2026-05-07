@@ -14,9 +14,6 @@
 #[cfg(feature = "direct")]
 pub mod direct;
 
-#[cfg(feature = "direct")]
-mod effects;
-
 #[cfg(any(feature = "direct", feature = "wire"))]
 pub(crate) mod event_bridge;
 
@@ -56,8 +53,9 @@ pub(crate) mod wire_discovery;
 /// block would pin whichever executor thread drove the future.
 ///
 /// Native builds use `tokio::time::sleep`. WASM builds would route
-/// through `wasmtimer::tokio::sleep`, but the `plushie` crate has
-/// native-only dependencies (rfd, arboard) so wasm32 isn't supported
+/// through `wasmtimer::tokio::sleep`, but the `plushie` crate's
+/// direct mode depends on `plushie-renderer-lib`'s native effect
+/// handler (rfd, arboard, notify-rust), so wasm32 isn't supported
 /// here today. The cfg is future-proofed; if wasm32 ever lands, wire
 /// in wasmtimer the same way `plushie-renderer-lib::emitter` does.
 #[cfg(feature = "direct")]

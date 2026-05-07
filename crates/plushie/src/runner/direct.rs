@@ -84,8 +84,8 @@ impl<A: App> DirectApp<A> {
         plushie_renderer_lib::emitters::init_sink(Box::new(sink));
         let sink_arc = plushie_renderer_lib::emitters::sink_arc();
 
-        // Create the renderer-lib App with the SDK's effect handler.
-        let effect_handler = Box::new(super::effects::DirectEffectHandler);
+        // Create the renderer-lib App with the shared native effect handler.
+        let effect_handler = Box::new(plushie_renderer_lib::NativeEffectHandler);
         let renderer = plushie_renderer_lib::App::new(registry, effect_handler, sink_arc);
 
         let mut app = Self {

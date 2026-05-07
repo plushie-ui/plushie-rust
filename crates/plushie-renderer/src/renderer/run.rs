@@ -239,7 +239,7 @@ fn run_inner(
                 .widget_set(&plushie_widget_sdk::runtime::iced_widget_set());
             let registry = builder.build();
 
-            let effect_handler = Box::new(crate::effects::NativeEffectHandler);
+            let effect_handler = Box::new(plushie_renderer_lib::NativeEffectHandler);
             let sink = plushie_renderer_lib::emitters::sink_arc();
             let mut app = App::new(registry, effect_handler, sink);
             app.set_codec(codec);

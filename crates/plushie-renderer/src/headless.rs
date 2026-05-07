@@ -579,7 +579,7 @@ fn handle_message<R: PlushieRenderer>(
                         kind,
                         payload,
                     }) => {
-                        if crate::effects::is_async_effect(&kind) {
+                        if plushie_renderer_lib::effects::native::is_async_effect(&kind) {
                             let mode = match s.mode {
                                 Mode::Headless => "headless",
                                 Mode::Mock => "mock",
@@ -592,8 +592,9 @@ fn handle_message<R: PlushieRenderer>(
                                 .with_session(session_id),
                             )?;
                         } else {
-                            let response =
-                                crate::effects::handle_effect(request_id, &kind, &payload);
+                            let response = plushie_renderer_lib::effects::native::handle_effect(
+                                request_id, &kind, &payload,
+                            );
                             s.writer.emit(&response.with_session(session_id))?;
                         }
                     }

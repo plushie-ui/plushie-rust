@@ -46,7 +46,4 @@ tokio = { workspace = true, features = ["sync"] }
 parking_lot = { workspace = true }
 iced_test = { version = "0.8", package = "plushie-iced-test" }
 sha2 = { workspace = true }
-rfd = { workspace = true }
-arboard = { workspace = true }
-notify-rust = { workspace = true }
 getrandom = "0.3"

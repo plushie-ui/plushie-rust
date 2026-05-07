@@ -2956,20 +2956,17 @@ dependencies = [
 name = "plushie"
 version = "0.6.1"
 dependencies = [
- "arboard",
  "base64",
  "cargo_metadata",
  "futures",
  "log",
  "notify",
- "notify-rust",
  "parking_lot",
  "plushie-core",
  "plushie-core-macros",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
  "proptest",
- "rfd",
  "rmp-serde",
  "rmpv",
  "serde",
@@ -3223,18 +3220,15 @@ dependencies = [
 name = "plushie-renderer"
 version = "0.6.1"
 dependencies = [
- "arboard",
  "env_logger",
  "getrandom 0.3.4",
  "log",
- "notify-rust",
  "parking_lot",
  "plushie-core",
  "plushie-iced",
  "plushie-iced-test",
  "plushie-renderer-lib",
  "plushie-widget-sdk",
- "rfd",
  "serde",
  "serde_json",
  "sha2",

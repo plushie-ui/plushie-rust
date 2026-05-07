@@ -266,11 +266,6 @@ Declined:
   `runner/message_decode.rs`, `runner/wire_command.rs`. Same
   cohesion argument; the runner is a state machine and its
   pieces are entangled by design.
-- Splitting `plushie-widget-sdk` into a public widget-author
-  crate and an internal renderer-engine crate. Widget authors
-  do not actually depend on the internal modules at compile
-  time in any expensive way; the dual-purpose crate is fine
-  until widget authors report friction.
 - Gating `plushie-core`'s `serde_json` and `base64` deps behind
   a `wire` cargo feature. `serde_json` is the workspace
   exchange currency; the feature would conditionally compile

@@ -11,7 +11,9 @@
 //! `Family::Name(&'static str)` requirement is satisfied.
 
 use std::collections::HashSet;
-use std::sync::{LazyLock, RwLock};
+use std::sync::LazyLock;
+
+use parking_lot::RwLock;
 
 static LOADED_FAMILIES: LazyLock<RwLock<HashSet<&'static str>>> =
     LazyLock::new(|| RwLock::new(HashSet::new()));
@@ -30,23 +32,20 @@ pub fn register_loaded_family(family: &str) {
     let Some(interned) = crate::widget::helpers::intern_font_family_public(family) else {
         return;
     };
-    let mut guard = LOADED_FAMILIES.write().unwrap_or_else(|e| e.into_inner());
-    guard.insert(interned);
+    LOADED_FAMILIES.write().insert(interned);
 }
 
 /// Returns true if `family` has been registered via
 /// [`register_loaded_family`].
 pub fn is_loaded(family: &str) -> bool {
-    let guard = LOADED_FAMILIES.read().unwrap_or_else(|e| e.into_inner());
-    guard.contains(family)
+    LOADED_FAMILIES.read().contains(family)
 }
 
 /// Clear the registry. Used in tests that need to run with isolated
 /// font state.
 #[doc(hidden)]
 pub fn reset_for_tests() {
-    let mut guard = LOADED_FAMILIES.write().unwrap_or_else(|e| e.into_inner());
-    guard.clear();
+    LOADED_FAMILIES.write().clear();
 }
 
 #[cfg(test)]

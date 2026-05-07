@@ -468,15 +468,39 @@ workflow.
 
 ---
 
+## `parking_lot` is the workspace default for non-poisoning mutexes
+
+Production code uses `parking_lot::Mutex` and `parking_lot::RwLock`.
+The state these guard (event sinks, font registries, take-once
+init slots, image registries) survives a panic in another holder:
+the data is structurally consistent, so poisoning would only force
+boilerplate `unwrap_or_else(|e| e.into_inner())` recovery at every
+call site. parking_lot has no poisoning by design, so the recovery
+boilerplate disappears and behaviour is the same.
+
+Reviewers occasionally flag this as "lost safety" relative to
+`std::sync::Mutex`. The poison signal isn't load-bearing for the
+data we keep behind these locks; it's a debugging hint we already
+choose to ignore. Converging on parking_lot also removes a class
+of inconsistency (some sites recovered, others did not).
+
+Test code inside `#[cfg(test)]` may use `std::sync::Mutex` for
+the standalone test-serialization pattern (a private static used
+to gate a small set of tests that share mutable global state); the
+defaults rule applies to production paths.
+
+External locks owned by upstream crates (e.g. iced's font
+`FONT_SYSTEM`) are not ours to switch and stay as the upstream
+chose.
+
+---
+
 ## Ephemeral concerns that are not bugs
 
 A handful of patterns get flagged repeatedly as "fragile" or
 "could be cleaner" but are deliberate and stable. Capturing
 them here so reviewers can move past them.
 
-- **`StreamEmitter` uses `std::sync::Mutex`.** Inconsistent with
-  the workspace's `parking_lot::Mutex` default. Worth converging
-  whenever the area is touched, but not standalone work.
 - **Test infrastructure duplication (`RecordingSink`,
   `LineReceiver`, `StderrCapture`).** Three or four copies of a
   small test helper across crates is fine; consolidating into a

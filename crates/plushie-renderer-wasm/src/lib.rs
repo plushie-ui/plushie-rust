@@ -38,7 +38,7 @@
 mod effects;
 mod output;
 
-use std::sync::Mutex;
+use parking_lot::Mutex;
 
 use wasm_bindgen::prelude::*;
 
@@ -225,7 +225,7 @@ impl PlushieApp {
 
         // Create the message channel for JS -> renderer communication.
         let (sender, receiver) = futures_channel::mpsc::unbounded::<String>();
-        *MSG_RX.lock().expect("MSG_RX lock") = Some(receiver);
+        *MSG_RX.lock() = Some(receiver);
 
         // Pack init data into a Mutex so the Fn closure can move it out once.
         type InitData = (
@@ -243,7 +243,6 @@ impl PlushieApp {
                 move || {
                     let (settings, builder, fonts) = app_slot
                         .lock()
-                        .expect("app_slot lock poisoned")
                         .take()
                         .expect("daemon init closure called more than once");
 
@@ -329,7 +328,6 @@ fn message_subscription() -> impl iced::futures::Stream<Item = StdinEvent> {
 
         let mut rx = MSG_RX
             .lock()
-            .expect("MSG_RX lock poisoned")
             .take()
             .expect("message_subscription: no receiver (called more than once?)");
 

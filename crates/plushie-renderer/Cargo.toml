@@ -43,6 +43,7 @@ iced = { workspace = true, features = ["tokio", "advanced", "tiny-skia", "x11", 
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
+parking_lot = { workspace = true }
 iced_test = { version = "0.8", package = "plushie-iced-test" }
 sha2 = { workspace = true }
 rfd = { workspace = true }

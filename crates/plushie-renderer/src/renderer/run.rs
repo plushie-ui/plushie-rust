@@ -1,9 +1,8 @@
 //! Renderer entry point. Parses CLI flags, reads the initial Settings
 //! message, spawns the stdin reader, and starts the iced daemon.
 
-use std::sync::Mutex;
-
 use iced::{Subscription, Task};
+use parking_lot::Mutex;
 
 use plushie_widget_sdk::protocol::IncomingMessage;
 use plushie_widget_sdk::runtime::Codec;
@@ -220,9 +219,9 @@ fn run_inner(
     // Spawn stdin reader thread with tokio channel.
     let (tx, rx) = tokio::sync::mpsc::channel::<StdinEvent>(64);
     spawn_stdin_reader(codec, tx, reader);
-    // Lock poisoning here is never fatal: recover the inner value so
-    // startup continues.
-    *STDIN_RX.lock().unwrap_or_else(|e| e.into_inner()) = Some(rx);
+    // parking_lot::Mutex doesn't poison; a panic in a previous holder
+    // leaves the slot intact for the next caller.
+    *STDIN_RX.lock() = Some(rx);
 
     let settings_slot: Mutex<Option<(serde_json::Value, Vec<Vec<u8>>)>> =
         Mutex::new(Some((initial.settings, font_bytes)));
@@ -231,18 +230,10 @@ fn run_inner(
 
     iced::daemon(
         move || {
-            // Poison-recover on these slot locks: the previous holder
-            // panicking does not invalidate the contents for our
-            // purposes.
-            let (settings, fonts) = settings_slot
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .take()
-                .unwrap_or_default();
+            let (settings, fonts) = settings_slot.lock().take().unwrap_or_default();
 
             let builder = builder_slot
                 .lock()
-                .unwrap_or_else(|e| e.into_inner())
                 .take()
                 .expect("daemon init closure called more than once")
                 .widget_set(&plushie_widget_sdk::runtime::iced_widget_set());

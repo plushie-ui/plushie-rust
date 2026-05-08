@@ -409,17 +409,21 @@ fn emit_panic_events(msg: &str, location: &str) {
 }
 
 // The renderer's panic hook, the headless session worker, and every
-// `catch_unwind` site downstream rely on `panic = "unwind"`. Building
-// with `panic = "abort"` would silently make `catch_unwind` a no-op,
-// collapse widget panic isolation in the renderer, collapse session
-// isolation in headless multiplexing, and turn the wire-visible
-// `session_error` + `session_closed` panic signal into a process-
-// wide abort. Surface the conflict at compile time, next to the
-// hook that explains the why.
-#[cfg(panic = "abort")]
+// `catch_unwind` site downstream rely on `panic = "unwind"` on native
+// targets. Building native with `panic = "abort"` would silently make
+// `catch_unwind` a no-op, collapse widget panic isolation in the
+// renderer, collapse session isolation in headless multiplexing, and
+// turn the wire-visible `session_error` + `session_closed` panic
+// signal into a process-wide abort. Surface the conflict at compile
+// time, next to the hook that explains the why.
+//
+// wasm32 is excluded: its toolchain defaults to `panic = "abort"`,
+// and panic semantics there are different (panics escape to the JS
+// host rather than relying on stack unwinding for isolation).
+#[cfg(all(panic = "abort", not(target_arch = "wasm32")))]
 compile_error!(
-    "plushie-renderer-lib requires `panic = \"unwind\"` because catch_unwind \
-     in the panic hook is load-bearing for widget panic isolation and \
+    "plushie-renderer-lib requires `panic = \"unwind\"` on native targets because \
+     catch_unwind in the panic hook is load-bearing for widget panic isolation and \
      multiplexed-session isolation. Building with `panic = \"abort\"` would \
      silently make this a no-op."
 );

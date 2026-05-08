@@ -564,16 +564,28 @@ mod tests {
     /// resource (clipboard, display server, notification daemon) is
     /// unavailable in the test environment. That's fine: we're testing
     /// that the routing reaches the right handler and returns cleanly.
+    ///
+    /// File dialog kinds are gated to Linux: rfd-0.15 panics on macOS
+    /// when invoked from a non-main thread in a NonWindowed environment
+    /// (CI runners), and blocks indefinitely on headless Windows. Those
+    /// are rfd-internal preconditions, not routing-layer concerns. The
+    /// async file-dialog routing is covered separately by
+    /// `async_kinds_recognised_on_both_paths`.
     #[test]
     fn dispatch_routes_all_known_kinds_without_panic() {
         let kinds_with_payloads: Vec<(&str, Value)> = vec![
+            #[cfg(target_os = "linux")]
             ("file_open", json!({"title": "Pick a file"})),
+            #[cfg(target_os = "linux")]
             ("file_open_multiple", json!({"title": "Pick files"})),
+            #[cfg(target_os = "linux")]
             (
                 "file_save",
                 json!({"title": "Save", "default_name": "out.txt"}),
             ),
+            #[cfg(target_os = "linux")]
             ("directory_select", json!({"title": "Choose dir"})),
+            #[cfg(target_os = "linux")]
             ("directory_select_multiple", json!({"title": "Choose dirs"})),
             ("clipboard_read", json!({})),
             ("clipboard_write", json!({"text": "hello"})),
@@ -790,13 +802,21 @@ mod tests {
 
     /// Verify that empty payloads don't cause panics; handlers should
     /// defensively unwrap_or on missing fields.
+    ///
+    /// File dialog kinds are gated to Linux for the same reason as
+    /// `dispatch_routes_all_known_kinds_without_panic`.
     #[test]
     fn handlers_tolerate_empty_payloads() {
         let kinds: &[&str] = &[
+            #[cfg(target_os = "linux")]
             "file_open",
+            #[cfg(target_os = "linux")]
             "file_open_multiple",
+            #[cfg(target_os = "linux")]
             "file_save",
+            #[cfg(target_os = "linux")]
             "directory_select",
+            #[cfg(target_os = "linux")]
             "directory_select_multiple",
             "clipboard_read",
             "clipboard_write",

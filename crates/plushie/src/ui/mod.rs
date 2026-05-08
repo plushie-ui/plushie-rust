@@ -61,10 +61,16 @@ pub(crate) fn view_leaf(id: String, type_name: &str, props: PropMap) -> View {
 // ---------------------------------------------------------------------------
 
 /// Generate a stable auto-ID from the call site.
+///
+/// The file path is normalised to forward slashes so the ID is the
+/// same on Windows (where `loc.file()` returns backslash-separated
+/// paths) as on Unix. Cross-SDK tree hashes and golden snapshots
+/// depend on this stability.
 #[track_caller]
 pub(crate) fn auto_id(prefix: &str) -> String {
     let loc = std::panic::Location::caller();
-    format!("auto:{prefix}:{}:{}", loc.file(), loc.line())
+    let file = loc.file().replace('\\', "/");
+    format!("auto:{prefix}:{file}:{}", loc.line())
 }
 
 // ---------------------------------------------------------------------------

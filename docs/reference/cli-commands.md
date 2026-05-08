@@ -85,10 +85,10 @@ Without this, mixing registry crates with local crates produces
 type-mismatch errors at compile time.
 
 The `--wasm` path shells out to `wasm-pack build --target web`
-against `crates/plushie-renderer-wasm/` in the resolved source
-path. WASM builds require a local plushie-rust checkout and
-`wasm-pack` on `PATH`: there is no registry path that publishes a
-pre-wasm'd bundle.
+against the `plushie-renderer-wasm` crate. `wasm-pack` must be on
+`PATH`. When no local source path is configured, the crate is
+fetched from crates.io and compiled in place; a local checkout is
+only needed when native widgets require source-level patching.
 
 ## cargo plushie download
 

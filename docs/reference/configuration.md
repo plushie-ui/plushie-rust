@@ -154,7 +154,7 @@ fixed: the same names work across every host SDK.
 | `PLUSHIE_MODE` | SDK | `wire` forces wire mode; `direct` defers to the feature default. Same effect as `--plushie-mode` |
 | `PLUSHIE_SOCKET` | SDK | Connect to an existing renderer over a Unix or TCP socket instead of spawning |
 | `PLUSHIE_TOKEN` | SDK | Auth token sent with the Settings handshake when connecting to a listen-mode renderer |
-| `PLUSHIE_RUST_SOURCE_PATH` | `cargo plushie` | Path to a local plushie-rust checkout for source builds and WASM bundles |
+| `PLUSHIE_RUST_SOURCE_PATH` | `cargo plushie` | Path to a local plushie-rust checkout. Required for native-widget source builds; optional for WASM (falls back to crates.io) |
 | `PLUSHIE_UPDATE_SNAPSHOTS` | Test harness | When set to `1`, overwrite tree-hash golden files instead of comparing |
 | `RUST_LOG` | Renderer | `env_logger` filter forwarded to the renderer subprocess |
 | `RUST_BACKTRACE` | Renderer | Standard Rust backtrace switch |
@@ -221,7 +221,7 @@ native_widgets = ["my-gauge", "my-chart"]
 
 | Key | Purpose |
 |---|---|
-| `source_path` | Path to a local plushie-rust checkout for source builds. Overridden by `PLUSHIE_RUST_SOURCE_PATH` |
+| `source_path` | Path to a local plushie-rust checkout. Required for native-widget source builds; optional for WASM (falls back to crates.io). Overridden by `PLUSHIE_RUST_SOURCE_PATH` |
 | `native_widgets` | Allowlist of native widget crate names to bundle into the custom renderer. Omit to auto-discover via dep-graph metadata |
 
 Native widget crates declare their own

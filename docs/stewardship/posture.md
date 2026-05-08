@@ -28,9 +28,12 @@ architecture.
 
 The two public crates are `plushie` and `plushie-widget-sdk`.
 Everything else (`plushie-core`, `plushie-core-macros`,
-`plushie-renderer-lib`, `plushie-renderer`,
-`plushie-renderer-wasm`) is internal and is not part of any
-audience's stable surface.
+`plushie-renderer-engine`, `plushie-renderer-lib`,
+`plushie-renderer`, `plushie-renderer-wasm`) is internal.
+These crates are published on crates.io as a distribution
+requirement (the SDK and build tooling depend on them at compile
+time), but they carry no stable API obligations and are not part
+of any audience's stable surface.
 
 ## Cross-SDK relationship
 

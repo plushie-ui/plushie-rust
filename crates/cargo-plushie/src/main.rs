@@ -430,13 +430,10 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
 }
 
 /// WASM build path: delegate to `wasm-pack` against the
-/// `plushie-renderer-wasm` crate under the resolved source path.
-///
-/// Unlike the native build, WASM needs a plushie-rust checkout on
-/// disk so wasm-pack has a crate to compile: there is no registry
-/// path that publishes a pre-wasm'd bundle. The source path comes
-/// from `PLUSHIE_RUST_SOURCE_PATH`, the app's `[package.metadata.plushie]
-/// source_path` key, or a workspace sibling (`..`), in that order.
+/// `plushie-renderer-wasm` crate. The source comes from
+/// `PLUSHIE_RUST_SOURCE_PATH`, the app's `[package.metadata.plushie]
+/// source_path` key, a workspace sibling (`..`), or the crates.io
+/// registry (downloaded on demand), in that order.
 fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
     // Verify wasm-pack up front with a clear message; the command
     // will fail later otherwise with a less obvious IO error.
@@ -454,14 +451,7 @@ fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
         ));
     }
 
-    let source = resolve_wasm_source(manifest_dir)?;
-    let crate_dir = source.join("crates/plushie-renderer-wasm");
-    if !crate_dir.is_dir() {
-        return Err(anyhow::anyhow!(
-            "resolved source path `{}` does not contain crates/plushie-renderer-wasm",
-            source.display()
-        ));
-    }
+    let crate_dir = resolve_wasm_crate_dir(manifest_dir)?;
 
     let target = target_dir(manifest_dir);
     let output_dir = args
@@ -470,11 +460,17 @@ fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
         .unwrap_or_else(|| target.join("plushie/pkg"));
     std::fs::create_dir_all(&output_dir)?;
 
+    // Redirect cargo's artifact output to a writable location under the
+    // app's target dir. Required when crate_dir points into the cargo
+    // registry cache, which is read-only by design.
+    let wasm_target_dir = target.join("plushie/wasm-target");
+
     let mut cmd = std::process::Command::new("wasm-pack");
     cmd.arg("build")
         .arg(&crate_dir)
         .args(["--target", "web"])
-        .args(["--out-dir", &output_dir.display().to_string()]);
+        .args(["--out-dir", &output_dir.display().to_string()])
+        .env("CARGO_TARGET_DIR", &wasm_target_dir);
     if args.release {
         cmd.arg("--release");
     } else {
@@ -497,7 +493,7 @@ fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
     Ok(())
 }
 
-/// Resolve the `plushie-renderer-wasm` source path.
+/// Resolve the `plushie-renderer-wasm` crate directory.
 ///
 /// Priority:
 ///
@@ -507,15 +503,18 @@ fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
 ///    manifest.
 /// 3. A sibling workspace at `..` (the convention for developing
 ///    multiple plushie-* repos in parallel).
-fn resolve_wasm_source(manifest_dir: &Path) -> Result<PathBuf> {
+/// 4. Download `plushie-renderer-wasm` from crates.io and return the
+///    extracted source from the cargo registry cache.
+fn resolve_wasm_crate_dir(manifest_dir: &Path) -> Result<PathBuf> {
     if let Some(env) = std::env::var_os("PLUSHIE_RUST_SOURCE_PATH") {
         let path = PathBuf::from(env);
-        return std::fs::canonicalize(&path).with_context(|| {
+        let root = std::fs::canonicalize(&path).with_context(|| {
             format!(
                 "PLUSHIE_RUST_SOURCE_PATH `{}` does not exist",
                 path.display()
             )
-        });
+        })?;
+        return Ok(root.join("crates/plushie-renderer-wasm"));
     }
 
     let metadata = cargo_metadata::MetadataCommand::new()
@@ -538,18 +537,62 @@ fn resolve_wasm_source(manifest_dir: &Path) -> Result<PathBuf> {
     {
         let resolved = manifest_dir.join(meta_path);
         if let Ok(abs) = std::fs::canonicalize(&resolved) {
-            return Ok(abs);
+            return Ok(abs.join("crates/plushie-renderer-wasm"));
         }
     }
 
     let sibling = manifest_dir.join("..");
     if sibling.join("crates/plushie-renderer-wasm").is_dir() {
-        return Ok(std::fs::canonicalize(&sibling).unwrap_or(sibling));
+        let abs = std::fs::canonicalize(&sibling).unwrap_or(sibling);
+        return Ok(abs.join("crates/plushie-renderer-wasm"));
     }
-    Err(anyhow::anyhow!(
-        "unable to locate plushie-renderer-wasm source. Set PLUSHIE_RUST_SOURCE_PATH \
-         or add `[package.metadata.plushie].source_path = \"...\"` to the app manifest."
-    ))
+
+    let scratch_dir = target_dir(manifest_dir).join("plushie-wasm-scratch");
+    fetch_wasm_crate_from_registry(&scratch_dir)
+}
+
+/// Download `plushie-renderer-wasm` from crates.io into the cargo
+/// registry cache and return the extracted source directory.
+///
+/// Creates a minimal scratch workspace at `scratch_dir`, runs
+/// `cargo metadata` to trigger download and extraction, then returns
+/// the source path from the registry cache. Subsequent calls hit the
+/// cache without re-downloading.
+fn fetch_wasm_crate_from_registry(scratch_dir: &Path) -> Result<PathBuf> {
+    let version = env!("CARGO_PKG_VERSION");
+    std::fs::create_dir_all(scratch_dir)?;
+    generator::write_if_changed(
+        &scratch_dir.join("Cargo.toml"),
+        &format!(
+            "# Auto-generated by cargo-plushie. Do not edit.\n\
+             [package]\nname = \"plushie-wasm-scratch\"\nversion = \"0.0.1\"\nedition = \"2024\"\n\n\
+             [dependencies]\nplushie-renderer-wasm = \"{version}\"\n"
+        ),
+    )?;
+
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .manifest_path(scratch_dir.join("Cargo.toml"))
+        .exec()
+        .with_context(|| {
+            format!("failed to fetch plushie-renderer-wasm {version} from crates.io")
+        })?;
+
+    let pkg = metadata
+        .packages
+        .iter()
+        .find(|p| p.name == "plushie-renderer-wasm")
+        .ok_or_else(|| {
+            anyhow::anyhow!("plushie-renderer-wasm {version} not found in registry after fetch")
+        })?;
+
+    let crate_dir = pkg
+        .manifest_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("unexpected manifest_path for plushie-renderer-wasm"))?
+        .to_path_buf()
+        .into_std_path_buf();
+
+    Ok(crate_dir)
 }
 
 fn cmd_download(args: &DownloadArgs) -> Result<()> {

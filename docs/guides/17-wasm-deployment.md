@@ -174,16 +174,20 @@ long version.
 ## Building the WASM renderer
 
 `cargo plushie build --wasm` shells out to `wasm-pack build
---target web` against the `plushie-renderer-wasm` crate in the
-resolved plushie-rust source checkout. A local checkout is
-required; there is no registry path that publishes a pre-wasm'd
-bundle.
+--target web` against the `plushie-renderer-wasm` crate.
+`wasm-pack` must be on `PATH`. When no local source path is
+configured, the crate is fetched from crates.io and compiled in
+place; no local checkout is required for stock builds.
 
 ```bash
+# Stock build - fetches plushie-renderer-wasm from crates.io:
+cargo plushie build --wasm
+
+# Against a local checkout via env var:
 PLUSHIE_RUST_SOURCE_PATH=~/projects/plushie-rust \
     cargo plushie build --wasm
 
-# Or via package metadata instead of the env var:
+# Or via package metadata:
 cargo plushie build --wasm
 ```
 

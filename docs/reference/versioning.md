@@ -23,7 +23,7 @@ The workspace members that share this version:
 - `cargo-plushie`
 
 Internal path deps in `[workspace.dependencies]` are pinned to the
-same string (for example `plushie-core = { version = "0.6.1", path
+same string (for example `plushie-core = { version = "0.7.0", path
 = "crates/plushie-core" }`), so a release bump is a single edit to
 the workspace `version` plus the matching entries, and publishes
 go out as one batch.
@@ -85,12 +85,12 @@ produces a warning log when the strings differ.
 ## Pinning `plushie` in Cargo.toml
 
 Pre-1.0, pin the exact patch version. Cargo's default caret
-requirement would allow `^0.6.1` to roll forward to `0.7.0`, which
+requirement would allow `^0.7.0` to roll forward to `0.8.0`, which
 at pre-1.0 is a potentially breaking change. Use an `=` requirement:
 
 ```toml
 [dependencies]
-plushie = "=0.6.1"
+plushie = "=0.7.0"
 ```
 
 For a wire-only build, the same pin applies with the feature
@@ -98,7 +98,7 @@ swap:
 
 ```toml
 [dependencies]
-plushie = { version = "=0.6.1", default-features = false, features = ["wire"] }
+plushie = { version = "=0.7.0", default-features = false, features = ["wire"] }
 ```
 
 Once the project reaches 1.0 the standard caret requirement
@@ -148,17 +148,17 @@ pin: it names a workspace version, and every artifact the host
 needs (the renderer binary, the WASM bundle, the protocol
 semantics) comes out of that single version. The `hello` handshake
 enforces compatibility at runtime, so a host that pins
-`PLUSHIE_RUST_VERSION=0.6.1` is compatible with any Rust app that
-pins `plushie = "=0.6.1"` in its `Cargo.toml`.
+`PLUSHIE_RUST_VERSION=0.7.0` is compatible with any Rust app that
+pins `plushie = "=0.7.0"` in its `Cargo.toml`.
 
 ## Upgrade guidance
 
-- Patch upgrades (`0.6.1 -> 0.6.2`): bump the pin, rebuild,
+- Patch upgrades (`0.7.0 -> 0.7.1`): bump the pin, rebuild,
   re-run. No code changes expected. Wire protocol unchanged.
-- Minor upgrades pre-1.0 (`0.6.x -> 0.7.0`): read the
+- Minor upgrades pre-1.0 (`0.7.x -> 0.8.0`): read the
   `CHANGELOG.md` entry. Breaking API changes are listed first.
   Rebuild the renderer binary (or re-download) so its version
-  matches the SDK; mixing a `0.6` renderer with a `0.7` SDK
+  matches the SDK; mixing a `0.7` renderer with a `0.8` SDK
   produces a `hello` warning at best and a protocol-version error
   at worst.
 - When upgrading, `cargo plushie doctor` checks for version skew

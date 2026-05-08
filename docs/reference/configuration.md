@@ -198,7 +198,7 @@ flag forces wire.
 
 ```toml
 [dependencies]
-plushie = { version = "0.6.1", default-features = false, features = ["wire"] }
+plushie = { version = "0.7.0", default-features = false, features = ["wire"] }
 ```
 
 Pre-1.0, pin the exact patch version. `plushie`, `plushie-core`,

@@ -22,7 +22,7 @@ crate at the same version, so the cargo-plushie version must match
 the `plushie` version in the app's `Cargo.toml`.
 
 ```bash
-cargo install cargo-plushie --version 0.6.1 --locked
+cargo install cargo-plushie --version 0.7.0 --locked
 ```
 
 Cargo resolves `cargo <sub>` by looking for a `cargo-<sub>` binary

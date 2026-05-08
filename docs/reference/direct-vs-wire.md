@@ -32,7 +32,7 @@ Enable (it is the default):
 
 ```toml
 [dependencies]
-plushie = "0.6.1"
+plushie = "0.7.0"
 ```
 
 Direct-mode dependencies add `rfd` (file dialogs), `arboard`
@@ -59,7 +59,7 @@ Enable wire (and drop direct if you want a wire-only build):
 
 ```toml
 [dependencies]
-plushie = { version = "0.6.1", default-features = false, features = ["wire"] }
+plushie = { version = "0.7.0", default-features = false, features = ["wire"] }
 ```
 
 Wire mode adds `rmp-serde` (MessagePack) and `base64`. It does
@@ -160,7 +160,7 @@ Valid combinations:
 
 ```toml
 [dependencies]
-plushie = { version = "0.6.1", default-features = false, features = ["wire"] }
+plushie = { version = "0.7.0", default-features = false, features = ["wire"] }
 ```
 
 Version pinning: pre-1.0, pin the exact patch version.

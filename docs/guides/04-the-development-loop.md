@@ -235,7 +235,7 @@ Enable the feature in `Cargo.toml`:
 
 ```toml
 [dependencies]
-plushie = { version = "0.6.1", default-features = false, features = ["wire", "dev"] }
+plushie = { version = "0.7.0", default-features = false, features = ["wire", "dev"] }
 ```
 
 Then wire the watcher into `main` in place of the normal `run`

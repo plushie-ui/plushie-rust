@@ -164,6 +164,11 @@ fn validate_architecture(_path: &Path) {}
 /// `file` output varies per platform, so we match a handful of common
 /// spellings. Unknown output returns `None` so the advisory warning
 /// stays silent.
+///
+/// Production use is gated to `cfg(unix)` (only `validate_architecture`
+/// on unix calls this); the `cfg(test)` arm keeps the parser
+/// available to the unit tests on every platform.
+#[cfg(any(unix, test))]
 fn detect_arch(output: &str) -> Option<&'static str> {
     // Lowercase once; the tokens we match against are all lowercase.
     let lower = output.to_ascii_lowercase();
@@ -179,6 +184,9 @@ fn detect_arch(output: &str) -> Option<&'static str> {
 /// Normalise `std::env::consts::ARCH` into the same token set that
 /// [`detect_arch`] produces. Returns `None` on platforms we don't
 /// know how to match (e.g. riscv64, powerpc).
+///
+/// Gated for the same reason as [`detect_arch`].
+#[cfg(any(unix, test))]
 fn canonicalize_arch(arch: &str) -> Option<&'static str> {
     match arch {
         "x86_64" => Some("x86_64"),

@@ -20,6 +20,7 @@ use std::io;
 use std::net::TcpStream;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
+#[cfg(unix)]
 use std::path::PathBuf;
 
 /// Resolved address type for a socket connection.

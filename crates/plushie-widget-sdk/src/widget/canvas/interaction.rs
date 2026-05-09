@@ -94,17 +94,27 @@ pub(super) fn find_hit_element(
 
 /// Parse an [`InteractiveElement`] from a typed [`GroupShape`].
 ///
-/// A group is interactive when it has an `id` field. Interactive
-/// properties (`on_click`, `hover_style`, etc.) are typed fields on
-/// the struct.
+/// A group is interactive when it has an `id` and at least one interactive
+/// flag set (`on_click`, `on_hover`, `draggable`, or `focusable`). Structural
+/// groups used only for transforms or clipping are skipped even if they carry
+/// an auto-assigned id.
 ///
-/// Returns `None` if the group has no id.
+/// Returns `None` if the group has no id or no interactive flags.
 pub(super) fn parse_interactive_element(
     group: &GroupShape,
     layer_name: &str,
 ) -> Option<InteractiveElement> {
     let id = group.id.as_ref()?.clone();
     if id.is_empty() {
+        return None;
+    }
+
+    let is_interactive = group.on_click.unwrap_or(false)
+        || group.on_hover.unwrap_or(false)
+        || group.draggable.unwrap_or(false)
+        || group.focusable.unwrap_or(false);
+
+    if !is_interactive {
         return None;
     }
 

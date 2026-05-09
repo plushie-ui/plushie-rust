@@ -923,6 +923,153 @@ fn parse_interactive_group_with_new_fields() {
     assert!(result.focusable);
 }
 
+// -- Structural group filtering --
+// Groups used only for transforms/clipping (no interactive flags) must be
+// skipped even when they carry an id.  Prior to the fix, parse_interactive_element
+// accepted any named group, causing spurious a11y WARNs for structural groups.
+
+#[test]
+fn structural_group_with_id_but_no_interactive_flags_is_skipped() {
+    // Named auto-id group used only for translate + rotate - no on_click,
+    // on_hover, draggable, or focusable.  Should produce None.
+    let shape = json!({
+        "type": "group",
+        "id": "auto:ThemeToggle:89",
+        "transforms": [
+            {"type": "translate", "x": 32.0, "y": 16.0},
+            {"type": "rotate", "angle": 90.0}
+        ],
+        "children": [
+            {"type": "circle", "x": -3.5, "y": -3.0, "r": 2.0}
+        ]
+    });
+    assert!(
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").is_none(),
+        "structural transform group must not be collected as interactive"
+    );
+}
+
+#[test]
+fn structural_group_inside_interactive_group_not_collected() {
+    // ThemeToggle pattern: the face elements live in a structural group that
+    // applies translate + rotate.  Only the enclosing interactive "switch"
+    // group should be collected.
+    let shapes = vec![json!({
+        "type": "group",
+        "id": "switch",
+        "on_click": true,
+        "children": [
+            {"type": "rect", "x": 0, "y": 0, "w": 64, "h": 32, "fill": "#fff"},
+            {
+                "type": "group",
+                "id": "auto:ThemeToggle:89",
+                "transforms": [
+                    {"type": "translate", "x": 32.0, "y": 16.0},
+                    {"type": "rotate", "angle": 90.0}
+                ],
+                "children": [
+                    {"type": "circle", "x": -3.5, "y": -3.0, "r": 2.0},
+                    {"type": "circle", "x": 3.5, "y": -3.0, "r": 2.0}
+                ]
+            }
+        ]
+    })];
+    let mut elements = Vec::new();
+    collect_interactive_from_json(
+        &shapes,
+        "default",
+        TransformMatrix::identity(),
+        None,
+        None,
+        "",
+        &mut elements,
+    );
+    assert_eq!(elements.len(), 1, "only the outer interactive group");
+    assert_eq!(elements[0].id, "switch");
+}
+
+#[test]
+fn named_positioning_groups_not_collected_as_interactive() {
+    // StarRating readonly pattern: five named groups used only for x-offset
+    // positioning, one per star.  None are interactive.
+    let shapes: Vec<Value> = (0..5_i32)
+        .map(|i| {
+            json!({
+                "type": "group",
+                "id": format!("star-{i}"),
+                "transforms": [{"type": "translate", "x": i * 32, "y": 15}],
+                "children": [
+                    {
+                        "type": "path",
+                        "commands": [
+                            ["move_to", 0.0, -12.0],
+                            ["line_to", 11.4, -3.7],
+                            ["line_to", 7.0, 9.7],
+                            ["line_to", -7.0, 9.7],
+                            ["line_to", -11.4, -3.7],
+                            "close"
+                        ],
+                        "fill": "#ffd700"
+                    }
+                ]
+            })
+        })
+        .collect();
+    let mut elements = Vec::new();
+    collect_interactive_from_json(
+        &shapes,
+        "default",
+        TransformMatrix::identity(),
+        None,
+        None,
+        "",
+        &mut elements,
+    );
+    assert!(
+        elements.is_empty(),
+        "read-only positioning groups must not be collected"
+    );
+}
+
+#[test]
+fn on_hover_only_group_is_collected() {
+    let shape = json!({
+        "type": "group",
+        "id": "tooltip-zone",
+        "on_hover": true,
+        "children": [{"type": "rect", "x": 0, "y": 0, "w": 50, "h": 50}]
+    });
+    assert!(
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some()
+    );
+}
+
+#[test]
+fn draggable_only_group_is_collected() {
+    let shape = json!({
+        "type": "group",
+        "id": "drag-handle",
+        "draggable": true,
+        "children": [{"type": "rect", "x": 0, "y": 0, "w": 20, "h": 20}]
+    });
+    assert!(
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some()
+    );
+}
+
+#[test]
+fn focusable_only_group_is_collected() {
+    let shape = json!({
+        "type": "group",
+        "id": "toolbar",
+        "focusable": true,
+        "children": [{"type": "rect", "x": 0, "y": 0, "w": 100, "h": 40}]
+    });
+    assert!(
+        interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some()
+    );
+}
+
 #[test]
 fn group_translation_from_transforms() {
     // Test via collect: collect a group with transforms and check the

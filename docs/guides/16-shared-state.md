@@ -68,7 +68,7 @@ option here; enable it in `Cargo.toml`:
 
 ```toml
 [dependencies]
-plushie = { version = "0.7.0", default-features = false, features = ["wire"] }
+plushie = { version = "0.7.1", default-features = false, features = ["wire"] }
 ```
 
 The `wire` feature pulls in the socket transport

@@ -4,6 +4,18 @@ All notable changes to plushie will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.7.1] - 2026-05-09
+
+### Fixed
+
+- **Canvas structural groups no longer collected as interactive elements.**
+  Groups used only for transforms or clipping were incorrectly treated as
+  interactive when they carried an auto-assigned id. The canvas engine then
+  emitted spurious a11y warnings for any widget that uses a structural group
+  for positioning (e.g. star rating readonly branch, theme toggle face group).
+  `parse_interactive_element` now returns `None` when none of `on_click`,
+  `on_hover`, `draggable`, or `focusable` are set.
+
 ## [0.7.0] - 2026-05-08
 
 This release introduces the Rust application SDK (`plushie` crate),

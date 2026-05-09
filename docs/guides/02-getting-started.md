@@ -53,7 +53,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-plushie = "=0.7.0"
+plushie = "=0.7.1"
 ```
 
 Fetch the dependency once so `cargo check` is fast later:
@@ -158,14 +158,14 @@ mode, swap the feature set in `Cargo.toml`:
 
 ```toml
 [dependencies]
-plushie = { version = "=0.7.0", default-features = false, features = ["wire"] }
+plushie = { version = "=0.7.1", default-features = false, features = ["wire"] }
 ```
 
 You also need a `plushie-renderer` binary. Install `cargo-plushie`
 once, pinned to the same version as the SDK:
 
 ```bash
-cargo install cargo-plushie --version 0.7.0 --locked
+cargo install cargo-plushie --version 0.7.1 --locked
 ```
 
 Then either download a precompiled stock renderer or build one

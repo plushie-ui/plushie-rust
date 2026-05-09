@@ -9,7 +9,7 @@ Enable it in the app crate:
 
 ```toml
 [dependencies]
-plushie = { version = "0.7.0", features = ["dev"] }
+plushie = { version = "0.7.1", features = ["dev"] }
 ```
 
 And switch `main`:

@@ -25,8 +25,8 @@ iced primitives directly.
 
 ```toml
 [dependencies]
-plushie-core = "0.7.0"
-plushie-widget-sdk = "0.7.0"
+plushie-core = "0.7.1"
+plushie-widget-sdk = "0.7.1"
 ```
 
 The prelude covers almost every type a widget author names:
@@ -382,9 +382,9 @@ constructor = "my_gauge::factory::GaugeFactory::new()"
 impl = ["dep:plushie-widget-sdk"]
 
 [dependencies]
-plushie-core = "0.7.0"
-plushie-core-macros = "0.7.0"
-plushie-widget-sdk = { version = "0.7.0", optional = true }
+plushie-core = "0.7.1"
+plushie-core-macros = "0.7.1"
+plushie-widget-sdk = { version = "0.7.1", optional = true }
 ```
 
 `type_name` is the wire type registered with the renderer.

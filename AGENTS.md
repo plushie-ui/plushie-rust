@@ -177,16 +177,6 @@ only appear as part of CLI flag names (e.g. `--watch`, `--release`).
 5. Commit as `release: prepare x.y.z`.
 6. Tag and push (handled manually, not by the agent).
 
-### Windows / gpu-allocator pin
-
-`Cargo.lock` pins `gpu-allocator` against `windows` 0.62 so `wgpu-hal`
-resolves cleanly on Windows builds. `cargo update` will silently drop
-this pin if the transitive graph allows a newer `windows` version.
-Before releasing, confirm the lockfile still resolves `windows 0.62`
-for `gpu-allocator` and that the Windows cross-compile check in CI
-passes. If the pin is lost, re-apply via `cargo update -p windows --precise 0.62.x`
-and commit the lockfile change.
-
 ## Quick reference
 
 ```

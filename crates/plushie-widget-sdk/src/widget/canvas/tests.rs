@@ -1039,9 +1039,7 @@ fn on_hover_only_group_is_collected() {
         "on_hover": true,
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 50, "h": 50}]
     });
-    assert!(
-        interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some()
-    );
+    assert!(interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some());
 }
 
 #[test]
@@ -1052,9 +1050,7 @@ fn draggable_only_group_is_collected() {
         "draggable": true,
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 20, "h": 20}]
     });
-    assert!(
-        interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some()
-    );
+    assert!(interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some());
 }
 
 #[test]
@@ -1065,9 +1061,7 @@ fn focusable_only_group_is_collected() {
         "focusable": true,
         "children": [{"type": "rect", "x": 0, "y": 0, "w": 100, "h": 40}]
     });
-    assert!(
-        interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some()
-    );
+    assert!(interaction::parse_interactive_element(&group_from_json(&shape), "default").is_some());
 }
 
 #[test]

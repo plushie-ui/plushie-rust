@@ -13,7 +13,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT OR Apache-2.0"
@@ -27,11 +27,11 @@ categories = ["gui", "rendering"]
 # resolves the local source at build time and the crates.io version at
 # publish time. Bumping the workspace version only requires editing
 # `[workspace.package].version` and these entries.
-plushie-core = { version = "0.7.0", path = "crates/plushie-core" }
-plushie-core-macros = { version = "0.7.0", path = "crates/plushie-core-macros" }
-plushie-widget-sdk = { version = "0.7.0", path = "crates/plushie-widget-sdk" }
-plushie-renderer-engine = { version = "0.7.0", path = "crates/plushie-renderer-engine" }
-plushie-renderer-lib = { version = "0.7.0", path = "crates/plushie-renderer-lib" }
+plushie-core = { version = "0.7.1", path = "crates/plushie-core" }
+plushie-core-macros = { version = "0.7.1", path = "crates/plushie-core-macros" }
+plushie-widget-sdk = { version = "0.7.1", path = "crates/plushie-widget-sdk" }
+plushie-renderer-engine = { version = "0.7.1", path = "crates/plushie-renderer-engine" }
+plushie-renderer-lib = { version = "0.7.1", path = "crates/plushie-renderer-lib" }
 
 # Shared external deps. Per-crate manifests opt in with `.workspace = true`.
 # Entries that need different feature sets per consumer (tokio, iced)

@@ -201,13 +201,13 @@ impl EventEmitter {
 
     /// End an atomic batch. When the outermost batch closes, all
     /// buffered events are emitted through the sink in order.
-    pub fn end_batch(&self) {
+    pub fn end_batch(&self) -> Task<Message> {
         let buffered = {
             let mut state = self.batch.lock();
             if state.depth == 0 {
                 log::warn!("event emitter batch ended without a matching begin");
                 debug_assert!(state.depth > 0, "event emitter batch depth underflow");
-                return;
+                return Task::none();
             }
             state.depth -= 1;
             if state.depth == 0 {
@@ -217,7 +217,7 @@ impl EventEmitter {
             }
         };
         if buffered.is_empty() {
-            return;
+            return Task::none();
         }
         // Hold the sink lock for the whole batch so the writes appear
         // contiguous on the wire and so we only pay one buffer flush.
@@ -225,11 +225,14 @@ impl EventEmitter {
         for event in buffered {
             if let Err(e) = guard.emit_event(event) {
                 log::error!("event sink write error: {e}");
+                return iced::exit();
             }
         }
         if let Err(e) = guard.flush_output() {
             log::error!("event sink flush error: {e}");
+            return iced::exit();
         }
+        Task::none()
     }
 
     /// Get a clone of the sink Arc for passing to async callbacks.
@@ -831,14 +834,29 @@ mod tests {
     #[should_panic(expected = "event emitter batch depth underflow")]
     fn end_batch_without_begin_panics_in_debug_builds() {
         let emitter = test_emitter();
-        emitter.end_batch();
+        let _ = emitter.end_batch();
     }
 
     #[cfg(not(debug_assertions))]
     #[test]
     fn end_batch_without_begin_is_noop_in_release_builds() {
         let emitter = test_emitter();
-        emitter.end_batch();
+        let _ = emitter.end_batch();
+    }
+
+    #[test]
+    fn end_batch_propagates_emit_error() {
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let sink: Arc<SinkMutex> = Arc::new(Mutex::new(Box::new(FailingSink {
+            events: counter.clone(),
+        })));
+        let emitter = EventEmitter::new(sink);
+
+        emitter.begin_batch();
+        let _ = emitter.emit_direct(make_event("clicked", "button"));
+        let _task = emitter.end_batch();
+
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     // -- buffer_event --
@@ -1247,6 +1265,24 @@ mod tests {
         assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(flushes.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert!(emitter.pending.is_empty());
+    }
+
+    #[test]
+    fn end_batch_propagates_flush_output_error() {
+        let writes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let flushes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let sink: Arc<SinkMutex> = Arc::new(Mutex::new(Box::new(FlushFailingSink {
+            writes: writes.clone(),
+            flushes: flushes.clone(),
+        })));
+        let emitter = EventEmitter::new(sink);
+
+        emitter.begin_batch();
+        let _ = emitter.emit_direct(make_event("clicked", "button"));
+        let _task = emitter.end_batch();
+
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(flushes.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     /// Direct emit path: a coalescable event whose rate limit

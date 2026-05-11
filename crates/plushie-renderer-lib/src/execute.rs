@@ -36,8 +36,7 @@ impl App {
                     .iter()
                     .map(|cmd| self.execute_command(&cmd.id, &cmd.family, &cmd.value))
                     .collect();
-                self.emitter.end_batch();
-                Task::batch(tasks)
+                Task::batch([Task::batch(tasks), self.emitter.end_batch()])
             }
 
             // -- Global focus (no target widget) --

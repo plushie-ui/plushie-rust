@@ -29,7 +29,7 @@ impl App {
                     let task = self.execute_command(&cmd.id, &cmd.family, &cmd.value);
                     self.pending_tasks.push(task);
                 }
-                self.emitter.end_batch();
+                self.pending_tasks.push(self.emitter.end_batch());
                 return Ok(());
             }
             _ => {}

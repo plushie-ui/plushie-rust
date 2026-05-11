@@ -72,10 +72,10 @@ pub enum Error {
         crates: String,
     },
     /// A widget's `constructor` expression does not look like a valid
-    /// Rust path + optional parenthesized call.
+    /// Rust path or zero-argument call.
     #[error(
         "widget `{crate_name}` constructor `{constructor}` is not a valid Rust \
-         identifier path (expected `module::Type::fn()` or similar)"
+         path or zero-argument call expression"
     )]
     InvalidConstructor {
         /// Widget crate name.

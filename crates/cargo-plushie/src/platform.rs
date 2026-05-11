@@ -46,9 +46,12 @@ pub const fn arch_name() -> &'static str {
 /// (`.exe` on Windows, `""` elsewhere).
 #[must_use]
 pub const fn exe_suffix() -> &'static str {
-    if cfg!(target_os = "windows") {
+    #[cfg(target_os = "windows")]
+    {
         ".exe"
-    } else {
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
         ""
     }
 }

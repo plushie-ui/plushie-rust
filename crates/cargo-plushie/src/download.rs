@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 /// Canonical base URL for Plushie renderer releases.
 pub const RELEASE_BASE_URL: &str = "https://github.com/plushie-ui/plushie-rust/releases/download";
+const MAX_DOWNLOAD_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Resolved paths for the download target.
 #[derive(Debug)]
@@ -58,9 +59,15 @@ pub fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
     let response = ureq::get(url)
         .call()
         .map_err(|e| anyhow::anyhow!("GET {url} failed: {e}"))?;
-    let mut reader = response.into_reader();
+    let mut reader = response.into_reader().take(MAX_DOWNLOAD_BYTES + 1);
     let mut bytes = Vec::new();
     reader.read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
+        return Err(Error::Other(anyhow::anyhow!(
+            "download from {url} exceeded {} bytes",
+            MAX_DOWNLOAD_BYTES
+        )));
+    }
     Ok(bytes)
 }
 
@@ -81,6 +88,11 @@ pub fn verify_sha256(binary: &[u8], expected_sidecar: &str) -> Result<()> {
         .next()
         .ok_or_else(|| anyhow::anyhow!("sha256 sidecar is empty"))?
         .to_ascii_lowercase();
+    if expected_hex.len() != 64 || !expected_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(Error::Other(anyhow::anyhow!(
+            "sha256 sidecar digest must be 64 hex characters"
+        )));
+    }
 
     let mut hasher = Sha256::new();
     hasher.update(binary);
@@ -163,8 +175,19 @@ mod tests {
 
     #[test]
     fn rejects_mismatching_sha256() {
+        let err = verify_sha256(
+            b"hello",
+            "0000000000000000000000000000000000000000000000000000000000000000  bin\n",
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::Other(_)));
+    }
+
+    #[test]
+    fn rejects_malformed_sha256_sidecar() {
         let err = verify_sha256(b"hello", "deadbeef  bin\n").unwrap_err();
         assert!(matches!(err, Error::Other(_)));
+        assert!(err.to_string().contains("64 hex characters"));
     }
 
     #[test]

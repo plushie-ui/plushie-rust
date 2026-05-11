@@ -127,6 +127,9 @@ struct RunArgs {
     /// Build with the `release` Cargo profile.
     #[arg(long)]
     release: bool,
+    /// Print the underlying cargo commands.
+    #[arg(long)]
+    verbose: bool,
     /// Path to the app crate manifest (defaults to `./Cargo.toml`).
     #[arg(long)]
     manifest_path: Option<PathBuf>,
@@ -349,24 +352,7 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
         })
         .unwrap_or_default();
 
-    // PLUSHIE_RUST_SOURCE_PATH env wins over any per-package override; both
-    // resolve to the absolute path to the plushie-rust checkout root.
-    let source_path_env = std::env::var_os("PLUSHIE_RUST_SOURCE_PATH").map(PathBuf::from);
-    let source_path_meta = app_pkg
-        .metadata
-        .get("plushie")
-        .and_then(|v| v.get("source_path"))
-        .and_then(|v| v.as_str())
-        .map(PathBuf::from);
-    let source_path = source_path_env.or(source_path_meta).and_then(|p| {
-        std::fs::canonicalize(&p).ok().or_else(|| {
-            eprintln!(
-                "warning: plushie source_path `{}` does not exist; ignoring",
-                p.display()
-            );
-            None
-        })
-    });
+    let source_path = resolve_source_path(&manifest_dir, &app_pkg)?;
 
     // When the caller points at a local plushie-rust checkout, drop a
     // `.cargo/config.toml` alongside the manifest so subsequent cargo
@@ -547,8 +533,9 @@ fn resolve_wasm_crate_dir(manifest_dir: &Path) -> Result<PathBuf> {
         return Ok(abs.join("crates/plushie-renderer-wasm"));
     }
 
+    let version = resolve_renderer_version(manifest_dir)?;
     let scratch_dir = target_dir(manifest_dir).join("plushie-wasm-scratch");
-    fetch_wasm_crate_from_registry(&scratch_dir)
+    fetch_wasm_crate_from_registry(&scratch_dir, &version)
 }
 
 /// Download `plushie-renderer-wasm` from crates.io into the cargo
@@ -558,8 +545,7 @@ fn resolve_wasm_crate_dir(manifest_dir: &Path) -> Result<PathBuf> {
 /// `cargo metadata` to trigger download and extraction, then returns
 /// the source path from the registry cache. Subsequent calls hit the
 /// cache without re-downloading.
-fn fetch_wasm_crate_from_registry(scratch_dir: &Path) -> Result<PathBuf> {
-    let version = env!("CARGO_PKG_VERSION");
+fn fetch_wasm_crate_from_registry(scratch_dir: &Path, version: &str) -> Result<PathBuf> {
     std::fs::create_dir_all(scratch_dir)?;
     generator::write_if_changed(
         &scratch_dir.join("Cargo.toml"),
@@ -580,7 +566,7 @@ fn fetch_wasm_crate_from_registry(scratch_dir: &Path) -> Result<PathBuf> {
     let pkg = metadata
         .packages
         .iter()
-        .find(|p| p.name == "plushie-renderer-wasm")
+        .find(|p| p.name == "plushie-renderer-wasm" && p.version.to_string() == version)
         .ok_or_else(|| {
             anyhow::anyhow!("plushie-renderer-wasm {version} not found in registry after fetch")
         })?;
@@ -598,6 +584,11 @@ fn fetch_wasm_crate_from_registry(scratch_dir: &Path) -> Result<PathBuf> {
 fn cmd_download(args: &DownloadArgs) -> Result<()> {
     let manifest_dir = resolve_manifest_dir(args.manifest_path.as_ref())?;
     let target = target_dir(&manifest_dir);
+    let app_pkg = load_app_package_no_deps(&manifest_dir)?;
+    let source_path = resolve_source_path(&manifest_dir, &app_pkg)?;
+    if let Some(source) = &source_path {
+        cargo_plushie::patch_config::write_scratch_cargo_config(&manifest_dir, source)?;
+    }
 
     // Correctness gate: refuse if custom widgets are present.
     let widgets = discover::discover_widgets(&manifest_dir)?;
@@ -606,28 +597,7 @@ fn cmd_download(args: &DownloadArgs) -> Result<()> {
     // RENDERER_VERSION: the plushie-renderer-lib crate version from the
     // app's dep graph. Required so the download pins to the exact
     // version the SDK negotiates against at handshake time.
-    let metadata = cargo_metadata::MetadataCommand::new()
-        .manifest_path(manifest_dir.join("Cargo.toml"))
-        .exec()
-        .with_context(|| "cargo metadata failed")?;
-    let version = metadata
-        .packages
-        .iter()
-        .find(|p| p.name == "plushie-renderer-lib")
-        .map(|p| p.version.to_string())
-        .or_else(|| {
-            metadata
-                .packages
-                .iter()
-                .find(|p| p.name == "plushie")
-                .map(|p| p.version.to_string())
-        })
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "unable to determine renderer version: neither `plushie-renderer-lib` \
-                 nor `plushie` appears in the dep graph"
-            )
-        })?;
+    let version = resolve_renderer_version(&manifest_dir)?;
 
     let dl_target = download::DownloadTarget::new(&target, &version);
     println!(
@@ -658,6 +628,70 @@ fn cmd_download(args: &DownloadArgs) -> Result<()> {
     Ok(())
 }
 
+fn resolve_renderer_version(manifest_dir: &Path) -> Result<String> {
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .manifest_path(manifest_dir.join("Cargo.toml"))
+        .current_dir(manifest_dir)
+        .exec()
+        .with_context(|| "cargo metadata failed")?;
+    metadata
+        .packages
+        .iter()
+        .find(|p| p.name == "plushie-renderer-lib")
+        .map(|p| p.version.to_string())
+        .or_else(|| {
+            metadata
+                .packages
+                .iter()
+                .find(|p| p.name == "plushie")
+                .map(|p| p.version.to_string())
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "unable to determine renderer version: neither `plushie-renderer-lib` \
+                 nor `plushie` appears in the dep graph"
+            )
+        })
+}
+
+fn load_app_package_no_deps(manifest_dir: &Path) -> Result<cargo_metadata::Package> {
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .manifest_path(manifest_dir.join("Cargo.toml"))
+        .no_deps()
+        .exec()
+        .with_context(|| "cargo metadata (no-deps) failed")?;
+    let root_id = metadata
+        .resolve
+        .as_ref()
+        .and_then(|r| r.root.as_ref())
+        .cloned();
+    let app_pkg = match root_id {
+        Some(id) => metadata.packages.iter().find(|p| p.id == id).cloned(),
+        None => metadata.packages.first().cloned(),
+    };
+    app_pkg.ok_or_else(|| anyhow::anyhow!("no root package in cargo metadata"))
+}
+
+fn resolve_source_path(
+    manifest_dir: &Path,
+    app_pkg: &cargo_metadata::Package,
+) -> Result<Option<PathBuf>> {
+    let source_path_env = std::env::var_os("PLUSHIE_RUST_SOURCE_PATH").map(PathBuf::from);
+    let source_path_meta = app_pkg
+        .metadata
+        .get("plushie")
+        .and_then(|v| v.get("source_path"))
+        .and_then(|v| v.as_str())
+        .map(|path| manifest_dir.join(path));
+
+    let Some(path) = source_path_env.or(source_path_meta) else {
+        return Ok(None);
+    };
+    let source = std::fs::canonicalize(&path)
+        .with_context(|| format!("plushie source_path `{}` does not exist", path.display()))?;
+    Ok(Some(source))
+}
+
 fn cmd_run(args: &RunArgs) -> Result<()> {
     let manifest_dir = resolve_manifest_dir(args.manifest_path.as_ref())?;
 
@@ -665,7 +699,7 @@ fn cmd_run(args: &RunArgs) -> Result<()> {
     // widget discovery + collision checks happen in one place.
     let build = BuildArgs {
         release: args.release,
-        verbose: false,
+        verbose: args.verbose,
         manifest_path: args.manifest_path.clone(),
         wasm: false,
         wasm_dir: None,
@@ -679,26 +713,26 @@ fn cmd_run(args: &RunArgs) -> Result<()> {
     // `cargo plushie run` (debug) would silently launch the release
     // renderer. Passing the exact path removes the ambiguity.
     //
-    // We only set the env var when the path actually exists; a caller
-    // with `CARGO_TARGET_DIR` set at an unusual location ends up with
-    // the binary elsewhere, and PLUSHIE_BINARY_PATH is fail-fast when
-    // the target doesn't exist. Falling back to the SDK's discovery
-    // chain keeps the command usable in that case.
     let pinned = resolve_built_binary(&manifest_dir, args)?;
-    let pinned = pinned.is_file().then_some(pinned);
+    if !pinned.is_file() {
+        return Err(anyhow::anyhow!(
+            "expected freshly built renderer at `{}` but it was not found",
+            pinned.display()
+        ));
+    }
 
     // Step 2: hand off to either cargo-watch (preferred when installed;
     // it handles restart-on-change cleanly) or a single cargo run.
     if args.watch && cargo_watch_available() {
-        run_with_cargo_watch(&manifest_dir, args, pinned.as_deref())
+        run_with_cargo_watch(&manifest_dir, args, &pinned)
     } else if args.watch {
         eprintln!(
             "plushie: `cargo-watch` not found; install with `cargo install cargo-watch` \
              for --watch, falling back to single `cargo run`"
         );
-        run_cargo_run(&manifest_dir, args, pinned.as_deref())
+        run_cargo_run(&manifest_dir, args, &pinned)
     } else {
-        run_cargo_run(&manifest_dir, args, pinned.as_deref())
+        run_cargo_run(&manifest_dir, args, &pinned)
     }
 }
 
@@ -706,10 +740,7 @@ fn cmd_run(args: &RunArgs) -> Result<()> {
 /// specified on `cargo plushie run`.
 ///
 /// Uses the same logic `cmd_build` uses to derive the binary name so
-/// the two stay in sync. The path is not required to exist up front
-/// (a cross-compile skip or a custom `target-dir` layout could leave
-/// it elsewhere); falling back to the SDK's discovery chain is safe
-/// behavior when the pinned path is missing.
+/// the two stay in sync.
 fn resolve_built_binary(manifest_dir: &Path, args: &RunArgs) -> Result<PathBuf> {
     let metadata = cargo_metadata::MetadataCommand::new()
         .manifest_path(manifest_dir.join("Cargo.toml"))
@@ -765,20 +796,21 @@ fn cargo_watch_available() -> bool {
 }
 
 /// Single-shot `cargo run` against the app crate.
-fn run_cargo_run(
-    manifest_dir: &std::path::Path,
-    args: &RunArgs,
-    pinned: Option<&Path>,
-) -> Result<()> {
+fn run_cargo_run(manifest_dir: &std::path::Path, args: &RunArgs, pinned: &Path) -> Result<()> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut cmd = std::process::Command::new(cargo);
     cmd.current_dir(manifest_dir).arg("run");
     if args.release {
         cmd.arg("--release");
     }
-    if let Some(path) = pinned {
-        cmd.env("PLUSHIE_BINARY_PATH", path);
+    if args.verbose {
+        cmd.arg("--verbose");
+        eprintln!(
+            "running: cargo run{}",
+            if args.release { " --release" } else { "" }
+        );
     }
+    cmd.env("PLUSHIE_BINARY_PATH", pinned);
     let status = cmd.status().with_context(|| "failed to run cargo run")?;
     if !status.success() {
         return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
@@ -796,20 +828,22 @@ fn run_cargo_run(
 fn run_with_cargo_watch(
     manifest_dir: &std::path::Path,
     args: &RunArgs,
-    pinned: Option<&Path>,
+    pinned: &Path,
 ) -> Result<()> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     // `cargo watch -w src -s '<cmd>'` reruns <cmd> on src/ changes.
     // We chain `cargo plushie build` before each `cargo run` so widget
     // rebuilds happen in-band.
     let profile = if args.release { " --release" } else { "" };
-    let shell_cmd = format!("cargo plushie build{profile} && cargo run{profile}");
+    let verbose = if args.verbose { " --verbose" } else { "" };
+    let shell_cmd = format!("cargo plushie build{profile}{verbose} && cargo run{profile}{verbose}");
     let mut cmd = std::process::Command::new(cargo);
     cmd.current_dir(manifest_dir)
         .args(["watch", "-w", "src", "-s", &shell_cmd]);
-    if let Some(path) = pinned {
-        cmd.env("PLUSHIE_BINARY_PATH", path);
+    if args.verbose {
+        eprintln!("running: cargo watch -w src -s '{shell_cmd}'");
     }
+    cmd.env("PLUSHIE_BINARY_PATH", pinned);
     let status = cmd.status().with_context(|| "failed to run cargo watch")?;
     if !status.success() {
         return Err(cargo_plushie::Error::CargoBuildFailed(status).into());

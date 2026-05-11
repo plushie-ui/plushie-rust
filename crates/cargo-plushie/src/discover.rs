@@ -63,10 +63,12 @@ pub fn discover_widgets(manifest_dir: &Path) -> Result<Vec<WidgetMetadata>> {
             })?
             .to_string();
 
-        let crate_path = PathBuf::from(&pkg.manifest_path)
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_default();
+        let crate_path = PathBuf::from(pkg.manifest_path.parent().ok_or_else(|| {
+            Error::InvalidWidgetMetadata {
+                crate_name: pkg.name.to_string(),
+                reason: "manifest_path has no parent directory".to_string(),
+            }
+        })?);
 
         widgets.push(WidgetMetadata {
             crate_name: pkg.name.to_string(),

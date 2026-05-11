@@ -452,11 +452,11 @@ fn discover_renderer(manifest_dir: &Path) -> Option<PathBuf> {
     for profile in ["release", "debug"] {
         let profile_dir = target_dir.join("plushie-renderer/target").join(profile);
         if let Ok(entries) = std::fs::read_dir(&profile_dir) {
-            for entry in entries.flatten() {
+            let mut entries: Vec<_> = entries.flatten().collect();
+            entries.sort_by_key(|entry| entry.file_name());
+            for entry in entries {
                 let path = entry.path();
-                if is_executable_file(&path)
-                    && path.extension().is_none_or(|e| e != "d" && e != "rlib")
-                {
+                if is_executable_file(&path) && has_executable_extension(&path) {
                     return Some(path);
                 }
             }
@@ -500,6 +500,21 @@ fn is_executable_file(path: &Path) -> bool {
 #[cfg(not(unix))]
 fn is_executable_file(path: &Path) -> bool {
     path.is_file()
+}
+
+#[cfg(unix)]
+fn has_executable_extension(path: &Path) -> bool {
+    path.extension().is_none_or(|e| e != "d" && e != "rlib")
+}
+
+#[cfg(windows)]
+fn has_executable_extension(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e == "exe")
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn has_executable_extension(path: &Path) -> bool {
+    path.extension().is_none()
 }
 
 fn renderer_not_found_hint() -> String {

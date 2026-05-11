@@ -41,6 +41,9 @@ use serde_json::Value;
 #[cfg(feature = "wire")]
 use super::socket::SocketStream;
 
+#[cfg(feature = "wire")]
+const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
+
 /// Wire protocol codec selection.
 #[cfg(feature = "wire")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,7 +292,7 @@ impl Bridge {
                 // intermediate.
                 let bytes = rmp_serde::to_vec_named(message)
                     .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
-                let len = (bytes.len() as u32).to_be_bytes();
+                let len = checked_frame_len(bytes.len())?;
                 writer.write_all(&len)?;
                 writer.write_all(&bytes)?;
                 writer.flush()?;
@@ -344,9 +347,8 @@ impl Bridge {
                 let mut buf = Vec::new();
                 rmpv::encode::write_value(&mut buf, &message)
                     .map_err(|e| crate::Error::WireEncode(e.to_string()))?;
-                let len = u32::try_from(buf.len())
-                    .map_err(|_| crate::Error::WireEncode("frame exceeds 4 GiB".into()))?;
-                writer.write_all(&len.to_be_bytes())?;
+                let len = checked_frame_len(buf.len())?;
+                writer.write_all(&len)?;
                 writer.write_all(&buf)?;
                 writer.flush()?;
             }
@@ -661,6 +663,17 @@ impl Drop for Bridge {
     }
 }
 
+#[cfg(feature = "wire")]
+fn checked_frame_len(len: usize) -> std::result::Result<[u8; 4], crate::Error> {
+    if len > MAX_MESSAGE_SIZE {
+        return Err(crate::Error::WireEncode(format!(
+            "frame exceeds {MAX_MESSAGE_SIZE} bytes"
+        )));
+    }
+    let len = u32::try_from(len).map_err(|_| crate::Error::WireEncode("frame too large".into()))?;
+    Ok(len.to_be_bytes())
+}
+
 /// Read a single message from a buffered reader handle, with
 /// codec-specific framing. Helper shared by synchronous `receive()`
 /// and the background reader loop.
@@ -671,9 +684,6 @@ impl Drop for Bridge {
 /// unaffected by buffering but still benefits from a shared handle.
 #[cfg(feature = "wire")]
 fn read_one<R: Read>(reader: &mut BufReader<R>, codec: Codec) -> io::Result<Value> {
-    /// Per-message size cap shared by JSON and msgpack framing in
-    /// this bridge. Matches the widget-sdk's `MAX_MESSAGE_SIZE`.
-    const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
     match codec {
         Codec::Json => {
             let mut line = String::new();
@@ -857,6 +867,15 @@ mod tests {
         let second = read_one(&mut reader, Codec::MsgPack).expect("second decode");
         assert_eq!(first.get("n").and_then(|v| v.as_u64()), Some(1));
         assert_eq!(second.get("n").and_then(|v| v.as_u64()), Some(2));
+    }
+
+    #[test]
+    fn checked_frame_len_rejects_frames_over_bridge_cap() {
+        let ok = checked_frame_len(MAX_MESSAGE_SIZE).expect("cap-sized frame");
+        assert_eq!(u32::from_be_bytes(ok), MAX_MESSAGE_SIZE as u32);
+
+        let err = checked_frame_len(MAX_MESSAGE_SIZE + 1).unwrap_err();
+        assert!(err.to_string().contains("frame exceeds"));
     }
 
     #[test]

@@ -209,8 +209,9 @@ fn find_custom_build_binary(target: &Path, profile: &str) -> Option<String> {
     } else {
         ""
     };
-    let entries = std::fs::read_dir(&profile_dir).ok()?;
-    for entry in entries.flatten() {
+    let mut entries: Vec<_> = std::fs::read_dir(&profile_dir).ok()?.flatten().collect();
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
         let path = entry.path();
         if !is_executable(&path) {
             continue;

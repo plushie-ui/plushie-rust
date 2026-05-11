@@ -191,12 +191,13 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
                 text: json_str_opt(value, "text"),
                 cursor: {
                     let cursor = &value["cursor"];
-                    let start = cursor["start"].as_u64();
-                    let end = cursor["end"].as_u64();
-                    match (start, end) {
-                        (Some(s), Some(e)) => Some((s as usize, e as usize)),
-                        _ => None,
-                    }
+                    let start = cursor["start"]
+                        .as_u64()
+                        .and_then(|value| usize::try_from(value).ok());
+                    let end = cursor["end"]
+                        .as_u64()
+                        .and_then(|value| usize::try_from(value).ok());
+                    start.zip(end)
                 },
                 captured: event.captured.unwrap_or(false),
                 window_id: None,
@@ -804,6 +805,25 @@ mod tests {
             Event::Ime(ime) => {
                 assert_eq!(ime.cursor, None);
             }
+            other => panic!("expected ime event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "32")]
+    fn ime_preedit_oversized_cursor_is_ignored() {
+        let mut rebuilt = make_tagged("ime_preedit", "editor");
+        rebuilt.value = Some(serde_json::json!({
+            "id": "editor",
+            "text": "hello",
+            "cursor": {
+                "start": u64::MAX,
+                "end": 1,
+            },
+        }));
+        let sdk = outgoing_to_sdk_event(rebuilt).expect("ime event");
+        match sdk {
+            Event::Ime(ime) => assert_eq!(ime.cursor, None),
             other => panic!("expected ime event, got {other:?}"),
         }
     }

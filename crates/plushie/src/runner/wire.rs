@@ -867,8 +867,8 @@ fn process_event<A: App>(
     if !patches.is_empty() {
         let ops: Vec<Value> = patches
             .iter()
-            .filter_map(|op| serde_json::to_value(op).ok())
-            .collect();
+            .map(|op| serde_json::to_value(op).map_err(|e| crate::Error::WireEncode(e.to_string())))
+            .collect::<std::result::Result<_, crate::Error>>()?;
         bridge.send_patch(&ops)?;
     }
 

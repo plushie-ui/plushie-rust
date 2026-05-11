@@ -493,6 +493,18 @@ impl ShapeValidator {
             &format!("shape '{}' drag_bounds", node.id),
             false,
         );
+        for (min_field, max_field) in [("min_x", "max_x"), ("min_y", "max_y")] {
+            let min = obj.get(min_field).and_then(|v| v.as_f64());
+            let max = obj.get(max_field).and_then(|v| v.as_f64());
+            if let (Some(min), Some(max)) = (min, max)
+                && min > max
+            {
+                self.warn(format!(
+                    "shape '{}' drag_bounds {min_field} is greater than {max_field}",
+                    node.id
+                ));
+            }
+        }
     }
 
     fn validate_object_fields(&mut self, obj: &PropMap, allowed: &[&str], context: &str) {
@@ -693,6 +705,35 @@ mod tests {
             circle_warnings
                 .iter()
                 .any(|w| w.contains("must be non-negative"))
+        );
+    }
+
+    #[test]
+    fn canvas_shape_validation_reversed_drag_bounds_warns() {
+        let warnings = warnings_for(node(
+            "g",
+            "group",
+            json!({
+                "draggable": true,
+                "drag_bounds": {
+                    "min_x": 20,
+                    "max_x": 10,
+                    "min_y": 0,
+                    "max_y": -1
+                }
+            }),
+            Vec::new(),
+        ));
+
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("min_x is greater than max_x"))
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("min_y is greater than max_y"))
         );
     }
 

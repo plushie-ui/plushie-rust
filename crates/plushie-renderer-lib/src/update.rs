@@ -139,11 +139,6 @@ impl App {
                 task
             }
 
-            Message::MarkdownUrl(url) => {
-                log::debug!("markdown link clicked: {url}");
-                Task::none()
-            }
-
             // -- Keyboard events --
             Message::KeyPressed(data, iced_id) => self.handle_key_pressed(data, iced_id),
             Message::KeyReleased(data, iced_id) => self.handle_key_released(data, iced_id),

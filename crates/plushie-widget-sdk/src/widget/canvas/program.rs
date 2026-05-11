@@ -882,16 +882,16 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
         if let Some(ref pending) = self.pending_focus
             && state.last_consumed_pending.as_deref() != Some(pending.as_str())
         {
-            state.last_consumed_pending = Some(pending.clone());
             let idx = self
                 .interactive_elements
                 .iter()
                 .position(|e| e.id == *pending);
-            if let Some(idx) = idx
-                && let Some(msg) = self.set_focus(state, Some(idx))
-            {
+            if let Some(idx) = idx {
+                state.last_consumed_pending = Some(pending.clone());
                 state.focused_group = self.interactive_elements[idx].parent_group.clone();
-                return Some(iced::widget::Action::publish(msg));
+                if let Some(msg) = self.set_focus(state, Some(idx)) {
+                    return Some(iced::widget::Action::publish(msg));
+                }
             }
         }
 

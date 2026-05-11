@@ -178,7 +178,7 @@ fn render_text_input<'a, R: PlushieRenderer>(
         ti = ti.on_status_change(move |status| Message::Event {
             window_id: status_wid.clone(),
             id: status_id.clone(),
-            value: Value::String(status.to_string()),
+            value: Value::String(status.to_owned()),
             family: "status".into(),
         });
     }

@@ -1587,7 +1587,7 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// passes through widget events as generic outgoing events.
     ///
     /// Returns an empty vec for messages that don't produce outgoing
-    /// events (subscription events, `NoOp`, `MarkdownUrl`, etc.).
+    /// events (subscription events, `NoOp`, etc.).
     pub fn process_message(&mut self, msg: &Message) -> Vec<OutgoingEvent> {
         // Try factory dispatch first. If the factory handles the message
         // (returns Some), use that result. Otherwise fall through to the
@@ -1648,8 +1648,8 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
             | Message::PaneDragged(..)
             | Message::PaneClicked(..) => vec![],
 
-            // Everything else (subscription events, NoOp, MarkdownUrl,
-            // etc.) produces no outgoing events.
+            // Everything else (subscription events, NoOp, etc.) produces
+            // no outgoing events.
             _ => vec![],
         }
     }

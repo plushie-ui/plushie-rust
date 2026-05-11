@@ -336,8 +336,8 @@ pub(crate) enum ArrowMode {
     Clamp,
     /// Arrows navigate in order and stop at boundaries. Captures the event.
     Linear,
-    /// Arrows are not handled by the canvas at all. Elements are only
-    /// navigable via Tab. Useful when arrow keys have app-specific meaning.
+    /// Arrows do not move canvas focus. Focused elements receive the
+    /// key events so the host can attach app-specific meaning.
     None,
 }
 

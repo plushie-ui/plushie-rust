@@ -55,6 +55,8 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::canvas as canvas_widgets;
 
 pub(crate) type CanvasLayerCaches<R> = HashMap<String, CanvasLayerCache<R>>;
+pub(crate) type PreparedCanvasLayer = (String, Vec<plushie_core::types::CanvasShape>);
+pub(crate) type PreparedCanvasLayers = Vec<PreparedCanvasLayer>;
 
 pub(crate) struct CanvasLayerCache<R: PlushieRenderer> {
     content_hash: u64,
@@ -115,6 +117,8 @@ pub(crate) fn canvas_theme_hash(theme: &Theme) -> u64 {
 pub struct CanvasEngine<R: PlushieRenderer> {
     /// Per-canvas, per-layer tessellation caches with content hashing.
     layer_caches: HashMap<(String, String), CanvasLayerCaches<R>>,
+    /// Pre-parsed canvas layers per (window_id, node_id).
+    layers: HashMap<(String, String), PreparedCanvasLayers>,
     /// Pre-parsed interactive elements per (window_id, canvas_id).
     interactions: HashMap<(String, String), Vec<canvas_widgets::InteractiveElement>>,
     /// Pending programmatic focus per (window_id, canvas_id).
@@ -126,6 +130,7 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     pub fn new() -> Self {
         Self {
             layer_caches: HashMap::new(),
+            layers: HashMap::new(),
             interactions: HashMap::new(),
             pending_focus: HashMap::new(),
         }
@@ -179,7 +184,7 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
         // Update or create per-layer tessellation caches.
         // Direct Hash impl on CanvasShape (f32 fields via to_bits) avoids
         // materialising a Debug string per layer per prepare.
-        let node_caches = self.layer_caches.entry(key).or_default();
+        let node_caches = self.layer_caches.entry(key.clone()).or_default();
         for (layer_name, shapes) in &layer_map {
             let hash = {
                 let mut hasher = DefaultHasher::new();
@@ -194,6 +199,15 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
             }
         }
         node_caches.retain(|name, _| layer_map.contains_key(name));
+
+        let layers = layer_map
+            .into_iter()
+            .map(|(name, layer_shapes)| {
+                let truncated = canvas_widgets::truncate_shapes(&name, layer_shapes);
+                (name, truncated)
+            })
+            .collect();
+        self.layers.insert(key, layers);
     }
 
     /// Render the canvas node into an iced Element.
@@ -222,6 +236,7 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
                 .map(|v| v.as_slice())
                 .unwrap_or(&[]),
             pending,
+            self.layers.get(&key).map(Vec::as_slice),
         )
     }
 
@@ -255,13 +270,18 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     /// Set pending programmatic focus for a canvas element.
     ///
     /// `element_id` is the element's full wire ID. The canvas is found by
-    /// matching the element_id as a prefix of existing interaction keys.
+    /// matching a canvas ID path segment prefix of existing interaction keys.
     pub fn set_pending_focus(&mut self, element_id: &str) {
-        // Find the interaction key whose canvas node_id is a prefix of the element_id.
         if let Some(key) = self
             .interactions
             .keys()
-            .find(|(_, nid)| element_id.starts_with(nid.as_str()))
+            .filter(|(_, nid)| {
+                element_id == nid.as_str()
+                    || element_id
+                        .strip_prefix(nid.as_str())
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+            })
+            .max_by_key(|(_, nid)| nid.len())
             .cloned()
         {
             self.pending_focus.insert(key, element_id.to_string());
@@ -275,6 +295,7 @@ impl<R: PlushieRenderer> CanvasEngine<R> {
     /// drop entries whose keys aren't in the set.
     pub fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.layer_caches.retain(|k, _| live_ids.contains(k));
+        self.layers.retain(|k, _| live_ids.contains(k));
         self.interactions.retain(|k, _| live_ids.contains(k));
         self.pending_focus.retain(|k, _| live_ids.contains(k));
     }
@@ -364,28 +385,71 @@ mod tests {
 
         engine.prepare(&stale, "window-a");
         engine.prepare(&live, "window-a");
-        engine.set_pending_focus("canvas-stale-button");
-        engine.set_pending_focus("canvas-live-button");
+        engine.set_pending_focus("canvas-stale/button");
+        engine.set_pending_focus("canvas-live/button");
 
         assert!(engine.layer_caches.contains_key(&stale_key));
         assert!(engine.layer_caches.contains_key(&live_key));
+        assert!(engine.layers.contains_key(&stale_key));
+        assert!(engine.layers.contains_key(&live_key));
         assert!(!engine.interactions[&stale_key].is_empty());
         assert!(!engine.interactions[&live_key].is_empty());
         assert_eq!(
             engine.pending_focus.get(&stale_key),
-            Some(&"canvas-stale-button".to_string())
+            Some(&"canvas-stale/button".to_string())
         );
 
         engine.prune_stale(&std::collections::HashSet::from([live_key.clone()]));
 
         assert!(!engine.layer_caches.contains_key(&stale_key));
+        assert!(!engine.layers.contains_key(&stale_key));
         assert!(!engine.interactions.contains_key(&stale_key));
         assert!(!engine.pending_focus.contains_key(&stale_key));
         assert!(engine.layer_caches.contains_key(&live_key));
+        assert!(engine.layers.contains_key(&live_key));
         assert!(!engine.interactions[&live_key].is_empty());
         assert_eq!(
             engine.pending_focus.get(&live_key),
-            Some(&"canvas-live-button".to_string())
+            Some(&"canvas-live/button".to_string())
         );
+    }
+
+    #[test]
+    fn set_pending_focus_matches_canvas_id_by_path_segment() {
+        let mut engine = CanvasEngine::<iced::Renderer>::new();
+        let short = canvas_node("canvas");
+        let long = canvas_node("canvas-a");
+        let short_key = ("window-a".to_string(), short.id.clone());
+        let long_key = ("window-a".to_string(), long.id.clone());
+
+        engine.prepare(&short, "window-a");
+        engine.prepare(&long, "window-a");
+        engine.set_pending_focus("canvas-a/cell");
+
+        assert_eq!(engine.pending_focus.get(&short_key), None);
+        assert_eq!(
+            engine.pending_focus.get(&long_key),
+            Some(&"canvas-a/cell".to_string())
+        );
+    }
+
+    #[test]
+    fn handle_message_splits_canvas_element_focus_changes() {
+        let mut engine = CanvasEngine::<iced::Renderer>::new();
+
+        let result = engine.handle_message(&Message::CanvasElementFocusChanged {
+            window_id: "window-a".to_string(),
+            old_element_id: Some("canvas/old".to_string()),
+            new_element_id: Some("canvas/new".to_string()),
+        });
+
+        let crate::registry::HandleResult::Handled(events) = result else {
+            panic!("expected handled focus event");
+        };
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].family, "blurred");
+        assert_eq!(events[0].id, "canvas/old");
+        assert_eq!(events[1].family, "focused");
+        assert_eq!(events[1].id, "canvas/new");
     }
 }

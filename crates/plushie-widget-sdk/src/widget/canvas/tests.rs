@@ -1647,6 +1647,16 @@ fn test_program_with_arrow_mode(
     }
 }
 
+fn test_program_with_pending_focus<'a>(
+    elements: &'a [InteractiveElement],
+    pending_focus: &str,
+) -> program::CanvasProgram<'a> {
+    program::CanvasProgram {
+        pending_focus: Some(pending_focus.to_string()),
+        ..test_program(elements)
+    }
+}
+
 /// Helper to build a minimal InteractiveElement.
 fn test_element(id: &str) -> InteractiveElement {
     InteractiveElement {
@@ -1972,6 +1982,26 @@ fn set_focus_out_of_bounds_clears() {
     let msg = program.set_focus(&mut state, Some(99));
     assert!(msg.is_some());
     assert_eq!(state.focused_id, None);
+}
+
+#[test]
+fn missing_pending_focus_is_not_marked_consumed() {
+    let elements = vec![test_element("a")];
+    let program = test_program_with_pending_focus(&elements, "b");
+    let mut state = CanvasState::default();
+
+    let action = canvas::Program::update(
+        &program,
+        &mut state,
+        &iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: Point::ORIGIN,
+        }),
+        iced::Rectangle::new(Point::ORIGIN, iced::Size::new(100.0, 100.0)),
+        iced::mouse::Cursor::Unavailable,
+    );
+
+    assert!(action.is_none());
+    assert_eq!(state.last_consumed_pending, None);
 }
 
 // -- layers_with_active_interaction --

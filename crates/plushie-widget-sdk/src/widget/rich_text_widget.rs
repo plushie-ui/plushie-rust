@@ -1,5 +1,5 @@
 use iced::widget::text::LineHeight;
-use iced::widget::{rich_text, span};
+use iced::widget::{rich_text, span, text};
 use iced::{Element, Font, Padding, Pixels, Theme};
 
 use crate::PlushieRenderer;
@@ -11,7 +11,8 @@ use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
 use plushie_core::types::{
-    Border as CoreBorder, Color, Ellipsis, Font as CoreFont, Length, PlushieType, Wrapping,
+    Border as CoreBorder, Color, Ellipsis, Font as CoreFont, Length, PlushieType,
+    Style as CoreStyle, Wrapping,
 };
 
 struct RichTextProps {
@@ -22,6 +23,7 @@ struct RichTextProps {
     line_height: Option<plushie_core::types::LineHeight>,
     wrapping: Option<Wrapping>,
     ellipsis: Option<Ellipsis>,
+    style: Option<CoreStyle>,
 }
 
 impl RichTextProps {
@@ -35,6 +37,7 @@ impl RichTextProps {
             line_height: plushie_core::types::LineHeight::extract(p, "line_height"),
             wrapping: Wrapping::extract(p, "wrapping"),
             ellipsis: Ellipsis::extract(p, "ellipsis"),
+            style: CoreStyle::extract(p, "style"),
         }
     }
 }
@@ -153,6 +156,36 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
         }
         if let Some(ref c) = rp.color {
             rt = rt.color(iced_convert::color(c));
+        }
+        if rp.color.is_none() {
+            match &rp.style {
+                Some(CoreStyle::Preset(name)) => {
+                    rt = match name.as_str() {
+                        "primary" => rt.style(text::primary),
+                        "secondary" => rt.style(text::secondary),
+                        "success" => rt.style(text::success),
+                        "danger" => rt.style(text::danger),
+                        "warning" => rt.style(text::warning),
+                        _ => {
+                            log::warn!(
+                                "unknown style {:?} for widget type {:?}, using default",
+                                name,
+                                "rich_text"
+                            );
+                            rt.style(text::default)
+                        }
+                    };
+                }
+                Some(CoreStyle::Custom(style_map)) => {
+                    if let Some(ref tc) = style_map.text_color {
+                        let color = iced_convert::color(tc);
+                        rt = rt.style(move |_theme: &iced::Theme| iced::widget::text::Style {
+                            color: Some(color),
+                        });
+                    }
+                }
+                None => {}
+            }
         }
         if let Some(lh) = rp.line_height {
             rt = rt.line_height(iced_convert::line_height(lh));

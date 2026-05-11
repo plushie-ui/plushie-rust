@@ -10,7 +10,6 @@
 //! buttons, scroll deltas) into the wire-format strings expected by the
 //! host.
 
-use iced::widget::markdown;
 use iced::widget::text_editor;
 use iced::{Point, window};
 use serde_json::Value;
@@ -43,8 +42,6 @@ pub struct KeyEventData {
 pub enum Message {
     /// A text editor action (window_id, id, action).
     TextEditorAction(String, String, text_editor::Action),
-    /// A markdown link was clicked.
-    MarkdownUrl(markdown::Uri),
     /// A message arrived from the stdin reader (or stdin closed).
     Stdin(StdinEvent),
     /// No-op: used as return value for fire-and-forget tasks (font loads, etc.)

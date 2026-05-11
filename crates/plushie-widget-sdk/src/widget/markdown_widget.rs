@@ -1,4 +1,6 @@
 use iced::{Element, Theme};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use crate::PlushieRenderer;
 use crate::iced_convert;
@@ -44,14 +46,19 @@ impl MarkdownWidget {
     }
 }
 
+fn markdown_cache_hash(content: &str, code_theme: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    content.hash(&mut hasher);
+    code_theme.hash(&mut hasher);
+    hasher.finish()
+}
+
 impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
     fn type_names(&self) -> &[&str] {
         &["markdown"]
     }
 
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
-        use crate::shared_state::hash_str;
-
         let key = (window_id.to_string(), node.id.clone());
         let mp = MarkdownProps::from_node(node);
         let content_str = crate::shared_state::enforce_content_cap(
@@ -61,7 +68,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
             crate::shared_state::MAX_MARKDOWN_BYTES,
         );
         let code_theme_str = mp.code_theme.unwrap_or_default();
-        let hash = hash_str(&format!("{content_str}\0{code_theme_str}"));
+        let hash = markdown_cache_hash(&content_str, &code_theme_str);
 
         if let Some((existing_hash, _)) = self.items.get(&key)
             && *existing_hash == hash
@@ -150,8 +157,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for MarkdownWidget {
             settings.style.link_color = iced_convert::color(lc);
         }
 
+        let window_id = ctx.window_id.to_string();
+        let node_id = node.id.clone();
         let mut md: Element<'a, Message, iced::Theme, R> =
-            iced::widget::markdown::view(items, settings).map(Message::MarkdownUrl);
+            iced::widget::markdown::view(items, settings).map(move |uri| Message::Event {
+                window_id: window_id.clone(),
+                id: node_id.clone(),
+                value: serde_json::json!({ "link": uri }),
+                family: "link_click".into(),
+            });
 
         if let Some(ref w) = mp.width {
             md = iced::widget::container(md)

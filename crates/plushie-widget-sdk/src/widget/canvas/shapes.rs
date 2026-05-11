@@ -528,7 +528,7 @@ pub(super) fn draw_with_group_clip<R: PlushieRenderer>(
 
 /// Truncate a shape list if it exceeds the per-layer limit. Prevents
 /// excessive tessellation work from an oversized payload.
-pub(super) fn truncate_shapes(name: &str, mut shapes: Vec<CanvasShape>) -> Vec<CanvasShape> {
+pub(crate) fn truncate_shapes(name: &str, mut shapes: Vec<CanvasShape>) -> Vec<CanvasShape> {
     if shapes.len() > MAX_SHAPES_PER_LAYER {
         log::warn!(
             "canvas layer `{name}` has {} shapes, truncating to {MAX_SHAPES_PER_LAYER}",
@@ -928,7 +928,7 @@ fn apply_style_overrides(
             }
             CanvasShape::Image(i)
         }
-        // Svg and Group don't have fill/stroke/opacity overrides
-        _ => shape.clone(),
+        // Svg and Group don't have fill/stroke/opacity overrides.
+        CanvasShape::Svg(_) | CanvasShape::Group(_) => shape.clone(),
     }
 }

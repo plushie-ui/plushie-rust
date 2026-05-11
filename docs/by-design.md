@@ -372,6 +372,121 @@ Revisit if this path ever moves into a hot loop.
 
 ---
 
+## Canvas scroll stays opt-in for element interaction
+
+Interactive canvas elements implicitly enable press, release, and move
+tracking because those events are fundamental to hover, pressed, drag,
+and focus behavior. Scroll is different: capturing wheel or trackpad
+events can block page or container scrolling, and many interactive
+canvases do not need scroll input.
+
+For that reason, interactive elements do not automatically enable
+canvas scroll events. Authors opt in with the canvas-level scroll prop
+or the broader interactive prop when scroll is part of the widget
+contract.
+
+Revisit only if canvas element metadata grows an explicit per-element
+scroll capability.
+
+---
+
+## Canvas focus events use canvas and element scopes deliberately
+
+Canvas widgets can emit focus events for the canvas widget itself and
+for semantic elements inside the canvas. Element IDs are scoped under
+the canvas ID, for example `canvas/slider/thumb`, and are intended to
+be first-class event sources for canvas-local semantics.
+
+Do not collapse canvas-level and element-level focus events into a
+single event solely to reduce event volume. The canvas-level event
+tracks iced widget focus; the element-level event tracks the active
+descendant. Hosts that only care about one level can filter by ID.
+
+Revisit through the wire parity workflow if all SDKs adopt a separate
+active-descendant field or a distinct element-focus family.
+
+---
+
+## Canvas public query helpers are pure tree helpers
+
+`canvas_hit_test`, `canvas_find_element_by_id`, and related public
+helpers intentionally parse the supplied tree node directly. They are
+usable in tests, headless interaction code, and SDK utilities without
+requiring a live `CanvasEngine` instance or its prepare lifecycle.
+
+The engine caches parsed interaction data for render-time use. The
+public helpers favor portability and simple call sites over sharing
+engine-private caches.
+
+Revisit if a measured path repeatedly calls these helpers on large
+canvases and the caller can naturally hold an engine reference.
+
+---
+
+## Canvas engine internals are not a query API
+
+`CanvasEngine` exposes operations needed by widget authors composing
+the engine: prepare, render, message handling, programmatic focus, and
+pruning. Internal state such as pending focus and parsed interaction
+lists stays private unless there is a concrete author workflow that
+needs it.
+
+Adding accessors just to complete symmetry with setters is declined.
+Pre-1.0 still prefers the smaller surface until a real use case draws
+the boundary.
+
+Revisit when a custom widget needs to make a state decision that cannot
+be made from its own model and cannot be expressed through the existing
+engine operations.
+
+---
+
+## Text widget cache misses indicate lifecycle misuse
+
+Markdown and text editor widgets keep prepared parser/content state in
+factory-owned caches. Render-time cache misses should not happen during
+normal renderer operation because the registry prepare pass runs before
+render. The fallback text and warning are last-ditch developer signals,
+not a recoverable host-facing state.
+
+Do not add a separate wire diagnostic for these cache misses unless a
+real renderer path can reach them without violating the prepare/render
+contract. The right fix for such a path would be restoring the lifecycle
+invariant, not teaching hosts to recover from it.
+
+Revisit if a multi-session or direct-mode test demonstrates an ordinary
+prepare/render ordering hole.
+
+---
+
+## Text editor key binding rules keep malformed modifiers non-matching
+
+Malformed `modifiers` values in text editor key binding rules are logged
+when the rule is parsed and represented internally as a rule that never
+matches. This preserves the simple rule iteration path while ensuring a
+bad modifier list cannot accidentally become an unmodified binding.
+
+Revisit only if the key binding parser grows a typed rule model that can
+carry parse errors explicitly.
+
+---
+
+## Canvas pointer coordinate sanitization preserves event shape
+
+Canvas pointer coordinates are renderer-derived values. They pass
+through a finite-value sanitizer before JSON construction so an
+unexpected non-finite local calculation does not turn one pointer event
+into a serialization failure or malformed wire object.
+
+This is not the same as accepting non-finite host-provided wire data.
+Host input still follows the strict codec and typed parser rules.
+
+Revisit if non-finite renderer-derived coordinates show up in practice;
+that would be a bug in the geometry path and should be fixed at the
+source.
+
+---
+
 ## Performance optimizations need a realistic N or a measured profile
 
 `docs/stewardship/performance-bar.md` is the authority. Lightweight
@@ -534,6 +649,75 @@ Declined as unilateral changes:
 This is procedural, not a class of recommendation we decline
 outright. The work happens; it just routes through the right
 workflow.
+
+---
+
+## Text widget state and cap boundaries are intentional
+
+Text widgets have a few behaviors that look lossy or asymmetric but
+are deliberate parts of the current renderer model.
+
+Content caps for `text_input.value`, `text_editor.content`, and
+`markdown.content` truncate before expensive shaping or parsing work.
+The truncation is not log-only: `plushie-widget-sdk::diagnostics`
+emits `Diagnostic::ContentLengthExceeded`, and renderer-lib installs
+a hook that forwards those diagnostics as structured
+`DiagnosticMessage` values over the normal event sink.
+
+`text_editor.content` is an authoritative host prop. User edits update
+the renderer-side content hash so ordinary host echoes of the same
+text do not clobber cursor, selection, or undo state. A genuinely new
+host `content` value replaces the editor content, including cursor,
+selection, and undo state. That is the controlled-widget contract,
+not an attempt to merge concurrent host and user edits.
+
+Physical text motion aliases (`left`, `right`, `word_left`,
+`word_right`, `home`, `end`) stay physical even in RTL text. Logical
+motions (`backward`, `forward`, `word_backward`, `word_forward`,
+etc.) route through `TextMotion` and apply direction-aware mapping.
+Keep both paths unless the cross-SDK key-binding shape changes.
+
+`text_editor.width` is numeric because iced's text editor currently
+accepts pixel widths, unlike `text_input`, which accepts `Length`.
+Do not paper over that with a local API shim unless the underlying
+widget or the cross-SDK API shape changes.
+
+Tuple-style internal message variants are not public API hardening
+work. Rename or reshape them when a behavioral change needs it, but
+do not churn internal enum spelling solely to make future additive
+fields cheaper before 1.0.
+
+Markdown and rich-text link click payloads carry the author-provided
+link string in a typed `{ "link": ... }` event payload. The renderer
+does not validate URL schemes or reject control characters there; the
+host authored the content and receives the same string back as event
+data.
+
+Text input icons are parsed from the same tree-prop data model in every
+mode. Direct mode is not a separate native-widget API surface for icon
+construction; custom native composition belongs in a custom widget.
+
+Text editor non-edit actions update iced/editor-local state and only
+emit host `input` events when content changes. Copy, select, movement,
+and similar actions are not host-visible events today.
+
+Missing text content defaults to empty text. Text widgets are display
+primitives, and an empty text node is a valid state rather than a
+configuration error.
+
+The `rich` alias remains registered as a compatibility alias for
+`rich_text` unless the cross-SDK widget-name set is changed together.
+Removing a local alias unilaterally creates parity drift for little
+clarity gain.
+
+Rich text span parsing happens per render from the raw `spans` array.
+For normal rich text sizes this is acceptable and keeps the shape
+local. Optimize only with a realistic high-span workload or a measured
+profile.
+
+Revisit these if the parity workflow changes the controlled text
+contract, if iced's text editor gains `Length` width support, or if a
+real profile shows rich span parsing dominating frame time.
 
 ---
 

@@ -27,7 +27,7 @@ use plushie_core::types::{self as core_types, PlushieType};
 use plushie_core::types::{CanvasShape, extract_canvas_layers};
 
 use crate::PlushieRenderer;
-use crate::canvas_engine::CanvasLayerCaches;
+use crate::canvas_engine::{CanvasLayerCaches, PreparedCanvasLayer};
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
@@ -37,6 +37,7 @@ use crate::widget::helpers::*;
 // --- Public / pub(crate) re-exports ---
 
 pub(crate) use interaction::{collect_interactive_elements, validate_interactive_elements};
+pub(crate) use shapes::truncate_shapes;
 pub(crate) use types::{InteractiveElement, TransformMatrix};
 pub(crate) use validation::validate_canvas_shape_tree;
 
@@ -116,6 +117,7 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
     node_caches: Option<&'a CanvasLayerCaches<R>>,
     interactive_elements: &'a [InteractiveElement],
     pending_focus: Option<String>,
+    prepared_layers: Option<&'a [PreparedCanvasLayer]>,
 ) -> Element<'a, Message, Theme, R> {
     let cp = CanvasProps::from_node(node);
     let props = &node.props;
@@ -131,15 +133,19 @@ pub(crate) fn render_canvas_with_state<'a, R: PlushieRenderer>(
         .map(iced_convert::length)
         .unwrap_or(iced::Length::Fixed(200.0));
 
-    // Build sorted layer data from children (shapes as tree nodes).
-    let layer_map = canvas_layers_from_node(node);
-    let layers: Vec<(String, Vec<CanvasShape>)> = layer_map
-        .into_iter()
-        .map(|(name, layer_shapes)| {
-            let truncated = shapes::truncate_shapes(&name, layer_shapes);
-            (name, truncated)
-        })
-        .collect();
+    let fallback_layers;
+    let layers = if let Some(prepared_layers) = prepared_layers {
+        prepared_layers.to_vec()
+    } else {
+        fallback_layers = canvas_layers_from_node(node)
+            .into_iter()
+            .map(|(name, layer_shapes)| {
+                let truncated = shapes::truncate_shapes(&name, layer_shapes);
+                (name, truncated)
+            })
+            .collect::<Vec<_>>();
+        fallback_layers
+    };
 
     let background = cp.background.as_ref().map(iced_convert::color);
 

@@ -811,6 +811,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("line_height", Number),
             ("wrapping", OneOf(WRAPPING_VALUES)),
             ("ellipsis", OneOf(ELLIPSIS_VALUES)),
+            ("style", Any),
         ],
         "vertical_slider" => &[
             ("value", Number),
@@ -945,7 +946,48 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
         }
     }
 
+    if node.type_name == "rich_text" || node.type_name == "rich" {
+        warnings.extend(collect_rich_text_span_warnings(node));
+    }
+
     warnings
+}
+
+fn collect_rich_text_span_warnings(node: &TreeNode) -> Vec<String> {
+    let Some(spans) = node.props.get_value("spans") else {
+        return Vec::new();
+    };
+    let Some(spans) = spans.as_array() else {
+        return Vec::new();
+    };
+
+    spans
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, span)| match span.get("text") {
+            Some(serde_json::Value::String(_)) => None,
+            Some(value) => Some(
+                plushie_core::Diagnostic::PropTypeMismatch {
+                    id: node.id.clone(),
+                    type_name: node.type_name.clone(),
+                    prop: format!("spans[{idx}].text"),
+                    value_debug: format!("{value:?}"),
+                    expected_debug: "String".to_string(),
+                }
+                .to_string(),
+            ),
+            None => Some(
+                plushie_core::Diagnostic::PropTypeMismatch {
+                    id: node.id.clone(),
+                    type_name: node.type_name.clone(),
+                    prop: format!("spans[{idx}].text"),
+                    value_debug: "missing".to_string(),
+                    expected_debug: "String".to_string(),
+                }
+                .to_string(),
+            ),
+        })
+        .collect()
 }
 
 /// Validate a node's props and log any warnings.
@@ -1281,6 +1323,19 @@ mod tests {
         assert!(warnings[0].contains("prop_type_mismatch"));
         assert!(warnings[0].contains("code_theme"));
         assert!(warnings[0].contains("\"inspired_github\""));
+    }
+
+    #[test]
+    fn rich_text_span_text_is_validated() {
+        let node = make_node(
+            "rich_text",
+            json!({"spans": [{"text": "ok"}, {"text": 42}, {"link": "https://example.com"}]}),
+        );
+        let warnings = collect_prop_warnings(&node);
+
+        assert_eq!(warnings.len(), 2, "unexpected warnings: {warnings:?}");
+        assert!(warnings[0].contains("spans[1].text"));
+        assert!(warnings[1].contains("spans[2].text"));
     }
 
     #[test]

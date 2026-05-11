@@ -52,7 +52,7 @@ fn text_motion(motion: TextMotion, direction: TextDirection) -> text_editor::Mot
     }
 }
 
-/// Parse a JSON motion string into an iced Motion.
+/// Parse a pre-extracted motion string into an iced Motion.
 fn parse_motion(s: &str, direction: TextDirection) -> Option<text_editor::Motion> {
     use text_editor::Motion;
 
@@ -134,6 +134,46 @@ fn parse_binding(
             None
         }
         _ => None,
+    }
+}
+
+fn binding_config_is_valid(val: &Value, direction: TextDirection) -> bool {
+    match val {
+        Value::String(s) => matches!(
+            s.as_str(),
+            "default"
+                | "copy"
+                | "cut"
+                | "paste"
+                | "select_all"
+                | "enter"
+                | "backspace"
+                | "delete"
+                | "unfocus"
+                | "select_word"
+                | "select_line"
+        ),
+        Value::Object(obj) => {
+            obj.get("move")
+                .and_then(|v| v.as_str())
+                .and_then(|s| parse_motion(s, direction))
+                .is_some()
+                || obj
+                    .get("select")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| parse_motion(s, direction))
+                    .is_some()
+                || obj.get("insert").and_then(|v| v.as_str()).is_some_and(|s| {
+                    let mut chars = s.chars();
+                    chars.next().is_some() && chars.next().is_none()
+                })
+                || obj.get("custom").and_then(|v| v.as_str()).is_some()
+                || obj
+                    .get("sequence")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|seq| seq.iter().any(|v| binding_config_is_valid(v, direction)))
+        }
+        _ => false,
     }
 }
 
@@ -531,19 +571,21 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
                 }
                 let binding_val = obj.get("binding").cloned().unwrap_or(Value::Null);
                 let is_default = binding_val.as_str() == Some("default");
-                // Validate binding action name
-                if let Some(action_name) = binding_val.as_str() {
-                    match action_name {
-                        "default" | "copy" | "cut" | "paste" | "select_all" | "enter"
-                        | "backspace" | "delete" | "unfocus" | "select_word" | "select_line" => {}
-                        other => {
-                            log::warn!(
-                                "text_editor key_binding: unrecognized binding action {:?} [id={}]",
-                                other,
-                                node.id,
-                            );
-                        }
+                if !binding_config_is_valid(&binding_val, text_direction) {
+                    if let Some(action_name) = binding_val.as_str() {
+                        log::warn!(
+                            "text_editor key_binding: unrecognized binding action {:?} [id={}]",
+                            action_name,
+                            node.id,
+                        );
+                    } else {
+                        log::warn!(
+                            "text_editor key_binding: unsupported binding value {:?} [id={}]",
+                            binding_val,
+                            node.id,
+                        );
                     }
+                    return None;
                 }
                 let rule = KeyRule {
                     key,
@@ -706,7 +748,7 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
         te = te.on_status_change(move |status| Message::Event {
             window_id: status_wid.clone(),
             id: status_id.clone(),
-            value: serde_json::Value::String(status.to_string()),
+            value: serde_json::Value::String(status.to_owned()),
             family: "status".into(),
         });
     }
@@ -945,5 +987,25 @@ mod tests {
 
         assert!(key_rule_matches(&rule, &matching_press));
         assert!(!key_rule_matches(&rule, &extra_modifier_press));
+    }
+
+    #[test]
+    fn invalid_binding_configs_are_rejected_before_matching() {
+        assert!(!binding_config_is_valid(
+            &serde_json::json!("launch_missiles"),
+            TextDirection::Auto
+        ));
+        assert!(!binding_config_is_valid(
+            &serde_json::json!({"move": "sideways"}),
+            TextDirection::Auto
+        ));
+        assert!(binding_config_is_valid(
+            &serde_json::json!("default"),
+            TextDirection::Auto
+        ));
+        assert!(binding_config_is_valid(
+            &serde_json::json!({"sequence": ["copy", {"custom": "tag"}]}),
+            TextDirection::Auto
+        ));
     }
 }

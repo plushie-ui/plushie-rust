@@ -140,6 +140,16 @@ pub(super) fn parse_interactive_element(
         let max_x = db.max_x.unwrap_or(f32::INFINITY);
         let min_y = db.min_y.unwrap_or(f32::NEG_INFINITY);
         let max_y = db.max_y.unwrap_or(f32::INFINITY);
+        if min_x > max_x {
+            log::warn!(
+                "canvas element '{id}': drag_bounds min_x is greater than max_x; normalizing"
+            );
+        }
+        if min_y > max_y {
+            log::warn!(
+                "canvas element '{id}': drag_bounds min_y is greater than max_y; normalizing"
+            );
+        }
         DragBounds {
             min_x: min_x.min(max_x),
             max_x: min_x.max(max_x),

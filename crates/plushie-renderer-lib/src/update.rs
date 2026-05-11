@@ -269,6 +269,7 @@ impl App {
                     .advance_all(instant, &mut self.core.caches.interpolated_props);
 
                 // Emit transition_complete events
+                let mut task = Task::none();
                 for c in completions {
                     let event = OutgoingEvent::generic(
                         "transition_complete",
@@ -278,7 +279,7 @@ impl App {
                             "prop": c.prop_name,
                         })),
                     );
-                    let _ = self.emitter.emit_immediate(event);
+                    task = Task::batch([task, self.emitter.emit_immediate(event)]);
                 }
 
                 // Forward animation_frame to SDK if subscribed
@@ -288,12 +289,13 @@ impl App {
                     let millis = u64::try_from(instant.duration_since(epoch).as_millis())
                         .unwrap_or(u64::MAX);
                     let event = OutgoingEvent::animation_frame(entry.tag.as_str(), millis);
-                    self.emitter.coalesce(
+                    let animation_frame_task = self.emitter.coalesce(
                         CoalesceKey::Subscription(SUB_ANIMATION_FRAME.to_string()),
                         event,
-                    )
+                    );
+                    Task::batch([task, animation_frame_task])
                 } else {
-                    Task::none()
+                    task
                 }
             }
             Message::ThemeChanged(mode) => {
@@ -483,16 +485,12 @@ impl App {
                         let pre_reset_flush = self.emitter.flush();
 
                         // Reset core and emit the response.
-                        if let Err(e) = crate::scripting::handle_reset(
+                        let reset_result = crate::scripting::handle_reset(
                             &self.emitter,
                             &self.codec,
                             &mut self.core,
                             id,
-                        ) {
-                            log::error!("write error: {e}");
-                            emit_write_failure(&self.emitter, "reset", &e);
-                            return iced::exit();
-                        }
+                        );
 
                         // Close all open windows and clear maps.
                         let mut close_tasks: Vec<Task<Message>> = self
@@ -512,6 +510,12 @@ impl App {
                         self.pending_tasks.clear();
                         self.animation_epoch = None;
                         self.emitter = crate::emitter::EventEmitter::new(self.emitter.sink());
+
+                        if let Err(e) = reset_result {
+                            log::error!("write error: {e}");
+                            emit_write_failure(&self.emitter, "reset", &e);
+                            close_tasks.push(iced::exit());
+                        }
 
                         Task::batch(close_tasks)
                     }
@@ -548,6 +552,7 @@ impl App {
                                     guard.emit_screenshot_response(&id, &name, &hash, w, h, rgba)
                                 {
                                     log::error!("write error in screenshot: {e}");
+                                    return Message::Stdin(StdinEvent::Closed);
                                 }
                                 Message::NoOp
                             })

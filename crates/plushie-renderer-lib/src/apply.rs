@@ -5,6 +5,7 @@ use std::io;
 
 use plushie_renderer_engine::CoreEffect;
 use plushie_widget_sdk::protocol::IncomingMessage;
+use plushie_widget_sdk::runtime::{Message, StdinEvent};
 
 use crate::App;
 
@@ -86,8 +87,9 @@ impl App {
                                         let mut guard = sink.lock();
                                         if let Err(e) = guard.emit_effect_response(response) {
                                             log::error!("effect response write error: {e}");
+                                            return Message::Stdin(StdinEvent::Closed);
                                         }
-                                        plushie_widget_sdk::runtime::Message::NoOp
+                                        Message::NoOp
                                     },
                                 );
                                 self.pending_tasks.push(task);

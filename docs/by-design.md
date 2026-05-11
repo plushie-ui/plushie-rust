@@ -526,6 +526,42 @@ fit a single struct.
 
 ---
 
+## Runner wire bootstrap and transport internals are intentionally narrow
+
+The Rust SDK bridge starts in JSON mode, reads the renderer's
+`hello` message, then switches to the codec advertised by that
+hello. This bootstrap is the protocol contract: `hello` stays
+JSON so a host can negotiate the later stream codec without
+already knowing it.
+
+`Bridge::send_load_font` has a separate MsgPack path on purpose.
+The typed `OutgoingMessage::LoadFont` payload is a
+`serde_json::Value`, which cannot express native MsgPack binary.
+The helper writes the same logical envelope with a MsgPack binary
+value for font bytes. That second serialization path is not a
+refactor target by itself; tests should pin the wire shape.
+
+The bridge reader uses bounded channels. When the consumer is
+gone, the reader exits quietly because shutdown is already in
+progress. When the channel is full, `SyncSender::send` applies
+backpressure instead of dropping messages. A real deadlock or
+stall repro is a resilience bug, but the bounded channel shape is
+not itself a finding.
+
+The owned Tokio runtime in wire mode is the default for apps that
+do not provide one. `run_wire_with_runtime` is the escape hatch
+for hosts that already own a runtime or need tighter control.
+Lazy runtime creation can be reconsidered if a concrete design
+keeps task, timer, and effect behavior clear; the existence of a
+private default runtime is not by itself a bug.
+
+Revisit any of these if the wire bootstrap changes, if font
+messages stop needing native binary in MsgPack, or if a measured
+runtime footprint issue shows the default runtime dominates normal
+apps.
+
+---
+
 ## Ephemeral concerns that are not bugs
 
 A handful of patterns get flagged repeatedly as "fragile" or
@@ -549,6 +585,14 @@ them here so reviewers can move past them.
   miss. The existing diagnostics catch the precondition.
 - **`Drop` on `TransportGuard` blocks on `child.wait()`.**
   Acceptable; the typical case is sub-second teardown.
+- **Small duplicated wire handshake blocks.** Protocol-version
+  validation and codec negotiation appear in both connect and
+  spawn paths. The duplication is local and readable. Extract
+  only when a behavioral change needs to touch both paths.
+- **Direct and wire window-sync ordering.** Wire mode must send
+  window operations before patches that reference new windows.
+  Direct mode applies in-process state and does not need to
+  mirror the exact serialized ordering absent a failing behavior.
 
 Revisit individually if a real failure mode against any of
 these is observed.

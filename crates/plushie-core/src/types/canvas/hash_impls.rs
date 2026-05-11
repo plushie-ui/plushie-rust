@@ -43,11 +43,11 @@ fn hash_f32_opt<H: Hasher>(v: Option<f32>, state: &mut H) {
 
 impl Hash for Angle {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // Hash in a canonical unit so Angle::deg(180) and Angle::rad(PI)
-        // collide for cache purposes (matches `PartialEq`'s approx_eq).
-        // Use degrees as the canonical form to minimise precision drift
-        // since degrees are the wire representation.
-        hash_f32(self.degrees(), state);
+        // `Angle` equality is approximate and therefore not safely
+        // bucketable by its raw float bits. A constant hash preserves
+        // the Hash/PartialEq contract; angle fields are a small part of
+        // the canvas cache key, so the lost discrimination is acceptable.
+        0u8.hash(state);
     }
 }
 

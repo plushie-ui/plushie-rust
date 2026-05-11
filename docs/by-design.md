@@ -638,6 +638,25 @@ them here so reviewers can move past them.
   window operations before patches that reference new windows.
   Direct mode applies in-process state and does not need to
   mirror the exact serialized ordering absent a failing behavior.
+- **Canvas wire values decode into the declared Rust precision.**
+  Canvas geometry is represented as `f32`, matching the renderer's
+  drawing APIs. Decoders should reject non-finite values and values
+  that overflow the declared type, but ordinary `f64` to `f32`
+  precision narrowing is the type boundary, not a bug.
+- **Canvas feature shape is intentionally current-scope only.**
+  Linear gradients, translate/rotate/scale transforms, and current
+  animation descriptors are the supported surface today. Radial
+  gradients, skew transforms, animation hash keys, and richer
+  constructor validation need a concrete renderer or API use case
+  before expanding the model.
+- **Default-valued animation and style fields may omit on encode.**
+  Omitted `delay`, `auto_reverse`, and similar defaults decode to
+  their semantic default. Encoders do not need to preserve whether a
+  default was explicitly written by the host.
+- **Canvas enum hashes use discriminants for process-local caches.**
+  The affected enums are fieldless protocol enums with stable variant
+  order in source. Their hash values are not persisted or wire-visible;
+  they only invalidate in-process canvas caches.
 
 Revisit individually if a real failure mode against any of
 these is observed.

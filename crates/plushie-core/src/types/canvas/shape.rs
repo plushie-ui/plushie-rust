@@ -652,7 +652,7 @@ mod tests {
                 "on_click": true,
                 "cursor": "pointer",
                 "focusable": true,
-                "hover_style": {"fill": "#eee", "opacity": 0.8}
+                "hover_style": {"fill": "#eeeeee", "opacity": 0.8}
             },
             "children": []
         }))

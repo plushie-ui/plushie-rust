@@ -32,7 +32,8 @@ pub enum Transform {
         /// Vertical offset in pixels (positive = down).
         y: f32,
     },
-    /// Rotation around the origin. Positive = clockwise.
+    /// Rotation around the origin in the canvas y-down coordinate
+    /// system. Positive angles appear clockwise.
     Rotate {
         /// Rotation angle. Wire format is degrees.
         angle: Angle,
@@ -156,10 +157,26 @@ mod tests {
     }
 
     #[test]
+    fn scale_non_uniform_round_trips() {
+        let original = Transform::Scale { x: 2.0, y: 0.5 };
+        let encoded: Value = original.wire_encode().into();
+        let decoded = Transform::wire_decode(&encoded).unwrap();
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
     fn scale_uniform() {
         let val = json!({"type": "scale", "factor": 3.0});
         let t = Transform::wire_decode(&val).unwrap();
         assert_eq!(t, Transform::ScaleUniform { factor: 3.0 });
+    }
+
+    #[test]
+    fn scale_uniform_round_trips() {
+        let original = Transform::ScaleUniform { factor: 3.0 };
+        let encoded: Value = original.wire_encode().into();
+        let decoded = Transform::wire_decode(&encoded).unwrap();
+        assert_eq!(decoded, original);
     }
 
     #[test]

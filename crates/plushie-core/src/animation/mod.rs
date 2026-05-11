@@ -145,14 +145,17 @@ impl<T: PlushieType> PlushieType for Transition<T> {
             .unwrap_or(Easing::EaseInOut);
         let delay = obj.get("delay").and_then(|v| v.as_u64()).unwrap_or(0);
         let from = obj.get("from").and_then(T::wire_decode);
-        let repeat = obj.get("repeat").and_then(|v| {
-            let n = v.as_i64()?;
-            if n < 0 {
-                Some(Repeat::Forever)
-            } else {
-                Some(Repeat::Times(n as u32))
+        let repeat = match obj.get("repeat") {
+            Some(v) => {
+                let n = v.as_i64()?;
+                Some(if n < 0 {
+                    Repeat::Forever
+                } else {
+                    Repeat::Times(u32::try_from(n).ok()?)
+                })
             }
-        });
+            None => None,
+        };
         let auto_reverse = obj
             .get("auto_reverse")
             .and_then(|v| v.as_bool())
@@ -332,7 +335,9 @@ impl<T: PlushieType> PlushieType for Spring<T> {
         let to_val = obj.get("to")?;
         let to = T::wire_decode(to_val)?;
         let stiffness = obj.get("stiffness")?.as_f64()?;
+        stiffness.is_finite().then_some(())?;
         let damping = obj.get("damping")?.as_f64()?;
+        damping.is_finite().then_some(())?;
         let mass = match obj.get("mass") {
             Some(value) => {
                 let mass = value.as_f64()?;
@@ -340,7 +345,11 @@ impl<T: PlushieType> PlushieType for Spring<T> {
             }
             None => 1.0,
         };
-        let velocity = obj.get("velocity").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let velocity = match obj.get("velocity") {
+            Some(value) => value.as_f64()?,
+            None => 0.0,
+        };
+        velocity.is_finite().then_some(())?;
         let from = obj.get("from").and_then(T::wire_decode);
         let on_complete = obj
             .get("on_complete")
@@ -456,8 +465,8 @@ impl<T: PlushieType> PlushieType for Sequence<T> {
         let steps_arr = obj.get("steps")?.as_array()?;
         let steps: Vec<AnimationStep<T>> = steps_arr
             .iter()
-            .filter_map(AnimationStep::wire_decode)
-            .collect();
+            .map(AnimationStep::wire_decode)
+            .collect::<Option<_>>()?;
         let on_complete = obj
             .get("on_complete")
             .and_then(|v| v.as_str())
@@ -649,6 +658,36 @@ mod tests {
     }
 
     #[test]
+    fn transition_wire_decode_rejects_repeat_over_u32() {
+        let json = serde_json::json!({
+            "type": "transition",
+            "to": 1.0,
+            "duration": 100,
+            "repeat": i64::MAX
+        });
+
+        assert!(Transition::<f64>::wire_decode(&json).is_none());
+    }
+
+    #[test]
+    fn spring_wire_decode_rejects_non_finite_stiffness_damping_and_velocity() {
+        for field in ["stiffness", "damping", "velocity"] {
+            let mut json = serde_json::json!({
+                "type": "spring",
+                "to": 1.0,
+                "stiffness": 100.0,
+                "damping": 10.0,
+            });
+            json[field] = serde_json::json!(f64::INFINITY);
+
+            assert!(
+                Spring::<f64>::wire_decode(&json).is_none(),
+                "{field} should reject non-finite values after f64 conversion",
+            );
+        }
+    }
+
+    #[test]
     fn sequence_round_trips() {
         let orig: Sequence<f64> = Sequence::new(vec![
             Transition::new(1.0, 200).into(),
@@ -661,6 +700,19 @@ mod tests {
         assert!(matches!(decoded.steps[0], AnimationStep::Transition(_)));
         assert!(matches!(decoded.steps[1], AnimationStep::Spring(_)));
         assert_eq!(decoded.on_complete.as_deref(), Some("seq_done"));
+    }
+
+    #[test]
+    fn sequence_rejects_invalid_steps() {
+        let json = serde_json::json!({
+            "type": "sequence",
+            "steps": [
+                {"type": "transition", "to": 1.0, "duration": 200},
+                {"type": "unknown", "to": 2.0}
+            ]
+        });
+
+        assert!(Sequence::<f64>::wire_decode(&json).is_none());
     }
 
     #[test]

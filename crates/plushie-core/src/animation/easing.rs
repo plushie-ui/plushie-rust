@@ -180,7 +180,7 @@ impl Easing {
             Self::EaseInBounce => "ease_in_bounce",
             Self::EaseOutBounce => "ease_out_bounce",
             Self::EaseInOutBounce => "ease_in_out_bounce",
-            Self::CubicBezier(..) => unreachable!("CubicBezier handled in wire_encode"),
+            Self::CubicBezier(..) => "cubic_bezier",
         }
     }
 

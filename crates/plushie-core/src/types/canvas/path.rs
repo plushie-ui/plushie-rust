@@ -57,7 +57,7 @@ pub enum PathCommand {
         cx: f32,
         /// Center Y coordinate.
         cy: f32,
-        /// Corner or drop radius.
+        /// Radius of the circle the arc is part of.
         radius: f32,
         /// Starting angle.
         start_angle: Angle,
@@ -74,7 +74,7 @@ pub enum PathCommand {
         x2: f32,
         /// Y2.
         y2: f32,
-        /// Corner or drop radius.
+        /// Corner rounding radius between the tangent segments.
         radius: f32,
     },
     /// Ellipse.
@@ -495,7 +495,7 @@ mod tests {
         };
         let encoded: Value = cmd.wire_encode().into();
         let decoded = decode_commands(&serde_json::json!([encoded]));
-        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded, vec![cmd]);
     }
 
     #[test]

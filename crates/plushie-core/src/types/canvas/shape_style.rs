@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::protocol::{PropMap, PropValue};
 
-use super::super::PlushieType;
+use super::super::{Color, PlushieType};
 use super::Stroke;
 
 /// Style overrides applied to canvas shapes in hover/pressed/focus states.
@@ -30,12 +30,18 @@ pub struct ShapeStyle {
 impl PlushieType for ShapeStyle {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
-        let fill = obj.get("fill").and_then(|v| v.as_str()).map(String::from);
+        let fill = match obj.get("fill") {
+            Some(value) => Some(Color::wire_decode(value)?.as_hex().to_string()),
+            None => None,
+        };
         let stroke = obj.get("stroke").and_then(Stroke::wire_decode);
-        let opacity = obj
-            .get("opacity")
-            .and_then(|v| v.as_f64())
-            .map(|f| f as f32);
+        let opacity = match obj.get("opacity") {
+            Some(v) => {
+                let f = v.as_f64()? as f32;
+                Some(f.is_finite().then_some(f)?)
+            }
+            None => None,
+        };
         Some(Self {
             fill,
             stroke,
@@ -134,5 +140,16 @@ mod tests {
         let json_val: Value = encoded.into();
         let decoded = ShapeStyle::wire_decode(&json_val).unwrap();
         assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn shape_style_rejects_invalid_fill() {
+        assert!(ShapeStyle::wire_decode(&json!({"fill": "not_a_color"})).is_none());
+        assert!(ShapeStyle::wire_decode(&json!({"fill": "#f0f"})).is_none());
+    }
+
+    #[test]
+    fn shape_style_rejects_non_finite_opacity_after_cast() {
+        assert!(ShapeStyle::wire_decode(&json!({"opacity": 1e50})).is_none());
     }
 }

@@ -28,8 +28,8 @@ pub struct ClipRect {
 impl PlushieType for ClipRect {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
-        let x = obj.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        let y = obj.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+        let x = obj.get("x").and_then(|v| v.as_f64())? as f32;
+        let y = obj.get("y").and_then(|v| v.as_f64())? as f32;
         let w = obj.get("w").and_then(|v| v.as_f64())? as f32;
         let h = obj.get("h").and_then(|v| v.as_f64())? as f32;
         Some(Self { x, y, w, h })
@@ -70,15 +70,8 @@ mod tests {
     }
 
     #[test]
-    fn clip_rect_requires_dimensions() {
+    fn clip_rect_requires_all_fields() {
         assert!(ClipRect::wire_decode(&json!({"x": 0.0, "y": 0.0})).is_none());
-    }
-
-    #[test]
-    fn clip_rect_defaults_position() {
-        let val = json!({"w": 50.0, "h": 30.0});
-        let clip = ClipRect::wire_decode(&val).unwrap();
-        assert_eq!(clip.x, 0.0);
-        assert_eq!(clip.y, 0.0);
+        assert!(ClipRect::wire_decode(&json!({"w": 50.0, "h": 30.0})).is_none());
     }
 }

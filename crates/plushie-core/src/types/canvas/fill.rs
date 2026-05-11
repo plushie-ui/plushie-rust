@@ -89,10 +89,11 @@ mod tests {
 
     #[test]
     fn fill_rule_round_trip() {
-        let val = FillRule::NonZero.wire_encode();
-        assert_eq!(val, PropValue::Str("non_zero".into()));
-
-        let decoded = FillRule::wire_decode(&json!("even_odd")).unwrap();
-        assert_eq!(decoded, FillRule::EvenOdd);
+        for rule in [FillRule::NonZero, FillRule::EvenOdd] {
+            let encoded = rule.wire_encode();
+            let json_val: Value = encoded.into();
+            let decoded = FillRule::wire_decode(&json_val).unwrap();
+            assert_eq!(decoded, rule);
+        }
     }
 }

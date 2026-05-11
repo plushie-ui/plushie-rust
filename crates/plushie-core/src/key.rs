@@ -213,6 +213,14 @@ impl Key {
             Self::Named(name) => name.clone(),
         }
     }
+
+    /// Parse a key name from the wire protocol.
+    ///
+    /// Unknown key names are preserved through [`Key::Named`] so newer
+    /// renderer or iced key names can pass through older SDKs.
+    pub fn from_wire(s: &str) -> Self {
+        Self::from(s)
+    }
 }
 
 impl fmt::Display for Key {
@@ -378,7 +386,7 @@ impl KeyPress {
             let get_bool = |key| mods.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
             let modifiers = KeyModifiers {
                 shift: get_bool("shift"),
-                ctrl: get_bool("ctrl") || get_bool("command"),
+                ctrl: get_bool("ctrl"),
                 alt: get_bool("alt"),
                 logo: get_bool("logo"),
                 command: get_bool("command"),
@@ -482,6 +490,9 @@ impl fmt::Display for KeyPress {
         }
         if self.modifiers.logo {
             parts.push("Super".to_string());
+        }
+        if self.modifiers.command {
+            parts.push("Command".to_string());
         }
         parts.push(self.key.wire_name());
         write!(f, "{}", parts.join("+"))
@@ -982,7 +993,14 @@ mod tests {
     fn keypress_from_wire_command_alias() {
         let payload = serde_json::json!({"key": "s", "modifiers": {"command": true}});
         let kp = KeyPress::from_wire(&payload).unwrap();
-        assert!(kp.modifiers.ctrl);
+        assert!(kp.modifiers.command);
+        assert!(!kp.modifiers.ctrl);
+    }
+
+    #[test]
+    fn keypress_display_includes_command_modifier() {
+        let kp = KeyPress::from("Command+s");
+        assert_eq!(kp.to_string(), "Command+s");
     }
 
     #[test]

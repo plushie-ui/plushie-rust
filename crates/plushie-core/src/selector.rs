@@ -47,10 +47,11 @@ pub enum Selector {
     ///
     /// The `widget_id` may be a bare local name (`"save"`), a scoped
     /// path (`"form/save"`), or a window-qualified ID (`"main#save"`).
-    /// Bare names and partial scoped paths also match as trailing
-    /// segments, so `"form/save"` finds a node with the fully
-    /// qualified id `"main#form/save"`. When `window_id` is set, the
-    /// search is restricted to that window's subtree.
+    /// Matching checks the exact ID, the local name after the last
+    /// `/` or `#`, and partial scoped paths as trailing segments, so
+    /// `"form/save"` finds a node with the fully qualified id
+    /// `"main#form/save"`. When `window_id` is set, the search is
+    /// restricted to that window's subtree.
     Id {
         /// Target widget ID.
         widget_id: String,
@@ -60,7 +61,7 @@ pub enum Selector {
     /// Match a widget by its visible text content.
     ///
     /// Searches the `content`, `label`, `value`, and `placeholder`
-    /// props for a matching string.
+    /// props for an exact, case-sensitive string match.
     Text(String),
     /// Match a widget by its accessibility role.
     Role(String),
@@ -129,11 +130,11 @@ impl Selector {
                     .map(str::to_string);
                 match by {
                     "id" => {
-                        let window_id = raw_value
+                        let embedded_window = raw_value
                             .split_once('#')
                             .filter(|(win, _)| !win.is_empty())
-                            .map(|(win, _)| win.to_string())
-                            .or(explicit_window);
+                            .map(|(win, _)| win.to_string());
+                        let window_id = explicit_window.or(embedded_window);
                         Some(Self::Id {
                             widget_id: raw_value,
                             window_id,
@@ -341,7 +342,7 @@ fn find_by_id<'a>(
 fn local_name(id: &str) -> &str {
     id.rsplit_once('/')
         .or_else(|| id.rsplit_once('#'))
-        .map(|(_, local)| local)
+        .and_then(|(_, local)| (!local.is_empty()).then_some(local))
         .unwrap_or(id)
 }
 
@@ -587,6 +588,24 @@ mod tests {
     }
 
     #[test]
+    fn selector_explicit_window_id_overrides_embedded_window() {
+        let parsed = Selector::from_wire(&serde_json::json!({
+            "by": "id",
+            "value": "main#save",
+            "window_id": "popup",
+        }))
+        .unwrap();
+
+        assert_eq!(
+            parsed,
+            Selector::Id {
+                widget_id: "main#save".into(),
+                window_id: Some("popup".into()),
+            }
+        );
+    }
+
+    #[test]
     fn selector_id_in_window_round_trips() {
         // `id_in_window` keeps the id local; window_id rides as a
         // sidecar field. The sidecar must round-trip independently.
@@ -640,6 +659,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn selector_display_formats_all_variants() {
+        assert_eq!(Selector::id("save").to_string(), "save");
+        assert_eq!(
+            Selector::id_in_window("save", "main").to_string(),
+            "main#save"
+        );
+        assert_eq!(Selector::id("main#save").to_string(), "main#save");
+        assert_eq!(Selector::text("Save").to_string(), r#"{text: "Save"}"#);
+        assert_eq!(Selector::role("button").to_string(), "{role: button}");
+        assert_eq!(Selector::label("Save").to_string(), r#"{label: "Save"}"#);
+        assert_eq!(Selector::focused().to_string(), "{focused}");
+    }
+
+    #[test]
+    fn local_name_keeps_empty_suffix_inputs_distinct() {
+        assert_eq!(local_name("#"), "#");
+        assert_eq!(local_name("main#"), "main#");
+        assert_eq!(local_name("scope/"), "scope/");
+    }
+
     // -----------------------------------------------------------------------
     // Tree-search predicates: Role, Label, Focused
     //
@@ -687,6 +727,21 @@ mod tests {
         let root = node_with_children("root", "container", vec![node("btn", "button")]);
         let found = Selector::role("button").find(&root).unwrap();
         assert_eq!(found.id, "btn");
+    }
+
+    #[test]
+    fn role_does_not_fall_back_when_a11y_has_no_role() {
+        let root = node_with_children(
+            "root",
+            "container",
+            vec![node_with_a11y(
+                "btn",
+                "button",
+                serde_json::json!({"label": "Save"}),
+            )],
+        );
+
+        assert!(Selector::role("button").find(&root).is_none());
     }
 
     #[test]
@@ -794,6 +849,23 @@ mod tests {
             .map(|n| n.id.as_str())
             .collect();
         assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn text_matches_value_and_placeholder_props_case_sensitively() {
+        let mut value = node("value", "text_input");
+        value.props = Props::from_json(serde_json::json!({"value": "Email"}));
+        let mut placeholder = node("placeholder", "text_input");
+        placeholder.props = Props::from_json(serde_json::json!({"placeholder": "Search"}));
+
+        let root = node_with_children("root", "container", vec![value, placeholder]);
+
+        assert_eq!(Selector::text("Email").find(&root).unwrap().id, "value");
+        assert_eq!(
+            Selector::text("Search").find(&root).unwrap().id,
+            "placeholder"
+        );
+        assert!(Selector::text("email").find(&root).is_none());
     }
 
     #[test]

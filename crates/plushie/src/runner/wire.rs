@@ -461,6 +461,7 @@ fn run_wire_inner<A: App>(
             async_mgr.clear_all_timers();
             async_mgr.clear_all_effect_timeouts();
             async_mgr.clear_all_send_after();
+            view_errors = crate::runtime::view_errors::ViewErrors::default();
         }
 
         // Synchronize window lifecycle with the renderer. On restart,
@@ -1125,88 +1126,94 @@ fn wire_to_sdk_events(
     use super::event_bridge::{SinkEvent, sink_event_to_sdk};
     use plushie_core::protocol::{EffectResponse, OutgoingEvent};
 
-    let Some(decoded) = decode_incoming(msg) else {
-        // No `type` field at all: not our message shape. We are on the
-        // SDK side here (reading renderer output), so the diagnostic
-        // channel hook on the renderer does not apply; log as error
-        // with the raw payload for diagnosis.
-        plushie_core::diagnostics::error(plushie_core::Diagnostic::UnknownMessageType {
-            msg_type: String::new(),
-        });
-        log::error!("raw unknown-type message: {msg}");
-        return vec![];
-    };
+    let mut pending = vec![msg.clone()];
+    let mut events = Vec::new();
 
-    let sink_event = match decoded {
-        IncomingRendererMessage::InteractStep { id: _, events }
-        | IncomingRendererMessage::InteractResponse { id: _, events } => {
-            // Interact responses contain multiple events that each
-            // need a full MVU cycle. Recursively convert each one.
-            return events
-                .iter()
-                .flat_map(|e| wire_to_sdk_events(e, effect_tracker, async_mgr))
-                .collect();
-        }
-        IncomingRendererMessage::Unknown { msg_type, raw: _ } => {
+    while let Some(raw) = pending.pop() {
+        let Some(decoded) = decode_incoming(&raw) else {
+            // No `type` field at all: not our message shape. We are on
+            // the SDK side here, so the renderer diagnostic channel
+            // hook does not apply; log as error with the raw payload.
             plushie_core::diagnostics::error(plushie_core::Diagnostic::UnknownMessageType {
-                msg_type,
+                msg_type: String::new(),
             });
-            return vec![];
-        }
-        IncomingRendererMessage::Event {
-            family,
-            id,
-            value,
-            tag,
-            modifiers,
-            captured,
-        } => {
-            let mut event = OutgoingEvent::generic(family, id, value);
-            event.tag = tag;
-            event.modifiers = modifiers;
-            event.captured = captured;
-            SinkEvent::Event(event)
-        }
-        IncomingRendererMessage::EffectResponse {
-            id: wire_id,
-            status,
-            result,
-            error,
-        } => {
-            // Cancel the tokio-scheduled deadline task now that a
-            // real response has arrived. Cheap if the task already
-            // completed (rare).
-            async_mgr.cancel_effect_timeout(&wire_id);
-            // Resolve via the tracker for typed result parsing.
-            if let Some((tag, kind)) = effect_tracker.resolve(&wire_id) {
-                log::debug!(
-                    "wire effect response resolved: wire_id={wire_id} tag={tag} kind={kind} status={status}"
-                );
-                let error_as_value = error.as_ref().map(|e| Value::String(e.clone()));
-                let value = result.as_ref().or(error_as_value.as_ref());
-                let result = EffectResult::parse(&kind, status, value);
-                return vec![Event::Effect(EffectEvent { tag, result })];
-            }
+            log::error!("raw unknown-type message: {raw}");
+            continue;
+        };
 
-            log::debug!(
-                "wire effect response without tracked request: wire_id={wire_id} status={status}"
-            );
-            let response = EffectResponse {
-                message_type: "effect_response",
-                session: String::new(),
+        let sink_event = match decoded {
+            IncomingRendererMessage::InteractStep { id: _, events }
+            | IncomingRendererMessage::InteractResponse { id: _, events } => {
+                // Interact responses contain multiple events that each
+                // need a full MVU cycle. Push in reverse so the stack
+                // preserves wire order without recursive processing.
+                pending.extend(events.into_iter().rev());
+                continue;
+            }
+            IncomingRendererMessage::Unknown { msg_type, raw: _ } => {
+                plushie_core::diagnostics::error(plushie_core::Diagnostic::UnknownMessageType {
+                    msg_type,
+                });
+                continue;
+            }
+            IncomingRendererMessage::Event {
+                family,
+                id,
+                value,
+                tag,
+                modifiers,
+                captured,
+            } => {
+                let mut event = OutgoingEvent::generic(family, id, value);
+                event.tag = tag;
+                event.modifiers = modifiers;
+                event.captured = captured;
+                SinkEvent::Event(event)
+            }
+            IncomingRendererMessage::EffectResponse {
                 id: wire_id,
                 status,
                 result,
                 error,
-            };
-            SinkEvent::EffectResponse(response)
-        }
-        IncomingRendererMessage::QueryResponse { kind, tag, data } => {
-            SinkEvent::QueryResponse { kind, tag, data }
-        }
-    };
+            } => {
+                // Cancel the tokio-scheduled deadline task now that a
+                // real response has arrived. Cheap if the task already
+                // completed.
+                async_mgr.cancel_effect_timeout(&wire_id);
+                // Resolve via the tracker for typed result parsing.
+                if let Some((tag, kind)) = effect_tracker.resolve(&wire_id) {
+                    log::debug!(
+                        "wire effect response resolved: wire_id={wire_id} tag={tag} kind={kind} status={status}"
+                    );
+                    let error_as_value = error.as_ref().map(|e| Value::String(e.clone()));
+                    let value = result.as_ref().or(error_as_value.as_ref());
+                    let result = EffectResult::parse(&kind, status, value);
+                    events.push(Event::Effect(EffectEvent { tag, result }));
+                    continue;
+                }
 
-    sink_event_to_sdk(sink_event).into_iter().collect()
+                log::debug!(
+                    "wire effect response without tracked request: wire_id={wire_id} status={status}"
+                );
+                let response = EffectResponse {
+                    message_type: "effect_response",
+                    session: String::new(),
+                    id: wire_id,
+                    status,
+                    result,
+                    error,
+                };
+                SinkEvent::EffectResponse(response)
+            }
+            IncomingRendererMessage::QueryResponse { kind, tag, data } => {
+                SinkEvent::QueryResponse { kind, tag, data }
+            }
+        };
+
+        events.extend(sink_event_to_sdk(sink_event));
+    }
+
+    events
 }
 
 // ---------------------------------------------------------------------------
@@ -1709,10 +1716,7 @@ fn execute_wire_renderer_op(
         RendererOp::FindFocused { tag } => {
             bridge.send_widget_op("find_focused", &json!({"tag": tag}))
         }
-        RendererOp::AdvanceFrame { timestamp } => bridge.send(&OutgoingMessage::AdvanceFrame {
-            session: String::new(),
-            timestamp: *timestamp,
-        }),
+        RendererOp::AdvanceFrame { timestamp } => bridge.send_advance_frame(*timestamp),
         // RendererOp is #[non_exhaustive]; any variant added after this
         // match was written is an unknown op in wire mode and is
         // skipped with a warning rather than silently dropped.
@@ -2052,6 +2056,19 @@ mod wire_contract_tests {
                     "session": "s1",
                     "family": "click",
                     "id": "btn1",
+                },
+                {
+                    "type": "interact_response",
+                    "session": "s1",
+                    "id": "i2",
+                    "events": [
+                        {
+                            "type": "event",
+                            "session": "s1",
+                            "family": "click",
+                            "id": "btn2",
+                        }
+                    ],
                 }
             ],
         });
@@ -2060,11 +2077,18 @@ mod wire_contract_tests {
         let mut async_mgr = AsyncTaskManager::new(None);
         let events = wire_to_sdk_events(&raw, &mut effect_tracker, &mut async_mgr);
 
-        assert_eq!(events.len(), 1);
+        assert_eq!(events.len(), 2);
         match &events[0] {
             Event::Widget(widget) => {
                 assert_eq!(widget.event_type, plushie_core::EventType::Click);
                 assert_eq!(widget.scoped_id.id, "btn1");
+            }
+            other => panic!("expected widget event, got {other:?}"),
+        }
+        match &events[1] {
+            Event::Widget(widget) => {
+                assert_eq!(widget.event_type, plushie_core::EventType::Click);
+                assert_eq!(widget.scoped_id.id, "btn2");
             }
             other => panic!("expected widget event, got {other:?}"),
         }

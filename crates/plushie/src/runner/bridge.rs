@@ -381,6 +381,14 @@ impl Bridge {
         })
     }
 
+    /// Send an animation-frame advancement request.
+    pub fn send_advance_frame(&mut self, timestamp: u64) -> crate::Result {
+        self.send(&OutgoingMessage::AdvanceFrame {
+            session: String::new(),
+            timestamp,
+        })
+    }
+
     /// Send a subscribe message.
     pub fn send_subscribe(
         &mut self,

@@ -110,3 +110,47 @@ impl plushie_renderer_lib::EventSink for QueueSink {
         Ok(())
     }
 }
+
+#[cfg(all(test, feature = "direct"))]
+mod tests {
+    use super::*;
+    use plushie_renderer_lib::EventSink;
+
+    #[test]
+    fn queues_renderer_events() {
+        let (mut sink, queue) = QueueSink::new();
+        let event = OutgoingEvent::generic("click", "button", None);
+
+        sink.emit_event(event).expect("emit event");
+
+        let queued = queue.lock();
+        assert_eq!(queued.len(), 1);
+        assert!(matches!(queued.first(), Some(SinkEvent::Event(_))));
+    }
+
+    #[test]
+    fn queues_effect_and_query_responses() {
+        let (mut sink, queue) = QueueSink::new();
+
+        sink.emit_effect_response(EffectResponse {
+            message_type: "effect_response",
+            session: String::new(),
+            id: "ef_0".to_string(),
+            status: "ok",
+            result: Some(serde_json::json!({"value": true})),
+            error: None,
+        })
+        .expect("emit effect response");
+        sink.emit_query_response("tree_hash", "hash", &serde_json::json!("abc"))
+            .expect("emit query response");
+
+        let queued = queue.lock();
+        assert_eq!(queued.len(), 2);
+        assert!(matches!(queued.first(), Some(SinkEvent::EffectResponse(_))));
+        assert!(matches!(
+            queued.get(1),
+            Some(SinkEvent::QueryResponse { kind, tag, data })
+                if kind == "tree_hash" && tag == "hash" && data == &serde_json::json!("abc")
+        ));
+    }
+}

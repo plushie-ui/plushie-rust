@@ -124,6 +124,9 @@ impl<A: App> DirectApp<A> {
         // Establish initial subscriptions from A::subscribe().
         let mut init_tasks = vec![win_task];
         let initial_subs = A::subscribe(&app.model);
+        if let Some(tree) = app.current_tree.as_ref() {
+            validate_subscription_windows(&initial_subs, tree);
+        }
         for op in app.sub_manager.sync(initial_subs) {
             init_tasks.push(app.apply_sub_op(op));
         }
@@ -257,6 +260,25 @@ impl<A: App> DirectApp<A> {
                 // recover the user's tag and the effect kind for
                 // typed result parsing.
                 SinkEvent::EffectResponse(response) => self.resolve_effect_response(response),
+                SinkEvent::EffectTimeout { wire_id } => {
+                    match self.effect_tracker.resolve(&wire_id) {
+                        Some((tag, kind)) => {
+                            log::debug!(
+                                "direct effect timeout resolved: wire_id={wire_id} tag={tag} kind={kind}"
+                            );
+                            Some(Event::Effect(EffectEvent {
+                                tag,
+                                result: EffectResult::Timeout,
+                            }))
+                        }
+                        None => {
+                            log::debug!(
+                                "direct effect timeout fired after resolution: wire_id={wire_id}"
+                            );
+                            None
+                        }
+                    }
+                }
                 other => super::event_bridge::sink_event_to_sdk(other),
             };
             if let Some(event) = sdk_event {
@@ -293,6 +315,9 @@ impl<A: App> DirectApp<A> {
 
             // Sync subscriptions after the model has changed.
             let new_subs = A::subscribe(&self.model);
+            if let Some(tree) = self.current_tree.as_ref() {
+                validate_subscription_windows(&new_subs, tree);
+            }
             let ops = self.sub_manager.sync(new_subs);
             for op in ops {
                 tasks.push(self.apply_sub_op(op));
@@ -543,12 +568,24 @@ impl<A: App> DirectApp<A> {
                 // Pass the wire_id as the tag to the renderer. The
                 // renderer echoes it back in the EffectResponse.id
                 // field, which we resolve via the tracker.
-                self.renderer
+                let effect_task = self
+                    .renderer
                     .execute(plushie_core::ops::RendererOp::Effect {
-                        tag: wire_id,
+                        tag: wire_id.clone(),
                         request,
                         timeout: None,
-                    })
+                    });
+                let queue = self.event_queue.clone();
+                let timeout_task = Task::perform(
+                    async move {
+                        super::platform_sleep(effective_timeout).await;
+                    },
+                    move |_| {
+                        queue.lock().push(SinkEvent::EffectTimeout { wire_id });
+                        Message::NoOp
+                    },
+                );
+                Task::batch([effect_task, timeout_task])
             }
             Command::Renderer(op) => self.renderer.execute(op),
             Command::Async { tag, task } => {
@@ -697,6 +734,25 @@ impl<A: App> DirectApp<A> {
                 self.active_timers.remove(&tag);
                 Task::none()
             }
+        }
+    }
+}
+
+/// Emit an `unknown_window` diagnostic for subscriptions whose
+/// window target is not present in the current direct-mode tree.
+fn validate_subscription_windows(
+    subs: &[crate::subscription::Subscription],
+    tree: &plushie_core::protocol::TreeNode,
+) {
+    let windows = crate::runtime::windows::detect_windows(tree);
+    for sub in subs {
+        if let Some(wid) = sub.window_id()
+            && !windows.contains(wid)
+        {
+            plushie_core::diagnostics::warn(plushie_core::Diagnostic::UnknownWindow {
+                window_id: wid.to_string(),
+                subscription_tag: sub.kind().to_string(),
+            });
         }
     }
 }

@@ -48,8 +48,8 @@ pub(crate) enum SinkEvent {
     /// against the tracker to recover the user-facing tag and kind,
     /// then delivers `EffectResult::Timeout` to the app.
     ///
-    /// Only emitted by the wire-mode AsyncTaskManager; direct mode
-    /// polls `EffectTracker::check_timeouts` instead.
+    /// Emitted by runner-local timeout tasks and resolved by the
+    /// mode-specific dispatcher because tracker context is required.
     #[cfg_attr(not(feature = "wire"), allow(dead_code))]
     EffectTimeout { wire_id: String },
 }
@@ -297,8 +297,6 @@ fn window_event(event_type: WindowEventType, event: &OutgoingEvent) -> Event {
         scale_factor: value["scale_factor"].as_f64().map(|v| v as f32),
     })
 }
-
-// split_scoped_id removed: use plushie_core::ScopedId::parse instead
 
 /// Extract KeyModifiers from an OutgoingEvent.
 fn extract_modifiers(event: &OutgoingEvent) -> KeyModifiers {

@@ -42,9 +42,11 @@ impl App {
         self.system_subscriptions(&mut subs);
 
         // -- Catch-all event subscription --
-        // Subscribes to all keyboard, mouse, and touch events via a single
-        // listener, re-using existing Message variants. Window events are
-        // handled separately by on_window_event.
+        // Subscribes to all keyboard, mouse, touch, and IME events via a
+        // single listener, re-using existing Message variants. Window,
+        // animation, and theme sources are composed by their category
+        // builders so `on_event` sees the same Message variants as the
+        // specific subscriptions.
         //
         // To avoid duplicate event delivery when both on_event and a specific
         // subscription (e.g. on_key_press) are active, skip event categories
@@ -328,19 +330,23 @@ impl App {
     }
 
     fn window_subscriptions(&self, subs: &mut Vec<Subscription<Message>>) {
-        if self.has_any_subscription(&[
-            SUB_WINDOW_EVENT,
-            SUB_WINDOW_OPEN,
-            SUB_WINDOW_MOVE,
-            SUB_WINDOW_RESIZE,
-            SUB_WINDOW_FOCUS,
-            SUB_WINDOW_UNFOCUS,
-            SUB_FILE_DROP,
-        ]) {
+        if self.has_host_or_widget_subscription(SUB_EVENT)
+            || self.has_any_subscription(&[
+                SUB_WINDOW_EVENT,
+                SUB_WINDOW_OPEN,
+                SUB_WINDOW_MOVE,
+                SUB_WINDOW_RESIZE,
+                SUB_WINDOW_FOCUS,
+                SUB_WINDOW_UNFOCUS,
+                SUB_FILE_DROP,
+            ])
+        {
             subs.push(window::events().map(|(id, evt)| Message::WindowEvent(id, evt)));
         }
 
-        if self.has_host_or_widget_subscription(SUB_WINDOW_CLOSE) {
+        if self.has_host_or_widget_subscription(SUB_EVENT)
+            || self.has_host_or_widget_subscription(SUB_WINDOW_CLOSE)
+        {
             subs.push(window::close_requests().map(Message::WindowCloseRequested));
         }
 
@@ -349,7 +355,8 @@ impl App {
         // widget has declared an animation-frame subscription, or when
         // the renderer has active transitions/springs (zero-traffic
         // animation).
-        if self.has_host_or_widget_subscription(SUB_ANIMATION_FRAME)
+        if self.has_host_or_widget_subscription(SUB_EVENT)
+            || self.has_host_or_widget_subscription(SUB_ANIMATION_FRAME)
             || self.transition_manager.has_active()
         {
             subs.push(window::frames().map(Message::AnimationFrame));
@@ -360,6 +367,7 @@ impl App {
         // Track system theme changes when any active theme follows system.
         if self.theme_follows_system
             || self.windows.any_theme_follows_system()
+            || self.has_host_or_widget_subscription(SUB_EVENT)
             || self.has_host_or_widget_subscription(SUB_THEME_CHANGE)
         {
             subs.push(system::theme_changes().map(Message::ThemeChanged));

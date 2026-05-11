@@ -197,9 +197,11 @@ impl App {
                 let Some(window_id) = self.windows.get_window_id(&iced_id) else {
                     return Task::none();
                 };
-                let entries = self
-                    .core
-                    .matching_entries(SUB_WINDOW_CLOSE, Some(window_id));
+                let entries = self.core.matching_entries_with_catchall(
+                    SUB_WINDOW_CLOSE,
+                    SUB_EVENT,
+                    Some(window_id),
+                );
                 if entries.is_empty() {
                     return Task::none();
                 }
@@ -277,20 +279,25 @@ impl App {
                     task = Task::batch([task, self.emitter.emit_immediate(event)]);
                 }
 
-                // Forward animation_frame to SDK if subscribed
-                let entries = self.core.matching_entries(SUB_ANIMATION_FRAME, None);
-                if let Some(entry) = entries.first() {
+                // Forward animation_frame to every SDK subscriber.
+                let entries =
+                    self.core
+                        .matching_entries_with_catchall(SUB_ANIMATION_FRAME, SUB_EVENT, None);
+                if entries.is_empty() {
+                    task
+                } else {
                     let epoch = *self.animation_epoch.get_or_insert(instant);
                     let millis = u64::try_from(instant.duration_since(epoch).as_millis())
                         .unwrap_or(u64::MAX);
-                    let event = OutgoingEvent::animation_frame(entry.tag.as_str(), millis);
-                    let animation_frame_task = self.emitter.coalesce(
-                        CoalesceKey::Subscription(SUB_ANIMATION_FRAME.to_string()),
-                        event,
-                    );
-                    Task::batch([task, animation_frame_task])
-                } else {
-                    task
+                    let animation_tasks: Vec<_> = entries
+                        .into_iter()
+                        .map(|entry| {
+                            let event = OutgoingEvent::animation_frame(entry.tag.as_str(), millis);
+                            self.emitter
+                                .coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
+                        })
+                        .collect();
+                    Task::batch([task, Task::batch(animation_tasks)])
                 }
             }
             Message::ThemeChanged(mode) => {
@@ -300,21 +307,27 @@ impl App {
                     iced::theme::Mode::Dark => Theme::Dark,
                     _ => Theme::Dark,
                 };
-                // Theme changes are global (not window-scoped), use first entry
-                let entries = self.core.matching_entries(SUB_THEME_CHANGE, None);
-                if let Some(entry) = entries.first() {
+                // Theme changes are global (not window-scoped).
+                let entries =
+                    self.core
+                        .matching_entries_with_catchall(SUB_THEME_CHANGE, SUB_EVENT, None);
+                if entries.is_empty() {
+                    Task::none()
+                } else {
                     let mode_str = match mode {
                         iced::theme::Mode::Light => "light",
                         iced::theme::Mode::Dark => "dark",
                         _ => "system",
                     };
-                    let event = OutgoingEvent::theme_changed(entry.tag.as_str(), mode_str);
-                    self.emitter.coalesce(
-                        CoalesceKey::Subscription(SUB_THEME_CHANGE.to_string()),
-                        event,
-                    )
-                } else {
-                    Task::none()
+                    let tasks: Vec<_> = entries
+                        .into_iter()
+                        .map(|entry| {
+                            let event = OutgoingEvent::theme_changed(entry.tag.as_str(), mode_str);
+                            self.emitter
+                                .coalesce(CoalesceKey::Subscription(entry.tag.clone()), event)
+                        })
+                        .collect();
+                    Task::batch(tasks)
                 }
             }
         }
@@ -378,13 +391,13 @@ impl App {
                 (SUB_IME, true, self.windows.get_window_id(iced_id))
             }
             Message::WindowEvent(iced_id, _) => {
-                (SUB_WINDOW_EVENT, false, self.windows.get_window_id(iced_id))
+                (SUB_WINDOW_EVENT, true, self.windows.get_window_id(iced_id))
             }
             Message::WindowCloseRequested(iced_id) => {
-                (SUB_WINDOW_CLOSE, false, self.windows.get_window_id(iced_id))
+                (SUB_WINDOW_CLOSE, true, self.windows.get_window_id(iced_id))
             }
-            Message::AnimationFrame(_) => (SUB_ANIMATION_FRAME, false, None),
-            Message::ThemeChanged(_) => (SUB_THEME_CHANGE, false, None),
+            Message::AnimationFrame(_) => (SUB_ANIMATION_FRAME, true, None),
+            Message::ThemeChanged(_) => (SUB_THEME_CHANGE, true, None),
             _ => return Task::none(),
         };
         // Split-borrow: window_id borrows into self.windows. Going

@@ -6,7 +6,7 @@
 
 // -- Subscription keys -------------------------------------------------------
 
-/// Catch-all event subscription (keyboard, mouse, touch, IME).
+/// Catch-all event subscription.
 pub const SUB_EVENT: &str = "on_event";
 
 pub const SUB_KEY_PRESS: &str = "on_key_press";

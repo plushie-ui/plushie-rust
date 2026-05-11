@@ -226,10 +226,19 @@ impl App {
 
     pub fn lookup_widget_event_rate(&self, widget_id: &str) -> Option<u32> {
         let node = self.core.tree.find_by_id(widget_id)?;
-        node.props
+        let rate = node
+            .props
             .get("event_rate")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as u32)
+            .and_then(|v| v.as_u64())?;
+        match u32::try_from(rate) {
+            Ok(rate) => Some(rate),
+            Err(_) => {
+                log::warn!(
+                    "event_rate for widget {widget_id} exceeds u32::MAX; ignoring value {rate}"
+                );
+                None
+            }
+        }
     }
 
     /// True when the widget at `widget_id` is declared disabled and is

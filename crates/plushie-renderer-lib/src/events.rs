@@ -305,7 +305,11 @@ impl App {
         window_id: String,
     ) -> io::Result<()> {
         let wid = Some(window_id.as_str());
-        // Emit for catch-all SUB_WINDOW_EVENT entries
+        for entry in self.core.matching_entries(SUB_EVENT, wid) {
+            self.emitter
+                .emit_event(event_fn(entry.tag.as_str(), window_id.as_str()))?;
+        }
+        // Emit for catch-all SUB_WINDOW_EVENT entries.
         for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
             self.emitter
                 .emit_event(event_fn(entry.tag.as_str(), window_id.as_str()))?;
@@ -334,6 +338,16 @@ impl App {
                 } => {
                     let wid = Some(window_id.as_str());
                     let pos = position.map(|p| (p.x, p.y));
+                    for entry in self.core.matching_entries(SUB_EVENT, wid) {
+                        self.emitter.emit_event(OutgoingEvent::window_opened(
+                            entry.tag.as_str(),
+                            window_id.as_str(),
+                            pos,
+                            size.width,
+                            size.height,
+                            scale_factor,
+                        ))?;
+                    }
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
                         self.emitter.emit_event(OutgoingEvent::window_opened(
                             entry.tag.as_str(),
@@ -357,6 +371,12 @@ impl App {
                 }
                 window::Event::Closed => {
                     let wid = Some(window_id.as_str());
+                    for entry in self.core.matching_entries(SUB_EVENT, wid) {
+                        self.emitter.emit_event(OutgoingEvent::window_closed(
+                            entry.tag.as_str(),
+                            window_id.as_str(),
+                        ))?;
+                    }
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
                         self.emitter.emit_event(OutgoingEvent::window_closed(
                             entry.tag.as_str(),
@@ -380,6 +400,13 @@ impl App {
                 }
                 window::Event::Rescaled(factor) => {
                     let wid = Some(window_id.as_str());
+                    for entry in self.core.matching_entries(SUB_EVENT, wid) {
+                        self.emitter.emit_event(OutgoingEvent::window_rescaled(
+                            entry.tag.as_str(),
+                            window_id.as_str(),
+                            factor,
+                        ))?;
+                    }
                     for entry in self.core.matching_entries(SUB_WINDOW_EVENT, wid) {
                         self.emitter.emit_event(OutgoingEvent::window_rescaled(
                             entry.tag.as_str(),
@@ -405,6 +432,13 @@ impl App {
                 window::Event::FileHovered(path) => {
                     let wid = Some(window_id.as_str());
                     let path_str = path_to_string(path);
+                    for entry in self.core.matching_entries(SUB_EVENT, wid) {
+                        self.emitter.emit_event(OutgoingEvent::file_hovered(
+                            entry.tag.as_str(),
+                            window_id.as_str(),
+                            path_str.as_str(),
+                        ))?;
+                    }
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
                         self.emitter.emit_event(OutgoingEvent::file_hovered(
                             entry.tag.as_str(),
@@ -416,6 +450,13 @@ impl App {
                 window::Event::FileDropped(path) => {
                     let wid = Some(window_id.as_str());
                     let path_str = path_to_string(path);
+                    for entry in self.core.matching_entries(SUB_EVENT, wid) {
+                        self.emitter.emit_event(OutgoingEvent::file_dropped(
+                            entry.tag.as_str(),
+                            window_id.as_str(),
+                            path_str.as_str(),
+                        ))?;
+                    }
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
                         self.emitter.emit_event(OutgoingEvent::file_dropped(
                             entry.tag.as_str(),
@@ -426,6 +467,12 @@ impl App {
                 }
                 window::Event::FilesHoveredLeft => {
                     let wid = Some(window_id.as_str());
+                    for entry in self.core.matching_entries(SUB_EVENT, wid) {
+                        self.emitter.emit_event(OutgoingEvent::files_hovered_left(
+                            entry.tag.as_str(),
+                            window_id.as_str(),
+                        ))?;
+                    }
                     for entry in self.core.matching_entries(SUB_FILE_DROP, wid) {
                         self.emitter.emit_event(OutgoingEvent::files_hovered_left(
                             entry.tag.as_str(),

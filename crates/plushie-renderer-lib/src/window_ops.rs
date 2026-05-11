@@ -26,6 +26,35 @@ use plushie_widget_sdk::runtime::Message;
 
 use crate::App;
 
+fn emit_window_query_response(
+    sink: &crate::emitters::SinkMutex,
+    kind: &str,
+    tag: &str,
+    data: &serde_json::Value,
+) {
+    if let Err(e) = sink.lock().emit_query_response(kind, tag, data) {
+        log::error!("write error: {e}");
+    }
+}
+
+fn emit_unknown_window_query(
+    sink: &crate::emitters::SinkMutex,
+    kind: &str,
+    tag: &str,
+    window_id: &str,
+) {
+    emit_window_query_response(
+        sink,
+        kind,
+        tag,
+        &serde_json::json!({
+            "status": "error",
+            "error": "unknown_window",
+            "window_id": window_id,
+        }),
+    );
+}
+
 /// Returns true if the current display server is Wayland.
 ///
 /// Detected via the `WAYLAND_DISPLAY` environment variable, which is
@@ -302,6 +331,7 @@ impl App {
         match q {
             WindowQuery::GetSize { window_id, tag } => {
                 let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    emit_unknown_window_query(&sink, "get_size", &tag, &window_id);
                     return Task::none();
                 };
                 let wid = window_id.clone();
@@ -310,17 +340,15 @@ impl App {
                         "width": size.width,
                         "height": size.height,
                         "op": "get_size",
-                        "request_id": tag,
+                        "window_id": wid,
                     });
-                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                    if let Err(e) = sink.lock().emit_effect_response(resp) {
-                        log::error!("write error: {e}");
-                    }
+                    emit_window_query_response(&sink, "get_size", &tag, &data);
                     Message::NoOp
                 })
             }
             WindowQuery::GetPosition { window_id, tag } => {
                 let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    emit_unknown_window_query(&sink, "get_position", &tag, &window_id);
                     return Task::none();
                 };
                 let wid = window_id.clone();
@@ -330,22 +358,20 @@ impl App {
                             "x": p.x,
                             "y": p.y,
                             "op": "get_position",
-                            "request_id": tag,
+                            "window_id": wid,
                         }),
                         None => serde_json::json!({
                             "op": "get_position",
-                            "request_id": tag,
+                            "window_id": wid,
                         }),
                     };
-                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                    if let Err(e) = sink.lock().emit_effect_response(resp) {
-                        log::error!("write error: {e}");
-                    }
+                    emit_window_query_response(&sink, "get_position", &tag, &data);
                     Message::NoOp
                 })
             }
             WindowQuery::GetMode { window_id, tag } => {
                 let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    emit_unknown_window_query(&sink, "get_mode", &tag, &window_id);
                     return Task::none();
                 };
                 let wid = window_id.clone();
@@ -358,17 +384,15 @@ impl App {
                     let data = serde_json::json!({
                         "mode": mode_str,
                         "op": "get_mode",
-                        "request_id": tag,
+                        "window_id": wid,
                     });
-                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                    if let Err(e) = sink.lock().emit_effect_response(resp) {
-                        log::error!("write error: {e}");
-                    }
+                    emit_window_query_response(&sink, "get_mode", &tag, &data);
                     Message::NoOp
                 })
             }
             WindowQuery::GetScaleFactor { window_id, tag } => {
                 let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    emit_unknown_window_query(&sink, "get_scale_factor", &tag, &window_id);
                     return Task::none();
                 };
                 let wid = window_id.clone();
@@ -376,17 +400,15 @@ impl App {
                     let data = serde_json::json!({
                         "scale_factor": factor,
                         "op": "get_scale_factor",
-                        "request_id": tag,
+                        "window_id": wid,
                     });
-                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                    if let Err(e) = sink.lock().emit_effect_response(resp) {
-                        log::error!("write error: {e}");
-                    }
+                    emit_window_query_response(&sink, "get_scale_factor", &tag, &data);
                     Message::NoOp
                 })
             }
             WindowQuery::IsMaximized { window_id, tag } => {
                 let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    emit_unknown_window_query(&sink, "is_maximized", &tag, &window_id);
                     return Task::none();
                 };
                 let wid = window_id.clone();
@@ -394,17 +416,15 @@ impl App {
                     let data = serde_json::json!({
                         "maximized": val,
                         "op": "is_maximized",
-                        "request_id": tag,
+                        "window_id": wid,
                     });
-                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                    if let Err(e) = sink.lock().emit_effect_response(resp) {
-                        log::error!("write error: {e}");
-                    }
+                    emit_window_query_response(&sink, "is_maximized", &tag, &data);
                     Message::NoOp
                 })
             }
             WindowQuery::IsMinimized { window_id, tag } => {
                 let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    emit_unknown_window_query(&sink, "is_minimized", &tag, &window_id);
                     return Task::none();
                 };
                 let wid = window_id.clone();
@@ -412,17 +432,15 @@ impl App {
                     let data = serde_json::json!({
                         "minimized": val,
                         "op": "is_minimized",
-                        "request_id": tag,
+                        "window_id": wid,
                     });
-                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                    if let Err(e) = sink.lock().emit_effect_response(resp) {
-                        log::error!("write error: {e}");
-                    }
+                    emit_window_query_response(&sink, "is_minimized", &tag, &data);
                     Message::NoOp
                 })
             }
             WindowQuery::MonitorSize { window_id, tag } => {
                 let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    emit_unknown_window_query(&sink, "monitor_size", &tag, &window_id);
                     return Task::none();
                 };
                 let wid = window_id.clone();
@@ -432,22 +450,20 @@ impl App {
                             "width": size.width,
                             "height": size.height,
                             "op": "monitor_size",
-                            "request_id": tag,
+                            "window_id": wid,
                         }),
                         None => serde_json::json!({
                             "op": "monitor_size",
-                            "request_id": tag,
+                            "window_id": wid,
                         }),
                     };
-                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                    if let Err(e) = sink.lock().emit_effect_response(resp) {
-                        log::error!("write error: {e}");
-                    }
+                    emit_window_query_response(&sink, "monitor_size", &tag, &data);
                     Message::NoOp
                 })
             }
             WindowQuery::RawId { window_id, tag } => {
                 let Some(&iced_id) = self.windows.get_iced(&window_id) else {
+                    emit_unknown_window_query(&sink, "raw_id", &tag, &window_id);
                     return Task::none();
                 };
                 let wid = window_id.clone();
@@ -456,12 +472,9 @@ impl App {
                         "raw_id": raw,
                         "op": "raw_id",
                         "platform": std::env::consts::OS,
-                        "request_id": tag,
+                        "window_id": wid,
                     });
-                    let resp = plushie_widget_sdk::protocol::EffectResponse::ok(wid.clone(), data);
-                    if let Err(e) = sink.lock().emit_effect_response(resp) {
-                        log::error!("write error: {e}");
-                    }
+                    emit_window_query_response(&sink, "raw_id", &tag, &data);
                     Message::NoOp
                 })
             }
@@ -519,7 +532,20 @@ impl App {
                 Message::NoOp
             }),
             #[cfg(target_arch = "wasm32")]
-            SystemQuery::GetInfo { .. } => Task::none(),
+            SystemQuery::GetInfo { tag } => {
+                let mut guard = sink.lock();
+                if let Err(e) = guard.emit_query_response(
+                    "system_info",
+                    &tag,
+                    &serde_json::json!({
+                        "status": "unsupported",
+                        "reason": "system_info is not supported on wasm32",
+                    }),
+                ) {
+                    log::error!("write error: {e}");
+                }
+                Task::none()
+            }
             _ => {
                 log::warn!("unhandled SystemQuery variant");
                 Task::none()

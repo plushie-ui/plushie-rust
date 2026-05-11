@@ -133,10 +133,10 @@ impl App {
 
             // -- Testing / debugging --
             RendererOp::TreeHash { tag } => {
-                self.handle_widget_op("tree_hash", &serde_json::json!({"target": tag}))
+                self.handle_widget_op("tree_hash", &serde_json::json!({"tag": tag}))
             }
             RendererOp::FindFocused { tag } => {
-                self.handle_widget_op("find_focused", &serde_json::json!({"target": tag}))
+                self.handle_widget_op("find_focused", &serde_json::json!({"tag": tag}))
             }
             RendererOp::AdvanceFrame { timestamp } => self.handle_widget_op(
                 "advance_frame",

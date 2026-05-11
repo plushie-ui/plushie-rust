@@ -124,8 +124,8 @@ impl TableProps {
 
 /// Zero-cost row reference passed to iced table column view closures.
 ///
-/// Both RenderCtx and &TreeNode are Copy, so iced's row.clone() in
-/// Table::new (line 115) copies two pointers instead of cloning data.
+/// Both RenderCtx and &TreeNode are Copy, so iced's per-row clone
+/// copies two pointers instead of cloning data.
 struct RowRef<'a, R: PlushieRenderer> {
     ctx: RenderCtx<'a, R>,
     node: &'a TreeNode,

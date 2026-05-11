@@ -10,8 +10,29 @@ use crate::widget::helpers::*;
 
 use plushie_core::types::{PlushieType, Style as CoreStyle};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RuleDirection {
+    Horizontal,
+    Vertical,
+}
+
+fn parse_rule_direction(value: Option<&str>, widget_id: &str) -> RuleDirection {
+    match value {
+        Some("vertical") => RuleDirection::Vertical,
+        Some("horizontal") | None => RuleDirection::Horizontal,
+        Some(other) => {
+            log::warn!(
+                "unknown direction {:?} for rule {:?}, using horizontal",
+                other,
+                widget_id
+            );
+            RuleDirection::Horizontal
+        }
+    }
+}
+
 struct RuleProps {
-    direction: Option<String>,
+    direction: RuleDirection,
     width: Option<f32>,
     height: Option<f32>,
     thickness: Option<f32>,
@@ -22,7 +43,7 @@ impl RuleProps {
     fn from_node(node: &TreeNode) -> Self {
         let p = &node.props;
         Self {
-            direction: String::extract(p, "direction"),
+            direction: parse_rule_direction(String::extract(p, "direction").as_deref(), &node.id),
             width: f32::extract(p, "width"),
             height: f32::extract(p, "height"),
             thickness: f32::extract(p, "thickness"),
@@ -44,7 +65,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         let rp = RuleProps::from_node(node);
-        let is_vertical = rp.direction.as_deref() == Some("vertical");
+        let is_vertical = rp.direction == RuleDirection::Vertical;
 
         // Thickness is the cross-axis dimension:
         // horizontal rule -> height, vertical rule -> width.
@@ -93,5 +114,34 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RuleWidget {
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(RuleWidget)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rule_direction_parser_accepts_known_values() {
+        assert_eq!(
+            parse_rule_direction(Some("horizontal"), "rule"),
+            RuleDirection::Horizontal
+        );
+        assert_eq!(
+            parse_rule_direction(Some("vertical"), "rule"),
+            RuleDirection::Vertical
+        );
+    }
+
+    #[test]
+    fn rule_direction_parser_defaults_missing_and_unknown_to_horizontal() {
+        assert_eq!(
+            parse_rule_direction(None, "rule"),
+            RuleDirection::Horizontal
+        );
+        assert_eq!(
+            parse_rule_direction(Some("diagonal"), "rule"),
+            RuleDirection::Horizontal
+        );
     }
 }

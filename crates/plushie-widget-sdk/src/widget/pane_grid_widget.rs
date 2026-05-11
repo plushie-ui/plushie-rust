@@ -31,6 +31,21 @@ impl PaneGridWidget {
     }
 }
 
+fn parse_split_axis(value: Option<&str>, widget_id: &str) -> pane_grid::Axis {
+    match value {
+        Some("horizontal") => pane_grid::Axis::Horizontal,
+        Some("vertical") | None => pane_grid::Axis::Vertical,
+        Some(other) => {
+            log::warn!(
+                "unknown split_axis {:?} for pane_grid {:?}, using vertical",
+                other,
+                widget_id
+            );
+            pane_grid::Axis::Vertical
+        }
+    }
+}
+
 impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
     fn type_names(&self) -> &[&str] {
         &["pane_grid"]
@@ -39,10 +54,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
     fn prepare(&mut self, node: &TreeNode, window_id: &str, _theme: &iced::Theme) {
         let key = (window_id.to_string(), node.id.clone());
         let props = &node.props;
-        let axis = match crate::prop_helpers::prop_str(props, "split_axis").as_deref() {
-            Some("horizontal") => pane_grid::Axis::Horizontal,
-            _ => pane_grid::Axis::Vertical,
-        };
+        let axis = parse_split_axis(
+            crate::prop_helpers::prop_str(props, "split_axis").as_deref(),
+            &node.id,
+        );
         let child_ids: HashSet<String> = node.children.iter().map(|c| c.id.clone()).collect();
 
         if let Some(state) = self.states.get_mut(&key) {
@@ -242,14 +257,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_string();
-                let axis = match payload
-                    .get("axis")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("vertical")
-                {
-                    "horizontal" => pane_grid::Axis::Horizontal,
-                    _ => pane_grid::Axis::Vertical,
-                };
+                let axis = parse_split_axis(payload.get("axis").and_then(|v| v.as_str()), node_id);
                 if let Some(pane) = find_pane_by_id(state, pane_id) {
                     let _ = state.split(axis, pane, new_pane_id);
                 }
@@ -442,4 +450,33 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     }
 
     pg.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_axis_parser_accepts_known_values() {
+        assert!(matches!(
+            parse_split_axis(Some("horizontal"), "grid"),
+            pane_grid::Axis::Horizontal
+        ));
+        assert!(matches!(
+            parse_split_axis(Some("vertical"), "grid"),
+            pane_grid::Axis::Vertical
+        ));
+    }
+
+    #[test]
+    fn split_axis_parser_defaults_missing_and_unknown_to_vertical() {
+        assert!(matches!(
+            parse_split_axis(None, "grid"),
+            pane_grid::Axis::Vertical
+        ));
+        assert!(matches!(
+            parse_split_axis(Some("diagonal"), "grid"),
+            pane_grid::Axis::Vertical
+        ));
+    }
 }

@@ -38,6 +38,12 @@ impl ButtonProps {
 
 pub(crate) struct ButtonWidget;
 
+fn button_is_disabled(props: &plushie_core::protocol::Props) -> bool {
+    let explicitly_disabled = prop_bool_default(props, "disabled", false);
+    let explicitly_not_enabled = !prop_bool_default(props, "enabled", true);
+    explicitly_disabled || explicitly_not_enabled
+}
+
 impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
     fn type_names(&self) -> &[&str] {
         &["button"]
@@ -74,8 +80,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
             .map(iced_convert::length)
             .unwrap_or(iced::Length::Shrink);
         let clip = prop_bool_default(&node.props, "clip", false);
-        let disabled = prop_bool_default(&node.props, "disabled", false)
-            || !prop_bool_default(&node.props, "enabled", true);
+        let disabled = button_is_disabled(&node.props);
 
         let mut b = button(child).width(width).height(height).clip(clip);
 
@@ -186,9 +191,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
             a11y = a11y.mnemonic(c);
             any = true;
         }
-        let disabled = prop_bool_default(&node.props, "disabled", false)
-            || !prop_bool_default(&node.props, "enabled", true);
-        if disabled {
+        if button_is_disabled(&node.props) {
             a11y = a11y.disabled(true);
             any = true;
         }

@@ -133,10 +133,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ImageWidget {
         // crop: complex object, kept as raw prop access
         let crop_val = props.get_value("crop");
         if let Some(crop_obj) = crop_val.as_ref().and_then(|v| v.as_object()) {
-            let cx = crop_obj.get("x").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let cy = crop_obj.get("y").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let cw = crop_obj.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let ch = crop_obj.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let cx = crop_field_u32(&node.id, crop_obj, "x");
+            let cy = crop_field_u32(&node.id, crop_obj, "y");
+            let cw = crop_field_u32(&node.id, crop_obj, "width");
+            let ch = crop_field_u32(&node.id, crop_obj, "height");
             img = img.crop(iced::Rectangle {
                 x: cx,
                 y: cy,
@@ -157,6 +157,20 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ImageWidget {
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(ImageWidget)
+    }
+}
+
+fn crop_field_u32(node_id: &str, crop: &serde_json::Map<String, Value>, field: &str) -> u32 {
+    let Some(value) = crop.get(field).and_then(|v| v.as_u64()) else {
+        return 0;
+    };
+
+    match u32::try_from(value) {
+        Ok(value) => value,
+        Err(_) => {
+            log::warn!("[id={node_id}] image crop field '{field}' exceeds u32::MAX, clamping");
+            u32::MAX
+        }
     }
 }
 
@@ -184,5 +198,13 @@ mod tests {
     #[test]
     fn decorative_false_returns_none() {
         assert!(infer(json!({"decorative": false})).is_none());
+    }
+
+    #[test]
+    fn crop_fields_clamp_without_truncating() {
+        let crop = json!({"x": u64::MAX, "y": 5}).as_object().unwrap().clone();
+        assert_eq!(crop_field_u32("img", &crop, "x"), u32::MAX);
+        assert_eq!(crop_field_u32("img", &crop, "y"), 5);
+        assert_eq!(crop_field_u32("img", &crop, "width"), 0);
     }
 }

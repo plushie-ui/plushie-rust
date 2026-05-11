@@ -145,53 +145,61 @@ fn render_checkbox<'a, R: PlushieRenderer>(
 
     // Icon: complex nested object, kept as raw prop access
     let icon_prop = node.props.get_value("icon");
-    if let Some(icon_val) = icon_prop.as_ref().and_then(|v| v.as_object())
-        && let Some(cp_str) = icon_val.get("code_point").and_then(|v| v.as_str())
-        && let Some(code_point) = cp_str.chars().next()
-    {
-        let icon_font = icon_val
-            .get("font")
-            .and_then(plushie_core::types::Font::wire_decode)
-            .map(|f| iced_convert::font(&f))
-            .unwrap_or(Font::DEFAULT);
-        let icon_size = icon_val
-            .get("size")
-            .and_then(|v| v.as_f64())
-            .map(|v| Pixels(v as f32));
-        let icon_line_height = icon_val
-            .get("line_height")
-            .and_then(|v| match v {
-                Value::Number(n) => n.as_f64().map(|r| LineHeight::Relative(r as f32)),
-                Value::Object(obj) => {
-                    if let Some(r) = obj.get("relative").and_then(|v| v.as_f64()) {
-                        Some(LineHeight::Relative(r as f32))
-                    } else {
-                        obj.get("absolute")
-                            .and_then(|v| v.as_f64())
-                            .map(|a| LineHeight::Absolute(Pixels(a as f32)))
-                    }
-                }
-                _ => None,
-            })
-            .unwrap_or(LineHeight::default());
-        let icon_shaping = icon_val
-            .get("shaping")
+    if let Some(icon_val) = icon_prop.as_ref().and_then(|v| v.as_object()) {
+        if let Some(code_point) = icon_val
+            .get("code_point")
             .and_then(|v| v.as_str())
-            .and_then(|s| match s.to_ascii_lowercase().as_str() {
-                "basic" => Some(iced::widget::text::Shaping::Basic),
-                "advanced" => Some(iced::widget::text::Shaping::Advanced),
-                "auto" => Some(iced::widget::text::Shaping::Auto),
-                _ => None,
-            })
-            .unwrap_or(iced::widget::text::Shaping::Auto);
-        let icon_struct = checkbox::Icon {
-            font: icon_font,
-            code_point,
-            size: icon_size,
-            line_height: icon_line_height,
-            shaping: icon_shaping,
-        };
-        cb = cb.icon(icon_struct);
+            .and_then(|s| s.chars().next())
+        {
+            let icon_font = icon_val
+                .get("font")
+                .and_then(plushie_core::types::Font::wire_decode)
+                .map(|f| iced_convert::font(&f))
+                .unwrap_or(Font::DEFAULT);
+            let icon_size = icon_val
+                .get("size")
+                .and_then(|v| v.as_f64())
+                .map(|v| Pixels(v as f32));
+            let icon_line_height = icon_val
+                .get("line_height")
+                .and_then(|v| match v {
+                    Value::Number(n) => n.as_f64().map(|r| LineHeight::Relative(r as f32)),
+                    Value::Object(obj) => {
+                        if let Some(r) = obj.get("relative").and_then(|v| v.as_f64()) {
+                            Some(LineHeight::Relative(r as f32))
+                        } else {
+                            obj.get("absolute")
+                                .and_then(|v| v.as_f64())
+                                .map(|a| LineHeight::Absolute(Pixels(a as f32)))
+                        }
+                    }
+                    _ => None,
+                })
+                .unwrap_or(LineHeight::default());
+            let icon_shaping = icon_val
+                .get("shaping")
+                .and_then(|v| v.as_str())
+                .and_then(|s| match s.to_ascii_lowercase().as_str() {
+                    "basic" => Some(iced::widget::text::Shaping::Basic),
+                    "advanced" => Some(iced::widget::text::Shaping::Advanced),
+                    "auto" => Some(iced::widget::text::Shaping::Auto),
+                    _ => None,
+                })
+                .unwrap_or(iced::widget::text::Shaping::Auto);
+            let icon_struct = checkbox::Icon {
+                font: icon_font,
+                code_point,
+                size: icon_size,
+                line_height: icon_line_height,
+                shaping: icon_shaping,
+            };
+            cb = cb.icon(icon_struct);
+        } else {
+            log::warn!(
+                "[id={}] checkbox icon requires a non-empty string code_point, using default icon",
+                node.id
+            );
+        }
     }
 
     // Style: preset name or custom style map

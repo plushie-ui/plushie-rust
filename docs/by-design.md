@@ -927,6 +927,95 @@ these is observed.
 
 ---
 
+## Layout widget shorthand precedence
+
+`container.center(true)` is shorthand for setting both child-alignment
+axes to center. Explicit `align_x` and `align_y` props remain more
+specific and may override the shorthand on their axes. This lets hosts
+combine "center by default" with one-axis alignment without adding
+extra conflict rules to the prop model.
+
+Revisit only if container alignment becomes ordered rather than
+declarative in the host APIs.
+
+---
+
+## Responsive fills by default
+
+The `responsive` widget defaults width and height to `Fill` because
+its job is to report available rendered size to the host. Defaulting
+to `Shrink` would make it behave more like passive containers, but it
+would also commonly report the child size instead of the space a
+responsive branch needs to react to.
+
+Use explicit `width` and `height` props when a responsive wrapper
+should measure a constrained box.
+
+---
+
+## Animated prop helpers include static fallback
+
+`prop_animated_f32` and the companion animated helpers first consult
+the interpolated animation cache, then fall back to static tree props.
+Widgets should not duplicate a second `f32::extract` fallback for the
+same prop. Object-valued animation descriptors intentionally return
+`None` until interpolation supplies a concrete value, so the widget's
+normal default applies on that frame.
+
+This means a container `max_width` or `max_height` set as a plain
+number is not animation-only. It is read by `prop_animated_f32`.
+
+---
+
+## Interactive widget boundaries stay narrow
+
+Several interactive widget behaviors are deliberately handled at the
+widget boundary instead of by broad protocol reshaping.
+
+Image and SVG `alt`, `description`, and `decorative` props are passed
+to iced's native image widgets. The `infer_a11y` hook only adds an
+override for cases iced cannot infer from those native methods, such
+as hiding decorative images from the accessible tree. Do not wrap
+image and SVG nodes with duplicate `A11yOverride` labels unless iced
+stops exposing the native semantics.
+
+Stateful widget cache misses in `combo_box`, text widgets, and similar
+factories indicate a prepare/render lifecycle bug, not normal user
+input. A visible fallback plus a renderer log is intentional because
+it makes lifecycle corruption obvious during development. Add
+structured diagnostics only if real hosts need to recover from this
+state.
+
+Pointer area event family names (`press`, `release`, `right_press`,
+`middle_press`, `drag`, and related families) are part of the
+cross-SDK event shape. Do not rename them unilaterally to a single
+generic event with a button payload. Route that through the
+plushie-sdk-parity workflow if the event model changes.
+
+Style preset fallback uses the widget's native default style when a
+preset name is unknown. Installing no style closure is the default
+for iced widgets such as sliders, pick lists, combo boxes, radio
+buttons, and togglers. Unknown names should warn, then keep that
+default rather than inventing a separate error style.
+
+Progress bar accessibility is inferred from the tree props, while the
+rendered visual value may temporarily come from animation state. That
+split keeps a11y inference stateless and avoids threading animation
+caches through every widget hook. Revisit if animated progress values
+need live accessibility announcements.
+
+Widget-sdk unit tests are not the place for malformed wire byte
+coverage. Malformed bytes belong in codec and renderer tests, and
+wire behavior claims must drive the real renderer. Add direct and
+wire dual coverage when changing a path that can meaningfully diverge,
+not as a per-widget coverage metric.
+
+Table column parsing and QR module construction happen during render
+for ordinary widget sizes. Keep that local unless a realistic workload
+or profile shows the cost matters.
+
+---
+
 ## What this document is for
 
 When a future review surfaces a finding that this document

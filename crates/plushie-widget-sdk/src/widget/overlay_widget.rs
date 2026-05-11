@@ -47,7 +47,6 @@ impl<R: PlushieRenderer> PlushieWidget<R> for OverlayWidget {
         let op = OverlayProps::from_node(node);
         let props = &node.props;
 
-        let position = op.position.as_deref().unwrap_or("below");
         let gap = op.gap.unwrap_or(0.0);
         let offset_x = op.offset_x.unwrap_or(0.0);
         let offset_y = op.offset_y.unwrap_or(0.0);
@@ -55,22 +54,44 @@ impl<R: PlushieRenderer> PlushieWidget<R> for OverlayWidget {
         let align = match op.align.as_deref() {
             Some("start") => overlay::Align::Start,
             Some("end") => overlay::Align::End,
-            _ => overlay::Align::Center,
+            Some("center") | None => overlay::Align::Center,
+            Some(other) => {
+                log::warn!(
+                    "[id={}] overlay: unknown align {:?}, using center",
+                    node.id,
+                    other
+                );
+                overlay::Align::Center
+            }
         };
 
         let children = &node.children;
         if children.len() < 2 {
             return text(format!("overlay requires 2 children (id={})", node.id)).into();
         }
+        if children.len() > 2 {
+            log::warn!(
+                "[id={}] overlay: extra children beyond anchor and content are ignored",
+                node.id
+            );
+        }
 
         let anchor = ctx.render_child(&children[0]);
         let content = ctx.render_child(&children[1]);
 
-        let pos = match position {
-            "above" => overlay::Position::Above,
-            "left" => overlay::Position::Left,
-            "right" => overlay::Position::Right,
-            _ => overlay::Position::Below,
+        let pos = match op.position.as_deref() {
+            Some("above") => overlay::Position::Above,
+            Some("left") => overlay::Position::Left,
+            Some("right") => overlay::Position::Right,
+            Some("below") | None => overlay::Position::Below,
+            Some(other) => {
+                log::warn!(
+                    "[id={}] overlay: unknown position {:?}, using below",
+                    node.id,
+                    other
+                );
+                overlay::Position::Below
+            }
         };
 
         overlay::OverlayWrapper::new(anchor, content, pos, gap, offset_x, offset_y, flip, align)

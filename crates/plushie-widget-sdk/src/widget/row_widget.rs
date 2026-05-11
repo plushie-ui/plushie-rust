@@ -15,7 +15,6 @@ struct RowProps {
     padding: Option<Padding>,
     width: Option<Length>,
     height: Option<Length>,
-    max_width: Option<f32>,
     align_y: Option<VerticalAlignment>,
     clip: Option<bool>,
     wrap: Option<bool>,
@@ -28,7 +27,6 @@ impl RowProps {
             padding: Padding::extract(p, "padding"),
             width: Length::extract(p, "width"),
             height: Length::extract(p, "height"),
-            max_width: f32::extract(p, "max_width"),
             align_y: VerticalAlignment::extract(p, "align_y"),
             clip: bool::extract(p, "clip"),
             wrap: bool::extract(p, "wrap"),
@@ -60,8 +58,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RowWidget {
             &node.id,
             &node.props,
             "max_width",
-        )
-        .or(rp.max_width);
+        );
 
         let children = ctx.render_children(node);
 

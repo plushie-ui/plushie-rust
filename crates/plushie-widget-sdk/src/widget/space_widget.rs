@@ -34,9 +34,8 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SpaceWidget {
     fn render<'a>(
         &'a self,
         node: &'a TreeNode,
-        ctx: &RenderCtx<'a, R>,
+        _ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
-        let _ = ctx;
         let sp = SpaceProps::from_node(node);
         let width = sp
             .width

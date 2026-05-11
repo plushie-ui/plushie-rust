@@ -6,6 +6,8 @@
 //! Widget authors can access public helpers through
 //! `plushie_widget_sdk::prelude::*`.
 
+use std::time::Duration;
+
 use iced::widget::{
     button, checkbox, container, pick_list, progress_bar, rule, slider, text_editor, text_input,
     toggler,
@@ -29,6 +31,32 @@ use plushie_core::types::Shaping as CoreShaping;
 // Re-export all public prop helpers so widget submodules using `use super::*`
 // continue to find them without changes.
 pub use crate::prop_helpers::*;
+
+/// Convert a millisecond duration prop into an iced [`Duration`].
+///
+/// Invalid values are ignored instead of truncated or saturated. The wire
+/// format should not produce non-finite JSON numbers, but this keeps the
+/// widget boundary explicit and prevents surprising behavior for negative
+/// or oversized values.
+pub(crate) fn duration_from_millis_prop(
+    widget_id: &str,
+    prop: &str,
+    value: f64,
+) -> Option<Duration> {
+    if !value.is_finite() {
+        log::warn!("[id={widget_id}] prop '{prop}' must be finite, ignoring");
+        return None;
+    }
+    if value < 0.0 {
+        log::warn!("[id={widget_id}] prop '{prop}' must be non-negative, ignoring");
+        return None;
+    }
+    if value > u64::MAX as f64 {
+        log::warn!("[id={widget_id}] prop '{prop}' exceeds u64::MAX milliseconds, ignoring");
+        return None;
+    }
+    Some(Duration::from_millis(value.trunc() as u64))
+}
 
 // ---------------------------------------------------------------------------
 // Font family interning
@@ -267,7 +295,8 @@ pub fn apply_button_fields(style: &mut button::Style, fields: &StyleMapFields) {
 }
 
 /// Apply style map fields to a progress_bar style. Background maps as
-/// `Background::Color`, text_color maps to the bar fill, border directly.
+/// `Background::Color`, text_color maps to the bar fill, and border
+/// maps directly.
 pub fn apply_progress_bar_fields(style: &mut progress_bar::Style, fields: &StyleMapFields) {
     if let Some(iced::Background::Color(c)) = fields.background {
         style.background = iced::Background::Color(c);

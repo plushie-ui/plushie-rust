@@ -18,7 +18,6 @@ struct KeyedColumnProps {
     padding: Option<Padding>,
     width: Option<Length>,
     height: Option<Length>,
-    max_width: Option<f32>,
     align_x: Option<HorizontalAlignment>,
 }
 
@@ -29,7 +28,6 @@ impl KeyedColumnProps {
             padding: Padding::extract(p, "padding"),
             width: Length::extract(p, "width"),
             height: Length::extract(p, "height"),
-            max_width: f32::extract(p, "max_width"),
             align_x: HorizontalAlignment::extract(p, "align_x"),
         }
     }
@@ -59,14 +57,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for KeyedColumnWidget {
             &node.id,
             &node.props,
             "max_width",
-        )
-        .or(kp.max_width);
+        );
 
         let keyed_children: Vec<(u64, Element<'a, Message, Theme, R>)> = node
             .children
             .iter()
             .map(|c| {
                 let mut hasher = DefaultHasher::new();
+                // DefaultHasher keys are for iced state within this process only.
                 c.id.hash(&mut hasher);
                 let key = hasher.finish();
                 let elem = ctx.render_child(c);

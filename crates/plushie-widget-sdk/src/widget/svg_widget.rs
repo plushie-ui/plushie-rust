@@ -81,10 +81,9 @@ impl SvgWidget {
                 return;
             }
         };
-        // Interactive deadline: the rendering loop wants to tick
-        // well within a frame budget. Headless callers bypass this
-        // guard today because iced's headless path doesn't go
-        // through SvgWidget::render.
+        // Interactive deadline: parsing should stay well within a
+        // frame budget. The guard runs during prepare, before iced
+        // sees the handle, so windowed and headless paths share it.
         let deadline = svg_guard::INTERACTIVE_TIMEOUT;
         match svg_guard::parse_with_timeout(bytes, deadline) {
             DecodeOutcome::Ok => {}

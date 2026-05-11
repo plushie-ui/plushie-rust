@@ -99,7 +99,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ComboBoxWidget {
         match self.states.get(&key) {
             Some(state) => render_combo_box_with_state(node, *ctx, state),
             None => {
-                log::warn!("combo_box factory cache miss for id={}", node.id);
+                log::warn!(
+                    "combo_box factory cache miss for window_id={}, id={}",
+                    ctx.window_id,
+                    node.id
+                );
                 iced::widget::text("(combo_box: cache miss)").into()
             }
         }

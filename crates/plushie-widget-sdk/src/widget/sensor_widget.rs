@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use iced::widget::{Space, sensor};
 use iced::{Element, Theme};
 use serde_json::Value;
@@ -94,8 +92,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
             }
         }
 
-        if let Some(d) = sp.delay {
-            s = s.delay(Duration::from_millis(d as u64));
+        if let Some(d) = sp.delay
+            && let Some(delay) = duration_from_millis_prop(&node.id, "delay", d)
+        {
+            s = s.delay(delay);
         }
         if let Some(a) = sp.anticipate {
             s = s.anticipate(a);

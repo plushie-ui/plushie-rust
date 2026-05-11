@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use iced::widget::{Space, container, text, tooltip};
 use iced::{Element, Theme};
 
@@ -64,7 +62,14 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
                 "left" => tooltip::Position::Left,
                 "right" => tooltip::Position::Right,
                 "follow_cursor" | "follow" => tooltip::Position::FollowCursor,
-                _ => tooltip::Position::Top,
+                _ => {
+                    log::warn!(
+                        "[id={}] tooltip: unknown position {:?}, using top",
+                        node.id,
+                        s
+                    );
+                    tooltip::Position::Top
+                }
             })
             .unwrap_or(tooltip::Position::Top);
 
@@ -91,8 +96,10 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TooltipWidget {
         let snap = tp.snap_within_viewport.unwrap_or(true);
         tt = tt.snap_within_viewport(snap);
 
-        if let Some(d) = tp.delay {
-            tt = tt.delay(Duration::from_millis(d as u64));
+        if let Some(d) = tp.delay
+            && let Some(delay) = duration_from_millis_prop(&node.id, "delay", d)
+        {
+            tt = tt.delay(delay);
         }
 
         // Style: preset name or custom style map

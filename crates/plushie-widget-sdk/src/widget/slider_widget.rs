@@ -54,11 +54,12 @@ fn handle_slider_message(
         Message::Event {
             window_id,
             id,
+            value,
             family,
-            ..
         } if family == "slide_release" => {
             let key = (window_id.clone(), id.clone());
-            let v = last_values.remove(&key).unwrap_or(0.0);
+            let last_value = last_values.remove(&key);
+            let v = value.as_f64().or(last_value).unwrap_or(0.0);
             HandleResult::emit(vec![crate::protocol::OutgoingEvent::slide_release(
                 id.clone(),
                 v,
@@ -70,6 +71,12 @@ fn handle_slider_message(
 
 fn effective_slider_step(step: Option<f64>, keyboard_step: Option<f64>) -> Option<f64> {
     keyboard_step.or(step).map(|step| step.max(f64::EPSILON))
+}
+
+fn value_in_range(value: Option<f64>, range: &std::ops::RangeInclusive<f64>) -> f64 {
+    value
+        .unwrap_or(*range.start())
+        .clamp(*range.start(), *range.end())
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +214,7 @@ fn render_slider<'a, R: PlushieRenderer>(
     let props = &node.props;
     let sp = SliderProps::from_node(node);
     let range = prop_range_f64(props);
-    let value = sp.value.unwrap_or(*range.start());
+    let value = value_in_range(sp.value, &range);
     let width = sp
         .width
         .as_ref()
@@ -218,7 +225,7 @@ fn render_slider<'a, R: PlushieRenderer>(
     let window_id = ctx.window_id.to_string();
     let release_window_id = window_id.clone();
 
-    let mut s = slider(range, value, move |v| Message::Event {
+    let mut s = slider(range.clone(), value, move |v| Message::Event {
         window_id: window_id.clone(),
         id: id.clone(),
         value: serde_json::json!(v),
@@ -227,7 +234,7 @@ fn render_slider<'a, R: PlushieRenderer>(
     .on_release(Message::Event {
         window_id: release_window_id,
         id: release_id,
-        value: Value::Null,
+        value: serde_json::json!(value),
         family: "slide_release".into(),
     })
     .width(width);
@@ -239,7 +246,7 @@ fn render_slider<'a, R: PlushieRenderer>(
         s = s.step(st);
     }
     if let Some(d) = sp.default {
-        s = s.default(d);
+        s = s.default(value_in_range(Some(d), &range));
     }
     if let Some(h) = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "height") {
         s = s.height(h);
@@ -368,7 +375,7 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     let props = &node.props;
     let vp = VerticalSliderProps::from_node(node);
     let range = prop_range_f64(props);
-    let value = vp.value.unwrap_or(*range.start());
+    let value = value_in_range(vp.value, &range);
     let width = prop_animated_f32(&ctx.caches.interpolated_props, &node.id, props, "width");
     let height = vp
         .height
@@ -380,7 +387,7 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     let window_id = ctx.window_id.to_string();
     let release_window_id = window_id.clone();
 
-    let mut s = vertical_slider(range, value, move |v| Message::Event {
+    let mut s = vertical_slider(range.clone(), value, move |v| Message::Event {
         window_id: window_id.clone(),
         id: id.clone(),
         value: serde_json::json!(v),
@@ -389,7 +396,7 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
     .on_release(Message::Event {
         window_id: release_window_id,
         id: release_id,
-        value: Value::Null,
+        value: serde_json::json!(value),
         family: "slide_release".into(),
     })
     .height(height);
@@ -402,7 +409,7 @@ fn render_vertical_slider<'a, R: PlushieRenderer>(
         s = s.step(st);
     }
     if let Some(d) = vp.default {
-        s = s.default(d);
+        s = s.default(value_in_range(Some(d), &range));
     }
     if let Some(ss) = vp.shift_step {
         s = s.shift_step(ss);
@@ -518,6 +525,35 @@ mod tests {
     #[test]
     fn base_step_is_used_without_keyboard_step() {
         assert_eq!(effective_slider_step(Some(2.0), None), Some(2.0));
+    }
+
+    #[test]
+    fn slider_value_is_clamped_to_range() {
+        let range = 10.0..=20.0;
+        assert_eq!(value_in_range(Some(5.0), &range), 10.0);
+        assert_eq!(value_in_range(Some(25.0), &range), 20.0);
+        assert_eq!(value_in_range(Some(15.0), &range), 15.0);
+        assert_eq!(value_in_range(None, &range), 10.0);
+    }
+
+    #[test]
+    fn release_uses_current_render_value_when_no_drag_was_seen() {
+        let mut last_values = std::collections::HashMap::new();
+        let msg = Message::Event {
+            window_id: "w".into(),
+            id: "s".into(),
+            value: json!(42.0),
+            family: "slide_release".into(),
+        };
+
+        match handle_slider_message(&mut last_values, &msg) {
+            crate::registry::HandleResult::Handled(events) => {
+                assert_eq!(events.len(), 1);
+                assert_eq!(events[0].family, "slide_release");
+                assert_eq!(events[0].value, Some(json!(42.0)));
+            }
+            other => panic!("expected emitted slide_release, got {other:?}"),
+        }
     }
 
     fn infer_slider(props: serde_json::Value) -> Option<A11yOverrides> {

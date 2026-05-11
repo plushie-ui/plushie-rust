@@ -482,6 +482,32 @@ for real behavior.
 
 ---
 
+## Forgiving string conversions are ergonomic constructors
+
+Several core types implement `From<&str>` as convenience constructors
+for app and test code. These conversions may normalize input, preserve
+unknown names as catch-all typed values, or choose a neutral default.
+They are not the strict wire-boundary API.
+
+Use the explicit parse method at boundaries when the type provides
+one: `KeyPress::from_str`, `MouseButton::from_wire`,
+`PointerKind::from_wire`, `InteractAction::from_wire`, and similar
+methods return `Result` or `Option` so malformed wire input can be
+rejected or diagnosed.
+
+Declined under this section:
+
+- Treating `KeyPress::from("Crtl+s")` as a wire parsing bug. The
+  strict path is `"Crtl+s".parse::<KeyPress>()`.
+- Treating `MouseButton::from("unknown")` or
+  `PointerKind::from("unknown")` as the boundary contract. The
+  strict `from_wire` methods exist for that contract.
+
+Revisit only if a wire-boundary call site is using an ergonomic
+constructor where it should use a strict parser.
+
+---
+
 ## `parking_lot` is the workspace default for non-poisoning mutexes
 
 Production code uses `parking_lot::Mutex` and `parking_lot::RwLock`.

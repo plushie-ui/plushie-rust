@@ -6,7 +6,7 @@
 use plushie::{WidgetCommand, WidgetEvent};
 use plushie_core::protocol::PropValue;
 use plushie_core::spec::{PayloadSpec, ValueType, WidgetCommandEncode};
-use plushie_core::types::WidgetEventEncode;
+use plushie_core::types::{Color, WidgetEventEncode};
 
 // ---------------------------------------------------------------------------
 // Unit variant
@@ -211,6 +211,9 @@ enum SupportedSpecEvent {
     Raw(PropValue),
     CoreRaw(plushie_core::protocol::PropValue),
     AbsoluteRaw(::plushie_core::protocol::PropValue),
+    TypedColor(Color),
+    QualifiedColor(plushie_core::types::Color),
+    ColorFields { color: Color },
 }
 
 #[test]
@@ -239,6 +242,20 @@ fn event_specs_map_supported_payload_types() {
     assert_eq!(payload_type("raw"), ValueType::Any);
     assert_eq!(payload_type("core_raw"), ValueType::Any);
     assert_eq!(payload_type("absolute_raw"), ValueType::Any);
+    assert_eq!(payload_type("typed_color"), ValueType::Any);
+    assert_eq!(payload_type("qualified_color"), ValueType::Any);
+
+    let color_fields = specs
+        .iter()
+        .find(|spec| spec.family == "color_fields")
+        .unwrap();
+    match &color_fields.payload {
+        PayloadSpec::Fields { fields, required } => {
+            assert_eq!(fields[0], ("color".to_string(), ValueType::Any));
+            assert_eq!(required, &["color"]);
+        }
+        other => panic!("expected Fields, got {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +340,8 @@ enum UntypedCommand {
     Send(PropValue),
     SendQualified(::plushie_core::protocol::PropValue),
     SendFields { payload: PropValue },
+    SetColor(Color),
+    SetColorFields { color: Color },
 }
 
 #[test]
@@ -341,6 +360,18 @@ fn command_specs_map_prop_value_to_any() {
         PayloadSpec::Fields { fields, required } => {
             assert_eq!(fields[0], ("payload".to_string(), ValueType::Any));
             assert_eq!(required, &["payload"]);
+        }
+        other => panic!("expected Fields, got {other:?}"),
+    }
+    assert!(matches!(
+        specs[3].payload,
+        PayloadSpec::Value(ValueType::Any)
+    ));
+
+    match &specs[4].payload {
+        PayloadSpec::Fields { fields, required } => {
+            assert_eq!(fields[0], ("color".to_string(), ValueType::Any));
+            assert_eq!(required, &["color"]);
         }
         other => panic!("expected Fields, got {other:?}"),
     }

@@ -3,7 +3,8 @@
 //! [`Core`] owns the UI tree, widget caches, and subscription state.
 //! It processes [`IncomingMessage`]s and returns [`CoreEffect`]s that
 //! the host (the iced `App` or the headless runner) must execute.
-//! Core never touches iced directly; it's pure state management.
+//! Core owns some iced value types, but it performs no iced runtime
+//! work such as opening windows, rendering widgets, or scheduling tasks.
 
 use std::collections::HashMap;
 
@@ -12,6 +13,7 @@ use serde_json::Value;
 
 use plushie_core::protocol::{IncomingMessage, OutgoingEvent};
 use plushie_widget_sdk::runtime::{self as runtime, SharedState};
+use plushie_widget_sdk::shared_state::MAX_TREE_DEPTH;
 
 use crate::tree::Tree;
 
@@ -233,13 +235,12 @@ impl Core {
 
     /// Resolve whether prop validation should run for this session.
     ///
-    /// A per-session `true` forces validation on. Otherwise the
-    /// process-wide flag decides.
+    /// A per-session `true` forces validation on. `false` and `None`
+    /// both leave the process-wide flag in control.
     pub fn is_validate_props_enabled(&self) -> bool {
         match self.validate_props {
             Some(true) => true,
-            None => runtime::is_validate_props_enabled(),
-            Some(false) => runtime::is_validate_props_enabled(),
+            Some(false) | None => runtime::is_validate_props_enabled(),
         }
     }
 
@@ -563,7 +564,13 @@ impl Core {
                 self.default_event_rate = settings
                     .get("default_event_rate")
                     .and_then(|v| v.as_u64())
-                    .map(|v| v as u32);
+                    .and_then(|value| match u32::try_from(value) {
+                        Ok(rate) => Some(rate),
+                        Err(_) => {
+                            log::warn!("default_event_rate {value} exceeds u32::MAX; ignoring");
+                            None
+                        }
+                    });
                 self.default_text_size = settings
                     .get("default_text_size")
                     .and_then(|v| v.as_f64())
@@ -674,7 +681,7 @@ impl Core {
             }
             IncomingMessage::AdvanceFrame { .. } => {
                 log::warn!(
-                    "AdvanceFrame is only supported in headless/test mode; ignored in daemon mode"
+                    "AdvanceFrame is handled by the scripting layer; Core ignores it in all modes"
                 );
             }
             IncomingMessage::RegisterEffectStub { kind, response } => {
@@ -716,13 +723,21 @@ impl Core {
         root: &plushie_core::protocol::TreeNode,
         effects: &mut Vec<CoreEffect>,
     ) {
-        Self::validate_node_recursive(root, effects);
+        Self::validate_node_recursive(root, effects, 0);
     }
 
     fn validate_node_recursive(
         node: &plushie_core::protocol::TreeNode,
         effects: &mut Vec<CoreEffect>,
+        depth: usize,
     ) {
+        if depth > MAX_TREE_DEPTH {
+            plushie_core::diagnostics::warn(plushie_core::Diagnostic::TreeDepthExceeded {
+                id: node.id.clone(),
+                max_depth: MAX_TREE_DEPTH,
+            });
+            return;
+        }
         let warnings = runtime::collect_prop_warnings(node);
         if !warnings.is_empty() {
             effects.push(CoreEffect::Emit(Emit::Event(OutgoingEvent::generic(
@@ -736,7 +751,7 @@ impl Core {
             ))));
         }
         for child in &node.children {
-            Self::validate_node_recursive(child, effects);
+            Self::validate_node_recursive(child, effects, depth + 1);
         }
     }
 }
@@ -1466,6 +1481,18 @@ mod tests {
     }
 
     #[test]
+    fn settings_ignores_default_event_rate_that_exceeds_u32() {
+        let mut core: Core = Core::new();
+        let msg = IncomingMessage::Settings {
+            settings: serde_json::json!({"default_event_rate": u64::from(u32::MAX) + 1}),
+        };
+
+        core.apply(msg);
+
+        assert_eq!(core.default_event_rate, None);
+    }
+
+    #[test]
     fn settings_validate_props_false_does_not_store_local_override() {
         let mut core: Core = Core::new();
         let msg = IncomingMessage::Settings {
@@ -1505,6 +1532,24 @@ mod tests {
             has_prop_validation(&effects, "bad"),
             "validate_props true should enable validation for the session"
         );
+    }
+
+    #[test]
+    fn prop_validation_skips_nodes_beyond_max_tree_depth() {
+        let mut core: Core = Core::new();
+        core.apply(IncomingMessage::Settings {
+            settings: serde_json::json!({"validate_props": true}),
+        });
+
+        let mut deepest =
+            make_node_with_props("too_deep", "text", serde_json::json!({"content": 42}));
+        for index in 0..=MAX_TREE_DEPTH {
+            deepest = make_node_with_children(&format!("n{index}"), "column", vec![deepest]);
+        }
+
+        let effects = core.apply(IncomingMessage::Snapshot { tree: deepest });
+
+        assert!(!has_prop_validation(&effects, "too_deep"));
     }
 
     #[test]

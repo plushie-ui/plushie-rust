@@ -2,9 +2,10 @@
 //!
 //! [`Tree`] holds the current root [`TreeNode`] and supports full
 //! replacement via [`snapshot`](Tree::snapshot) and incremental updates
-//! via [`apply_patch`](Tree::apply_patch). The renderer reads the tree
-//! during `view()` to produce iced widgets; the host mutates it by
-//! sending Snapshot and Patch messages.
+//! via [`apply_patch`](Tree::apply_patch). Renderer modes read the tree
+//! to render widgets, answer queries, and keep host-owned window state
+//! synchronized; the host mutates it by sending Snapshot and Patch
+//! messages.
 
 use std::collections::{HashMap, HashSet};
 
@@ -58,6 +59,11 @@ impl Tree {
     /// Return a mutable reference to the current root, if any. Used
     /// by transforms that drive the shared [`tree_walk`] walker, which
     /// takes `&mut TreeNode` even for read-only passes.
+    ///
+    /// Do not change node IDs or structural children through this
+    /// reference. Structural mutation invalidates the internal id index;
+    /// use [`snapshot`](Self::snapshot) or [`apply_patch`](Self::apply_patch)
+    /// so the index is rebuilt.
     ///
     /// [`tree_walk`]: plushie_core::tree_walk
     pub fn root_mut(&mut self) -> Option<&mut TreeNode> {
@@ -200,12 +206,12 @@ impl Tree {
                     PatchApplyError::invalid("update_props: missing 'props' field")
                 })?;
 
-                if !props.is_object() {
-                    log::warn!("update_props: patch props is not an object: {}", props);
-                    return Ok(());
-                }
+                let patch_map = props.as_object().ok_or_else(|| {
+                    PatchApplyError::invalid(format!(
+                        "update_props: patch props is not an object: {props}"
+                    ))
+                })?;
                 let target_map = target.props.as_prop_map_mut();
-                let patch_map = props.as_object().unwrap();
                 for (k, v) in patch_map {
                     if v.is_null() {
                         target_map.remove(k);
@@ -354,10 +360,10 @@ fn validate_patch_order(ops: &[PatchOp]) -> Result<(), String> {
                     ));
                 }
                 if let Some(previous) = order.last_remove
-                    && index > previous
+                    && index >= previous
                 {
                     return Err(format!(
-                        "patch op at index {op_index} removes child {index} from parent path {path:?}, but remove_child ops for the same parent must not increase child indices"
+                        "patch op at index {op_index} removes child {index} from parent path {path:?}, but remove_child ops for the same parent must strictly decrease child indices"
                     ));
                 }
                 order.last_remove = Some(index);
@@ -601,6 +607,10 @@ mod tests {
             }
         }
         serde_json::from_value(serde_json::Value::Object(obj)).unwrap()
+    }
+
+    fn text_node_json(id: &str) -> serde_json::Value {
+        json!({"id": id, "type": "text", "props": {}, "children": []})
     }
 
     // -----------------------------------------------------------------------
@@ -1057,6 +1067,22 @@ mod tests {
         );
         tree.apply_patch(vec![op]);
         // Props unchanged: the merge was skipped
+        assert_eq!(tree.root().unwrap().props.to_value()["content"], "hi");
+    }
+
+    #[test]
+    fn patch_update_props_non_object_patch_props_is_reported_as_apply_error() {
+        let mut tree = Tree::new();
+        let _ = tree.snapshot(node_with_props("root", "text", json!({"content": "hi"})));
+        let op = make_patch_op("update_props", vec![], json!({"props": false}));
+
+        let error = tree.apply_op(&op).unwrap_err();
+
+        assert!(
+            matches!(error, PatchApplyError::Invalid(message) if message.contains(
+                "patch props is not an object"
+            ))
+        );
         assert_eq!(tree.root().unwrap().props.to_value()["content"], "hi");
     }
 
@@ -1553,6 +1579,53 @@ mod tests {
         let children = &tree.root().unwrap().children;
         assert_eq!(children[0].props.to_value()["content"], "changed");
         assert_eq!(children[1].props.to_value()["label"], "click me");
+    }
+
+    // -----------------------------------------------------------------------
+    // validate_patch_order
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn validate_patch_order_accepts_empty_ops() {
+        assert!(Tree::validate_patch_order(&[]).is_ok());
+    }
+
+    #[test]
+    fn validate_patch_order_accepts_single_remove() {
+        let ops = vec![make_patch_op("remove_child", vec![], json!({"index": 0}))];
+
+        assert!(Tree::validate_patch_order(&ops).is_ok());
+    }
+
+    #[test]
+    fn validate_patch_order_accepts_remove_middle_insert_boundary() {
+        let ops = vec![
+            make_patch_op("remove_child", vec![], json!({"index": 1})),
+            make_patch_op(
+                "update_props",
+                vec![0],
+                json!({"props": {"content": "changed"}}),
+            ),
+            make_patch_op(
+                "insert_child",
+                vec![],
+                json!({"index": 0, "node": text_node_json("new")}),
+            ),
+        ];
+
+        assert!(Tree::validate_patch_order(&ops).is_ok());
+    }
+
+    #[test]
+    fn validate_patch_order_rejects_duplicate_remove_index() {
+        let ops = vec![
+            make_patch_op("remove_child", vec![], json!({"index": 1})),
+            make_patch_op("remove_child", vec![], json!({"index": 1})),
+        ];
+
+        let error = Tree::validate_patch_order(&ops).unwrap_err();
+
+        assert!(error.contains("strictly decrease child indices"));
     }
 
     // -----------------------------------------------------------------------

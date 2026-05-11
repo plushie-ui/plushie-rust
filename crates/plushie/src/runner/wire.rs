@@ -294,8 +294,14 @@ fn run_session_single<A: App>(
         dispatch_window_sync_op(&mut bridge, &op)?;
     }
 
-    if let Err(e) = execute_wire_command(&mut bridge, init_cmd, &mut effect_tracker, &mut async_mgr)
-    {
+    let mut shutdown_requested = false;
+    if let Err(e) = execute_wire_command(
+        &mut bridge,
+        init_cmd,
+        &mut effect_tracker,
+        &mut async_mgr,
+        &mut shutdown_requested,
+    ) {
         log::error!("initial command execution failed: {e}");
     }
 
@@ -315,6 +321,7 @@ fn run_session_single<A: App>(
         &mut window_sync,
         &settings,
         policy.heartbeat_interval,
+        shutdown_requested,
         // Connect mode: the renderer lives in a separate process we
         // didn't spawn. A hot-reload swap signal has no meaningful
         // action here, so the session loop drains and ignores it.
@@ -482,9 +489,15 @@ fn run_wire_inner<A: App>(
 
         // Execute the initial command once (only on the first spawn).
         // Subscriptions and in-flight commands are replayed below.
+        let mut shutdown_requested = false;
         if let Some(cmd) = pending_init.take()
-            && let Err(e) =
-                execute_wire_command(&mut bridge, cmd, &mut effect_tracker, &mut async_mgr)
+            && let Err(e) = execute_wire_command(
+                &mut bridge,
+                cmd,
+                &mut effect_tracker,
+                &mut async_mgr,
+                &mut shutdown_requested,
+            )
         {
             log::error!("initial command execution failed: {e}");
         }
@@ -532,6 +545,7 @@ fn run_wire_inner<A: App>(
             &mut window_sync,
             &settings,
             policy.heartbeat_interval,
+            shutdown_requested,
             // Spawn mode: we own the renderer subprocess and can
             // respawn it, so dev-mode swap signals are actionable.
             true,
@@ -672,6 +686,7 @@ fn run_session<A: App>(
     window_sync: &mut crate::runtime::windows::WindowSync,
     base_settings: &Value,
     heartbeat_interval: Option<std::time::Duration>,
+    mut shutdown_requested: bool,
     manages_renderer_lifecycle: bool,
 ) -> ExitReason {
     // Dev-mode needs to wake up periodically to check for swap
@@ -743,6 +758,7 @@ fn run_session<A: App>(
                         view_errors,
                         window_sync,
                         base_settings,
+                        &mut shutdown_requested,
                     ) {
                         log::error!("command execution failed: {e}");
                     }
@@ -750,7 +766,7 @@ fn run_session<A: App>(
             }
             super::bridge::Incoming::Error(e) => {
                 log::error!("renderer connection lost: {e}");
-                return classify_exit(bridge, &e);
+                return classify_exit(bridge, &e, shutdown_requested);
             }
             super::bridge::Incoming::Timeout => {
                 log::warn!(
@@ -801,6 +817,7 @@ fn run_session<A: App>(
                     view_errors,
                     window_sync,
                     base_settings,
+                    &mut shutdown_requested,
                 )
             {
                 log::error!("async event processing failed: {e}");
@@ -828,6 +845,7 @@ fn process_event<A: App>(
     view_errors: &mut crate::runtime::view_errors::ViewErrors,
     window_sync: &mut crate::runtime::windows::WindowSync,
     base_settings: &Value,
+    shutdown_requested: &mut bool,
 ) -> crate::Result {
     // Dev-mode overlay interception: if the event belongs to the
     // rebuilding-overlay ID namespace, handle it internally and skip
@@ -843,7 +861,7 @@ fn process_event<A: App>(
         crate::runtime::view_errors::UpdateOutcome::Ok(cmd) => cmd,
         crate::runtime::view_errors::UpdateOutcome::Panicked { cmd, .. } => cmd,
     };
-    execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
+    execute_wire_command(bridge, cmd, effect_tracker, async_mgr, shutdown_requested)?;
 
     // Re-render and diff under panic guard.
     let outcome = crate::runtime::view_errors::run_guarded_view_wire::<A>(
@@ -964,16 +982,27 @@ fn handle_dev_control_signals() -> bool {
 }
 
 #[cfg(feature = "wire")]
-fn classify_exit(bridge: &mut Bridge, err: &io::Error) -> ExitReason {
+fn classify_exit(bridge: &mut Bridge, err: &io::Error, shutdown_requested: bool) -> ExitReason {
+    if shutdown_requested {
+        return ExitReason::Shutdown;
+    }
     match err.kind() {
         io::ErrorKind::UnexpectedEof => ExitReason::ConnectionLost,
-        _ => {
-            let code = bridge.try_reap();
-            ExitReason::Crash {
-                message: err.to_string(),
-                code,
-            }
-        }
+        _ => classify_exit_kind(err, bridge.try_reap(), false),
+    }
+}
+
+#[cfg(feature = "wire")]
+fn classify_exit_kind(err: &io::Error, code: Option<i32>, shutdown_requested: bool) -> ExitReason {
+    if shutdown_requested {
+        return ExitReason::Shutdown;
+    }
+    match err.kind() {
+        io::ErrorKind::UnexpectedEof => ExitReason::ConnectionLost,
+        _ => ExitReason::Crash {
+            message: err.to_string(),
+            code,
+        },
     }
 }
 
@@ -1014,6 +1043,11 @@ enum IncomingRendererMessage {
         #[allow(dead_code)]
         id: String,
         events: Vec<Value>,
+    },
+    Diagnostic {
+        level: plushie_core::protocol::DiagnosticLevel,
+        diagnostic: Option<plushie_core::Diagnostic>,
+        raw: Value,
     },
     /// Message type the SDK doesn't recognise. Preserves the type
     /// string and raw payload so diagnostics can surface version
@@ -1111,6 +1145,22 @@ fn decode_incoming(msg: &Value) -> Option<IncomingRendererMessage> {
                 .unwrap_or_default();
             IncomingRendererMessage::InteractResponse { id, events }
         }
+        "diagnostic" => {
+            let level = msg
+                .get("level")
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or(plushie_core::protocol::DiagnosticLevel::Error);
+            let diagnostic = msg
+                .get("diagnostic")
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok());
+            IncomingRendererMessage::Diagnostic {
+                level,
+                diagnostic,
+                raw: msg.clone(),
+            }
+        }
         other => IncomingRendererMessage::Unknown {
             msg_type: other.to_string(),
             raw: msg.clone(),
@@ -1161,6 +1211,29 @@ fn wire_to_sdk_events(
                 plushie_core::diagnostics::error(plushie_core::Diagnostic::UnknownMessageType {
                     msg_type,
                 });
+                continue;
+            }
+            IncomingRendererMessage::Diagnostic {
+                level,
+                diagnostic,
+                raw,
+            } => {
+                let log_level = match level {
+                    plushie_core::protocol::DiagnosticLevel::Info => log::Level::Info,
+                    plushie_core::protocol::DiagnosticLevel::Warn => log::Level::Warn,
+                    plushie_core::protocol::DiagnosticLevel::Error => log::Level::Error,
+                };
+                match diagnostic {
+                    Some(diagnostic) => log::log!(log_level, "renderer diagnostic: {diagnostic}"),
+                    None => log::log!(log_level, "renderer diagnostic: {raw}"),
+                }
+                events.push(Event::System(crate::event::SystemEvent {
+                    event_type: crate::event::SystemEventType::Diagnostic,
+                    tag: None,
+                    value: Some(raw),
+                    id: None,
+                    window_id: None,
+                }));
                 continue;
             }
             IncomingRendererMessage::Event {
@@ -1544,10 +1617,12 @@ fn execute_wire_command(
     cmd: Command,
     effect_tracker: &mut EffectTracker,
     async_mgr: &mut AsyncTaskManager,
+    shutdown_requested: &mut bool,
 ) -> crate::Result {
     match cmd {
         Command::None => {}
         Command::Exit => {
+            *shutdown_requested = true;
             // Best-effort: tell the renderer we're shutting down so
             // it can close cleanly instead of seeing stdin drop as
             // the bridge is torn down. The main loop observes the
@@ -1560,7 +1635,7 @@ fn execute_wire_command(
         }
         Command::Batch(cmds) => {
             for c in cmds {
-                execute_wire_command(bridge, c, effect_tracker, async_mgr)?;
+                execute_wire_command(bridge, c, effect_tracker, async_mgr, shutdown_requested)?;
             }
         }
         Command::Renderer(ref op) => {
@@ -2098,5 +2173,53 @@ mod wire_contract_tests {
             }
             other => panic!("expected widget event, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn wire_to_sdk_events_delivers_top_level_diagnostic() {
+        let raw = serde_json::json!({
+            "type": "diagnostic",
+            "session": "s1",
+            "level": "warn",
+            "diagnostic": {
+                "kind": "unknown_message_type",
+                "msg_type": "future_message"
+            }
+        });
+
+        let mut effect_tracker = EffectTracker::new();
+        let mut async_mgr = AsyncTaskManager::new(None);
+        let events = wire_to_sdk_events(&raw, &mut effect_tracker, &mut async_mgr);
+
+        match events.as_slice() {
+            [Event::System(system)] => {
+                assert_eq!(system.event_type, crate::event::SystemEventType::Diagnostic);
+                let value = system.value.as_ref().expect("diagnostic payload");
+                assert_eq!(value["type"], "diagnostic");
+                assert_eq!(value["level"], "warn");
+                assert_eq!(value["diagnostic"]["kind"], "unknown_message_type");
+                assert_eq!(value["diagnostic"]["msg_type"], "future_message");
+            }
+            [other] => panic!("expected diagnostic system event, got {other:?}"),
+            other => panic!("expected diagnostic system event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_exit_honors_shutdown_request() {
+        let err = io::Error::new(io::ErrorKind::UnexpectedEof, "renderer closed");
+        assert!(matches!(
+            classify_exit_kind(&err, None, true),
+            ExitReason::Shutdown
+        ));
+    }
+
+    #[test]
+    fn classify_exit_keeps_unexpected_eof_as_connection_lost() {
+        let err = io::Error::new(io::ErrorKind::UnexpectedEof, "renderer closed");
+        assert!(matches!(
+            classify_exit_kind(&err, None, false),
+            ExitReason::ConnectionLost
+        ));
     }
 }

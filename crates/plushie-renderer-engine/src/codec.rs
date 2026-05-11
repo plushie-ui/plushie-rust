@@ -274,11 +274,11 @@ impl Codec {
             },
             Codec::MsgPack => {
                 let mut len_buf = [0u8; 4];
-                match reader.read_exact(&mut len_buf) {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-                    Err(e) => return Err(e),
+                let n = reader.read(&mut len_buf[..1])?;
+                if n == 0 {
+                    return Ok(None);
                 }
+                reader.read_exact(&mut len_buf[1..])?;
                 let len = u32::from_be_bytes(len_buf) as usize;
                 if len == 0 {
                     return Err(io::Error::new(
@@ -767,6 +767,17 @@ mod tests {
         assert_eq!(d2, s2);
 
         assert!(Codec::MsgPack.read_message(&mut reader).unwrap().is_none());
+    }
+
+    #[test]
+    fn msgpack_read_message_rejects_truncated_length_prefix() {
+        let data = [0x00, 0x00];
+        let mut reader = io::BufReader::new(&data[..]);
+
+        let result = Codec::MsgPack.read_message(&mut reader);
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::UnexpectedEof);
     }
 
     // -- read_message size limit tests --

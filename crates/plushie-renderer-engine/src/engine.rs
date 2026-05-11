@@ -826,9 +826,15 @@ struct WireSettings {
     #[serde(default)]
     widget_config: Option<serde_json::Value>,
     #[serde(default)]
+    required_widgets: Option<Vec<String>>,
+    #[serde(default)]
     validate_props: Option<bool>,
     #[serde(default)]
     log_level: Option<String>,
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    token_sha256: Option<String>,
 }
 
 /// Run the typed `deny_unknown_fields` validation. Unknown keys
@@ -1473,6 +1479,17 @@ mod tests {
         };
         core.apply(msg);
         assert_eq!(core.default_event_rate, Some(60));
+    }
+
+    #[test]
+    fn settings_validation_accepts_startup_fields() {
+        let settings = serde_json::json!({
+            "required_widgets": ["gauge"],
+            "token": "0123456789abcdef0123456789abcdef",
+            "token_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        });
+
+        serde_json::from_value::<WireSettings>(settings).expect("startup fields are valid");
     }
 
     #[test]

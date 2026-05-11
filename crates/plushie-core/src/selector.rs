@@ -243,10 +243,7 @@ impl Selector {
                 widget_id,
                 window_id,
             } => {
-                // ID selectors match at most one node.
-                if let Some(node) = find_by_id(root, widget_id, window_id.as_deref(), None, 0) {
-                    results.push(node);
-                }
+                find_all_by_id(root, widget_id, window_id.as_deref(), None, 0, &mut results);
             }
         }
         results
@@ -321,17 +318,54 @@ fn find_by_id<'a>(
         current_window
     };
 
-    let matches_id = node.id == target_id
-        || local_name(&node.id) == target_id
-        || node.id.ends_with(&format!("/{target_id}"))
-        || node.id.ends_with(&format!("#{target_id}"));
-    if matches_id && target_window.is_none_or(|win| current_window == Some(win)) {
+    if matches_id(node, target_id) && target_window.is_none_or(|win| current_window == Some(win)) {
         return Some(node);
     }
 
     node.children
         .iter()
         .find_map(|child| find_by_id(child, target_id, target_window, current_window, depth + 1))
+}
+
+fn find_all_by_id<'a>(
+    node: &'a TreeNode,
+    target_id: &str,
+    target_window: Option<&str>,
+    current_window: Option<&'a str>,
+    depth: usize,
+    results: &mut Vec<&'a TreeNode>,
+) {
+    if depth > MAX_SELECTOR_SEARCH_DEPTH {
+        return;
+    }
+
+    let current_window = if node.type_name == "window" {
+        Some(node.id.as_str())
+    } else {
+        current_window
+    };
+
+    if matches_id(node, target_id) && target_window.is_none_or(|win| current_window == Some(win)) {
+        results.push(node);
+    }
+
+    for child in &node.children {
+        find_all_by_id(
+            child,
+            target_id,
+            target_window,
+            current_window,
+            depth + 1,
+            results,
+        );
+    }
+}
+
+fn matches_id(node: &TreeNode, target_id: &str) -> bool {
+    node.id == target_id
+        || local_name(&node.id) == target_id
+        || node.id.ends_with(&format!("/{target_id}"))
+        || node.id.ends_with(&format!("#{target_id}"))
 }
 
 /// Extract the local name from a scoped ID.
@@ -813,8 +847,7 @@ mod tests {
     // -----------------------------------------------------------------------
     // find_all
     //
-    // ID matches yield at most one node; text/role/label/focused yield
-    // every match.
+    // All selector kinds return every match in tree order.
     // -----------------------------------------------------------------------
 
     #[test]
@@ -869,20 +902,38 @@ mod tests {
     }
 
     #[test]
-    fn find_all_id_returns_at_most_one_match() {
-        // ID selectors short-circuit on the first match by design.
-        // `find_all` mirrors that and still returns a Vec.
+    fn find_all_id_returns_every_match_in_tree_order() {
         let root = node_with_children(
             "root",
             "container",
             vec![
-                node("only-once", "button"),
-                node("only-once", "text"), // Same id; second one is unreachable.
+                node("main#save", "button"),
+                node_with_children(
+                    "main#form",
+                    "column",
+                    vec![node("main#form/save", "button")],
+                ),
+                node("main#cancel", "button"),
             ],
         );
-        let found = Selector::id("only-once").find_all(&root);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].type_name, "button");
+        let found = Selector::id("save").find_all(&root);
+        let ids: Vec<&str> = found.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, vec!["main#save", "main#form/save"]);
+    }
+
+    #[test]
+    fn find_all_id_respects_window_scope() {
+        let root = node_with_children(
+            "root",
+            "container",
+            vec![
+                node_with_children("main", "window", vec![node("main#save", "button")]),
+                node_with_children("popup", "window", vec![node("popup#save", "button")]),
+            ],
+        );
+        let found = Selector::id_in_window("save", "popup").find_all(&root);
+        let ids: Vec<&str> = found.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, vec!["popup#save"]);
     }
 
     #[test]

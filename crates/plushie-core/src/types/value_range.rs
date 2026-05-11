@@ -27,7 +27,16 @@ pub struct ValueRange {
 
 impl ValueRange {
     /// Construct a new value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either bound is not finite or if `min` is greater
+    /// than `max`.
     pub fn new(min: f32, max: f32) -> Self {
+        assert!(
+            is_valid_range(min, max),
+            "value range bounds must be finite and ordered"
+        );
         Self { min, max }
     }
 }
@@ -47,6 +56,10 @@ impl PlushieType for ValueRange {
     }
 
     fn wire_encode(&self) -> PropValue {
+        assert!(
+            is_valid_range(self.min, self.max),
+            "value range bounds must be finite and ordered"
+        );
         PropValue::Array(vec![
             PropValue::F64(self.min as f64),
             PropValue::F64(self.max as f64),
@@ -62,6 +75,10 @@ fn decode_finite_f32(value: &Value) -> Option<f32> {
     let decoded = value.as_f64()?;
     let decoded = decoded as f32;
     decoded.is_finite().then_some(decoded)
+}
+
+fn is_valid_range(min: f32, max: f32) -> bool {
+    min.is_finite() && max.is_finite() && min <= max
 }
 
 #[cfg(test)]
@@ -100,5 +117,21 @@ mod tests {
     #[test]
     fn decode_rejects_min_above_max() {
         assert_eq!(ValueRange::wire_decode(&json!([100.0, 0.0])), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "value range bounds must be finite and ordered")]
+    fn new_rejects_invalid_range() {
+        let _ = ValueRange::new(100.0, 0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "value range bounds must be finite and ordered")]
+    fn encode_rejects_invalid_range() {
+        let _ = ValueRange {
+            min: 0.0,
+            max: f32::INFINITY,
+        }
+        .wire_encode();
     }
 }

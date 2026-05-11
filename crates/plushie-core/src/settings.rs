@@ -55,9 +55,10 @@ impl Settings {
     /// collection) are omitted from the output so the renderer
     /// applies its own defaults.
     ///
-    /// `protocol_version` is intentionally not included: it lives in
-    /// the outer message envelope, not the Settings payload, and is
-    /// added by the caller (wire mode prepends it before sending).
+    /// `protocol_version` is intentionally not included here. Wire
+    /// mode appends it to this Settings object before sending the
+    /// handshake message; direct mode consumes this object without a
+    /// protocol handshake.
     pub fn to_wire_json(&self) -> Value {
         let mut obj = Map::new();
 

@@ -77,6 +77,9 @@ impl Gradient {
 impl PlushieType for Gradient {
     fn wire_decode(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
+        if obj.get("type")?.as_str()? != "linear" {
+            return None;
+        }
 
         let start = decode_point(obj.get("start")?)?;
         let end = decode_point(obj.get("end")?)?;
@@ -183,5 +186,23 @@ mod tests {
         });
 
         assert_eq!(Gradient::wire_decode(&value), None);
+    }
+
+    #[test]
+    fn decode_requires_linear_type() {
+        let without_type = json!({
+            "start": [0.0, 0.0],
+            "end": [1.0, 1.0],
+            "stops": [[0.0, "#000000"], [1.0, "#ffffff"]]
+        });
+        let wrong_type = json!({
+            "type": "radial",
+            "start": [0.0, 0.0],
+            "end": [1.0, 1.0],
+            "stops": [[0.0, "#000000"], [1.0, "#ffffff"]]
+        });
+
+        assert_eq!(Gradient::wire_decode(&without_type), None);
+        assert_eq!(Gradient::wire_decode(&wrong_type), None);
     }
 }

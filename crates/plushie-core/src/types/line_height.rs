@@ -35,8 +35,12 @@ impl PlushieType for LineHeight {
 
     fn wire_encode(&self) -> PropValue {
         match self {
-            Self::Relative(n) => PropValue::F64(*n as f64),
+            Self::Relative(n) => {
+                assert!(is_positive_f32(*n), "line_height relative must be positive");
+                PropValue::F64(*n as f64)
+            }
             Self::Absolute(n) => {
+                assert!(is_positive_f32(*n), "line_height absolute must be positive");
                 let mut m = PropMap::new();
                 m.insert("absolute", PropValue::F64(*n as f64));
                 PropValue::Object(m)
@@ -51,7 +55,11 @@ impl PlushieType for LineHeight {
 
 fn decode_positive_f32(value: f64) -> Option<f32> {
     let value = value as f32;
-    (value.is_finite() && value > 0.0).then_some(value)
+    is_positive_f32(value).then_some(value)
+}
+
+fn is_positive_f32(value: f32) -> bool {
+    value.is_finite() && value > 0.0
 }
 
 #[cfg(test)]
@@ -78,5 +86,17 @@ mod tests {
     #[test]
     fn line_height_rejects_infinite_after_f32_conversion() {
         assert_eq!(LineHeight::wire_decode(&json!(f64::MAX)), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "line_height relative must be positive")]
+    fn line_height_encode_rejects_invalid_relative() {
+        let _ = LineHeight::Relative(0.0).wire_encode();
+    }
+
+    #[test]
+    #[should_panic(expected = "line_height absolute must be positive")]
+    fn line_height_encode_rejects_invalid_absolute() {
+        let _ = LineHeight::Absolute(f32::INFINITY).wire_encode();
     }
 }

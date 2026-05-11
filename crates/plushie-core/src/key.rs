@@ -219,7 +219,14 @@ impl Key {
     /// Unknown key names are preserved through [`Key::Named`] so newer
     /// renderer or iced key names can pass through older SDKs.
     pub fn from_wire(s: &str) -> Self {
-        Self::from(s)
+        let trimmed = s.trim();
+        let mut chars = trimmed.chars();
+        if let (Some(ch), None) = (chars.next(), chars.next()) {
+            return Self::Char(ch);
+        }
+
+        parse_known_key_normalized(&normalize(trimmed))
+            .unwrap_or_else(|| Self::Named(trimmed.to_string()))
     }
 }
 
@@ -232,7 +239,11 @@ impl fmt::Display for Key {
 /// Parse a key name from a normalized string (lowercase, no
 /// whitespace/underscores/hyphens).
 fn parse_key_normalized(s: &str) -> Key {
-    match s {
+    parse_known_key_normalized(s).unwrap_or_else(|| Key::Named(s.to_string()))
+}
+
+fn parse_known_key_normalized(s: &str) -> Option<Key> {
+    Some(match s {
         // Navigation
         "arrowup" | "up" | "uparrow" => Key::ArrowUp,
         "arrowdown" | "down" | "downarrow" => Key::ArrowDown,
@@ -289,15 +300,8 @@ fn parse_key_normalized(s: &str) -> Key {
         // are different keys (shift state).
         s if s.len() == 1 => Key::Char(s.chars().next().unwrap()),
 
-        // Also match single uppercase chars that went through normalize
-        // (the caller may have passed a pre-normalized string).
-        // This can't happen because normalize lowercases, but be safe.
-
-        // Fallback: preserve original PascalCase name for iced
-        // (the normalized form doesn't help here, so we accept
-        // that Named keys from strings are lowercased)
-        _ => Key::Named(s.to_string()),
-    }
+        _ => return None,
+    })
 }
 
 impl From<&str> for Key {
@@ -392,7 +396,7 @@ impl KeyPress {
                 command: get_bool("command"),
             };
             return Some(Self {
-                key: Key::from(key_str),
+                key: Key::from_wire(key_str),
                 modifiers,
             });
         }
@@ -877,6 +881,19 @@ mod tests {
     }
 
     #[test]
+    fn key_from_wire_preserves_unknown_name() {
+        assert_eq!(Key::from_wire("MediaPlay"), Key::Named("MediaPlay".into()));
+        assert_eq!(Key::from_wire("FutureKey"), Key::Named("FutureKey".into()));
+    }
+
+    #[test]
+    fn key_from_wire_keeps_known_names_forgiving() {
+        assert_eq!(Key::from_wire("left_arrow"), Key::ArrowLeft);
+        assert_eq!(Key::from_wire("RETURN"), Key::Enter);
+        assert_eq!(Key::from_wire("A"), Key::Char('A'));
+    }
+
+    #[test]
     fn keypress_from_str_simple() {
         let kp = KeyPress::from("Enter");
         assert_eq!(kp.key, Key::Enter);
@@ -986,6 +1003,14 @@ mod tests {
         let payload = serde_json::json!({"key": "s", "modifiers": {"ctrl": true}});
         let kp = KeyPress::from_wire(&payload).unwrap();
         assert_eq!(kp.key, Key::Char('s'));
+        assert!(kp.modifiers.ctrl);
+    }
+
+    #[test]
+    fn keypress_from_wire_explicit_preserves_unknown_key_name() {
+        let payload = serde_json::json!({"key": "MediaPlay", "modifiers": {"ctrl": true}});
+        let kp = KeyPress::from_wire(&payload).unwrap();
+        assert_eq!(kp.key, Key::Named("MediaPlay".into()));
         assert!(kp.modifiers.ctrl);
     }
 

@@ -104,6 +104,7 @@ a `crate::Result`; encode failures bubble as
 | `advance_frame` | `timestamp` | Manual frame step for headless / test mode |
 | `register_effect_stub` | `kind`, `response` | Return a canned response for an effect kind |
 | `unregister_effect_stub` | `kind` | Remove a previously registered stub |
+| `load_font` | `payload` | Load a runtime font from raw bytes |
 
 ### Settings payload
 
@@ -111,6 +112,12 @@ The SDK builds the Settings payload in `build_settings::<A>()`
 from `App::settings()`. The only required key is
 `protocol_version`; every other field is omitted when the
 matching `Settings` option is `None`.
+
+`Settings::to_wire_json()` in `plushie_core` builds the shared
+settings body without `protocol_version`. Wire-mode runners append
+`protocol_version` to that same object before sending the handshake
+message. Direct mode reuses the shared settings body without a
+protocol handshake.
 
 | Key | Type | Source |
 |---|---|---|
@@ -129,6 +136,35 @@ matching `Settings` option is `None`.
 The renderer wraps this object inside `{"type": "settings",
 "session": "...", "settings": {...}}`; the keys above live
 under the inner `"settings"` field.
+
+### Load font payload
+
+`load_font` loads font bytes at runtime and registers the supplied
+family name so later font references can resolve without parsing
+font metadata.
+
+```json
+{
+  "type": "load_font",
+  "session": "",
+  "payload": {
+    "family": "Inter",
+    "data": "AAECAwQ="
+  }
+}
+```
+
+Fields:
+
+- `payload.family` (string): family name the app will use in font
+  props or settings.
+- `payload.data` (bytes): font bytes for a `.ttf`, `.otf`, or
+  `.ttc` font.
+
+In JSON framing, `payload.data` is a base64 string. In MessagePack
+framing, `payload.data` is native binary data. The renderer also
+accepts the byte-array shape produced by its MessagePack-to-JSON
+decode path.
 
 ## Inbound messages (renderer -> SDK)
 

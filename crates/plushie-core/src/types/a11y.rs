@@ -542,14 +542,14 @@ impl PlushieType for A11y {
         let orientation = obj.get("orientation").and_then(Orientation::wire_decode);
         let disabled = obj.get("disabled").and_then(|v| v.as_bool());
 
-        let position_in_set = match obj.get("position_in_set") {
-            Some(v) => Some(usize::try_from(v.as_u64()?).ok()?),
-            None => None,
-        };
-        let size_of_set = match obj.get("size_of_set") {
-            Some(v) => Some(usize::try_from(v.as_u64()?).ok()?),
-            None => None,
-        };
+        let position_in_set = obj
+            .get("position_in_set")
+            .and_then(|v| v.as_u64())
+            .and_then(|n| usize::try_from(n).ok());
+        let size_of_set = obj
+            .get("size_of_set")
+            .and_then(|v| v.as_u64())
+            .and_then(|n| usize::try_from(n).ok());
 
         let labelled_by = obj
             .get("labelled_by")
@@ -568,15 +568,12 @@ impl PlushieType for A11y {
             .and_then(|v| v.as_str())
             .map(String::from);
 
-        let radio_group = match obj.get("radio_group") {
-            Some(v) => Some(
-                v.as_array()?
-                    .iter()
-                    .map(|v| v.as_str().map(String::from))
-                    .collect::<Option<Vec<_>>>()?,
-            ),
-            None => None,
-        };
+        let radio_group = obj.get("radio_group").and_then(|v| {
+            v.as_array()?
+                .iter()
+                .map(|v| v.as_str().map(String::from))
+                .collect::<Option<Vec<_>>>()
+        });
 
         let has_popup = obj.get("has_popup").and_then(HasPopup::wire_decode);
 
@@ -901,9 +898,17 @@ mod tests {
     }
 
     #[test]
-    fn a11y_rejects_invalid_usize_fields() {
-        assert_eq!(A11y::wire_decode(&json!({"position_in_set": "3"})), None);
-        assert_eq!(A11y::wire_decode(&json!({"size_of_set": "10"})), None);
+    fn a11y_ignores_invalid_usize_fields() {
+        let a = A11y::wire_decode(&json!({
+            "label": "Save",
+            "position_in_set": "3",
+            "size_of_set": "10"
+        }))
+        .unwrap();
+
+        assert_eq!(a.label.as_deref(), Some("Save"));
+        assert_eq!(a.position_in_set, None);
+        assert_eq!(a.size_of_set, None);
     }
 
     #[test]
@@ -927,12 +932,22 @@ mod tests {
     }
 
     #[test]
-    fn a11y_radio_group_rejects_invalid_items() {
-        assert_eq!(
-            A11y::wire_decode(&json!({"radio_group": ["opt_a", 42, "opt_b"]})),
-            None
-        );
-        assert_eq!(A11y::wire_decode(&json!({"radio_group": "opt_a"})), None);
+    fn a11y_radio_group_ignores_invalid_value() {
+        let with_invalid_item = A11y::wire_decode(&json!({
+            "label": "Option",
+            "radio_group": ["opt_a", 42, "opt_b"]
+        }))
+        .unwrap();
+        let with_invalid_container = A11y::wire_decode(&json!({
+            "label": "Option",
+            "radio_group": "opt_a"
+        }))
+        .unwrap();
+
+        assert_eq!(with_invalid_item.label.as_deref(), Some("Option"));
+        assert_eq!(with_invalid_item.radio_group, None);
+        assert_eq!(with_invalid_container.label.as_deref(), Some("Option"));
+        assert_eq!(with_invalid_container.radio_group, None);
     }
 
     #[test]

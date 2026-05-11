@@ -737,7 +737,7 @@ pub fn derive_plushie_widget(input: TokenStream) -> TokenStream {
 
 fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let widget_name = extract_widget_name(input)?;
-    let is_container = has_widget_props_container_attr(input);
+    let is_container = has_widget_props_container_attr(input)?;
 
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
@@ -985,9 +985,8 @@ fn derive_widget_impl(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStre
 // PlushieWidget derive
 // ---------------------------------------------------------------------------
 
-/// Generate `type_names` and `fresh_for_session` for a
-/// [`PlushieWidget`] impl, and re-declare the impl block with those
-/// methods injected.
+/// Generate a [`PlushieWidget`] impl with `type_names`, `render`, and
+/// `fresh_for_session`.
 ///
 /// Works on unit structs and structs that implement [`Default`] (the
 /// derive uses `Self::default()` when the type is not a unit struct).
@@ -1107,22 +1106,24 @@ fn extract_plushie_widget_type_name(input: &DeriveInput) -> syn::Result<String> 
     ))
 }
 
-fn has_widget_props_container_attr(input: &DeriveInput) -> bool {
+fn has_widget_props_container_attr(input: &DeriveInput) -> syn::Result<bool> {
     for attr in &input.attrs {
         if attr.path().is_ident("widget_props") {
             let mut is_container = false;
-            let _ = attr.parse_nested_meta(|meta| {
+            attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("container") {
                     is_container = true;
+                    Ok(())
+                } else {
+                    Err(meta.error("unknown widget_props attribute, expected `container`"))
                 }
-                Ok(())
-            });
+            })?;
             if is_container {
-                return true;
+                return Ok(true);
             }
         }
     }
-    false
+    Ok(false)
 }
 
 fn extract_widget_name(input: &DeriveInput) -> syn::Result<String> {
@@ -1255,7 +1256,7 @@ impl syn::parse::Parse for WidgetInput {
         // precede the struct declaration.
         let attrs = input.call(syn::Attribute::parse_outer)?;
         let vis: syn::Visibility = input.parse()?;
-        let _struct_token: syn::Token![struct] = input.parse()?;
+        input.parse::<syn::Token![struct]>()?;
         let ident: syn::Ident = input.parse()?;
         let fields: syn::FieldsNamed = input.parse()?;
 
@@ -1277,6 +1278,10 @@ impl syn::parse::Parse for WidgetInput {
         } else {
             None
         };
+
+        if !input.is_empty() {
+            return Err(input.error("unexpected tokens after widget declaration"));
+        }
 
         let meta = parse_widget_meta(&attrs, &ident)?;
 
@@ -1929,6 +1934,57 @@ mod tests {
         assert!(derive_widget_impl(&input).is_err());
     }
 
+    #[test]
+    fn widget_props_container_attr_detects_container() {
+        let input: DeriveInput = parse_quote! {
+            #[widget(name = "panel")]
+            #[widget_props(container)]
+            struct Panel {
+                title: String,
+            }
+        };
+        assert!(has_widget_props_container_attr(&input).unwrap());
+    }
+
+    #[test]
+    fn widget_props_container_attr_defaults_to_false() {
+        let input: DeriveInput = parse_quote! {
+            #[widget(name = "label")]
+            struct Label {
+                text: String,
+            }
+        };
+        assert!(!has_widget_props_container_attr(&input).unwrap());
+    }
+
+    #[test]
+    fn widget_props_attr_rejects_malformed_input() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[widget(name = "panel")]
+            #[widget_props(=)]
+            struct Panel {
+                title: String,
+            }
+        };
+        assert!(has_widget_props_container_attr(&input).is_err());
+    }
+
+    #[test]
+    fn widget_props_attr_rejects_unknown_input() {
+        let input: DeriveInput = parse_quote! {
+            #[widget(name = "panel")]
+            #[widget_props(children)]
+            struct Panel {
+                title: String,
+            }
+        };
+        let err = derive_widget_impl(&input).unwrap_err();
+        assert!(
+            err.to_string().contains("expected `container`"),
+            "unexpected error: {err}",
+        );
+    }
+
     // -- widget! macro tests --
 
     #[test]
@@ -2054,5 +2110,45 @@ mod tests {
         assert!(output.contains("WidgetEvent"));
         assert!(output.contains("ValueChanged"));
         assert!(output.contains("Cleared"));
+    }
+
+    #[test]
+    fn widget_macro_rejects_trailing_tokens_after_fields() {
+        let input: proc_macro2::TokenStream = quote! {
+            #[widget(type_name = "my_gauge")]
+            pub struct Gauge {
+                pub value: f32,
+            }
+
+            typo
+        };
+        let err = widget_impl(input).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unexpected tokens after widget declaration"),
+            "unexpected error: {err}",
+        );
+    }
+
+    #[test]
+    fn widget_macro_rejects_trailing_tokens_after_events() {
+        let input: proc_macro2::TokenStream = quote! {
+            #[widget(type_name = "my_gauge")]
+            pub struct Gauge {
+                pub value: f32,
+            }
+
+            events {
+                ValueChanged(f32),
+            }
+
+            typo
+        };
+        let err = widget_impl(input).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("unexpected tokens after widget declaration"),
+            "unexpected error: {err}",
+        );
     }
 }

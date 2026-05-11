@@ -1016,6 +1016,52 @@ or profile shows the cost matters.
 
 ---
 
+## Test and app query lanes are separate
+
+Top-level `tree_hash`, `screenshot`, `query`, and `interact` wire
+messages are test and automation protocol. They are used by
+TestSession implementations, replay scripts, and renderer inspection
+paths that need direct request/response control over a live renderer.
+
+Normal application APIs should use the command, window-query,
+system-query, and widget-op lanes. For example, `Command::tree_hash`,
+`Command::find_focused`, and `Command::screenshot` produce tagged
+system events through the app's ordinary event stream instead of
+exposing raw top-level request messages.
+
+Do not add app-facing constructors for raw `OutgoingMessage::TreeHash`
+or `OutgoingMessage::Screenshot`. If a host SDK needs better test
+helpers, add them under that SDK's testing or automation surface while
+keeping the raw messages out of the normal app command API.
+
+---
+
+## Bad typed values clamp or reject with diagnostics
+
+Renderer and SDK boundaries distinguish malformed structure from
+coercible numeric values.
+
+Malformed structure is rejected. Unknown enum names, wrong object
+shapes, missing required fields, invalid variant tags, and impossible
+nested forms should fail at the boundary with a clear error or
+diagnostic instead of being guessed.
+
+Coercible numeric or bounded values should clamp to the nearest
+reasonable value and emit a warning diagnostic. Negative padding,
+border width, radius, heading level outside 1..=6, oversized pixel
+coordinates, and reversed numeric ranges should not crash an app when
+a sane local repair exists. They also must not be repaired silently:
+silent clamp, silent drop, and silent default are bugs because tests
+and host tooling cannot detect the bad input.
+
+Rust typed builders may normalize dynamic numeric inputs instead of
+panicking. The renderer must still defend independently at the wire
+boundary and forward diagnostics to the host. Panics remain reserved
+for framework invariants that surrounding code proves cannot be
+violated by user-facing data.
+
+---
+
 ## What this document is for
 
 When a future review surfaces a finding that this document

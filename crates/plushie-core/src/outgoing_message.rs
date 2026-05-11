@@ -385,13 +385,10 @@ mod tests {
                 "tag": "keys",
             })
         );
-        // OutgoingMessage::Unsubscribe always sends a tag; the renderer's
-        // IncomingMessage::Unsubscribe accepts an Optional<tag>, so the
-        // tag survives the cross-decode.
         match cross_decode(&msg) {
             IncomingMessage::Unsubscribe { kind, tag } => {
                 assert_eq!(kind, "on_key_press");
-                assert_eq!(tag.as_deref(), Some("keys"));
+                assert_eq!(tag, "keys");
             }
             other => panic!("expected Unsubscribe, got {other:?}"),
         }

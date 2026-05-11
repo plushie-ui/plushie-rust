@@ -237,6 +237,7 @@ fn run_session_single<A: App>(
         &mut view_errors,
         &model,
         &seed,
+        true,
     ) {
         crate::runtime::view_errors::ViewOutcome::Ok(tree, _) => tree,
         crate::runtime::view_errors::ViewOutcome::Panicked { last_good, .. } => last_good,
@@ -351,7 +352,8 @@ fn run_wire_inner<A: App>(
 
     // Initial view; shared across restarts as the "current tree". If
     // the first view call panics there is no last-good tree to fall
-    // back to, so we use an empty container as a seed.
+    // back to, so we seed a valid root and ask the guard to attach the
+    // frozen-UI overlay immediately.
     let seed = plushie_core::protocol::TreeNode {
         id: String::new(),
         type_name: "container".to_string(),
@@ -362,6 +364,7 @@ fn run_wire_inner<A: App>(
         &mut view_errors,
         &model,
         &seed,
+        true,
     ) {
         crate::runtime::view_errors::ViewOutcome::Ok(tree, _) => tree,
         crate::runtime::view_errors::ViewOutcome::Panicked { last_good, .. } => last_good,
@@ -843,8 +846,12 @@ fn process_event<A: App>(
     execute_wire_command(bridge, cmd, effect_tracker, async_mgr)?;
 
     // Re-render and diff under panic guard.
-    let outcome =
-        crate::runtime::view_errors::run_guarded_view_wire::<A>(view_errors, model, current_tree);
+    let outcome = crate::runtime::view_errors::run_guarded_view_wire::<A>(
+        view_errors,
+        model,
+        current_tree,
+        false,
+    );
     let new_tree = match outcome {
         crate::runtime::view_errors::ViewOutcome::Ok(tree, warnings) => {
             for warning in &warnings {

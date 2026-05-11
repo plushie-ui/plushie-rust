@@ -125,10 +125,7 @@ impl App {
             }
             RendererOp::Unsubscribe { kind, tag } => {
                 use plushie_widget_sdk::protocol::IncomingMessage;
-                self.core.apply(IncomingMessage::Unsubscribe {
-                    kind,
-                    tag: Some(tag),
-                });
+                self.core.apply(IncomingMessage::Unsubscribe { kind, tag });
                 self.sync_subscription_rates();
                 self.cleanup_subscription_rates();
                 Task::none()

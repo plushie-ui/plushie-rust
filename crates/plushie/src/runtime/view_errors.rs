@@ -182,6 +182,7 @@ pub fn run_guarded_view_wire<A: App>(
     state: &mut ViewErrors,
     model: &A::Model,
     last_good: &TreeNode,
+    inject_on_first_panic: bool,
 ) -> ViewOutcome {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut registrar = WidgetRegistrar::new();
@@ -205,7 +206,10 @@ pub fn run_guarded_view_wire<A: App>(
                 message: message.clone(),
             };
             log::error!("{diag}");
-            let tree = if state.consecutive >= VIEW_ERROR_THRESHOLD && !state.overlay_active {
+            let should_inject = (state.consecutive >= VIEW_ERROR_THRESHOLD
+                || inject_on_first_panic)
+                && !state.overlay_active;
+            let tree = if should_inject {
                 state.overlay_active = true;
                 inject_overlay(last_good)
             } else {
@@ -628,7 +632,7 @@ mod tests {
         let model = true;
 
         let outcome =
-            run_guarded_view_wire::<ViewBoomApp>(&mut state, &model, &window_node("main"));
+            run_guarded_view_wire::<ViewBoomApp>(&mut state, &model, &window_node("main"), false);
 
         match outcome {
             ViewOutcome::Panicked {
@@ -645,6 +649,25 @@ mod tests {
 
     #[cfg(feature = "wire")]
     #[test]
+    fn run_guarded_view_wire_can_inject_overlay_on_first_panic() {
+        let mut state = ViewErrors::default();
+        let model = true;
+
+        let outcome =
+            run_guarded_view_wire::<ViewBoomApp>(&mut state, &model, &window_node("main"), true);
+
+        match outcome {
+            ViewOutcome::Panicked { last_good, .. } => {
+                assert_eq!(overlay_count(&last_good), 1);
+            }
+            ViewOutcome::Ok(..) => panic!("expected panic to be caught"),
+        }
+        assert_eq!(state.consecutive, 1);
+        assert!(state.overlay_active);
+    }
+
+    #[cfg(feature = "wire")]
+    #[test]
     fn run_guarded_view_wire_success_clears_counter_and_overlay_flag() {
         let mut state = ViewErrors {
             consecutive: 3,
@@ -656,6 +679,7 @@ mod tests {
             &mut state,
             &model,
             &inject_overlay(&window_node("main")),
+            false,
         );
 
         match outcome {

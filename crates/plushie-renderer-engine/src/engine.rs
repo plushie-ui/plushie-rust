@@ -487,17 +487,12 @@ impl Core {
                 }
             }
             IncomingMessage::Unsubscribe { kind, tag } => {
-                if let Some(tag) = tag {
-                    log::debug!("subscription unregister: {kind} tag={tag}");
-                    if let Some(entries) = self.active_subscriptions.get_mut(&kind) {
-                        entries.retain(|e| e.tag != tag);
-                        if entries.is_empty() {
-                            self.active_subscriptions.remove(&kind);
-                        }
+                log::debug!("subscription unregister: {kind} tag={tag}");
+                if let Some(entries) = self.active_subscriptions.get_mut(&kind) {
+                    entries.retain(|e| e.tag != tag);
+                    if entries.is_empty() {
+                        self.active_subscriptions.remove(&kind);
                     }
-                } else {
-                    log::debug!("subscription unregister: {kind} (all)");
-                    self.active_subscriptions.remove(&kind);
                 }
             }
             IncomingMessage::WindowOp {
@@ -1592,22 +1587,6 @@ mod tests {
     }
 
     #[test]
-    fn unsubscribe_removes_all_entries_for_kind() {
-        let mut core: Core = Core::new();
-        core.apply(IncomingMessage::Subscribe {
-            kind: "on_pointer_move".to_string(),
-            tag: "mouse".to_string(),
-            window_id: None,
-            max_rate: Some(30),
-        });
-        core.apply(IncomingMessage::Unsubscribe {
-            kind: "on_pointer_move".to_string(),
-            tag: None,
-        });
-        assert!(!core.active_subscriptions.contains_key("on_pointer_move"));
-    }
-
-    #[test]
     fn unsubscribe_by_tag_removes_specific_entry() {
         let mut core: Core = Core::new();
         core.apply(IncomingMessage::Subscribe {
@@ -1625,7 +1604,7 @@ mod tests {
         assert_eq!(core.active_subscriptions["on_key_press"].len(), 2);
         core.apply(IncomingMessage::Unsubscribe {
             kind: "on_key_press".to_string(),
-            tag: Some("main_keys".to_string()),
+            tag: "main_keys".to_string(),
         });
         let entries = &core.active_subscriptions["on_key_press"];
         assert_eq!(entries.len(), 1);
@@ -1764,7 +1743,7 @@ mod tests {
             });
         let msg = IncomingMessage::Unsubscribe {
             kind: "time".to_string(),
-            tag: None,
+            tag: "tick".to_string(),
         };
         core.apply(msg);
         assert!(!core.active_subscriptions.contains_key("time"));
@@ -1775,7 +1754,7 @@ mod tests {
         let mut core: Core = Core::new();
         let msg = IncomingMessage::Unsubscribe {
             kind: "time".to_string(),
-            tag: None,
+            tag: "tick".to_string(),
         };
         let effects = core.apply(msg);
         assert!(effects.is_empty());

@@ -58,10 +58,8 @@ pub enum IncomingMessage {
     Unsubscribe {
         /// Event kind string used on the wire.
         kind: String,
-        /// If present, only remove the subscription with this specific tag.
-        /// If absent, remove all subscriptions for the kind (backwards compat).
-        #[serde(default)]
-        tag: Option<String>,
+        /// Remove the subscription with this specific tag.
+        tag: String,
     },
     /// Perform a window operation (resize, move, close, etc.).
     ///
@@ -536,16 +534,9 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_unsubscribe() {
+    fn deserialize_unsubscribe_requires_tag() {
         let json = r#"{"type":"unsubscribe","kind":"on_key_press"}"#;
-        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
-        match msg {
-            IncomingMessage::Unsubscribe { kind, tag } => {
-                assert_eq!(kind, "on_key_press");
-                assert_eq!(tag, None);
-            }
-            _ => panic!("expected Unsubscribe"),
-        }
+        assert!(serde_json::from_str::<IncomingMessage>(json).is_err());
     }
 
     #[test]
@@ -559,7 +550,7 @@ mod tests {
         match msg {
             IncomingMessage::Unsubscribe { kind, tag } => {
                 assert_eq!(kind, "on_key_press");
-                assert_eq!(tag, Some("main_keys".to_string()));
+                assert_eq!(tag, "main_keys");
             }
             _ => panic!("expected Unsubscribe"),
         }

@@ -72,7 +72,7 @@ pub fn write_if_changed(path: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
-/// Matches identifiers, paths, and simple constructor invocations.
+/// Matches identifiers, paths, and zero-argument constructor invocations.
 ///
 /// Mirrors Elixir's `@rust_constructor_pattern` so we accept the same
 /// set of expressions.
@@ -93,25 +93,15 @@ fn constructor_is_valid(expr: &str) -> bool {
         match c {
             'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | ':' | '<' | '>' | ',' | ' ' => {}
             '(' => {
-                // Balance: consume until matching ')'.
-                let mut depth = 1;
                 for nc in chars.by_ref() {
-                    match nc {
-                        '(' => depth += 1,
-                        ')' => {
-                            depth -= 1;
-                            if depth == 0 {
-                                break;
-                            }
-                        }
-                        _ => {}
+                    if nc == ')' {
+                        return chars.all(|c| c.is_whitespace());
+                    }
+                    if !nc.is_whitespace() {
+                        return false;
                     }
                 }
-                if depth != 0 {
-                    return false;
-                }
-                // Only trailing whitespace allowed after the closing paren.
-                return chars.all(|c| c.is_whitespace());
+                return false;
             }
             _ => return false,
         }
@@ -190,10 +180,14 @@ fn render_cargo_toml(config: &WorkspaceConfig<'_>) -> String {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| w.crate_name.clone());
         out.push_str(&format!(
-            "{} = {{ path = {:?}, features = [\"impl\"] }}\n",
+            "{} = {{ path = {:?}",
             crate_basename,
             w.crate_path.display().to_string()
         ));
+        if crate_basename != w.crate_name {
+            out.push_str(&format!(", package = {:?}", w.crate_name));
+        }
+        out.push_str(", features = [\"impl\"] }\n");
     }
 
     if let Some(source) = &config.source_path {
@@ -269,6 +263,7 @@ mod tests {
         assert!(constructor_is_valid("create_widget()"));
         assert!(constructor_is_valid("my::path::Type<T>::new()"));
         assert!(constructor_is_valid("MyType::<i32>::new()"));
+        assert!(constructor_is_valid("MyType::<i32>::new( )"));
         assert!(constructor_is_valid("bare_path"));
     }
 
@@ -277,6 +272,8 @@ mod tests {
         assert!(!constructor_is_valid(""));
         assert!(!constructor_is_valid("1abc::fn()"));
         assert!(!constructor_is_valid("rm -rf /"));
+        assert!(!constructor_is_valid("my_gauge::Gauge::new(x)"));
+        assert!(!constructor_is_valid("my_gauge::Gauge::new(, )"));
         assert!(!constructor_is_valid("my_gauge::Gauge::new(x)trailing"));
         assert!(!constructor_is_valid("`injected`"));
     }
@@ -321,6 +318,24 @@ mod tests {
         assert!(cargo.contains("plushie-widget-sdk = \"0.6.1\""));
         assert!(cargo.contains("features = [\"impl\"]"));
         assert!(cargo.contains("gauge"));
+    }
+
+    #[test]
+    fn renders_package_when_widget_dir_differs_from_package_name() {
+        let widgets = sample_widgets();
+        let config = WorkspaceConfig {
+            app_manifest_dir: Path::new("/app"),
+            output_dir: Path::new("/app/target/plushie-renderer"),
+            binary_name: None,
+            app_name: "my-app",
+            workspace_version: "0.6.1",
+            source_path: None,
+            widgets: &widgets,
+        };
+        let cargo = render_cargo_toml(&config);
+        assert!(cargo.contains(
+            "gauge = { path = \"/abs/native/gauge\", package = \"my-gauge\", features = [\"impl\"] }"
+        ));
     }
 
     #[test]

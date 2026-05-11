@@ -16,6 +16,10 @@
 use crate::{Error, Result};
 use std::path::{Path, PathBuf};
 
+fn package_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
 /// Produce the snake_case form of a kebab-case identifier.
 fn to_snake_case(name: &str) -> String {
     name.replace('-', "_")
@@ -244,9 +248,12 @@ fn render_widget_cargo_toml(
             sdk.display().to_string()
         ));
     } else {
-        out.push_str("plushie-core = \"0.6\"\n");
-        out.push_str("plushie-core-macros = \"0.6\"\n");
-        out.push_str("plushie-widget-sdk = { version = \"0.6\", optional = true }\n");
+        let version = package_version();
+        out.push_str(&format!("plushie-core = \"{version}\"\n"));
+        out.push_str(&format!("plushie-core-macros = \"{version}\"\n"));
+        out.push_str(&format!(
+            "plushie-widget-sdk = {{ version = \"{version}\", optional = true }}\n"
+        ));
     }
     out
 }
@@ -414,7 +421,7 @@ fn render_app_cargo_toml(name: &str) -> String {
             plushie.display().to_string()
         ));
     } else {
-        out.push_str("plushie = \"0.6\"\n");
+        out.push_str(&format!("plushie = \"{}\"\n", package_version()));
     }
     out
 }
@@ -680,6 +687,7 @@ mod tests {
         let cargo = std::fs::read_to_string(result.crate_root.join("Cargo.toml")).unwrap();
         assert!(cargo.contains("name = \"my-app\""));
         assert!(cargo.contains("[package.metadata.plushie]"));
+        assert!(cargo.contains(&format!("plushie = \"{}\"", package_version())));
         let main = std::fs::read_to_string(result.crate_root.join("src/main.rs")).unwrap();
         assert!(main.contains("impl App for MyApp"));
         assert!(main.contains("plushie::cli::run::<MyApp>"));
@@ -702,6 +710,12 @@ mod tests {
         assert!(cargo.contains("type_name = \"my_gauge\""));
         assert!(cargo.contains("my_gauge::factory::MyGaugeFactory::new()"));
         assert!(cargo.contains("impl = [\"dep:plushie-widget-sdk\"]"));
+        assert!(cargo.contains(&format!("plushie-core = \"{}\"", package_version())));
+        assert!(cargo.contains(&format!("plushie-core-macros = \"{}\"", package_version())));
+        assert!(cargo.contains(&format!(
+            "plushie-widget-sdk = {{ version = \"{}\", optional = true }}",
+            package_version()
+        )));
         let lib = std::fs::read_to_string(result.crate_root.join("src/lib.rs")).unwrap();
         assert!(lib.contains("pub struct MyGauge"));
         assert!(lib.contains("pub struct MyGaugeFactory"));

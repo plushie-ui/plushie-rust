@@ -11,11 +11,12 @@
 //! affect live sessions. The version probe talks to the binary over
 //! `--mock --json`, which is the protocol-only stub path.
 
-use crate::{Result, discover, platform};
+use crate::{discover, platform, Result};
 use anyhow::Context;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::Duration;
 
 /// Input for [`run_doctor`].
@@ -384,6 +385,10 @@ fn push_version_skew_row(report: &mut DoctorReport, binary: &Path, manifest_dir:
 /// and we only read the first line from stdout. A hung or
 /// incompatible binary will not block the doctor run forever.
 fn probe_renderer_version(binary: &Path) -> Option<String> {
+    probe_renderer_version_with_timeout(binary, Duration::from_secs(5))
+}
+
+fn probe_renderer_version_with_timeout(binary: &Path, timeout: Duration) -> Option<String> {
     let mut child = Command::new(binary)
         .args(["--mock", "--json"])
         .stdin(Stdio::piped())
@@ -405,29 +410,26 @@ fn probe_renderer_version(binary: &Path) -> Option<String> {
 
     let mut buf = Vec::with_capacity(1024);
     let mut stdout = child.stdout.take()?;
-    // Bound the read to the first newline so a stalled child can't
-    // hang the doctor. 4KB is generous for a hello JSON payload.
-    let mut byte = [0u8; 1];
-    let start = std::time::Instant::now();
-    loop {
-        if start.elapsed() > Duration::from_secs(5) {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        // Bound the read to the first newline. 4KB is generous for a
+        // hello JSON payload, with one extra byte to detect overlong
+        // output without reading indefinitely.
+        let result = BufReader::new(&mut stdout)
+            .take(4097)
+            .read_until(b'\n', &mut buf)
+            .map(|_| buf);
+        let _ = tx.send(result);
+    });
+
+    let buf = match rx.recv_timeout(timeout) {
+        Ok(Ok(buf)) => buf,
+        _ => {
             let _ = child.kill();
+            let _ = child.wait();
             return None;
         }
-        match stdout.read(&mut byte) {
-            Ok(0) => break,
-            Ok(_) => {
-                buf.push(byte[0]);
-                if byte[0] == b'\n' {
-                    break;
-                }
-                if buf.len() > 4096 {
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
-    }
+    };
     let _ = child.kill();
     let _ = child.wait();
     let line = String::from_utf8(buf).ok()?;
@@ -587,5 +589,26 @@ mod tests {
         write_report(&report, &mut buf).unwrap();
         let out = String::from_utf8(buf).unwrap();
         assert!(out.contains("Critical issues detected"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_renderer_version_times_out_when_renderer_never_writes() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::Instant;
+
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("quiet-renderer");
+        std::fs::write(&binary, "#!/bin/sh\nsleep 30\n").unwrap();
+
+        let mut permissions = std::fs::metadata(&binary).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&binary, permissions).unwrap();
+
+        let started = Instant::now();
+        let version = probe_renderer_version_with_timeout(&binary, Duration::from_millis(100));
+
+        assert!(version.is_none());
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }

@@ -350,6 +350,13 @@ pub enum Diagnostic {
         /// Configured cap in bytes.
         limit: usize,
     },
+    /// A renderer input frame was readable but could not be decoded
+    /// into a typed incoming message, or the input transport surfaced
+    /// a recoverable warning before close.
+    WireInputError {
+        /// Human-readable decoder or transport detail.
+        detail: String,
+    },
 }
 
 impl Diagnostic {
@@ -581,6 +588,9 @@ impl std::fmt::Display for Diagnostic {
                 f,
                 "buffer_overflow: wire frame of {size} bytes exceeds {limit} byte limit"
             ),
+            Self::WireInputError { detail } => {
+                write!(f, "wire_input_error: {detail}")
+            }
         }
     }
 }
@@ -684,6 +694,23 @@ mod tests {
                 payload: serde_json::Value::Null,
             }
         );
+    }
+
+    #[test]
+    fn wire_input_error_display_kind_and_serde() {
+        let d = Diagnostic::WireInputError {
+            detail: "parse error: missing field `type`".into(),
+        };
+        assert_eq!(d.kind(), DiagnosticKind::WireInputError);
+        assert_eq!(
+            d.to_string(),
+            "wire_input_error: parse error: missing field `type`"
+        );
+
+        let json = serde_json::to_value(&d).unwrap();
+        assert_eq!(json["kind"], serde_json::json!("wire_input_error"));
+        let back: Diagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(back, d);
     }
 
     #[test]

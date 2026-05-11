@@ -156,11 +156,7 @@ fn core_key_to_iced(key: &plushie_core::Key) -> Key {
         CK::Undo => Key::Named(keyboard::key::Named::Undo),
         CK::Redo => Key::Named(keyboard::key::Named::Redo),
         CK::Char(c) => Key::Character(SmolStr::new(c.to_string())),
-        CK::Named(name) => {
-            // Try to match against iced's Named enum by the wire name.
-            // This handles rare keys (MediaPlay, BrowserBack, etc.).
-            Key::Character(SmolStr::new(name))
-        }
+        CK::Named(name) => Key::Character(SmolStr::new(name)),
     }
 }
 
@@ -216,14 +212,21 @@ pub fn make_key_released(key: Key, modifiers: Modifiers) -> Event {
 
 /// Convert a scripting protocol interaction into a sequence of iced events.
 ///
+/// `widget_id` is accepted to keep this helper aligned with the
+/// scripting protocol entry point. Event synthesis is currently action
+/// and payload driven; widget targeting is handled by the caller before
+/// events are built.
+///
 /// Returns an empty vec for action types that don't map to iced events
 /// (synthetic-only actions like paste, sort, pane_focus_cycle, slide).
 pub fn interaction_to_iced_events(
     action: &str,
-    _widget_id: Option<&str>,
+    widget_id: Option<&str>,
     payload: &Value,
     cursor: mouse::Cursor,
 ) -> Vec<Event> {
+    let _ = widget_id;
+
     match action {
         "click" | "toggle" | "select" => {
             // Click at the current cursor position.

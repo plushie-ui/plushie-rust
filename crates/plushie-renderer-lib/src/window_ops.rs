@@ -95,7 +95,9 @@ impl App {
                     return Task::none();
                 };
 
-                // Title is read from the tree in title(), no task needed.
+                // Window titles are tree-owned. Updating the window node title
+                // changes `title_for_window`; the update op itself has no
+                // separate iced task for `title`.
                 let _ = obj.get("title").and_then(|v| v.as_str());
 
                 if obj.contains_key("width") || obj.contains_key("height") {
@@ -222,7 +224,10 @@ impl App {
             } => {
                 #[cfg(target_os = "macos")]
                 log::warn!("drag_resize is not supported on macOS");
-                let dir = parse_direction(&direction);
+                let Some(dir) = parse_direction(&direction) else {
+                    log::warn!("drag_resize: invalid direction '{direction}', rejecting");
+                    return Task::none();
+                };
                 self.with_iced(&window_id, |id| window::drag_resize(id, dir))
             }
             WindowOp::RequestAttention { window_id, urgency } => {
@@ -788,17 +793,17 @@ fn parse_window_level_str(s: &str) -> window::Level {
     }
 }
 
-fn parse_direction(s: &str) -> window::Direction {
+fn parse_direction(s: &str) -> Option<window::Direction> {
     match s {
-        "north" => window::Direction::North,
-        "south" => window::Direction::South,
-        "east" => window::Direction::East,
-        "west" => window::Direction::West,
-        "north_east" => window::Direction::NorthEast,
-        "north_west" => window::Direction::NorthWest,
-        "south_east" => window::Direction::SouthEast,
-        "south_west" => window::Direction::SouthWest,
-        _ => window::Direction::SouthEast,
+        "north" => Some(window::Direction::North),
+        "south" => Some(window::Direction::South),
+        "east" => Some(window::Direction::East),
+        "west" => Some(window::Direction::West),
+        "north_east" => Some(window::Direction::NorthEast),
+        "north_west" => Some(window::Direction::NorthWest),
+        "south_east" => Some(window::Direction::SouthEast),
+        "south_west" => Some(window::Direction::SouthWest),
+        _ => None,
     }
 }
 
@@ -892,14 +897,14 @@ mod tests {
 
     #[test]
     fn parse_direction_variants() {
-        assert!(matches!(parse_direction("north"), window::Direction::North));
+        assert!(matches!(
+            parse_direction("north"),
+            Some(window::Direction::North)
+        ));
         assert!(matches!(
             parse_direction("south_west"),
-            window::Direction::SouthWest
+            Some(window::Direction::SouthWest)
         ));
-        assert!(matches!(
-            parse_direction("invalid"),
-            window::Direction::SouthEast
-        ));
+        assert!(parse_direction("invalid").is_none());
     }
 }

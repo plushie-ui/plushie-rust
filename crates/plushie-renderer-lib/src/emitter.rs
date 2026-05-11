@@ -18,7 +18,7 @@ use iced::time::{Duration, Instant};
 
 use iced::Task;
 
-use plushie_widget_sdk::protocol::{CoalesceHint, OutgoingEvent};
+use plushie_widget_sdk::protocol::{CoalesceHint, DiagnosticMessage, OutgoingEvent};
 use plushie_widget_sdk::runtime::Message;
 
 use crate::emitters::{EventSink, SinkMutex};
@@ -521,6 +521,23 @@ impl EventEmitter {
     /// on success, iced::exit() on broken pipe.
     pub fn emit_direct(&self, event: OutgoingEvent) -> Task<Message> {
         self.do_emit(event)
+    }
+
+    /// Emit a structured diagnostic message directly to the sink.
+    ///
+    /// Diagnostics are standalone wire messages rather than
+    /// [`OutgoingEvent`] values, so they bypass event coalescing.
+    pub fn emit_diagnostic(&self, message: DiagnosticMessage) -> Task<Message> {
+        match self.with_sink(|sink| {
+            sink.emit_diagnostic(message)?;
+            sink.flush_output()
+        }) {
+            Ok(()) => Task::none(),
+            Err(e) => {
+                log::error!("diagnostic write error: {e}");
+                iced::exit()
+            }
+        }
     }
 
     /// Emit an effect response through the sink.

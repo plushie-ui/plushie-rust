@@ -3,7 +3,10 @@
 
 use iced::{Task, Theme, window};
 
-use plushie_widget_sdk::protocol::{IncomingMessage, OutgoingEvent};
+use plushie_core::Diagnostic;
+use plushie_widget_sdk::protocol::{
+    DiagnosticLevel, DiagnosticMessage, IncomingMessage, OutgoingEvent,
+};
 use plushie_widget_sdk::runtime::{Message, StdinEvent};
 
 use crate::App;
@@ -572,7 +575,10 @@ impl App {
             }
             StdinEvent::Warning(msg) => {
                 log::warn!("stdin warning: {msg}");
-                Task::none()
+                self.emitter.emit_diagnostic(DiagnosticMessage::new(
+                    DiagnosticLevel::Warn,
+                    Diagnostic::WireInputError { detail: msg },
+                ))
             }
             StdinEvent::Closed => {
                 log::info!("stdin closed, exiting");

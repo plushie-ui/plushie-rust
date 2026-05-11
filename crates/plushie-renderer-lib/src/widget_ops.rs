@@ -10,8 +10,6 @@ use plushie_widget_sdk::runtime::Message;
 
 use crate::App;
 
-use crate::constants::{MAX_FONT_BYTES, MAX_LOADED_FONTS};
-
 // ---------------------------------------------------------------------------
 // Widget operations (impl App)
 // ---------------------------------------------------------------------------
@@ -203,18 +201,7 @@ impl App {
                 } else if data.is_empty() {
                     log::warn!("load_font: no font data provided for family {family}");
                     Task::none()
-                } else if data.len() > MAX_FONT_BYTES {
-                    log::warn!(
-                        "load_font: font data for {family} ({} bytes) exceeds {} byte limit, rejecting",
-                        data.len(),
-                        MAX_FONT_BYTES
-                    );
-                    Task::none()
-                } else if !crate::constants::try_reserve_font_slot() {
-                    log::warn!(
-                        "load_font: already loaded {MAX_LOADED_FONTS} fonts, \
-                         rejecting to prevent unbounded memory growth"
-                    );
+                } else if !crate::constants::try_reserve_runtime_font_load(family, data.len()) {
                     Task::none()
                 } else {
                     plushie_widget_sdk::fonts::register_loaded_family(family);

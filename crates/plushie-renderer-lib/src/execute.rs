@@ -98,6 +98,9 @@ impl App {
 
             // -- Font loading --
             RendererOp::LoadFont { family, bytes } => {
+                if !crate::constants::try_reserve_runtime_font_load(&family, bytes.len()) {
+                    return Task::none();
+                }
                 plushie_widget_sdk::fonts::register_loaded_family(&family);
                 iced::font::load(bytes).map(|_| Message::NoOp)
             }

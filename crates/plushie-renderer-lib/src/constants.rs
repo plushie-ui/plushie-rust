@@ -54,8 +54,9 @@ pub const MAX_FONT_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_LOADED_FONTS: u32 = 256;
 
 /// Process-wide counter of fonts loaded into the global font system.
-/// Shared between the dynamic `load_font` widget op and the startup
-/// inline-font path so both participate in the same cap.
+/// Shared between dynamic `load_font` paths, direct `LoadFont`
+/// commands, and the startup inline-font path so all participate in
+/// the same cap.
 pub static LOADED_FONT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// Atomically reserve a single font slot against the process-wide
@@ -65,8 +66,8 @@ pub static LOADED_FONT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::
 ///
 /// Uses compare_exchange instead of `load + fetch_add` so concurrent
 /// callers cannot race past the cap. The dynamic load_font widget op,
-/// the headless `load_font` payload path, and the file-path startup
-/// loader all share this gate.
+/// direct `LoadFont` commands, the headless `load_font` payload path,
+/// and the file-path startup loader all share this gate.
 pub fn try_reserve_font_slot() -> bool {
     use std::sync::atomic::Ordering;
     let mut current = LOADED_FONT_COUNT.load(Ordering::Relaxed);
@@ -84,4 +85,28 @@ pub fn try_reserve_font_slot() -> bool {
             Err(actual) => current = actual,
         }
     }
+}
+
+/// Validate decoded font bytes and reserve a font slot for runtime
+/// font loading paths.
+///
+/// Returns true only when the data fits within [`MAX_FONT_BYTES`] and
+/// a process-wide font slot was reserved.
+pub fn try_reserve_runtime_font_load(family: &str, byte_len: usize) -> bool {
+    if byte_len > MAX_FONT_BYTES {
+        log::warn!(
+            "load_font: font data for {family} ({byte_len} bytes) exceeds {MAX_FONT_BYTES} byte limit, rejecting",
+        );
+        return false;
+    }
+
+    if !try_reserve_font_slot() {
+        log::warn!(
+            "load_font: already loaded {MAX_LOADED_FONTS} fonts, \
+             rejecting to prevent unbounded memory growth"
+        );
+        return false;
+    }
+
+    true
 }

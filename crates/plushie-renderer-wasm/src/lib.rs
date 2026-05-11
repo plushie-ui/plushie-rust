@@ -42,7 +42,7 @@ use parking_lot::Mutex;
 
 use wasm_bindgen::prelude::*;
 
-use plushie_renderer_engine::Codec;
+use plushie_renderer_engine::{Codec, MAX_MESSAGE_SIZE};
 use plushie_widget_sdk::protocol::IncomingMessage;
 use plushie_widget_sdk::runtime::{Message, StdinEvent};
 
@@ -87,6 +87,13 @@ fn validate_protocol_version(settings: &serde_json::Value) -> Result<(), String>
 /// mismatched. The same message is what the WASM caller sees as
 /// a `JsValue` error.
 fn parse_and_validate_settings(settings_json: &str) -> Result<serde_json::Value, String> {
+    if settings_json.len() > MAX_MESSAGE_SIZE {
+        return Err(format!(
+            "settings JSON exceeds {MAX_MESSAGE_SIZE} byte limit ({} bytes)",
+            settings_json.len()
+        ));
+    }
+
     let settings: serde_json::Value =
         serde_json::from_str(settings_json).map_err(|e| format!("invalid settings JSON: {e}"))?;
     validate_protocol_version(&settings)?;
@@ -413,6 +420,16 @@ mod tests {
         let err = parse_and_validate_settings("{not valid json}").unwrap_err();
         assert!(
             err.starts_with("invalid settings JSON"),
+            "unexpected error: {err}",
+        );
+    }
+
+    #[test]
+    fn parse_and_validate_settings_rejects_oversized_payload() {
+        let settings = " ".repeat(plushie_renderer_engine::MAX_MESSAGE_SIZE + 1);
+        let err = parse_and_validate_settings(&settings).unwrap_err();
+        assert!(
+            err.starts_with("settings JSON exceeds"),
             "unexpected error: {err}",
         );
     }

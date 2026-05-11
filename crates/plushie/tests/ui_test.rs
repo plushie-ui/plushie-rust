@@ -600,9 +600,9 @@ fn canvas_rounded_rect_command_accepts_per_corner_radius() {
     );
     let v = view_json(path(vec![cmd]));
     let first = &v["props"]["commands"][0];
-    assert_eq!(first["type"], "rounded_rect");
-    assert_eq!(first["radius"]["top_left"], 4.0);
-    assert_eq!(first["radius"]["top_right"], 8.0);
+    assert_eq!(first[0], "rounded_rect");
+    assert_eq!(first[5]["top_left"], 4.0);
+    assert_eq!(first[5]["top_right"], 8.0);
 }
 
 #[test]

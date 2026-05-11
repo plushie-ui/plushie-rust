@@ -38,6 +38,9 @@
 mod effects;
 mod output;
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use parking_lot::Mutex;
 
 use wasm_bindgen::prelude::*;
@@ -115,6 +118,7 @@ fn parse_and_validate_settings(settings_json: &str) -> Result<serde_json::Value,
 #[wasm_bindgen]
 pub struct PlushieApp {
     sender: futures_channel::mpsc::UnboundedSender<String>,
+    failed: Rc<Cell<bool>>,
 }
 
 #[wasm_bindgen]
@@ -149,6 +153,11 @@ impl PlushieApp {
     /// Subscribe, Unsubscribe, WidgetOp, WindowOp, Effect,
     /// WidgetCommand, etc.
     pub fn send_message(&self, json: &str) -> Result<(), JsValue> {
+        if self.failed.get() {
+            return Err(JsValue::from_str(
+                "send failed: renderer daemon has stopped after a runtime error",
+            ));
+        }
         self.sender
             .unbounded_send(json.to_string())
             .map_err(|e| JsValue::from_str(&format!("send failed: {e}")))
@@ -233,6 +242,8 @@ impl PlushieApp {
         // Create the message channel for JS -> renderer communication.
         let (sender, receiver) = futures_channel::mpsc::unbounded::<String>();
         *MSG_RX.lock() = Some(receiver);
+        let failed = Rc::new(Cell::new(false));
+        let failed_for_daemon = Rc::clone(&failed);
 
         // Pack init data into a Mutex so the Fn closure can move it out once.
         type InitData = (
@@ -318,11 +329,16 @@ impl PlushieApp {
             .run();
 
             if let Err(e) = result {
-                log::error!("iced daemon error: {e}");
+                let detail = e.to_string();
+                log::error!("iced daemon error: {detail}");
+                plushie_widget_sdk::diagnostics::error(
+                    plushie_core::Diagnostic::RendererRuntimeError { detail },
+                );
+                failed_for_daemon.set(true);
             }
         });
 
-        Ok(PlushieApp { sender })
+        Ok(PlushieApp { sender, failed })
     }
 }
 

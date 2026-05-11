@@ -357,6 +357,21 @@ pub enum Diagnostic {
         /// Human-readable decoder or transport detail.
         detail: String,
     },
+    /// A renderer-side animation descriptor could not be parsed. The
+    /// renderer ignores the descriptor and leaves the prop at its
+    /// fallback/static value.
+    AnimationDescriptorInvalid {
+        /// Widget ID carrying the descriptor.
+        id: String,
+        /// Prop name carrying the descriptor.
+        prop: String,
+    },
+    /// The native or web renderer event loop returned a terminal
+    /// runtime error after startup.
+    RendererRuntimeError {
+        /// Human-readable runtime detail.
+        detail: String,
+    },
 }
 
 impl Diagnostic {
@@ -590,6 +605,12 @@ impl std::fmt::Display for Diagnostic {
             ),
             Self::WireInputError { detail } => {
                 write!(f, "wire_input_error: {detail}")
+            }
+            Self::AnimationDescriptorInvalid { id, prop } => {
+                write!(f, "animation_descriptor_invalid: {id}.{prop}")
+            }
+            Self::RendererRuntimeError { detail } => {
+                write!(f, "renderer_runtime_error: {detail}")
             }
         }
     }

@@ -132,7 +132,7 @@ Not every widget emits every status: only sliders emit
 | `WidgetMatch` variant | Typed value | Description |
 |---|---|---|
 | `Press(id, PointerPress)` | `x`, `y`, `button`, `pointer`, `finger`, `modifiers`, `captured` | Pointer pressed |
-| `Release(id, PointerRelease)` | press fields plus `lost: Option<bool>` | Pointer released |
+| `Release(id, PointerRelease)` | press fields plus `lost: bool` | Pointer released |
 | `Move(id, PointerMove)` | `x`, `y`, `pointer`, `finger`, `modifiers`, `captured` | Pointer moved (coalescable) |
 | `Scroll(id, PointerScroll)` | `x`, `y`, `delta_x`, `delta_y`, `pointer`, `modifiers`, `captured` | Wheel or trackpad input (coalescable) |
 | `Scrolled(id, ScrollPosition)` | absolute, relative, bounds, content extents | Scrollable viewport moved |

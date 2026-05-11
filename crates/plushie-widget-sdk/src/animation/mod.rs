@@ -413,6 +413,13 @@ impl TransitionManager {
                     if !target_same {
                         self.start_animation(node.id.clone(), key.to_string(), new_anim);
                     }
+                } else {
+                    crate::diagnostics::warn(
+                        plushie_core::Diagnostic::AnimationDescriptorInvalid {
+                            id: node.id.clone(),
+                            prop: key.to_string(),
+                        },
+                    );
                 }
             } else if self.active_widget_ids.contains(node.id.as_str()) {
                 // Raw value, and this widget has at least one active

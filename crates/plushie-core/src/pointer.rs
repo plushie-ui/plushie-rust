@@ -47,8 +47,8 @@ pub struct PointerRelease {
     /// global subscription layer.
     pub captured: bool,
     /// Whether a touch release happened outside the widget's bounds
-    /// (touch `lost` event). Absent for mouse / pen releases.
-    pub lost: Option<bool>,
+    /// (touch `lost` event). The wire omits this field unless it is true.
+    pub lost: bool,
 }
 
 /// Data from a pointer move event.

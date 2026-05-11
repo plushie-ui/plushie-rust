@@ -1062,6 +1062,56 @@ violated by user-facing data.
 
 ---
 
+## Canonical visual wire forms stay singular
+
+Some SDK APIs expose ergonomic aliases such as `offset_x` / `offset_y`
+for a shadow, and some internal Rust types can represent richer values
+than every SDK helper exposes today. Those are not separate wire
+contracts.
+
+The shadow wire shape is `{"color", "offset": [x, y],
+"blur_radius"}`. The renderer should not accept `offset_x` /
+`offset_y` as an alternate shadow wire form.
+
+Canvas path commands use the tagged array command family. For
+`rounded_rect`, the canonical shape is `["rounded_rect", x, y, w, h,
+radius]`, where `radius` is the normal radius value. Do not keep object
+and array command forms as permanent peers unless a future cross-SDK
+wire design explicitly adds value beyond spelling.
+
+Color wire values are lowercase long hex strings: `#rrggbb` or
+`#rrggbbaa`. SDK helpers may accept short hex or named colors, but
+they must normalize before transport.
+
+---
+
+## Status events are internal unless opted in
+
+Renderer status events are used by host runtimes to track widget focus
+and derive higher-level focus / blur events. They are not ordinary app
+events by default because they are high-churn implementation status
+signals.
+
+Do not disable the internal status lane to implement an app-facing
+policy. A raw status opt-in should be a separate app-facing lane or
+prop so focus tracking remains available to runtimes that need it.
+
+---
+
+## Animation descriptors are render-time props
+
+`Animatable<T>` is an SDK encode-side convenience. Full animation
+descriptor decode happens in the renderer's animation manager, where
+the current value, prop type, active animation state, and interpolation
+cache are available.
+
+Do not add a general `Animatable<T>::wire_decode` round-trip contract
+unless that contextual requirement changes. Malformed descriptors
+should produce diagnostics and be ignored rather than silently failing
+or pretending to decode as an ordinary static prop.
+
+---
+
 ## What this document is for
 
 When a future review surfaces a finding that this document

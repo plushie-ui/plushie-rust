@@ -8,6 +8,7 @@
 
 use serde_json::Value;
 
+use plushie_core::key::{MouseButton, PointerKind};
 use plushie_core::protocol::{EffectResponse, OutgoingEvent};
 
 use crate::event::*;
@@ -93,16 +94,88 @@ fn outgoing_to_sdk_event(event: OutgoingEvent) -> Option<Event> {
         }));
     }
 
+    // Status is the renderer's internal focus-tracking signal. Other SDK
+    // runtimes consume it before app dispatch; Rust mirrors that by keeping
+    // it out of the app-facing event stream until a separate opt-in lane
+    // exists for raw interaction status.
+    if family == "status" {
+        return None;
+    }
+
     // Widget events: parse canonical wire ID and map family to EventType.
     let sid = plushie_core::ScopedId::parse(&event.id);
     let event_type = family_to_event_type(family);
     let primary_value = event.value.unwrap_or(Value::Null);
+    if !validate_widget_payload(family, &primary_value) {
+        return None;
+    }
 
     Some(Event::Widget(WidgetEvent {
         event_type,
         scoped_id: sid,
         value: primary_value,
     }))
+}
+
+fn validate_widget_payload(family: &str, value: &Value) -> bool {
+    match family {
+        "press" | "release" | "double_click" => {
+            optional_mouse_button(value, family)
+                && optional_pointer_kind(value, family)
+                && optional_lost(value, family)
+        }
+        "move" | "scroll" | "drag" | "drag_end" => optional_pointer_kind(value, family),
+        _ => true,
+    }
+}
+
+fn optional_mouse_button(value: &Value, family: &str) -> bool {
+    match value.get("button") {
+        Some(Value::String(button)) if MouseButton::from_wire(button).is_some() => true,
+        Some(Value::String(button)) => {
+            log::warn!("dropping renderer event `{family}`: unknown pointer button `{button}`");
+            false
+        }
+        Some(other) => {
+            log::warn!(
+                "dropping renderer event `{family}`: pointer button must be a string, got {}",
+                json_type_name(other)
+            );
+            false
+        }
+        None => true,
+    }
+}
+
+fn optional_pointer_kind(value: &Value, family: &str) -> bool {
+    match value.get("pointer") {
+        Some(Value::String(pointer)) if PointerKind::from_wire(pointer).is_some() => true,
+        Some(Value::String(pointer)) => {
+            log::warn!("dropping renderer event `{family}`: unknown pointer kind `{pointer}`");
+            false
+        }
+        Some(other) => {
+            log::warn!(
+                "dropping renderer event `{family}`: pointer kind must be a string, got {}",
+                json_type_name(other)
+            );
+            false
+        }
+        None => true,
+    }
+}
+
+fn optional_lost(value: &Value, family: &str) -> bool {
+    match value.get("lost") {
+        Some(Value::Bool(_)) | None => true,
+        Some(other) => {
+            log::warn!(
+                "dropping renderer event `{family}`: lost must be a boolean, got {}",
+                json_type_name(other)
+            );
+            false
+        }
+    }
 }
 
 /// Convert a tagged (subscription) event to an SDK Event.
@@ -403,6 +476,39 @@ mod tests {
             }
             _ => panic!("expected Widget event"),
         }
+    }
+
+    #[test]
+    fn status_event_is_internal() {
+        let mut event = make_event("status", "name");
+        event.value = Some(Value::String("focused".to_string()));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
+    }
+
+    #[test]
+    fn pointer_event_rejects_unknown_button() {
+        let mut event = make_event("press", "canvas");
+        event.value = Some(serde_json::json!({
+            "x": 1.0,
+            "y": 2.0,
+            "button": "primary",
+            "pointer": "mouse"
+        }));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
+    }
+
+    #[test]
+    fn pointer_event_rejects_unknown_pointer_kind() {
+        let mut event = make_event("move", "canvas");
+        event.value = Some(serde_json::json!({
+            "x": 1.0,
+            "y": 2.0,
+            "pointer": "trackpad"
+        }));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
     }
 
     #[test]

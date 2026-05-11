@@ -72,14 +72,17 @@ impl PlushieType for Shadow {
             .and_then(Color::wire_decode)
             .unwrap_or_else(Color::black);
 
-        let (offset_x, offset_y) = if let Some(arr) = obj.get("offset").and_then(|v| v.as_array()) {
-            let x = arr.first().and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let y = arr.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            (x, y)
-        } else {
-            let x = obj.get("offset_x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let y = obj.get("offset_y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            (x, y)
+        // The public SDKs may expose offset_x / offset_y as ergonomic
+        // setters, but the wire has one canonical shape: offset: [x, y].
+        let (offset_x, offset_y) = match obj.get("offset") {
+            Some(value) => {
+                let arr = value.as_array()?;
+                let x = arr.first()?.as_f64()? as f32;
+                let y = arr.get(1)?.as_f64()? as f32;
+                (x, y)
+            }
+            None if obj.contains_key("offset_x") || obj.contains_key("offset_y") => return None,
+            None => (0.0, 0.0),
         };
 
         let blur_radius = obj
@@ -111,5 +114,35 @@ impl PlushieType for Shadow {
 
     fn type_name() -> &'static str {
         "shadow"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn decode_rejects_offset_x_offset_y_wire_shape() {
+        let value = json!({
+            "color": "#000000",
+            "offset_x": 1.0,
+            "offset_y": 2.0,
+            "blur_radius": 3.0
+        });
+
+        assert_eq!(Shadow::wire_decode(&value), None);
+    }
+
+    #[test]
+    fn decode_requires_two_number_offset_entries() {
+        let value = json!({
+            "color": "#000000",
+            "offset": [1.0],
+            "blur_radius": 3.0
+        });
+
+        assert_eq!(Shadow::wire_decode(&value), None);
     }
 }

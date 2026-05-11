@@ -161,8 +161,9 @@ let brand = Theme::custom("brand")
 | `warning` | Warning indicators |
 | `danger` | Error and destructive actions |
 
-Hex values flow through `Color::hex`, so short forms expand and
-both cases work. The base theme name defaults to `"dark"` when
+Hex values flow through `Color::hex`, so host-side short forms expand
+before encoding. The wire shape remains long lowercase hex only.
+The base theme name defaults to `"dark"` when
 `.base(..)` is not called; the renderer fills in any palette slot
 the custom theme does not set.
 
@@ -442,8 +443,8 @@ let s = Shadow::new()
 | `blur_radius` | `(f32) -> Self` | Blur radius in logical pixels (0.0 = sharp) |
 
 On the wire, `offset` is encoded as a two-element array
-(`[x, y]`); the decoder also accepts `offset_x` / `offset_y`
-scalar fields for backward compatibility.
+(`[x, y]`). SDKs may expose `offset_x` / `offset_y` setters, but
+those names are not alternate wire fields.
 
 ## Font
 

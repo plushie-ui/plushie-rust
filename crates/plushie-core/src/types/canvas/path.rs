@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use crate::protocol::{PropMap, PropValue};
+use crate::protocol::PropValue;
 use crate::types::{Angle, PlushieType, border::Radius};
 
 /// A canvas path drawing command.
@@ -195,18 +195,14 @@ impl PathCommand {
                 PropValue::F64(start_angle.degrees() as f64),
                 PropValue::F64(end_angle.degrees() as f64),
             ]),
-            PathCommand::RoundedRect { x, y, w, h, radius } => {
-                // "rounded_rect" with object radius when per-corner,
-                // scalar otherwise.
-                let mut entry = PropMap::new();
-                entry.insert("type", PropValue::Str("rounded_rect".into()));
-                entry.insert("x", PropValue::F64(*x as f64));
-                entry.insert("y", PropValue::F64(*y as f64));
-                entry.insert("w", PropValue::F64(*w as f64));
-                entry.insert("h", PropValue::F64(*h as f64));
-                entry.insert("radius", radius.wire_encode());
-                PropValue::Object(entry)
-            }
+            PathCommand::RoundedRect { x, y, w, h, radius } => array(&[
+                PropValue::Str("rounded_rect".into()),
+                PropValue::F64(*x as f64),
+                PropValue::F64(*y as f64),
+                PropValue::F64(*w as f64),
+                PropValue::F64(*h as f64),
+                radius.wire_encode(),
+            ]),
             PathCommand::Close => PropValue::Str("close".into()),
         }
     }
@@ -219,10 +215,9 @@ fn array(items: &[PropValue]) -> PropValue {
 /// Decode an array of wire-format path commands into typed values.
 ///
 /// Wire format: each command is either the string `"close"`, an array
-/// `["command_name", arg1, arg2, ...]` where args are numbers, or an
-/// object `{"type": "rounded_rect", "x": ..., "radius": ...}` for
-/// commands (like `rounded_rect`) that carry typed sub-values such
-/// as [`Radius`].
+/// `["command_name", arg1, arg2, ...]` where args are numbers. For
+/// `rounded_rect`, the radius slot carries the same canonical radius
+/// value used elsewhere: a number or a per-corner object.
 pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
     let arr = match value.as_array() {
         Some(a) => a,
@@ -237,31 +232,6 @@ pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
                 result.push(PathCommand::Close);
             }
             continue;
-        }
-
-        // Object form (typed commands carrying structured sub-values).
-        if let Some(obj) = cmd.as_object() {
-            let cmd_name = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            let f_obj = |k: &str| -> f32 {
-                obj.get(k)
-                    .and_then(|v| v.as_f64())
-                    .map(|v| v as f32)
-                    .unwrap_or(0.0)
-            };
-            if cmd_name == "rounded_rect" {
-                let radius = obj
-                    .get("radius")
-                    .and_then(Radius::wire_decode)
-                    .unwrap_or_default();
-                result.push(PathCommand::RoundedRect {
-                    x: f_obj("x"),
-                    y: f_obj("y"),
-                    w: f_obj("w"),
-                    h: f_obj("h"),
-                    radius,
-                });
-                continue;
-            }
         }
 
         let parts = match cmd.as_array() {
@@ -327,7 +297,10 @@ pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
                 y: f(2),
                 w: f(3),
                 h: f(4),
-                radius: Radius::Uniform(f(5)),
+                radius: parts
+                    .get(5)
+                    .and_then(Radius::wire_decode)
+                    .unwrap_or_default(),
             },
             _ => continue,
         };
@@ -441,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn decode_rounded_rect_scalar_legacy() {
+    fn decode_rounded_rect_scalar() {
         let cmds = decode_commands(&json!([["rounded_rect", 10.0, 20.0, 100.0, 50.0, 8.0]]));
         assert_eq!(
             cmds,
@@ -456,16 +429,16 @@ mod tests {
     }
 
     #[test]
-    fn decode_rounded_rect_object_form() {
+    fn decode_rounded_rect_per_corner_radius() {
         let cmds = decode_commands(&json!([
-            {
-                "type": "rounded_rect",
-                "x": 10.0,
-                "y": 20.0,
-                "w": 100.0,
-                "h": 50.0,
-                "radius": {"top_left": 4.0, "top_right": 8.0, "bottom_right": 4.0, "bottom_left": 8.0}
-            }
+            [
+                "rounded_rect",
+                10.0,
+                20.0,
+                100.0,
+                50.0,
+                {"top_left": 4.0, "top_right": 8.0, "bottom_right": 4.0, "bottom_left": 8.0}
+            ]
         ]));
         assert_eq!(
             cmds,
@@ -482,6 +455,22 @@ mod tests {
                 },
             },]
         );
+    }
+
+    #[test]
+    fn decode_rounded_rect_object_form_is_not_wire_canonical() {
+        let cmds = decode_commands(&json!([
+            {
+                "type": "rounded_rect",
+                "x": 10.0,
+                "y": 20.0,
+                "w": 100.0,
+                "h": 50.0,
+                "radius": 8.0
+            }
+        ]));
+
+        assert!(cmds.is_empty());
     }
 
     #[test]

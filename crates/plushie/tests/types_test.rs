@@ -292,16 +292,15 @@ fn shadow_decodes_from_offset_array() {
 }
 
 #[test]
-fn shadow_decodes_from_separate_offset_fields() {
-    let s = Shadow::wire_decode(&serde_json::json!({
+fn shadow_rejects_separate_offset_fields() {
+    let shadow = Shadow::wire_decode(&serde_json::json!({
         "color": "#000000",
         "offset_x": 1.0,
         "offset_y": 3.0,
         "blur_radius": 5.0
-    }))
-    .unwrap();
-    assert_eq!(s.offset_x, 1.0);
-    assert_eq!(s.offset_y, 3.0);
+    }));
+
+    assert_eq!(shadow, None);
 }
 
 // ---------------------------------------------------------------------------

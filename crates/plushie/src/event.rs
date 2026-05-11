@@ -62,7 +62,10 @@ fn parse_pointer_release(value: &Value) -> PointerRelease {
         finger: p.finger,
         modifiers: p.modifiers,
         captured: p.captured,
-        lost: obj.and_then(|o| o.get("lost")).and_then(|v| v.as_bool()),
+        lost: obj
+            .and_then(|o| o.get("lost"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     }
 }
 

@@ -50,6 +50,14 @@ pub enum Error {
     #[error("wire encode error: {0}")]
     WireEncode(String),
 
+    /// A renderer operation reached wire mode but has no wire
+    /// implementation in this SDK.
+    #[error("unsupported wire renderer operation: {operation}")]
+    UnsupportedWireOperation {
+        /// Human-readable operation name for diagnostics.
+        operation: String,
+    },
+
     /// The renderer process exited. Inspect [`ExitReason`] to decide
     /// whether this is expected (shutdown) or unexpected (crash,
     /// heartbeat timeout, max-restarts exhaustion).
@@ -174,6 +182,16 @@ mod tests {
 
         let encode = Error::WireEncode("frame too big".into());
         assert!(encode.to_string().contains("frame too big"));
+    }
+
+    #[test]
+    fn unsupported_wire_operation_display_names_operation() {
+        let err = Error::UnsupportedWireOperation {
+            operation: "RendererOp::<unknown>".into(),
+        };
+        let display = err.to_string();
+        assert!(display.contains("unsupported wire renderer operation"));
+        assert!(display.contains("RendererOp::<unknown>"));
     }
 
     #[test]

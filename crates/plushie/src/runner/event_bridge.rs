@@ -110,13 +110,14 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
     match family {
         "key_press" | "key_release" => {
             let value = event.value.as_ref().unwrap_or(&Value::Null);
+            let key = required_json_str(value, "key", family)?;
             Some(Event::Key(KeyEvent {
                 event_type: if family == "key_press" {
                     KeyEventType::Press
                 } else {
                     KeyEventType::Release
                 },
-                key: plushie_core::Key::from(json_str(value, "key").as_str()),
+                key: plushie_core::Key::from(key.as_str()),
                 modified_key: json_str_opt(value, "modified_key")
                     .map(|s| plushie_core::Key::from(s.as_str())),
                 physical_key: json_str_opt(value, "physical_key")
@@ -141,17 +142,17 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
             window_id: None,
         })),
 
-        "window_opened" => Some(window_event(WindowEventType::Opened, event)),
-        "window_closed" => Some(window_event(WindowEventType::Closed, event)),
-        "window_close_requested" => Some(window_event(WindowEventType::CloseRequested, event)),
-        "window_moved" => Some(window_event(WindowEventType::Moved, event)),
-        "window_resized" => Some(window_event(WindowEventType::Resized, event)),
-        "window_focused" => Some(window_event(WindowEventType::Focused, event)),
-        "window_unfocused" => Some(window_event(WindowEventType::Unfocused, event)),
-        "window_rescaled" => Some(window_event(WindowEventType::Rescaled, event)),
-        "file_hovered" => Some(window_event(WindowEventType::FileHovered, event)),
-        "file_dropped" => Some(window_event(WindowEventType::FileDropped, event)),
-        "files_hovered_left" => Some(window_event(WindowEventType::FilesHoveredLeft, event)),
+        "window_opened" => window_event(WindowEventType::Opened, event),
+        "window_closed" => window_event(WindowEventType::Closed, event),
+        "window_close_requested" => window_event(WindowEventType::CloseRequested, event),
+        "window_moved" => window_event(WindowEventType::Moved, event),
+        "window_resized" => window_event(WindowEventType::Resized, event),
+        "window_focused" => window_event(WindowEventType::Focused, event),
+        "window_unfocused" => window_event(WindowEventType::Unfocused, event),
+        "window_rescaled" => window_event(WindowEventType::Rescaled, event),
+        "file_hovered" => window_event(WindowEventType::FileHovered, event),
+        "file_dropped" => window_event(WindowEventType::FileDropped, event),
+        "files_hovered_left" => window_event(WindowEventType::FilesHoveredLeft, event),
 
         "animation_frame" => Some(Event::System(SystemEvent {
             event_type: SystemEventType::AnimationFrame,
@@ -206,8 +207,9 @@ fn tagged_event_to_sdk(family: &str, tag: &str, event: &OutgoingEvent) -> Option
 
         "command_error" => {
             let value = event.value.as_ref().unwrap_or(&Value::Null);
+            let reason = required_json_str(value, "reason", family)?;
             Some(Event::CommandError(CommandError {
-                reason: json_str(value, "reason"),
+                reason,
                 id: json_str_opt(value, "id"),
                 family: json_str_opt(value, "family"),
                 widget_type: json_str_opt(value, "widget_type"),
@@ -282,11 +284,11 @@ fn query_response_to_sdk(kind: &str, tag: &str, data: Value) -> Event {
 // ---------------------------------------------------------------------------
 
 /// Build a WindowEvent from an OutgoingEvent.
-fn window_event(event_type: WindowEventType, event: &OutgoingEvent) -> Event {
+fn window_event(event_type: WindowEventType, event: &OutgoingEvent) -> Option<Event> {
     let value = event.value.as_ref().unwrap_or(&Value::Null);
-    let window_id = json_str(value, "window_id");
+    let window_id = required_json_str(value, "window_id", event.family.as_str())?;
 
-    Event::Window(WindowEvent {
+    Some(Event::Window(WindowEvent {
         event_type,
         window_id,
         x: value["x"].as_f64().map(|v| v as f32),
@@ -295,7 +297,7 @@ fn window_event(event_type: WindowEventType, event: &OutgoingEvent) -> Event {
         height: value["height"].as_f64().map(|v| v as f32),
         path: json_str_opt(value, "path"),
         scale_factor: value["scale_factor"].as_f64().map(|v| v as f32),
-    })
+    }))
 }
 
 /// Extract KeyModifiers from an OutgoingEvent.
@@ -303,12 +305,36 @@ fn extract_modifiers(event: &OutgoingEvent) -> KeyModifiers {
     event.modifiers.unwrap_or_default()
 }
 
-fn json_str(value: &Value, key: &str) -> String {
-    value[key].as_str().unwrap_or_default().to_string()
+fn required_json_str(value: &Value, key: &str, family: &str) -> Option<String> {
+    match value.get(key) {
+        Some(Value::String(value)) => Some(value.clone()),
+        Some(other) => {
+            log::warn!(
+                "dropping renderer event `{family}`: required field `{key}` must be a string, got {}",
+                json_type_name(other)
+            );
+            None
+        }
+        None => {
+            log::warn!("dropping renderer event `{family}`: required field `{key}` is missing");
+            None
+        }
+    }
 }
 
 fn json_str_opt(value: &Value, key: &str) -> Option<String> {
     value[key].as_str().map(|s| s.to_string())
+}
+
+fn json_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
 }
 
 fn normalize_animation_frame_value(value: Option<Value>) -> Option<Value> {
@@ -441,6 +467,27 @@ mod tests {
     }
 
     #[test]
+    fn key_press_missing_key_is_dropped() {
+        let mut event = make_tagged("key_press", "key_events");
+        event.value = Some(serde_json::json!({
+            "repeat": false,
+        }));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
+    }
+
+    #[test]
+    fn key_press_non_string_key_is_dropped() {
+        let mut event = make_tagged("key_press", "key_events");
+        event.value = Some(serde_json::json!({
+            "key": 42,
+            "repeat": false,
+        }));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
+    }
+
+    #[test]
     fn modifiers_changed_event() {
         let mut event = make_tagged("modifiers_changed", "mods");
         event.modifiers = Some(plushie_core::protocol::KeyModifiers {
@@ -478,6 +525,29 @@ mod tests {
             }
             _ => panic!("expected Window event"),
         }
+    }
+
+    #[test]
+    fn window_event_missing_window_id_is_dropped() {
+        let mut event = make_tagged("window_resized", "win_events");
+        event.value = Some(serde_json::json!({
+            "width": 800.0,
+            "height": 600.0,
+        }));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
+    }
+
+    #[test]
+    fn window_event_non_string_window_id_is_dropped() {
+        let mut event = make_tagged("window_resized", "win_events");
+        event.value = Some(serde_json::json!({
+            "window_id": 7,
+            "width": 800.0,
+            "height": 600.0,
+        }));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
     }
 
     #[test]
@@ -736,6 +806,26 @@ mod tests {
             }
             other => panic!("expected ime event, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn command_error_missing_reason_is_dropped() {
+        let mut event = make_tagged("command_error", "commands");
+        event.value = Some(serde_json::json!({
+            "id": "save",
+        }));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
+    }
+
+    #[test]
+    fn command_error_non_string_reason_is_dropped() {
+        let mut event = make_tagged("command_error", "commands");
+        event.value = Some(serde_json::json!({
+            "reason": false,
+        }));
+
+        assert!(outgoing_to_sdk_event(event).is_none());
     }
 
     #[test]

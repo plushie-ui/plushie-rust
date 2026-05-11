@@ -107,6 +107,7 @@ pub struct Bridge {
 struct ReaderHandle {
     rx: mpsc::Receiver<io::Result<Value>>,
     stop: Arc<AtomicBool>,
+    done: mpsc::Receiver<()>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -197,15 +198,20 @@ impl Bridge {
             .take()
             .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "reader already taken"))?;
         let (tx, rx) = mpsc::sync_channel::<io::Result<Value>>(256);
+        let (done_tx, done) = mpsc::channel::<()>();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
         let codec = self.codec;
         let thread = thread::Builder::new()
             .name("plushie-wire-reader".into())
-            .spawn(move || reader_loop(reader, codec, tx, stop_for_thread))?;
+            .spawn(move || {
+                reader_loop(reader, codec, tx, stop_for_thread);
+                let _ = done_tx.send(());
+            })?;
         self.reader = Some(ReaderHandle {
             rx,
             stop,
+            done,
             thread: Some(thread),
         });
         Ok(())
@@ -241,8 +247,26 @@ impl Bridge {
     /// Stop the background reader thread (if running) and reset so
     /// `start_reader` can be called again after a restart.
     pub fn stop_reader(&mut self) {
+        self.stop_reader_with_timeout(None);
+    }
+
+    fn stop_reader_with_timeout(&mut self, timeout: Option<Duration>) {
         if let Some(mut reader) = self.reader.take() {
             reader.stop.store(true, Ordering::SeqCst);
+            let completed = match timeout {
+                Some(dur) => match reader.done.recv_timeout(dur) {
+                    Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => true,
+                    Err(mpsc::RecvTimeoutError::Timeout) => false,
+                },
+                None => {
+                    let _ = reader.done.recv();
+                    true
+                }
+            };
+            if !completed {
+                log::warn!("wire reader thread did not stop before bridge drop; detaching");
+                return;
+            }
             if let Some(handle) = reader.thread.take() {
                 let _ = handle.join();
             }
@@ -658,9 +682,10 @@ impl Drop for Bridge {
             }
         }
 
-        // Reader thread wakes up on the EOF produced above; join it
-        // before reaping the child (subprocess path only).
-        self.stop_reader();
+        // Reader thread wakes up on the EOF produced above in the
+        // normal case. Do not let Drop block forever if a platform or
+        // socket implementation fails to interrupt a blocked read.
+        self.stop_reader_with_timeout(Some(Duration::from_millis(500)));
 
         if let Transport::Subprocess { child, .. } = &mut self.transport {
             // Reap to capture the exit code and avoid zombies on
@@ -692,6 +717,16 @@ fn checked_frame_len(len: usize) -> std::result::Result<[u8; 4], crate::Error> {
 /// unaffected by buffering but still benefits from a shared handle.
 #[cfg(feature = "wire")]
 fn read_one<R: Read>(reader: &mut BufReader<R>, codec: Codec) -> io::Result<Value> {
+    let mut msgpack_buf = Vec::new();
+    read_one_with_msgpack_buf(reader, codec, &mut msgpack_buf)
+}
+
+#[cfg(feature = "wire")]
+fn read_one_with_msgpack_buf<R: Read>(
+    reader: &mut BufReader<R>,
+    codec: Codec,
+    msgpack_buf: &mut Vec<u8>,
+) -> io::Result<Value> {
     match codec {
         Codec::Json => {
             let mut line = String::new();
@@ -729,14 +764,14 @@ fn read_one<R: Read>(reader: &mut BufReader<R>, codec: Codec) -> io::Result<Valu
                 plushie_core::diagnostics::error(diag.clone());
                 return Err(io::Error::new(io::ErrorKind::InvalidData, diag.to_string()));
             }
-            let mut buf = vec![0u8; len];
-            reader.read_exact(&mut buf)?;
+            msgpack_buf.resize(len, 0);
+            reader.read_exact(msgpack_buf)?;
             // Share the widget-sdk's depth pre-check so a pathological
             // msgpack payload cannot blow rmp_serde's recursive parser
             // even when the renderer is the peer. Today the renderer is
             // trusted; this keeps the invariant if that ever changes.
             if let Err(e) = plushie_core::codec_safety::check_msgpack_depth(
-                &buf,
+                msgpack_buf,
                 plushie_core::codec_safety::MAX_RMPV_DEPTH,
             ) {
                 return Err(io::Error::new(
@@ -744,7 +779,7 @@ fn read_one<R: Read>(reader: &mut BufReader<R>, codec: Codec) -> io::Result<Valu
                     format!("msgpack depth check: {e}"),
                 ));
             }
-            rmp_serde::from_slice(&buf).map_err(io::Error::other)
+            rmp_serde::from_slice(msgpack_buf).map_err(io::Error::other)
         }
     }
 }
@@ -760,11 +795,12 @@ fn reader_loop(
     tx: mpsc::SyncSender<io::Result<Value>>,
     stop: Arc<AtomicBool>,
 ) {
+    let mut msgpack_buf = Vec::new();
     loop {
         if stop.load(Ordering::SeqCst) {
             return;
         }
-        let result = read_one(&mut reader, codec);
+        let result = read_one_with_msgpack_buf(&mut reader, codec, &mut msgpack_buf);
         let is_err = result.is_err();
         if tx.send(result).is_err() {
             // Main loop dropped the receiver; exit quietly.

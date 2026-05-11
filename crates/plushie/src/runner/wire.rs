@@ -1684,8 +1684,9 @@ fn execute_wire_renderer_op(
                 ImageOp::List { tag } => ("list", json!({"tag": tag})),
                 ImageOp::Clear => ("clear", json!({})),
                 _ => {
-                    log::warn!("wire mode: unhandled ImageOp variant; op skipped");
-                    return Ok(());
+                    return Err(crate::Error::UnsupportedWireOperation {
+                        operation: "RendererOp::Image::<unknown>".into(),
+                    });
                 }
             };
             bridge.send(&OutgoingMessage::ImageOp {
@@ -1718,12 +1719,10 @@ fn execute_wire_renderer_op(
         }
         RendererOp::AdvanceFrame { timestamp } => bridge.send_advance_frame(*timestamp),
         // RendererOp is #[non_exhaustive]; any variant added after this
-        // match was written is an unknown op in wire mode and is
-        // skipped with a warning rather than silently dropped.
-        _ => {
-            log::warn!("wire mode: unhandled RendererOp variant; op skipped");
-            Ok(())
-        }
+        // match was written is unsupported in this wire runner.
+        _ => Err(crate::Error::UnsupportedWireOperation {
+            operation: "RendererOp::<unknown>".into(),
+        }),
     }
 }
 

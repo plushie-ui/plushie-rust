@@ -78,7 +78,6 @@ let a = A11y::new()
 | `active_descendant` | `Option<String>` | Currently active descendant ID |
 | `radio_group` | `Option<Vec<String>>` | Peer IDs for an explicit radio group |
 | `has_popup` | `Option<HasPopup>` | Popup kind, if any |
-| `label_from` | `Option<String>` | Legacy Elixir field; passed through for wire completeness |
 
 Decode clamps `level` to 1..=6. Values outside that range become
 `None`. `mnemonic` takes a single `char`; on decode, only the first

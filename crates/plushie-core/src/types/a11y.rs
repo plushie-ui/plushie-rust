@@ -255,9 +255,6 @@ pub struct A11y {
     pub radio_group: Option<Vec<String>>,
     /// Popup kind, if any.
     pub has_popup: Option<HasPopup>,
-    /// Elixir-only field: resolved at build time to populate `label`.
-    /// Included for wire completeness; the renderer ignores it.
-    pub label_from: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -437,12 +434,6 @@ impl A11y {
         self
     }
 
-    /// Set or construct `label_from`.
-    pub fn label_from(mut self, id: impl Into<String>) -> Self {
-        self.label_from = Some(id.into());
-        self
-    }
-
     /// Merge two A11y values. Non-None fields in `overrides` take
     /// precedence; None fields fall back to `base`.
     ///
@@ -506,10 +497,6 @@ impl A11y {
                 .clone()
                 .or_else(|| base.radio_group.clone()),
             has_popup: overrides.has_popup.or(base.has_popup),
-            label_from: overrides
-                .label_from
-                .clone()
-                .or_else(|| base.label_from.clone()),
         }
     }
 }
@@ -592,10 +579,6 @@ impl PlushieType for A11y {
         };
 
         let has_popup = obj.get("has_popup").and_then(HasPopup::wire_decode);
-        let label_from = obj
-            .get("label_from")
-            .and_then(|v| v.as_str())
-            .map(String::from);
 
         Some(Self {
             role,
@@ -624,7 +607,6 @@ impl PlushieType for A11y {
             active_descendant,
             radio_group,
             has_popup,
-            label_from,
         })
     }
 
@@ -710,10 +692,6 @@ impl PlushieType for A11y {
         if let Some(ref popup) = self.has_popup {
             m.insert("has_popup", popup.wire_encode());
         }
-        if let Some(ref id) = self.label_from {
-            m.insert("label_from", PropValue::Str(id.clone()));
-        }
-
         PropValue::Object(m)
     }
 
@@ -859,7 +837,6 @@ mod tests {
             "active_descendant": "item_3",
             "radio_group": ["opt_a", "opt_b"],
             "has_popup": "menu",
-            "label_from": "title_field",
         });
 
         let a = A11y::wire_decode(&val).unwrap();
@@ -889,7 +866,6 @@ mod tests {
         assert_eq!(a.active_descendant.as_deref(), Some("item_3"));
         assert_eq!(a.radio_group, Some(vec!["opt_a".into(), "opt_b".into()]));
         assert_eq!(a.has_popup, Some(HasPopup::Menu));
-        assert_eq!(a.label_from.as_deref(), Some("title_field"));
     }
 
     #[test]
@@ -997,8 +973,7 @@ mod tests {
             .error_message("vol_err")
             .active_descendant("opt_2")
             .radio_group(vec!["a".into(), "b".into(), "c".into()])
-            .has_popup(HasPopup::Listbox)
-            .label_from("title");
+            .has_popup(HasPopup::Listbox);
 
         let encoded = original.wire_encode();
         let json_val = Value::from(encoded);

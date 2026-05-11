@@ -129,7 +129,6 @@ impl Hash for A11y {
         self.active_descendant.hash(state);
         self.radio_group.hash(state);
         self.has_popup.hash(state);
-        self.label_from.hash(state);
     }
 }
 

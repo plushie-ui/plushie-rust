@@ -463,6 +463,25 @@ workflow.
 
 ---
 
+## Documented visual-style defaults are part of the wire shape
+
+Some visual descriptor decoders accept partial objects and fill in
+documented defaults. `Padding` omits sides as `0.0`; `Border` omits
+width and radius as zero values; `Shadow` omits color, offset, and
+blur as black and zero values. These defaults are intentional builder
+ergonomics shared with the wire shape, not malformed-input recovery.
+
+This does not mean every decoder should be permissive. Dropping an
+invalid element from a list, truncating an integer, or accepting an
+unknown enum value as a different known value is still a protocol
+correctness bug. The accepted pattern is only for fields whose absence
+has a documented neutral value.
+
+Revisit if a type needs to distinguish "absent" from "explicit zero"
+for real behavior.
+
+---
+
 ## `parking_lot` is the workspace default for non-poisoning mutexes
 
 Production code uses `parking_lot::Mutex` and `parking_lot::RwLock`.

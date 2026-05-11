@@ -178,7 +178,6 @@ mod tests {
         assert_eq!(node.type_name, "text");
         assert!(node.children.is_empty());
         // props defaults to an empty map
-        assert!(node.props.is_object());
         assert!(node.props.as_prop_map().is_empty());
     }
 

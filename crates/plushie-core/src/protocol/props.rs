@@ -23,6 +23,7 @@
 //! entries, so round-tripping a tree through diff + apply is
 //! lossless. See the `PartialEq` impl on [`PropMap`] below.
 
+use serde::ser::SerializeMap;
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
@@ -288,6 +289,28 @@ impl From<PropValue> for Value {
     }
 }
 
+impl serde::Serialize for PropValue {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Null => serializer.serialize_none(),
+            Self::Bool(value) => serializer.serialize_bool(*value),
+            Self::F64(value) => {
+                if !value.is_finite() {
+                    log::warn!("non-finite f64 ({value}) in PropValue encoded as JSON null");
+                    serializer.serialize_none()
+                } else {
+                    serializer.serialize_f64(*value)
+                }
+            }
+            Self::I64(value) => serializer.serialize_i64(*value),
+            Self::U64(value) => serializer.serialize_u64(*value),
+            Self::Str(value) => serializer.serialize_str(value),
+            Self::Array(values) => values.serialize(serializer),
+            Self::Object(map) => map.serialize(serializer),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // PropMap
 // ---------------------------------------------------------------------------
@@ -416,6 +439,18 @@ impl PropMap {
     }
 }
 
+impl serde::Serialize for PropMap {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        let mut entries: Vec<_> = self.0.iter().collect();
+        entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+        for (key, value) in entries {
+            map.serialize_entry(key, value)?;
+        }
+        map.end()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -474,15 +509,6 @@ impl Props {
         self.0.contains_key(key)
     }
 
-    /// Convert to a JSON Value for consumption by prop_helpers.
-    ///
-    /// Always allocates (converts PropMap to JSON Map). Callers that
-    /// only need field-by-field access should use the typed accessors
-    /// directly instead.
-    pub fn as_value_cow(&self) -> std::borrow::Cow<'_, Value> {
-        std::borrow::Cow::Owned(Value::Object(self.0.clone().into_json_map()))
-    }
-
     /// Borrow the underlying [`PropMap`].
     pub fn as_prop_map(&self) -> &PropMap {
         &self.0
@@ -509,12 +535,6 @@ impl Props {
     pub fn to_value(&self) -> Value {
         Value::Object(self.0.clone().into_json_map())
     }
-
-    /// True if the props contain an object/map structure. Always
-    /// true for the unified representation.
-    pub fn is_object(&self) -> bool {
-        true
-    }
 }
 
 impl From<PropMap> for Props {
@@ -530,14 +550,14 @@ impl From<PropMap> for Props {
 
 impl serde::Serialize for Props {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.to_value().serialize(serializer)
+        self.0.serialize(serializer)
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Props {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = Value::deserialize(deserializer)?;
-        Ok(Self::from_json(value))
+        let map = serde_json::Map::<String, Value>::deserialize(deserializer)?;
+        Ok(Self(PropMap::from_json_map(map)))
     }
 }
 
@@ -619,8 +639,13 @@ mod tests {
     fn props_from_non_object_json_is_empty() {
         let props = Props::from_json(json!("stray string"));
         assert!(props.as_prop_map().is_empty());
-        assert!(props.is_object());
         assert_eq!(props.get_str("anything"), None);
+    }
+
+    #[test]
+    fn props_deserialize_rejects_non_object_json() {
+        let err = serde_json::from_value::<Props>(json!("stray string")).unwrap_err();
+        assert!(err.to_string().contains("invalid type"));
     }
 
     #[test]

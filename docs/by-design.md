@@ -638,6 +638,12 @@ them here so reviewers can move past them.
   window operations before patches that reference new windows.
   Direct mode applies in-process state and does not need to
   mirror the exact serialized ordering absent a failing behavior.
+- **Wire-mode integration tests are a spine, not a command matrix.**
+  Wire and connect tests must use the real renderer when they make
+  wire-behavior claims. That does not mean every command variant
+  needs its own end-to-end subprocess test. Add real-renderer tests
+  when changing a command path or when a failure needs coverage; keep
+  broad command shape coverage in lower-level contract tests.
 - **Canvas wire values decode into the declared Rust precision.**
   Canvas geometry is represented as `f32`, matching the renderer's
   drawing APIs. Decoders should reject non-finite values and values

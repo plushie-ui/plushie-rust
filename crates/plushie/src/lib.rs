@@ -128,24 +128,24 @@ pub use plushie_widget_sdk as widget_sdk;
 // Re-export the derive macros for widget authoring.
 pub use plushie_core_macros::{PlushieEnum, WidgetCommand, WidgetEvent, WidgetProps};
 
-/// Version string of the renderer this SDK was built against.
+/// Version string the Rust SDK expects the renderer to report.
 ///
-/// Matches `plushie-renderer-lib`'s `CARGO_PKG_VERSION` at build
-/// time. Wire mode compares the string against the renderer's
-/// advertised version in the `hello` message; a mismatch does not
-/// abort the handshake (the wire-protocol version is separate), but
-/// it does get logged so version skew surfaces early.
+/// Direct builds read `plushie-renderer-lib`'s build-time version.
+/// Wire-only builds cannot depend on renderer-lib, so they use the
+/// workspace package version instead. Releases keep the Rust SDK and
+/// renderer crates in lock-step.
 ///
-/// Host SDKs in other languages keep their own synced per-SDK
-/// `BINARY_VERSION` files. The Rust SDK uses this constant instead.
+/// Wire mode compares this string against the renderer's advertised
+/// version in the `hello` message. A mismatch does not abort the
+/// handshake because wire compatibility is governed by
+/// `PROTOCOL_VERSION`, but it is logged so stale binaries surface
+/// early.
 #[cfg(feature = "direct")]
 pub const RENDERER_VERSION: &str = plushie_renderer_lib::RENDERER_VERSION;
 
-/// Version string of the renderer this SDK was built against.
+/// Version string the Rust SDK expects the renderer to report.
 ///
-/// Wire-only builds don't depend on `plushie-renderer-lib`, so the
-/// value comes straight from `CARGO_PKG_VERSION`, which the workspace
-/// keeps in lock-step with the renderer crate at release time.
+/// See the direct-build documentation for the version-skew contract.
 #[cfg(all(feature = "wire", not(feature = "direct")))]
 pub const RENDERER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -240,9 +240,9 @@ impl View {
 ///
 /// The runtime collapses the list into a single tree root at the
 /// boundary: a single entry is promoted to the root, multiple entries
-/// wrap under a synthetic `"root"` container, and an empty list
-/// renders an empty container. Apps never construct the synthetic
-/// root by hand.
+/// wrap under a transparent synthetic container, and an empty list
+/// renders an empty container. Apps never construct the synthetic root
+/// by hand.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ViewList(Vec<View>);
 
@@ -271,7 +271,7 @@ impl ViewList {
     ///
     /// `[]` becomes an empty container, `[single]` promotes the view
     /// to the root directly, and multiple entries wrap under a
-    /// synthetic `"root"` container so the diff pipeline can treat
+    /// transparent synthetic container so the diff pipeline can treat
     /// the tree uniformly.
     pub(crate) fn into_tree_node(self) -> plushie_core::protocol::TreeNode {
         match self.0.len() {
@@ -281,7 +281,7 @@ impl ViewList {
                 windows.remove(0).into_tree_node()
             }
             _ => plushie_core::protocol::TreeNode {
-                id: "root".to_string(),
+                id: "auto:root".to_string(),
                 type_name: "container".to_string(),
                 props: plushie_core::protocol::Props::default(),
                 children: self.0.into_iter().map(View::into_tree_node).collect(),
@@ -611,9 +611,17 @@ mod dispatch {
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             if arg == flag {
-                return args.next();
+                let value = args.next();
+                if value.is_none() {
+                    log::warn!("{flag} requires a value; ignoring malformed flag");
+                }
+                return value;
             }
             if let Some(rest) = arg.strip_prefix(&prefix_eq) {
+                if rest.is_empty() {
+                    log::warn!("{flag} requires a value; ignoring malformed flag");
+                    return None;
+                }
                 return Some(rest.to_string());
             }
         }

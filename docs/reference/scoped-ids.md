@@ -221,6 +221,16 @@ pub struct ScopedId {
 }
 ```
 
+## Multi-window Synthetic Root
+
+When `App::view` returns multiple top-level windows, the Rust SDK
+wraps them in an internal `auto:root` container before normalization
+and diffing. Like every `auto:` ID, this wrapper is transparent: it
+does not create a user-visible scope segment, does not participate in
+duplicate-ID diagnostics, and should not be targeted by selectors.
+Single-window apps do not need this wrapper because their view is
+promoted directly to the tree root.
+
 Matching patterns in order from least to most specific:
 
 ```rust

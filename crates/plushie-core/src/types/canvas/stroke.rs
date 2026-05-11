@@ -74,8 +74,8 @@ impl PlushieType for Dash {
             .get("segments")?
             .as_array()?
             .iter()
-            .filter_map(|v| v.as_f64().map(|f| f as f32))
-            .collect();
+            .map(|v| v.as_f64().map(|f| f as f32))
+            .collect::<Option<Vec<_>>>()?;
         if segments.is_empty() {
             return None;
         }
@@ -176,6 +176,12 @@ mod tests {
     #[test]
     fn dash_empty_segments_returns_none() {
         let val = json!({"segments": [], "offset": 0.0});
+        assert!(Dash::wire_decode(&val).is_none());
+    }
+
+    #[test]
+    fn dash_rejects_invalid_segment() {
+        let val = json!({"segments": [5.0, "invalid", 3.0], "offset": 0.0});
         assert!(Dash::wire_decode(&val).is_none());
     }
 

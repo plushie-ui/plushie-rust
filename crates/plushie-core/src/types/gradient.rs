@@ -84,13 +84,13 @@ impl PlushieType for Gradient {
         let stops_arr = obj.get("stops")?.as_array()?;
         let stops: Vec<GradientStop> = stops_arr
             .iter()
-            .filter_map(|stop| {
+            .map(|stop| {
                 let arr = stop.as_array()?;
                 let offset = arr.first()?.as_f64()? as f32;
                 let color = Color::wire_decode(arr.get(1)?)?;
                 Some(GradientStop { offset, color })
             })
-            .collect();
+            .collect::<Option<Vec<_>>>()?;
 
         Some(Self { start, end, stops })
     }
@@ -144,6 +144,7 @@ fn decode_point(value: &Value) -> Option<(f32, f32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn gradient_stop_new() {
@@ -170,5 +171,17 @@ mod tests {
         assert!((g.start.1 - 0.0).abs() < 1e-5);
         assert!((g.end.0 - 0.5).abs() < 1e-5);
         assert!((g.end.1 - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn decode_rejects_invalid_stop() {
+        let value = json!({
+            "type": "linear",
+            "start": [0.0, 0.0],
+            "end": [1.0, 1.0],
+            "stops": [[0.0, "#000000"], ["bad", "#ffffff"]]
+        });
+
+        assert_eq!(Gradient::wire_decode(&value), None);
     }
 }

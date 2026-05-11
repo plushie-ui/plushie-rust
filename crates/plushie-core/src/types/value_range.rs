@@ -35,8 +35,14 @@ impl ValueRange {
 impl PlushieType for ValueRange {
     fn wire_decode(value: &Value) -> Option<Self> {
         let arr = value.as_array()?;
-        let min = arr.first()?.as_f64()? as f32;
-        let max = arr.get(1)?.as_f64()? as f32;
+        if arr.len() != 2 {
+            return None;
+        }
+        let min = decode_finite_f32(arr.first()?)?;
+        let max = decode_finite_f32(arr.get(1)?)?;
+        if min > max {
+            return None;
+        }
         Some(Self { min, max })
     }
 
@@ -49,5 +55,50 @@ impl PlushieType for ValueRange {
 
     fn type_name() -> &'static str {
         "range"
+    }
+}
+
+fn decode_finite_f32(value: &Value) -> Option<f32> {
+    let decoded = value.as_f64()?;
+    let decoded = decoded as f32;
+    decoded.is_finite().then_some(decoded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn decode_accepts_finite_range() {
+        assert_eq!(
+            ValueRange::wire_decode(&json!([0.0, 100.0])),
+            Some(ValueRange {
+                min: 0.0,
+                max: 100.0
+            })
+        );
+    }
+
+    #[test]
+    fn decode_rejects_non_pair_arrays() {
+        assert_eq!(ValueRange::wire_decode(&json!([0.0])), None);
+        assert_eq!(ValueRange::wire_decode(&json!([0.0, 1.0, 2.0])), None);
+    }
+
+    #[test]
+    fn decode_rejects_non_numeric_values() {
+        assert_eq!(ValueRange::wire_decode(&json!(["0", 1.0])), None);
+        assert_eq!(ValueRange::wire_decode(&json!([0.0, null])), None);
+    }
+
+    #[test]
+    fn decode_rejects_infinite_after_f32_conversion() {
+        assert_eq!(ValueRange::wire_decode(&json!([0.0, f64::MAX])), None);
+    }
+
+    #[test]
+    fn decode_rejects_min_above_max() {
+        assert_eq!(ValueRange::wire_decode(&json!([100.0, 0.0])), None);
     }
 }

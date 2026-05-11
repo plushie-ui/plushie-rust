@@ -532,10 +532,11 @@ impl PlushieType for A11y {
         let expanded = obj.get("expanded").and_then(|v| v.as_bool());
         let required = obj.get("required").and_then(|v| v.as_bool());
 
-        let level = obj.get("level").and_then(|v| v.as_u64()).and_then(|n| {
-            let n = n as usize;
-            if (1..=6).contains(&n) { Some(n) } else { None }
-        });
+        let level = obj
+            .get("level")
+            .and_then(|v| v.as_u64())
+            .and_then(|n| usize::try_from(n).ok())
+            .and_then(|n| (1..=6).contains(&n).then_some(n));
 
         let live = obj.get("live").and_then(Live::wire_decode);
         let busy = obj.get("busy").and_then(|v| v.as_bool());
@@ -554,14 +555,14 @@ impl PlushieType for A11y {
         let orientation = obj.get("orientation").and_then(Orientation::wire_decode);
         let disabled = obj.get("disabled").and_then(|v| v.as_bool());
 
-        let position_in_set = obj
-            .get("position_in_set")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as usize);
-        let size_of_set = obj
-            .get("size_of_set")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as usize);
+        let position_in_set = match obj.get("position_in_set") {
+            Some(v) => Some(usize::try_from(v.as_u64()?).ok()?),
+            None => None,
+        };
+        let size_of_set = match obj.get("size_of_set") {
+            Some(v) => Some(usize::try_from(v.as_u64()?).ok()?),
+            None => None,
+        };
 
         let labelled_by = obj
             .get("labelled_by")
@@ -580,14 +581,15 @@ impl PlushieType for A11y {
             .and_then(|v| v.as_str())
             .map(String::from);
 
-        let radio_group = obj
-            .get("radio_group")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            });
+        let radio_group = match obj.get("radio_group") {
+            Some(v) => Some(
+                v.as_array()?
+                    .iter()
+                    .map(|v| v.as_str().map(String::from))
+                    .collect::<Option<Vec<_>>>()?,
+            ),
+            None => None,
+        };
 
         let has_popup = obj.get("has_popup").and_then(HasPopup::wire_decode);
         let label_from = obj
@@ -903,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    fn a11y_level_clamped() {
+    fn a11y_level_ignores_values_outside_heading_range() {
         assert_eq!(A11y::wire_decode(&json!({"level": 0})).unwrap().level, None);
         assert_eq!(
             A11y::wire_decode(&json!({"level": 1})).unwrap().level,
@@ -914,6 +916,47 @@ mod tests {
             Some(6)
         );
         assert_eq!(A11y::wire_decode(&json!({"level": 7})).unwrap().level, None);
+        assert_eq!(
+            A11y::wire_decode(&json!({"level": u64::MAX}))
+                .unwrap()
+                .level,
+            None
+        );
+    }
+
+    #[test]
+    fn a11y_rejects_invalid_usize_fields() {
+        assert_eq!(A11y::wire_decode(&json!({"position_in_set": "3"})), None);
+        assert_eq!(A11y::wire_decode(&json!({"size_of_set": "10"})), None);
+    }
+
+    #[test]
+    fn a11y_mnemonic_takes_first_char() {
+        assert_eq!(
+            A11y::wire_decode(&json!({"mnemonic": ""}))
+                .unwrap()
+                .mnemonic,
+            None
+        );
+        assert_eq!(
+            A11y::wire_decode(&json!({"mnemonic": 1})).unwrap().mnemonic,
+            None
+        );
+        assert_eq!(
+            A11y::wire_decode(&json!({"mnemonic": "Save"}))
+                .unwrap()
+                .mnemonic,
+            Some('S')
+        );
+    }
+
+    #[test]
+    fn a11y_radio_group_rejects_invalid_items() {
+        assert_eq!(
+            A11y::wire_decode(&json!({"radio_group": ["opt_a", 42, "opt_b"]})),
+            None
+        );
+        assert_eq!(A11y::wire_decode(&json!({"radio_group": "opt_a"})), None);
     }
 
     #[test]

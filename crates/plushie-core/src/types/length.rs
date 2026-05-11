@@ -49,7 +49,9 @@ impl PlushieType for Length {
             Value::Object(obj) => obj
                 .get("fill_portion")
                 .and_then(|v| v.as_u64())
-                .map(|n| Self::FillPortion(u32::try_from(n).unwrap_or(u32::MAX).max(1))),
+                .and_then(|n| u32::try_from(n).ok())
+                .filter(|n| *n >= 1)
+                .map(Self::FillPortion),
             _ => None,
         }
     }
@@ -126,6 +128,15 @@ mod tests {
         assert_eq!(Length::wire_decode(&json!({"fill_porton": 3})), None);
         assert_eq!(Length::wire_decode(&json!({})), None);
         assert_eq!(Length::wire_decode(&json!({"foo": "bar"})), None);
+    }
+
+    #[test]
+    fn decode_rejects_invalid_fill_portion() {
+        assert_eq!(Length::wire_decode(&json!({"fill_portion": 0})), None);
+        assert_eq!(
+            Length::wire_decode(&json!({"fill_portion": u64::from(u32::MAX) + 1})),
+            None
+        );
     }
 
     #[test]

@@ -402,11 +402,11 @@ The startup sequence is fixed and runs once per SDK connection
 | `widgets` | array of string | All compiled widget type names, sorted |
 | `native_widgets` | array of string | Native widget type names, sorted |
 
-The SDK accepts either `protocol_version` or `protocol` for
-backwards compatibility. A version skew between the SDK's pinned
-`PROTOCOL_VERSION` and the renderer's advertised value is logged
-and surfaced through `plushie::RENDERER_VERSION` diagnostics;
-the connection still proceeds.
+The SDK accepts either `protocol_version` or `protocol` on `hello`
+for backwards compatibility. The initial `settings.protocol_version`
+is mandatory and must match the renderer's `PROTOCOL_VERSION`; a
+missing or mismatched value is a startup error and the connection does
+not proceed.
 
 ## Error handling
 

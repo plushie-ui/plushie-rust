@@ -29,12 +29,14 @@ use iced::mouse;
 use iced::{Event, Size, Theme};
 use serde::Serialize;
 
+use plushie_core::Diagnostic;
 use plushie_renderer_engine::Codec;
 use plushie_renderer_engine::Core;
 use plushie_widget_sdk::PlushieRenderer;
 use plushie_widget_sdk::image_registry::ImageRegistry;
 use plushie_widget_sdk::protocol::{
-    IncomingMessage, OutgoingEvent, ScreenshotResponse, SessionMessage,
+    DiagnosticLevel, DiagnosticMessage, IncomingMessage, OutgoingEvent, ScreenshotResponse,
+    SessionMessage,
 };
 use plushie_widget_sdk::render_ctx::RenderCtx;
 use plushie_widget_sdk::runtime::Message;
@@ -1323,8 +1325,20 @@ fn load_font_bytes(bytes: Vec<u8>) {
     guard.load_font(std::borrow::Cow::Owned(bytes));
 }
 
+fn emit_wire_input_error(writer: &WireWriter, session_id: &str, detail: String) {
+    let msg = DiagnosticMessage::new(DiagnosticLevel::Warn, Diagnostic::WireInputError { detail })
+        .with_session(session_id);
+    if let Err(e) = writer.emit(&msg) {
+        log::error!("diagnostic write error: {e}");
+    }
+}
+
 /// Read and decode the next message from a BufRead source.
-fn read_message(codec: Codec, reader: &mut impl BufRead) -> Option<SessionMessage> {
+fn read_message(
+    codec: Codec,
+    reader: &mut impl BufRead,
+    writer: &WireWriter,
+) -> Option<SessionMessage> {
     loop {
         match codec.read_message(reader) {
             Ok(None) => return None,
@@ -1332,14 +1346,23 @@ fn read_message(codec: Codec, reader: &mut impl BufRead) -> Option<SessionMessag
                 let value: serde_json::Value = match codec.decode(&bytes) {
                     Ok(v) => v,
                     Err(e) => {
-                        log::error!("decode error: {e}");
+                        let detail = format!("decode error: {e}");
+                        log::error!("{detail}");
+                        emit_wire_input_error(writer, "", detail);
                         continue;
                     }
                 };
+                let session_id = value
+                    .get("session")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 match SessionMessage::from_value(value) {
                     Ok(sm) => return Some(sm),
                     Err(e) => {
-                        log::error!("decode error: {e}");
+                        let detail = format!("decode error: {e}");
+                        log::error!("{detail}");
+                        emit_wire_input_error(writer, &session_id, detail);
                         continue;
                     }
                 }
@@ -1381,29 +1404,31 @@ fn run_single<R: PlushieRenderer>(
         Some(factory) => Session::<R>::with_registry(mode, writer, factory()),
         None => Session::<R>::new(mode, writer),
     };
+    let diagnostic_writer = WireWriter::channel(writer_tx.clone(), codec);
 
     // Process the initial Settings through the session so Core.apply()
     // picks up default_event_rate, default_text_size, widget config, etc.
     {
         let (session_id, msg) = initial.into_parts();
-        let mut read_next = || read_message(codec, reader).map(|sm| sm.message);
+        let mut read_next = || read_message(codec, reader, &diagnostic_writer).map(|sm| sm.message);
         if let Err(e) = handle_message(&mut session, &session_id, msg, &mut read_next) {
             log::error!("write error processing initial settings: {e}");
             // Drop session FIRST so its WireWriter (which holds a
             // clone of writer_tx) releases the sender before we
             // join the writer thread - otherwise join() deadlocks.
             drop(session);
+            drop(diagnostic_writer);
             drop(writer_tx);
             let _ = writer_handle.join();
             return;
         }
     }
 
-    while let Some(sm) = read_message(codec, reader) {
+    while let Some(sm) = read_message(codec, reader, &diagnostic_writer) {
         // Provide a callback that reads the next message from stdin.
         // Used by inject_and_capture during iterative interact to
         // wait for the host's snapshot between events.
-        let mut read_next = || read_message(codec, reader).map(|sm| sm.message);
+        let mut read_next = || read_message(codec, reader, &diagnostic_writer).map(|sm| sm.message);
 
         if let Err(e) = handle_message(&mut session, &sm.session, sm.message, &mut read_next) {
             log::error!("write error: {e}");
@@ -1415,6 +1440,7 @@ fn run_single<R: PlushieRenderer>(
     // writer thread, otherwise the thread's for-loop over writer_rx
     // never exits because a sender is still alive.
     drop(session);
+    drop(diagnostic_writer);
     drop(writer_tx);
     let _ = writer_handle.join();
 }
@@ -1532,6 +1558,16 @@ fn run_multiplexed<R: PlushieRenderer>(
                 let _ = writer_tx.try_send(bytes);
             }
         };
+    let emit_wire_input_error = |writer_tx: &mpsc::SyncSender<Vec<u8>>,
+                                 session_id: &str,
+                                 detail: String| {
+        let msg =
+            DiagnosticMessage::new(DiagnosticLevel::Warn, Diagnostic::WireInputError { detail })
+                .with_session(session_id);
+        if let Ok(bytes) = codec.encode(&msg) {
+            let _ = writer_tx.try_send(bytes);
+        }
+    };
 
     loop {
         // Drain writer -> reader signals before each read so lifecycle
@@ -1573,14 +1609,23 @@ fn run_multiplexed<R: PlushieRenderer>(
                 let value: serde_json::Value = match codec.decode(&bytes) {
                     Ok(v) => v,
                     Err(e) => {
-                        log::error!("decode error: {e}");
+                        let detail = format!("decode error: {e}");
+                        log::error!("{detail}");
+                        emit_wire_input_error(&writer_tx, "", detail);
                         continue;
                     }
                 };
+                let decoded_session = value
+                    .get("session")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let sm = match SessionMessage::from_value(value) {
                     Ok(sm) => sm,
                     Err(e) => {
-                        log::error!("decode error: {e}");
+                        let detail = format!("decode error: {e}");
+                        log::error!("{detail}");
+                        emit_wire_input_error(&writer_tx, &decoded_session, detail);
                         continue;
                     }
                 };
@@ -1812,7 +1857,14 @@ fn run_multiplexed<R: PlushieRenderer>(
                         && let Some(d) = sessions.get_mut(&session_id)
                         && try_enqueue(&mut d.tx, &mut d.pending, settings_msg).is_err()
                     {
-                        log::error!("session '{session_id}': failed to queue initial settings");
+                        let msg = "failed to queue initial settings";
+                        log::error!("session '{session_id}': {msg}");
+                        emit_session_error(
+                            &writer_tx,
+                            &session_id,
+                            "initial_settings_enqueue_failed",
+                            msg,
+                        );
                     }
                 }
 

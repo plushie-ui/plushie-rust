@@ -289,7 +289,7 @@ Layout-aware widgets emit size events the app can branch on.
 `responsive` fires a resize event when the available size inside it
 changes. Drop a child in, branch on the measured width inside `update`,
 and re-render. `sensor` is similar but general: attach it to any
-subtree and opt into resize events with `.on_resize("tag")`, and the
+subtree and opt into resize events with `.on_resize(true)`, and the
 subtree reports its own box rather than the available space.
 
 For window-level geometry, the `Subscription::on_window_resize()`

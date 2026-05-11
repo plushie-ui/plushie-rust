@@ -760,7 +760,7 @@ observation.
 |---|---|---|
 | `delay` | `(ms: u32) -> Self` | Delay before emitting |
 | `anticipate` | `(pixels: f32) -> Self` | Visibility anticipation distance |
-| `on_resize` | `(tag: &str) -> Self` | Emit resize with tag |
+| `on_resize` | `(enabled: bool) -> Self` | Emit resize |
 | `event_rate` | `(rate: u32) -> Self` | Max events/sec |
 | `a11y` | `(a11y: &A11y) -> Self` | Accessibility metadata |
 | `child` | `(c: impl Into<View>) -> Self` | Single child |

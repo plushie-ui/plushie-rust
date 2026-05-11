@@ -1,6 +1,5 @@
 use iced::widget::{Space, sensor};
 use iced::{Element, Theme};
-use serde_json::Value;
 
 use crate::PlushieRenderer;
 use crate::message::Message;
@@ -14,7 +13,7 @@ use plushie_core::types::PlushieType;
 struct SensorProps {
     delay: Option<f64>,
     anticipate: Option<f32>,
-    on_resize: Option<String>,
+    on_resize: bool,
 }
 
 impl SensorProps {
@@ -23,7 +22,7 @@ impl SensorProps {
         Self {
             delay: f64::extract(p, "delay"),
             anticipate: f32::extract(p, "anticipate"),
-            on_resize: prop_str(p, "on_resize"),
+            on_resize: prop_bool_default(p, "on_resize", false),
         }
     }
 }
@@ -53,43 +52,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
 
         let mut s = sensor(child).key(id);
 
-        if let Some(ref tag) = sp.on_resize {
-            // on_show: emit as "{tag}:show"
-            {
-                let wid = window_id.clone();
-                let nid = node.id.clone();
-                let family = format!("{}:show", tag);
-                s = s.on_show(move |size| Message::Event {
-                    window_id: wid.clone(),
-                    id: nid.clone(),
-                    family: family.clone(),
-                    value: serde_json::json!({"width": size.width, "height": size.height}),
-                });
-            }
-            // on_resize: emit with the tag directly
-            {
-                let wid = window_id.clone();
-                let nid = node.id.clone();
-                let family = tag.clone();
-                s = s.on_resize(move |size| Message::Event {
-                    window_id: wid.clone(),
-                    id: nid.clone(),
-                    family: family.clone(),
-                    value: serde_json::json!({"width": size.width, "height": size.height}),
-                });
-            }
-            // on_hide: emit as "{tag}:hide"
-            {
-                let wid = window_id.clone();
-                let nid = node.id.clone();
-                let family = format!("{}:hide", tag);
-                s = s.on_hide(Message::Event {
-                    window_id: wid,
-                    id: nid,
-                    family,
-                    value: Value::Null,
-                });
-            }
+        if sp.on_resize {
+            let wid = window_id.clone();
+            let nid = node.id.clone();
+            s = s.on_resize(move |size| Message::Event {
+                window_id: wid.clone(),
+                id: nid.clone(),
+                family: "resize".to_string(),
+                value: serde_json::json!({"width": size.width, "height": size.height}),
+            });
         }
 
         if let Some(d) = sp.delay
@@ -106,5 +77,27 @@ impl<R: PlushieRenderer> PlushieWidget<R> for SensorWidget {
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(SensorWidget)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn on_resize_is_boolean_enablement() {
+        let node = crate::testing::node_with_props("sensor", "sensor", json!({"on_resize": true}));
+        let props = SensorProps::from_node(&node);
+
+        assert!(props.on_resize);
+    }
+
+    #[test]
+    fn string_on_resize_is_not_a_resize_subscription() {
+        let node = crate::testing::node_with_props("sensor", "sensor", json!({"on_resize": "tag"}));
+        let props = SensorProps::from_node(&node);
+
+        assert!(!props.on_resize);
     }
 }

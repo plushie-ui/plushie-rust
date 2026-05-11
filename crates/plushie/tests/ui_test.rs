@@ -69,6 +69,14 @@ fn window_with_title_and_child() {
 }
 
 #[test]
+fn sensor_on_resize_writes_boolean_prop() {
+    let v = view_json(sensor("content-size").on_resize(true).child(text("Body")));
+
+    assert_eq!(get_type(&v), "sensor");
+    assert_eq!(get_prop(&v, "on_resize"), true);
+}
+
+#[test]
 fn column_auto_id_starts_with_auto() {
     let v = view_json(column());
     assert!(get_id(&v).starts_with("auto:"));

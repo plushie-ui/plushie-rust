@@ -270,9 +270,9 @@ impl SensorBuilder {
         self
     }
 
-    /// Enable resize events with a custom event tag.
-    pub fn on_resize(mut self, tag: &str) -> Self {
-        super::set_prop(&mut self.props, "on_resize", tag);
+    /// Enable resize events.
+    pub fn on_resize(mut self, enabled: bool) -> Self {
+        super::set_prop(&mut self.props, "on_resize", enabled);
         self
     }
 

@@ -55,6 +55,8 @@ use plushie_renderer_lib::emitters::emit_hello;
 use effects::WebEffectHandler;
 use output::WebOutputWriter;
 
+const WASM_CODEC: Codec = Codec::Json;
+
 /// Global message receiver slot. Initialized by the [`PlushieApp`]
 /// constructor, consumed once by the message subscription.
 static MSG_RX: Mutex<Option<futures_channel::mpsc::UnboundedReceiver<String>>> = Mutex::new(None);
@@ -101,6 +103,16 @@ fn parse_and_validate_settings(settings_json: &str) -> Result<serde_json::Value,
         serde_json::from_str(settings_json).map_err(|e| format!("invalid settings JSON: {e}"))?;
     validate_protocol_version(&settings)?;
     Ok(settings)
+}
+
+fn validate_incoming_message_json(json: &str) -> Result<(), String> {
+    if json.len() > MAX_MESSAGE_SIZE {
+        return Err(format!(
+            "message JSON exceeds {MAX_MESSAGE_SIZE} byte limit ({} bytes)",
+            json.len()
+        ));
+    }
+    Ok(())
 }
 
 /// WASM plushie renderer handle.
@@ -158,6 +170,7 @@ impl PlushieApp {
                 "send failed: renderer daemon has stopped after a runtime error",
             ));
         }
+        validate_incoming_message_json(json).map_err(|e| JsValue::from_str(&e))?;
         self.sender
             .unbounded_send(json.to_string())
             .map_err(|e| JsValue::from_str(&format!("send failed: {e}")))
@@ -192,8 +205,7 @@ impl PlushieApp {
 
         // Settings validated. Safe to initialise the output sink now.
         let writer = WebOutputWriter::try_new(on_event)?;
-        let codec = Codec::Json;
-        let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), codec);
+        let sink = plushie_renderer_lib::WriterSink::new(Box::new(writer), WASM_CODEC);
         plushie_renderer_lib::emitters::init_sink(Box::new(sink));
         plushie_renderer_lib::emitters::install_panic_hook();
 
@@ -238,6 +250,7 @@ impl PlushieApp {
         // wgpu is not compiled in. Report what is actually shipped.
         emit_hello("web", "tiny-skia", &ext_key_refs, &["iced"], "wasm")
             .map_err(|e| JsValue::from_str(&format!("failed to emit hello: {e}")))?;
+        plushie_renderer_lib::settings::validate_required_widgets(&settings, &ext_key_refs);
 
         // Create the message channel for JS -> renderer communication.
         let (sender, receiver) = futures_channel::mpsc::unbounded::<String>();
@@ -270,6 +283,7 @@ impl PlushieApp {
                     let effect_handler = Box::new(WebEffectHandler);
                     let sink = plushie_renderer_lib::emitters::sink_arc();
                     let mut app = App::new(registry, effect_handler, sink);
+                    app.set_codec(WASM_CODEC);
 
                     app.scale_factor = plushie_renderer_lib::validate_scale_factor(
                         settings
@@ -373,7 +387,12 @@ fn message_subscription() -> impl iced::futures::Stream<Item = StdinEvent> {
 mod tests {
     use serde_json::json;
 
-    use super::validate_protocol_version;
+    use super::{WASM_CODEC, validate_incoming_message_json, validate_protocol_version};
+
+    #[test]
+    fn wasm_app_codec_is_json() {
+        assert_eq!(WASM_CODEC, plushie_renderer_engine::Codec::Json);
+    }
 
     #[test]
     fn validate_protocol_version_accepts_expected_value() {
@@ -481,5 +500,21 @@ mod tests {
         let json = format!(r#"{{"protocol_version": {v}}}"#);
         let err = parse_and_validate_settings(&json).unwrap_err();
         assert!(err.contains("protocol version mismatch"));
+    }
+
+    #[test]
+    fn validate_incoming_message_json_accepts_bounded_payload() {
+        assert!(validate_incoming_message_json("{}").is_ok());
+    }
+
+    #[test]
+    fn validate_incoming_message_json_rejects_oversized_payload() {
+        let message = " ".repeat(plushie_renderer_engine::MAX_MESSAGE_SIZE + 1);
+        let err = validate_incoming_message_json(&message).unwrap_err();
+
+        assert!(
+            err.starts_with("message JSON exceeds"),
+            "unexpected error: {err}",
+        );
     }
 }

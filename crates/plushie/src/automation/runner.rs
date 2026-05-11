@@ -25,9 +25,9 @@
 //!   `crate::automation::runner_wire` and gated on the `wire`
 //!   feature.
 
+use crate::App;
 use crate::automation::file::{Instruction, PlushieFile};
 use crate::test::TestSession;
-use crate::App;
 use crate::{Error, Result as PlushieResult};
 
 /// Captured data produced by a `.plushie` instruction.

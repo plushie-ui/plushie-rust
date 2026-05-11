@@ -20,12 +20,12 @@
 
 use std::time::Duration;
 
+use crate::App;
 use crate::automation::file::{Instruction, PlushieFile};
 use crate::automation::runner::{self, Capture, RunResult};
 use crate::runner::bridge::{Bridge, Codec, Incoming};
 use crate::runner::wire_discovery;
 use crate::test::TestSession;
-use crate::App;
 use crate::{Error, Result as PlushieResult};
 
 /// How long to wait for outgoing tree-snapshot acks or renderer

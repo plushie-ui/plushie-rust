@@ -1,14 +1,14 @@
-use iced::widget::{mouse_area, Space};
-use iced::{mouse, Element, Theme};
+use iced::widget::{Space, mouse_area};
+use iced::{Element, Theme, mouse};
 use serde_json::Value;
 
+use crate::PlushieRenderer;
 use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::{KeyModifiers, OutgoingEvent, TreeNode};
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
-use crate::PlushieRenderer;
 
 use plushie_core::types::{CursorStyle, PlushieType};
 

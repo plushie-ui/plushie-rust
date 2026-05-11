@@ -1153,7 +1153,10 @@ mod tests {
 
     #[test]
     fn table_separator_accepts_numeric_thickness() {
-        let node = make_node("table", json!({"columns": [], "rows": [], "separator": 1.0}));
+        let node = make_node(
+            "table",
+            json!({"columns": [], "rows": [], "separator": 1.0}),
+        );
         let warnings = collect_prop_warnings(&node);
         assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     }

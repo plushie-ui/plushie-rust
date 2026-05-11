@@ -11,7 +11,7 @@
 //! affect live sessions. The version probe talks to the binary over
 //! `--mock --json`, which is the protocol-only stub path.
 
-use crate::{discover, platform, Result};
+use crate::{Result, discover, platform};
 use anyhow::Context;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};

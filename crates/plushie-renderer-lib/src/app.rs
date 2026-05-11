@@ -226,10 +226,7 @@ impl App {
 
     pub fn lookup_widget_event_rate(&self, widget_id: &str) -> Option<u32> {
         let node = self.core.tree.find_by_id(widget_id)?;
-        let rate = node
-            .props
-            .get("event_rate")
-            .and_then(|v| v.as_u64())?;
+        let rate = node.props.get("event_rate").and_then(|v| v.as_u64())?;
         match u32::try_from(rate) {
             Ok(rate) => Some(rate),
             Err(_) => {

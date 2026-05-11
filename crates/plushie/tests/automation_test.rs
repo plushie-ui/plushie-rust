@@ -3,11 +3,11 @@
 mod common;
 
 use common::{a11y_node, button_node, container_node, text_node, window_node};
-use plushie::automation::{file, runner, Element};
+use plushie::automation::{Element, file, runner};
 use plushie::prelude::*;
 use plushie::test::TestSession;
-use plushie_core::protocol::{Props, TreeNode};
 use plushie_core::Selector;
+use plushie_core::protocol::{Props, TreeNode};
 
 // ---------------------------------------------------------------------------
 // Selector::find by ID

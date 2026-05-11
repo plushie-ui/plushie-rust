@@ -123,6 +123,15 @@ impl Tree {
         log::debug!("applying patch: {} ops", ops.len());
         let mut exit_nodes = Vec::new();
         for op in ops {
+            if op.path.len() > MAX_TREE_DEPTH {
+                log::warn!(
+                    "failed to apply patch op {:?}: path depth {} exceeds max {}",
+                    op.op,
+                    op.path.len(),
+                    MAX_TREE_DEPTH
+                );
+                continue;
+            }
             // Check for exit nodes before removal
             if op.op == "remove_child"
                 && let Some(root) = self.root.as_ref()
@@ -983,6 +992,38 @@ mod tests {
             tree.root().unwrap().children[0].props.to_value()["content"],
             "new"
         );
+    }
+
+    #[test]
+    fn patch_overdeep_path_is_skipped_before_navigation() {
+        let overdeep_path = vec![0; MAX_TREE_DEPTH + 1];
+        let mut root = node_with_props("target", "text", json!({"content": "old"}));
+        for i in 0..overdeep_path.len() {
+            root = node_with_children(&format!("n{i}"), "column", vec![root]);
+        }
+
+        let mut tree = Tree::new();
+        let _ = tree.snapshot(root);
+        let overdeep = make_patch_op(
+            "update_props",
+            overdeep_path.clone(),
+            json!({
+                "props": {"content": "new"}
+            }),
+        );
+        let valid = make_patch_op(
+            "update_props",
+            vec![],
+            json!({
+                "props": {"checked": true}
+            }),
+        );
+
+        tree.apply_patch(vec![overdeep, valid]);
+
+        let target = navigate(tree.root().unwrap(), &overdeep_path).unwrap();
+        assert_eq!(target.props.to_value()["content"], "old");
+        assert_eq!(tree.root().unwrap().props.to_value()["checked"], true);
     }
 
     #[test]

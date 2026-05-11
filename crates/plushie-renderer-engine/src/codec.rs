@@ -59,7 +59,7 @@ impl Codec {
     /// # Errors
     ///
     /// Returns an error when serialization fails or when the encoded
-    /// payload exceeds the 4 GiB msgpack frame limit.
+    /// payload exceeds [`MAX_MESSAGE_SIZE`].
     pub fn encode<T: Serialize>(&self, value: &T) -> Result<Vec<u8>, String> {
         match self {
             Codec::Json => {
@@ -69,6 +69,7 @@ impl Codec {
                 let mut bytes =
                     serde_json::to_vec(&json_value).map_err(|e| format!("json encode: {e}"))?;
                 bytes.push(b'\n');
+                ensure_message_size(bytes.len(), "JSON message")?;
                 Ok(bytes)
             }
             Codec::MsgPack => {
@@ -80,12 +81,8 @@ impl Codec {
                 let mut payload = Vec::new();
                 rmpv::encode::write_value(&mut payload, &msg)
                     .map_err(|e| format!("msgpack encode: {e}"))?;
-                let len = u32::try_from(payload.len()).map_err(|_| {
-                    format!(
-                        "payload exceeds 4 GiB frame limit ({} bytes)",
-                        payload.len()
-                    )
-                })?;
+                ensure_message_size(payload.len(), "msgpack payload")?;
+                let len = payload.len() as u32;
                 let mut bytes = Vec::with_capacity(4 + payload.len());
                 bytes.extend_from_slice(&len.to_be_bytes());
                 bytes.extend_from_slice(&payload);
@@ -110,12 +107,22 @@ impl Codec {
     /// # Errors
     ///
     /// Returns an error when JSON or msgpack serialization fails, or
-    /// when the encoded msgpack payload exceeds the 4 GiB frame limit.
+    /// when the encoded payload exceeds [`MAX_MESSAGE_SIZE`].
     pub fn encode_binary_message(
         &self,
         map: serde_json::Map<String, serde_json::Value>,
         binary_field: Option<(&str, &[u8])>,
     ) -> Result<Vec<u8>, String> {
+        if let Some((_, bytes)) = binary_field
+            && bytes.len() > MAX_MESSAGE_SIZE
+        {
+            return Err(format!(
+                "binary field exceeds {} byte message limit ({} bytes)",
+                MAX_MESSAGE_SIZE,
+                bytes.len()
+            ));
+        }
+
         let mut val = serde_json::Value::Object(map);
         sanitize_json_value(&mut val);
         let mut map = match val {
@@ -136,6 +143,7 @@ impl Codec {
                 let mut bytes =
                     serde_json::to_vec(&val).map_err(|e| format!("json encode: {e}"))?;
                 bytes.push(b'\n');
+                ensure_message_size(bytes.len(), "JSON message")?;
                 Ok(bytes)
             }
             Codec::MsgPack => {
@@ -156,12 +164,8 @@ impl Codec {
                 let mut payload = Vec::new();
                 rmpv::encode::write_value(&mut payload, &msg)
                     .map_err(|e| format!("msgpack encode: {e}"))?;
-                let len = u32::try_from(payload.len()).map_err(|_| {
-                    format!(
-                        "payload exceeds 4 GiB frame limit ({} bytes)",
-                        payload.len()
-                    )
-                })?;
+                ensure_message_size(payload.len(), "msgpack payload")?;
+                let len = payload.len() as u32;
                 let mut bytes = Vec::with_capacity(4 + payload.len());
                 bytes.extend_from_slice(&len.to_be_bytes());
                 bytes.extend_from_slice(&payload);
@@ -188,6 +192,7 @@ impl Codec {
     /// cannot be decoded from the selected wire format, or cannot be
     /// deserialized into the requested target type.
     pub fn decode<T: DeserializeOwned>(&self, bytes: &[u8]) -> Result<T, String> {
+        ensure_message_size(bytes.len(), "message payload")?;
         match self {
             Codec::Json => serde_json::from_slice(bytes).map_err(|e| format!("json decode: {e}")),
             Codec::MsgPack => {
@@ -307,6 +312,17 @@ impl Codec {
         } else {
             Codec::MsgPack
         }
+    }
+}
+
+fn ensure_message_size(len: usize, context: &str) -> Result<(), String> {
+    if len > MAX_MESSAGE_SIZE {
+        Err(format!(
+            "{context} exceeds {} byte limit ({len} bytes)",
+            MAX_MESSAGE_SIZE
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -807,6 +823,31 @@ mod tests {
         let result = Codec::MsgPack.read_message(&mut reader);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("empty frame"));
+    }
+
+    #[test]
+    fn message_size_cap_is_enforced_at_codec_boundaries() {
+        {
+            let oversized = vec![b' '; MAX_MESSAGE_SIZE + 1];
+            let result: Result<serde_json::Value, _> = Codec::Json.decode(&oversized);
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("byte limit"));
+        }
+
+        {
+            let value = "x".repeat(MAX_MESSAGE_SIZE);
+            let result = Codec::Json.encode(&value);
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("byte limit"));
+        }
+
+        {
+            let map = serde_json::Map::new();
+            let binary = vec![0u8; MAX_MESSAGE_SIZE + 1];
+            let result = Codec::MsgPack.encode_binary_message(map, Some(("rgba", &binary)));
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("message limit"));
+        }
     }
 
     // -- Cross-format: simulate external msgpack (e.g. Msgpax) --

@@ -20,12 +20,12 @@
 
 use std::time::Duration;
 
-use crate::App;
 use crate::automation::file::{Instruction, PlushieFile};
-use crate::automation::runner::{self, RunResult};
+use crate::automation::runner::{self, Capture, RunResult};
 use crate::runner::bridge::{Bridge, Codec, Incoming};
 use crate::runner::wire_discovery;
 use crate::test::TestSession;
+use crate::App;
 use crate::{Error, Result as PlushieResult};
 
 /// How long to wait for outgoing tree-snapshot acks or renderer
@@ -67,8 +67,18 @@ const FINAL_FLUSH_PAUSE: Duration = Duration::from_millis(100);
 /// - [`Error::WireEncode`] / [`Error::WireDecode`] on framing errors.
 /// - [`Error::Startup`] summarising failing instructions, if any.
 pub fn run_windowed<A: App>(file: &PlushieFile) -> PlushieResult {
+    run_windowed_result::<A>(file).map(|_| ())
+}
+
+/// Drive a windowed script end to end and return the run summary.
+///
+/// # Errors
+///
+/// Returns renderer discovery, startup, wire protocol, and script
+/// instruction failures from the windowed automation path.
+pub fn run_windowed_result<A: App>(file: &PlushieFile) -> Result<RunResult, Error> {
     let binary = wire_discovery::discover_renderer()?;
-    run_windowed_with_renderer::<A>(&binary, file)
+    run_windowed_with_renderer_result::<A>(&binary, file)
 }
 
 /// Drive a windowed script against an explicit renderer binary.
@@ -82,6 +92,20 @@ pub fn run_windowed<A: App>(file: &PlushieFile) -> PlushieResult {
 ///
 /// Same surface as [`run_windowed`].
 pub fn run_windowed_with_renderer<A: App>(binary: &str, file: &PlushieFile) -> PlushieResult {
+    run_windowed_with_renderer_result::<A>(binary, file).map(|_| ())
+}
+
+/// Drive a windowed script against an explicit renderer binary and
+/// return the run summary.
+///
+/// # Errors
+///
+/// Returns renderer startup, wire protocol, and script instruction
+/// failures from the windowed automation path.
+pub fn run_windowed_with_renderer_result<A: App>(
+    binary: &str,
+    file: &PlushieFile,
+) -> Result<RunResult, Error> {
     log::info!("automation windowed: using renderer at {binary}");
 
     let mut bridge = Bridge::spawn(binary).map_err(|e| Error::spawn(binary.to_string(), e))?;
@@ -110,10 +134,11 @@ pub fn run_windowed_with_renderer<A: App>(binary: &str, file: &PlushieFile) -> P
     // Seed the TestSession and push the initial tree so the window
     // shows the app's first frame before any instructions run.
     let mut session = TestSession::<A>::start().allow_diagnostics();
-    send_current_tree(&mut bridge, &session)?;
+    send_current_tree(&mut bridge, &session, file)?;
 
     let mut passed = 0usize;
     let mut failures: Vec<(usize, String)> = Vec::new();
+    let mut captures: Vec<Capture> = Vec::new();
 
     for (line_no, instruction) in &file.instructions {
         // `Wait` is wall-clock in windowed mode so the user can see
@@ -125,14 +150,18 @@ pub fn run_windowed_with_renderer<A: App>(binary: &str, file: &PlushieFile) -> P
             continue;
         }
         match execute_once(&mut session, instruction) {
-            Ok(()) => {
+            Ok(capture) => {
                 passed += 1;
+                if let Some(mut capture) = capture {
+                    capture.line = *line_no;
+                    captures.push(capture);
+                }
             }
             Err(msg) => {
                 failures.push((*line_no, msg));
             }
         }
-        if let Err(e) = send_current_tree(&mut bridge, &session) {
+        if let Err(e) = send_current_tree(&mut bridge, &session, file) {
             failures.push((*line_no, format!("windowed tree refresh failed: {e}")));
             break;
         }
@@ -142,14 +171,15 @@ pub fn run_windowed_with_renderer<A: App>(binary: &str, file: &PlushieFile) -> P
     // Bridge::Drop asks the renderer to exit.
     std::thread::sleep(FINAL_FLUSH_PAUSE);
 
-    let result = RunResult { passed, failures };
+    let result = RunResult {
+        passed,
+        failures,
+        captures,
+    };
     if result.is_ok() {
-        Ok(())
+        Ok(result)
     } else {
-        Err(Error::Startup(format!(
-            "{} instruction(s) failed",
-            result.failures.len()
-        )))
+        Err(Error::Startup(runner::format_run_failures(&result)))
     }
 }
 
@@ -158,7 +188,7 @@ pub fn run_windowed_with_renderer<A: App>(binary: &str, file: &PlushieFile) -> P
 fn execute_once<A: App>(
     session: &mut TestSession<A>,
     instruction: &Instruction,
-) -> Result<(), String> {
+) -> Result<Option<Capture>, String> {
     runner::execute_instruction(session, instruction)
 }
 
@@ -179,9 +209,18 @@ fn hello_protocol_version(hello: &serde_json::Value) -> Option<u32> {
         .and_then(plushie_core::protocol::json_protocol_version)
 }
 
-fn send_current_tree<A: App>(bridge: &mut Bridge, session: &TestSession<A>) -> PlushieResult {
-    let snapshot = serde_json::to_value(session.tree())
+fn send_current_tree<A: App>(
+    bridge: &mut Bridge,
+    session: &TestSession<A>,
+    file: &PlushieFile,
+) -> PlushieResult {
+    let mut snapshot = serde_json::to_value(session.tree())
         .map_err(|e| Error::WireEncode(format!("tree: {e}")))?;
+    apply_viewport_to_snapshot(
+        &mut snapshot,
+        file.header.viewport,
+        file.header.viewport_explicit,
+    );
     bridge.send_snapshot(&snapshot)?;
 
     loop {
@@ -205,6 +244,40 @@ fn build_automation_settings<A: App>() -> serde_json::Value {
         );
     }
     json
+}
+
+fn apply_viewport_to_snapshot(
+    node: &mut serde_json::Value,
+    viewport: (u32, u32),
+    viewport_explicit: bool,
+) {
+    if !viewport_explicit {
+        return;
+    }
+    apply_viewport_to_node(node, viewport);
+}
+
+fn apply_viewport_to_node(node: &mut serde_json::Value, viewport: (u32, u32)) {
+    let Some(obj) = node.as_object_mut() else {
+        return;
+    };
+
+    let type_name = obj
+        .get("type")
+        .or_else(|| obj.get("type_name"))
+        .and_then(|v| v.as_str());
+    if type_name == Some("window")
+        && let Some(props) = obj.get_mut("props").and_then(|v| v.as_object_mut())
+    {
+        props.insert("width".to_string(), serde_json::json!(viewport.0 as f32));
+        props.insert("height".to_string(), serde_json::json!(viewport.1 as f32));
+    }
+
+    if let Some(children) = obj.get_mut("children").and_then(|v| v.as_array_mut()) {
+        for child in children {
+            apply_viewport_to_node(child, viewport);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -261,5 +334,35 @@ mod tests {
         });
 
         assert_eq!(hello_protocol_version(&hello), Some(u32::MAX));
+    }
+
+    #[test]
+    fn explicit_viewport_is_applied_to_window_snapshot() {
+        let mut snapshot = serde_json::json!({
+            "id": "main",
+            "type_name": "window",
+            "props": { "title": "Main" },
+            "children": []
+        });
+
+        apply_viewport_to_snapshot(&mut snapshot, (640, 480), true);
+
+        assert_eq!(snapshot["props"]["width"], serde_json::json!(640.0));
+        assert_eq!(snapshot["props"]["height"], serde_json::json!(480.0));
+    }
+
+    #[test]
+    fn implicit_viewport_leaves_window_snapshot_unchanged() {
+        let mut snapshot = serde_json::json!({
+            "id": "main",
+            "type_name": "window",
+            "props": { "title": "Main" },
+            "children": []
+        });
+
+        apply_viewport_to_snapshot(&mut snapshot, (640, 480), false);
+
+        assert!(snapshot["props"].get("width").is_none());
+        assert!(snapshot["props"].get("height").is_none());
     }
 }

@@ -25,6 +25,8 @@ pub struct Header {
     pub app: Option<String>,
     /// Viewport dimensions (width, height). Default: (800, 600).
     pub viewport: (u32, u32),
+    /// Whether the file explicitly supplied a `viewport:` header.
+    pub viewport_explicit: bool,
     /// Renderer backend name. Default: `"mock"`.
     pub backend: String,
 }
@@ -34,6 +36,7 @@ impl Default for Header {
         Self {
             app: None,
             viewport: (800, 600),
+            viewport_explicit: false,
             backend: "mock".to_string(),
         }
     }
@@ -134,6 +137,7 @@ pub fn parse(content: &str) -> Result<PlushieFile, String> {
                 "viewport" => {
                     header.viewport = parse_viewport(value)
                         .map_err(|e| format!("line {}: viewport: {e}", line_no + 1))?;
+                    header.viewport_explicit = true;
                 }
                 "backend" => header.backend = value.to_string(),
                 _ => {} // Unknown keys ignored for forward compatibility.

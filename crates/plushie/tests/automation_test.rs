@@ -3,9 +3,11 @@
 mod common;
 
 use common::{a11y_node, button_node, container_node, text_node, window_node};
-use plushie::automation::Element;
-use plushie_core::Selector;
+use plushie::automation::{file, runner, Element};
+use plushie::prelude::*;
+use plushie::test::TestSession;
 use plushie_core::protocol::{Props, TreeNode};
+use plushie_core::Selector;
 
 // ---------------------------------------------------------------------------
 // Selector::find by ID
@@ -220,4 +222,103 @@ fn selector_display() {
     assert_eq!(Selector::text("Save").to_string(), "{text: \"Save\"}");
     assert_eq!(Selector::role("button").to_string(), "{role: button}");
     assert_eq!(Selector::focused().to_string(), "{focused}");
+}
+
+// ---------------------------------------------------------------------------
+// Script runner failures and captures
+// ---------------------------------------------------------------------------
+
+struct AutomationCounter {
+    count: i32,
+    viewport: Option<(f32, f32)>,
+}
+
+impl App for AutomationCounter {
+    type Model = Self;
+
+    fn init() -> (Self::Model, Command) {
+        (
+            Self {
+                count: 0,
+                viewport: None,
+            },
+            Command::none(),
+        )
+    }
+
+    fn update(model: &mut Self::Model, event: Event) -> Command {
+        match event {
+            Event::Widget(widget) if widget.scoped_id.id == "inc" => {
+                model.count += 1;
+            }
+            Event::Window(window) => {
+                if let (Some(width), Some(height)) = (window.width, window.height) {
+                    model.viewport = Some((width, height));
+                }
+            }
+            _ => {}
+        }
+        Command::none()
+    }
+
+    fn view(model: &Self::Model, _widgets: &mut WidgetRegistrar) -> ViewList {
+        window("main")
+            .child(
+                column()
+                    .child(text(&format!("{}", model.count)).id("display"))
+                    .child(button("inc", "+")),
+            )
+            .into()
+    }
+}
+
+#[test]
+fn missing_interaction_target_is_line_failure() {
+    let script = file::parse("app: Counter\n-----\nclick \"missing\"\n").unwrap();
+    let mut session = TestSession::<AutomationCounter>::start().allow_diagnostics();
+
+    let result = runner::run(&script, &mut session);
+
+    assert_eq!(result.failures.len(), 1);
+    assert_eq!(result.failures[0].0, 3);
+    assert!(result.failures[0].1.contains("target not found: missing"));
+}
+
+#[test]
+fn tree_hash_instruction_records_capture() {
+    let script = file::parse("app: Counter\n-----\ntree_hash \"after_init\"\n").unwrap();
+    let mut session = TestSession::<AutomationCounter>::start().allow_diagnostics();
+    let expected = session.tree_hash();
+
+    let result = runner::run(&script, &mut session);
+
+    assert!(result.is_ok(), "got failures: {:?}", result.failures);
+    assert_eq!(result.captures.len(), 1);
+    assert_eq!(result.captures[0].kind, "tree_hash");
+    assert_eq!(result.captures[0].name, "after_init");
+    assert_eq!(result.captures[0].value, expected);
+}
+
+#[test]
+fn screenshot_instruction_is_explicitly_unsupported_in_test_session_runner() {
+    let script = file::parse("app: Counter\n-----\nscreenshot \"snap\"\n").unwrap();
+    let mut session = TestSession::<AutomationCounter>::start().allow_diagnostics();
+
+    let result = runner::run(&script, &mut session);
+
+    assert_eq!(result.failures.len(), 1);
+    assert_eq!(result.failures[0].0, 3);
+    assert!(result.failures[0].1.contains("unsupported"));
+}
+
+#[test]
+fn explicit_viewport_header_is_applied_as_resize_event() {
+    let script =
+        file::parse("app: Counter\nviewport: 320x240\n-----\nassert_exists \"display\"\n").unwrap();
+    let mut session = TestSession::<AutomationCounter>::start().allow_diagnostics();
+
+    let result = runner::run(&script, &mut session);
+
+    assert!(result.is_ok(), "got failures: {:?}", result.failures);
+    assert_eq!(session.model().viewport, Some((320.0, 240.0)));
 }

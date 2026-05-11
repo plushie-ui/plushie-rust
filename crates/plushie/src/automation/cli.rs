@@ -8,40 +8,30 @@
 //!
 //! Each helper is parameterised over the app type `A: App` and returns
 //! a [`crate::Result`] (or a `String`, in the case of [`inspect`]).
-//! Output that matters to the caller (pass/fail summaries, snapshot
-//! JSON) goes through `stderr` / return values; they never call
+//! Output that matters to the caller (captures, snapshot JSON) goes
+//! through `stderr` / return values; they never call
 //! `std::process::exit`.
 
 use crate::{App, Error, Result};
 
-/// Run a `.plushie` automation script against a headless
-/// [`TestSession`](crate::test::TestSession).
+/// Run a `.plushie` automation script against the backend named in
+/// its header.
 ///
-/// Parses the file at `path`, runs each instruction in order, and
-/// prints a one-line pass/fail summary to stderr. Returns `Ok(())`
-/// when every instruction passed, and an error otherwise. Failures
-/// are listed on stderr (line number + message) before returning so
-/// the caller sees exactly what broke.
+/// Parses the file at `path`, validates `backend:`, and dispatches
+/// through [`crate::automation::runner::run_with_backend`]. Returns
+/// `Ok(())` when every instruction passed, and an error otherwise.
 ///
 /// # Errors
 ///
 /// Returns [`Error::InvalidSettings`] when the file cannot be read
 /// or parsed, and a generic [`Error::Startup`] when one or more
-/// instructions fail (the summary on stderr has the details).
+/// instructions fail with line-level details.
 pub fn script<A: App>(path: &str) -> Result {
     let file = crate::automation::file::parse_file(path)
         .map_err(|e| Error::InvalidSettings(format!("{path}: {e}")))?;
-    let mut session = crate::test::TestSession::<A>::start().allow_diagnostics();
-    let result = crate::automation::runner::run::<A>(&file, &mut session);
-    print_summary(path, &result);
-    if result.is_ok() {
-        Ok(())
-    } else {
-        Err(Error::Startup(format!(
-            "{} instruction(s) failed in {path}",
-            result.failures.len()
-        )))
-    }
+    let result = crate::automation::runner::run_with_backend_result::<A>(&file)?;
+    print_captures(path, &result);
+    Ok(())
 }
 
 /// Replay a `.plushie` script against a live renderer (windowed).
@@ -92,18 +82,12 @@ pub fn inspect<A: App>() -> std::result::Result<String, Error> {
     Ok(session.tree_snapshot())
 }
 
-fn print_summary(path: &str, result: &crate::automation::runner::RunResult) {
-    if result.is_ok() {
-        eprintln!("{path}: {} instruction(s) passed", result.passed);
-        return;
-    }
-    eprintln!(
-        "{path}: {} passed, {} failed",
-        result.passed,
-        result.failures.len()
-    );
-    for (line_no, msg) in &result.failures {
-        eprintln!("  line {line_no}: {msg}");
+fn print_captures(path: &str, result: &crate::automation::runner::RunResult) {
+    for capture in &result.captures {
+        eprintln!(
+            "{path}: line {}: {} {} {}",
+            capture.line, capture.kind, capture.name, capture.value
+        );
     }
 }
 
@@ -146,6 +130,18 @@ mod tests {
         let err = script::<NoopApp>("/nonexistent/nope.plushie").unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("/nonexistent/nope.plushie"), "got: {msg}");
+    }
+
+    #[test]
+    fn script_unknown_backend_is_invalid_settings() {
+        let path = std::env::temp_dir().join("plushie_cli_script_unknown_backend.plushie");
+        std::fs::write(&path, "app: Noop\nbackend: nope\n-----\nwait 1\n").unwrap();
+        let err = script::<NoopApp>(path.to_str().unwrap()).unwrap_err();
+        assert!(
+            matches!(err, Error::InvalidSettings(_)),
+            "expected InvalidSettings, got: {err}"
+        );
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

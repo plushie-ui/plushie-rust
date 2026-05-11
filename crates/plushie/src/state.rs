@@ -167,6 +167,9 @@ fn set_nested(data: &mut Value, path: &[&str], value: Value) {
     if path.is_empty() {
         return;
     }
+    if !data.is_object() {
+        *data = Value::Object(serde_json::Map::new());
+    }
     if path.len() == 1 {
         if let Some(obj) = data.as_object_mut() {
             obj.insert(path[0].to_string(), value);
@@ -250,6 +253,21 @@ mod tests {
         let mut state = State::new(json!({}));
         state.put(&["a", "b", "c"], json!(99));
         assert_eq!(state.get(&["a", "b", "c"]), Some(&json!(99)));
+    }
+
+    #[test]
+    fn put_replaces_non_object_intermediate_values() {
+        let mut state = State::new(json!({"a": 1}));
+        state.put(&["a", "b", "c"], json!(99));
+        assert_eq!(state.get(&["a", "b", "c"]), Some(&json!(99)));
+        assert_eq!(state.get(&["a"]), Some(&json!({"b": {"c": 99}})));
+    }
+
+    #[test]
+    fn put_replaces_non_object_root_for_nested_path() {
+        let mut state = State::new(json!(1));
+        state.put(&["a", "b"], json!(2));
+        assert_eq!(state.get(&[]), Some(&json!({"a": {"b": 2}})));
     }
 
     #[test]

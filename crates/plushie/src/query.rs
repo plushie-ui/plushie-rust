@@ -178,9 +178,9 @@ impl<'a, T: Clone> Query<'a, T> {
         // Paginate (1-based: page 1 is the first page)
         let total = results.len();
         let page = self.page.max(1);
-        let start = (page - 1) * self.page_size;
+        let start = (page - 1).saturating_mul(self.page_size);
         let entries = if start < total {
-            results[start..total.min(start + self.page_size)].to_vec()
+            results[start..total.min(start.saturating_add(self.page_size))].to_vec()
         } else {
             Vec::new()
         };
@@ -202,5 +202,31 @@ impl<'a, T: Clone> Query<'a, T> {
             page_size: self.page_size,
             groups,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Query;
+
+    #[test]
+    fn extreme_page_does_not_overflow() {
+        let items = vec![1, 2, 3];
+        let result = Query::new(&items).page(usize::MAX).page_size(2).run();
+        assert!(result.entries.is_empty());
+        assert_eq!(result.total, 3);
+        assert_eq!(result.page, usize::MAX);
+    }
+
+    #[test]
+    fn extreme_page_size_does_not_overflow() {
+        let items = vec![1, 2, 3];
+        let result = Query::new(&items)
+            .page(usize::MAX)
+            .page_size(usize::MAX)
+            .run();
+        assert!(result.entries.is_empty());
+        assert_eq!(result.total, 3);
+        assert_eq!(result.page_size, usize::MAX);
     }
 }

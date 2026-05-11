@@ -833,7 +833,7 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             ("width", Length),
             ("height", Length),
             ("header", Bool),
-            ("separator", Bool),
+            ("separator", Number),
             ("padding", Any),
             ("sort_by", Str),
             ("sort_order", OneOf(SORT_ORDER_VALUES)),
@@ -1147,6 +1147,13 @@ mod tests {
             "vertical_slider",
             json!({"value": 5, "range": [0, 10], "step": 1, "keyboard_step": 2}),
         );
+        let warnings = collect_prop_warnings(&node);
+        assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
+    }
+
+    #[test]
+    fn table_separator_accepts_numeric_thickness() {
+        let node = make_node("table", json!({"columns": [], "rows": [], "separator": 1.0}));
         let warnings = collect_prop_warnings(&node);
         assert!(warnings.is_empty(), "unexpected warnings: {:?}", warnings);
     }

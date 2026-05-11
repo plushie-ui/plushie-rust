@@ -380,7 +380,7 @@ impl ShapeValidator {
             self.warn(format!("{context} must start with a command name"));
             return;
         };
-        let numeric_indexes: &[usize] = match name {
+        let operand_indexes: &[usize] = match name {
             "move_to" | "line_to" => &[1, 2],
             "bezier_to" => &[1, 2, 3, 4, 5, 6],
             "quadratic_to" => &[1, 2, 3, 4],
@@ -393,14 +393,19 @@ impl ShapeValidator {
                 return;
             }
         };
-        for idx in numeric_indexes {
-            if let Some(value) = parts.get(*idx) {
-                let label = format!("{context} value {idx}");
-                if radius_or_dimension_index(name, *idx) {
-                    self.validate_non_negative_number(value, &label);
-                } else {
-                    self.validate_bounded_number(value, &label);
-                }
+        for idx in operand_indexes {
+            let label = format!("{context} value {idx}");
+            let Some(value) = parts.get(*idx) else {
+                self.warn(format!("{label} is missing"));
+                continue;
+            };
+
+            if name == "rounded_rect" && *idx == 5 {
+                self.validate_radius_value(value, &label);
+            } else if radius_or_dimension_index(name, *idx) {
+                self.validate_non_negative_number(value, &label);
+            } else {
+                self.validate_bounded_number(value, &label);
             }
         }
     }
@@ -787,5 +792,45 @@ mod tests {
         assert!(warnings.iter().any(|w| w.contains("bad-canvas")));
         assert!(warnings.iter().any(|w| w.contains("bad-layer")));
         assert!(warnings.iter().any(|w| w.contains("bad-group")));
+    }
+
+    #[test]
+    fn canvas_shape_validation_warns_for_missing_path_operands() {
+        let warnings = warnings_for(shape(
+            "p",
+            "path",
+            json!({"commands": [["move_to", 10], ["line_to", 20, 30]]}),
+        ));
+
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("path command 0 value 2 is missing"))
+        );
+    }
+
+    #[test]
+    fn canvas_shape_validation_accepts_rounded_rect_radius_object() {
+        let warnings = warnings_for(shape(
+            "p",
+            "path",
+            json!({
+                "commands": [[
+                    "rounded_rect",
+                    0,
+                    0,
+                    20,
+                    10,
+                    {
+                        "top_left": 1,
+                        "top_right": 2,
+                        "bottom_right": 3,
+                        "bottom_left": 4
+                    }
+                ]]
+            }),
+        ));
+
+        assert!(warnings.is_empty());
     }
 }

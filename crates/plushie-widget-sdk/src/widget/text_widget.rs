@@ -86,8 +86,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
         if let Some(f) = font {
             t = t.font(f);
         }
-        if let Some(ref c) = tp.color {
-            t = t.color(iced_convert::color(c));
+        let color = prop_animated_color(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "color",
+        )
+        .or_else(|| tp.color.as_ref().map(iced_convert::color));
+        let has_color_prop = node.props.get("color").is_some();
+        if let Some(c) = color {
+            t = t.color(c);
         }
         if let Some(ref w) = tp.width {
             t = t.width(iced_convert::length(w));
@@ -95,8 +103,16 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
         if let Some(ref h) = tp.height {
             t = t.height(iced_convert::length(h));
         }
-        if let Some(ref lh) = tp.line_height {
-            t = t.line_height(iced_convert::line_height(*lh));
+        let line_height = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "line_height",
+        )
+        .map(LineHeight::Relative)
+        .or(tp.line_height);
+        if let Some(lh) = line_height {
+            t = t.line_height(iced_convert::line_height(lh));
         }
         if let Some(ax) = tp.align_x {
             t = t.align_x(iced_convert::text_alignment(
@@ -120,7 +136,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextWidget {
         // Style: preset name or StyleMap with text_color. Explicit `color`
         // prop (applied above) takes precedence; this only runs when no
         // color prop was given.
-        if tp.color.is_none() {
+        if !has_color_prop {
             match &tp.style {
                 Some(CoreStyle::Preset(name)) => {
                     t = match name.as_str() {

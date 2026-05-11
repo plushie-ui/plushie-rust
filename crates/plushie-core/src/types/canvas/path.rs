@@ -244,68 +244,64 @@ pub fn decode_commands(value: &Value) -> Vec<PathCommand> {
             None => continue,
         };
 
-        let f = |i: usize| -> f32 {
-            parts
-                .get(i)
-                .and_then(|v| v.as_f64())
-                .map(|v| v as f32)
-                .unwrap_or(0.0)
-        };
+        let f =
+            |i: usize| -> Option<f32> { parts.get(i).and_then(|v| v.as_f64()).map(|v| v as f32) };
 
-        let parsed = match cmd_name {
-            "move_to" => PathCommand::MoveTo { x: f(1), y: f(2) },
-            "line_to" => PathCommand::LineTo { x: f(1), y: f(2) },
-            "bezier_to" => PathCommand::BezierTo {
-                cp1x: f(1),
-                cp1y: f(2),
-                cp2x: f(3),
-                cp2y: f(4),
-                x: f(5),
-                y: f(6),
-            },
-            "quadratic_to" => PathCommand::QuadraticTo {
-                cpx: f(1),
-                cpy: f(2),
-                x: f(3),
-                y: f(4),
-            },
-            "arc" => PathCommand::Arc {
-                cx: f(1),
-                cy: f(2),
-                radius: f(3),
-                start_angle: Angle::deg(f(4)),
-                end_angle: Angle::deg(f(5)),
-            },
-            "arc_to" => PathCommand::ArcTo {
-                x1: f(1),
-                y1: f(2),
-                x2: f(3),
-                y2: f(4),
-                radius: f(5),
-            },
-            "ellipse" => PathCommand::Ellipse {
-                cx: f(1),
-                cy: f(2),
-                rx: f(3),
-                ry: f(4),
-                rotation: Angle::deg(f(5)),
-                start_angle: Angle::deg(f(6)),
-                end_angle: Angle::deg(f(7)),
-            },
-            "rounded_rect" => PathCommand::RoundedRect {
-                x: f(1),
-                y: f(2),
-                w: f(3),
-                h: f(4),
-                radius: parts
-                    .get(5)
-                    .and_then(Radius::wire_decode)
-                    .unwrap_or_default(),
-            },
-            _ => continue,
-        };
+        let parsed = (|| -> Option<PathCommand> {
+            Some(match cmd_name {
+                "move_to" => PathCommand::MoveTo { x: f(1)?, y: f(2)? },
+                "line_to" => PathCommand::LineTo { x: f(1)?, y: f(2)? },
+                "bezier_to" => PathCommand::BezierTo {
+                    cp1x: f(1)?,
+                    cp1y: f(2)?,
+                    cp2x: f(3)?,
+                    cp2y: f(4)?,
+                    x: f(5)?,
+                    y: f(6)?,
+                },
+                "quadratic_to" => PathCommand::QuadraticTo {
+                    cpx: f(1)?,
+                    cpy: f(2)?,
+                    x: f(3)?,
+                    y: f(4)?,
+                },
+                "arc" => PathCommand::Arc {
+                    cx: f(1)?,
+                    cy: f(2)?,
+                    radius: f(3)?,
+                    start_angle: Angle::deg(f(4)?),
+                    end_angle: Angle::deg(f(5)?),
+                },
+                "arc_to" => PathCommand::ArcTo {
+                    x1: f(1)?,
+                    y1: f(2)?,
+                    x2: f(3)?,
+                    y2: f(4)?,
+                    radius: f(5)?,
+                },
+                "ellipse" => PathCommand::Ellipse {
+                    cx: f(1)?,
+                    cy: f(2)?,
+                    rx: f(3)?,
+                    ry: f(4)?,
+                    rotation: Angle::deg(f(5)?),
+                    start_angle: Angle::deg(f(6)?),
+                    end_angle: Angle::deg(f(7)?),
+                },
+                "rounded_rect" => PathCommand::RoundedRect {
+                    x: f(1)?,
+                    y: f(2)?,
+                    w: f(3)?,
+                    h: f(4)?,
+                    radius: parts.get(5).and_then(Radius::wire_decode)?,
+                },
+                _ => return None,
+            })
+        })();
 
-        result.push(parsed);
+        if let Some(parsed) = parsed {
+            result.push(parsed);
+        }
     }
 
     result
@@ -506,6 +502,20 @@ mod tests {
             cmds,
             vec![PathCommand::MoveTo { x: 0.0, y: 0.0 }, PathCommand::Close,]
         );
+    }
+
+    #[test]
+    fn decode_missing_operands_skips_command() {
+        let cmds = decode_commands(&json!([["move_to", 10.0], ["line_to", 30.0, 40.0]]));
+
+        assert_eq!(cmds, vec![PathCommand::LineTo { x: 30.0, y: 40.0 }]);
+    }
+
+    #[test]
+    fn decode_nonnumeric_operands_skips_command() {
+        let cmds = decode_commands(&json!([["line_to", "bad", 40.0], "close"]));
+
+        assert_eq!(cmds, vec![PathCommand::Close]);
     }
 
     #[test]

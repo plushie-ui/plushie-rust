@@ -2004,6 +2004,61 @@ fn missing_pending_focus_is_not_marked_consumed() {
     assert_eq!(state.last_consumed_pending, None);
 }
 
+#[test]
+fn touch_press_uses_touch_position_when_cursor_unavailable() {
+    let elements = Vec::new();
+    let mut program = test_program(&elements);
+    program.on_press = true;
+    let mut state = CanvasState::default();
+
+    let action = canvas::Program::update(
+        &program,
+        &mut state,
+        &iced::Event::Touch(iced::touch::Event::FingerPressed {
+            id: iced::touch::Finger(7),
+            position: Point::new(12.0, 18.0),
+        }),
+        iced::Rectangle::new(Point::new(10.0, 10.0), iced::Size::new(100.0, 100.0)),
+        iced::mouse::Cursor::Unavailable,
+    );
+
+    let (message, _, _) = action.expect("expected touch press message").into_inner();
+    match message.expect("expected message") {
+        crate::message::Message::Event { family, value, .. } => {
+            assert_eq!(family, "press");
+            assert_eq!(value["x"], json!(2.0));
+            assert_eq!(value["y"], json!(8.0));
+            assert_eq!(value["pointer"], json!("touch"));
+            assert_eq!(value["finger"], json!(7));
+        }
+        other => panic!("expected pointer event, got {other:?}"),
+    }
+}
+
+#[test]
+fn mouse_release_hit_tests_release_position_for_click() {
+    let elements = vec![test_element("a")];
+    let program = test_program(&elements);
+    let mut state = CanvasState {
+        pressed_element: Some("a".to_string()),
+        hovered_element: Some("a".to_string()),
+        ..Default::default()
+    };
+
+    let action = canvas::Program::update(
+        &program,
+        &mut state,
+        &iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+            iced::mouse::Button::Left,
+        )),
+        iced::Rectangle::new(Point::ORIGIN, iced::Size::new(100.0, 100.0)),
+        iced::mouse::Cursor::Available(Point::new(50.0, 50.0)),
+    );
+
+    assert!(action.is_none());
+    assert!(state.pressed_element.is_none());
+}
+
 // -- layers_with_active_interaction --
 
 #[test]

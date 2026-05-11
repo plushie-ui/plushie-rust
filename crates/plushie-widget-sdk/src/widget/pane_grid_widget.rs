@@ -46,6 +46,13 @@ fn parse_split_axis(value: Option<&str>, widget_id: &str) -> pane_grid::Axis {
     }
 }
 
+fn pane_ids_from_node(node: &TreeNode) -> Vec<String> {
+    match prop_str_array(&node.props, "panes") {
+        Some(ids) if !ids.is_empty() => ids,
+        _ => node.children.iter().map(|child| child.id.clone()).collect(),
+    }
+}
+
 impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
     fn type_names(&self) -> &[&str] {
         &["pane_grid"]
@@ -58,14 +65,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
             crate::prop_helpers::prop_str(props, "split_axis").as_deref(),
             &node.id,
         );
-        let child_ids: HashSet<String> = node.children.iter().map(|c| c.id.clone()).collect();
+        let pane_ids = pane_ids_from_node(node);
+        let live_panes: HashSet<String> = pane_ids.iter().cloned().collect();
 
         if let Some(state) = self.states.get_mut(&key) {
             // Prune panes whose child nodes no longer exist.
             let stale_panes: Vec<pane_grid::Pane> = state
                 .panes
                 .iter()
-                .filter(|(_pane, id)| !child_ids.contains(*id))
+                .filter(|(_pane, id)| !live_panes.contains(*id))
                 .map(|(pane, _id)| *pane)
                 .collect();
             for pane in stale_panes {
@@ -73,29 +81,27 @@ impl<R: PlushieRenderer> PlushieWidget<R> for PaneGridWidget {
             }
             // Add panes for new children.
             let existing_ids: HashSet<String> = state.panes.values().cloned().collect();
-            let new_child_ids: Vec<String> = node
-                .children
+            let new_pane_ids: Vec<String> = pane_ids
                 .iter()
-                .filter(|c| !existing_ids.contains(&c.id))
-                .map(|c| c.id.clone())
+                .filter(|id| !existing_ids.contains(*id))
+                .cloned()
                 .collect();
-            for new_id in new_child_ids {
+            for new_id in new_pane_ids {
                 if let Some((&anchor, _)) = state.panes.iter().next() {
                     let _ = state.split(axis, anchor, new_id);
                 }
             }
         } else {
-            let child_list: Vec<String> = node.children.iter().map(|c| c.id.clone()).collect();
-            let new_state = if child_list.is_empty() {
+            let new_state = if pane_ids.is_empty() {
                 let (state, _) = pane_grid::State::new("default".to_string());
                 state
-            } else if child_list.len() == 1 {
-                let (state, _) = pane_grid::State::new(child_list[0].clone());
+            } else if pane_ids.len() == 1 {
+                let (state, _) = pane_grid::State::new(pane_ids[0].clone());
                 state
             } else {
-                let (mut state, first_pane) = pane_grid::State::new(child_list[0].clone());
+                let (mut state, first_pane) = pane_grid::State::new(pane_ids[0].clone());
                 let mut last_pane = first_pane;
-                for id in child_list.iter().skip(1) {
+                for id in pane_ids.iter().skip(1) {
                     if let Some((new_pane, _)) = state.split(axis, last_pane, id.clone()) {
                         last_pane = new_pane;
                     }
@@ -419,9 +425,26 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     .height(height)
     .spacing(spacing);
 
-    let min_size = pgp.min_size.unwrap_or(10.0).max(1.0);
-    let leeway = pgp.leeway.unwrap_or(min_size);
+    let min_size = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "min_size",
+    )
+    .or(pgp.min_size)
+    .unwrap_or(10.0)
+    .max(1.0);
+    let leeway = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "leeway",
+    )
+    .or(pgp.leeway)
+    .unwrap_or(10.0)
+    .max(0.0);
 
+    pg = pg.min_size(min_size);
     pg = pg.on_click(move |pane| Message::PaneClicked(window_id3.clone(), node_id3.clone(), pane));
     pg = pg.on_resize(leeway, move |evt| {
         Message::PaneResized(window_id.clone(), node_id.clone(), evt)
@@ -432,8 +455,20 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
     });
 
     // Divider styling
-    let divider_color = pgp.divider_color.as_ref().map(iced_convert::color);
-    let divider_width = pgp.divider_width;
+    let divider_color = prop_animated_color(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "divider_color",
+    )
+    .or_else(|| pgp.divider_color.as_ref().map(iced_convert::color));
+    let divider_width = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "divider_width",
+    )
+    .or(pgp.divider_width);
     if divider_color.is_some() || divider_width.is_some() {
         pg = pg.style(move |theme: &iced::Theme| {
             let mut style = pane_grid::default(theme);
@@ -455,6 +490,7 @@ fn render_pane_grid_with_state<'a, R: PlushieRenderer>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn split_axis_parser_accepts_known_values() {
@@ -478,5 +514,33 @@ mod tests {
             parse_split_axis(Some("diagonal"), "grid"),
             pane_grid::Axis::Vertical
         ));
+    }
+
+    #[test]
+    fn pane_ids_use_panes_prop_when_present() {
+        let node = crate::testing::node_with_props(
+            "grid",
+            "pane_grid",
+            json!({"panes": ["left", "right"]}),
+        );
+
+        assert_eq!(pane_ids_from_node(&node), vec!["left", "right"]);
+    }
+
+    #[test]
+    fn pane_ids_fall_back_to_child_ids() {
+        let mut node = crate::testing::node_with_props("grid", "pane_grid", json!({}));
+        node.children.push(crate::testing::node_with_props(
+            "child-a",
+            "text",
+            json!({"content": "a"}),
+        ));
+        node.children.push(crate::testing::node_with_props(
+            "child-b",
+            "text",
+            json!({"content": "b"}),
+        ));
+
+        assert_eq!(pane_ids_from_node(&node), vec!["child-a", "child-b"]);
     }
 }

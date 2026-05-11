@@ -1,11 +1,9 @@
 //! Exit animation ghost management.
 //!
-//! When a widget with an `exit` prop is removed, it becomes a "ghost"
-//! that stays in its parent's layout flow during the exit animation.
-//! The renderer adjusts patch indices to account for ghosts.
+//! Exit ghost promotion is disabled until removed nodes are rendered,
+//! advanced, and pruned through the normal renderer lifecycle.
 
 use crate::protocol::TreeNode;
-use std::collections::HashMap;
 
 /// A ghost node: an exiting widget that stays visible during its exit animation.
 pub struct GhostNode {
@@ -18,10 +16,7 @@ pub struct GhostNode {
 }
 
 /// Manages ghost nodes for exit animations.
-pub struct GhostManager {
-    /// Parent widget ID -> list of ghost children.
-    ghosts: HashMap<String, Vec<GhostNode>>,
-}
+pub struct GhostManager;
 
 impl Default for GhostManager {
     fn default() -> Self {
@@ -32,31 +27,21 @@ impl Default for GhostManager {
 impl GhostManager {
     /// Create an empty ghost manager.
     pub fn new() -> Self {
-        Self {
-            ghosts: HashMap::new(),
-        }
+        Self
     }
 
     /// Returns true if any ghosts exist.
     pub fn has_active(&self) -> bool {
-        !self.ghosts.is_empty()
+        false
     }
 
     /// Adds a ghost for an exiting child.
-    pub fn add_ghost(&mut self, parent_id: &str, node: TreeNode, index: usize) {
-        self.ghosts
-            .entry(parent_id.to_string())
-            .or_default()
-            .push(GhostNode {
-                node,
-                insert_index: index,
-                finished: false,
-            });
-    }
+    pub fn add_ghost(&mut self, _parent_id: &str, _node: TreeNode, _index: usize) {}
 
     /// Returns the ghost nodes for a parent, if any.
     pub fn ghosts_for(&self, parent_id: &str) -> Option<&[GhostNode]> {
-        self.ghosts.get(parent_id).map(|v| v.as_slice())
+        let _ = parent_id;
+        None
     }
 
     /// Returns the number of ghosts before a given SDK index for a parent.
@@ -64,15 +49,8 @@ impl GhostManager {
     /// Used to adjust patch indices: the SDK doesn't know about ghosts,
     /// so we need to offset its indices by the ghost count before each position.
     pub fn ghost_count_before(&self, parent_id: &str, sdk_index: usize) -> usize {
-        self.ghosts
-            .get(parent_id)
-            .map(|ghosts| {
-                ghosts
-                    .iter()
-                    .filter(|g| g.insert_index <= sdk_index)
-                    .count()
-            })
-            .unwrap_or(0)
+        let _ = (parent_id, sdk_index);
+        0
     }
 
     /// Adjusts an SDK-provided child index to account for ghost nodes.
@@ -82,34 +60,16 @@ impl GhostManager {
 
     /// Marks a ghost as finished and removes it if all ghosts for the parent are done.
     pub fn mark_finished(&mut self, parent_id: &str, ghost_index: usize) {
-        if let Some(ghosts) = self.ghosts.get_mut(parent_id)
-            && let Some(ghost) = ghosts.get_mut(ghost_index)
-        {
-            ghost.finished = true;
-        }
+        let _ = (parent_id, ghost_index);
     }
 
     /// Removes all finished ghosts and returns a list of removed ghost node IDs.
     pub fn prune_finished(&mut self) -> Vec<String> {
-        let mut removed_ids = Vec::new();
-        self.ghosts.retain(|_parent_id, ghosts| {
-            ghosts.retain(|g| {
-                if g.finished {
-                    removed_ids.push(g.node.id.clone());
-                    false
-                } else {
-                    true
-                }
-            });
-            !ghosts.is_empty()
-        });
-        removed_ids
+        Vec::new()
     }
 
     /// Clears all ghosts (used on snapshot/reset).
-    pub fn clear(&mut self) {
-        self.ghosts.clear();
-    }
+    pub fn clear(&mut self) {}
 }
 
 #[cfg(test)]
@@ -127,32 +87,29 @@ mod tests {
     }
 
     #[test]
-    fn add_ghost_tracks_parent_and_index() {
+    fn add_ghost_is_disabled_until_lifecycle_is_complete() {
         let mut ghosts = GhostManager::new();
 
         ghosts.add_ghost("root", node("child"), 2);
 
-        let entries = ghosts.ghosts_for("root").unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].node.id, "child");
-        assert_eq!(entries[0].insert_index, 2);
-        assert!(!entries[0].finished);
+        assert!(!ghosts.has_active());
+        assert!(ghosts.ghosts_for("root").is_none());
     }
 
     #[test]
-    fn adjust_index_counts_ghosts_before_or_at_sdk_index() {
+    fn adjust_index_is_identity_while_ghosts_are_disabled() {
         let mut ghosts = GhostManager::new();
         ghosts.add_ghost("root", node("a"), 0);
         ghosts.add_ghost("root", node("b"), 2);
         ghosts.add_ghost("root", node("c"), 4);
 
-        assert_eq!(ghosts.ghost_count_before("root", 1), 1);
-        assert_eq!(ghosts.adjust_index("root", 2), 4);
-        assert_eq!(ghosts.adjust_index("root", 3), 5);
+        assert_eq!(ghosts.ghost_count_before("root", 1), 0);
+        assert_eq!(ghosts.adjust_index("root", 2), 2);
+        assert_eq!(ghosts.adjust_index("root", 3), 3);
     }
 
     #[test]
-    fn prune_finished_removes_only_finished_ghosts() {
+    fn prune_finished_is_empty_while_ghosts_are_disabled() {
         let mut ghosts = GhostManager::new();
         ghosts.add_ghost("root", node("a"), 0);
         ghosts.add_ghost("root", node("b"), 1);
@@ -160,10 +117,8 @@ mod tests {
         ghosts.mark_finished("root", 0);
         let removed = ghosts.prune_finished();
 
-        assert_eq!(removed, vec!["a"]);
-        let entries = ghosts.ghosts_for("root").unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].node.id, "b");
+        assert!(removed.is_empty());
+        assert!(ghosts.ghosts_for("root").is_none());
     }
 
     #[test]

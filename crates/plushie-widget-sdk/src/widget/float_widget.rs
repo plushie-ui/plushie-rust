@@ -1,12 +1,30 @@
-use iced::widget::Space;
+use iced::widget::{Space, container};
 use iced::{Element, Theme, Vector};
 
 use crate::PlushieRenderer;
+use crate::iced_convert;
 use crate::message::Message;
 use crate::protocol::TreeNode;
 use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
+
+use plushie_core::types::{Length, PlushieType};
+
+struct FloatProps {
+    width: Option<Length>,
+    height: Option<Length>,
+}
+
+impl FloatProps {
+    fn from_node(node: &TreeNode) -> Self {
+        let props = &node.props;
+        Self {
+            width: Length::extract(props, "width"),
+            height: Length::extract(props, "height"),
+        }
+    }
+}
 
 pub(crate) struct FloatWidget;
 
@@ -21,12 +39,24 @@ impl<R: PlushieRenderer> PlushieWidget<R> for FloatWidget {
         ctx: &RenderCtx<'a, R>,
     ) -> Element<'a, Message, Theme, R> {
         let props = &node.props;
+        let fp = FloatProps::from_node(node);
 
-        let child: Element<'a, Message, Theme, R> = node
+        let mut child: Element<'a, Message, Theme, R> = node
             .children
             .first()
             .map(|c| ctx.render_child(c))
             .unwrap_or_else(|| Space::new().into());
+
+        if fp.width.is_some() || fp.height.is_some() {
+            let mut sized = container(child);
+            if let Some(ref width) = fp.width {
+                sized = sized.width(iced_convert::length(width));
+            }
+            if let Some(ref height) = fp.height {
+                sized = sized.height(iced_convert::length(height));
+            }
+            child = sized.into();
+        }
 
         let tx = prop_animated_f32(
             &ctx.caches.interpolated_props,
@@ -56,5 +86,24 @@ impl<R: PlushieRenderer> PlushieWidget<R> for FloatWidget {
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(FloatWidget)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_width_and_height() {
+        let node = crate::testing::node_with_props(
+            "floating",
+            "floating",
+            json!({"width": 120.0, "height": 48.0}),
+        );
+        let props = FloatProps::from_node(&node);
+
+        assert_eq!(props.width, Some(Length::Fixed(120.0)));
+        assert_eq!(props.height, Some(Length::Fixed(48.0)));
     }
 }

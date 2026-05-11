@@ -154,10 +154,18 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
         if let Some(f) = font {
             rt = rt.font(f);
         }
-        if let Some(ref c) = rp.color {
-            rt = rt.color(iced_convert::color(c));
+        let color = prop_animated_color(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "color",
+        )
+        .or_else(|| rp.color.as_ref().map(iced_convert::color));
+        let has_color_prop = node.props.get("color").is_some();
+        if let Some(c) = color {
+            rt = rt.color(c);
         }
-        if rp.color.is_none() {
+        if !has_color_prop {
             match &rp.style {
                 Some(CoreStyle::Preset(name)) => {
                     rt = match name.as_str() {
@@ -187,7 +195,15 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RichTextWidget {
                 None => {}
             }
         }
-        if let Some(lh) = rp.line_height {
+        let line_height = prop_animated_f32(
+            &ctx.caches.interpolated_props,
+            &node.id,
+            &node.props,
+            "line_height",
+        )
+        .map(plushie_core::types::LineHeight::Relative)
+        .or(rp.line_height);
+        if let Some(lh) = line_height {
             rt = rt.line_height(iced_convert::line_height(lh));
         }
         if let Some(w) = rp.wrapping {

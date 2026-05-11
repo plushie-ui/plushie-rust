@@ -350,6 +350,8 @@ pub(crate) struct TextEditorWidget<R: PlushieRenderer> {
     /// Hash of last-synced "content" prop per (window_id, node_id).
     /// Detects host-side prop changes without clobbering user edits.
     content_hashes: std::collections::HashMap<(String, String), u64>,
+    /// Nodes that should emit a paste event when paste edits arrive.
+    paste_enabled: std::collections::HashSet<(String, String)>,
 }
 
 impl<R: PlushieRenderer> TextEditorWidget<R> {
@@ -357,6 +359,7 @@ impl<R: PlushieRenderer> TextEditorWidget<R> {
         Self {
             contents: std::collections::HashMap::new(),
             content_hashes: std::collections::HashMap::new(),
+            paste_enabled: std::collections::HashSet::new(),
         }
     }
 }
@@ -371,6 +374,11 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
 
         let key = (window_id.to_string(), node.id.clone());
         let props = &node.props;
+        if prop_bool_default(props, "on_paste", false) {
+            self.paste_enabled.insert(key.clone());
+        } else {
+            self.paste_enabled.remove(&key);
+        }
         let raw = crate::prop_helpers::prop_str(props, "content").unwrap_or_default();
         let content_str = crate::shared_state::enforce_content_cap(
             &node.id,
@@ -411,14 +419,28 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
                 let key = (window_id.to_string(), id.to_string());
                 if let Some(content) = self.contents.get_mut(&key) {
                     let is_edit = action.is_edit();
+                    let pasted_text = match action {
+                        text_editor::Action::Edit(text_editor::Edit::Paste(text))
+                            if self.paste_enabled.contains(&key) =>
+                        {
+                            Some(text.as_ref().clone())
+                        }
+                        _ => None,
+                    };
                     content.perform(action.clone());
                     if is_edit {
                         let new_text = content.text();
                         self.content_hashes.insert(key, hash_str(&new_text));
-                        return HandleResult::emit(vec![crate::protocol::OutgoingEvent::input(
-                            id.clone(),
-                            new_text,
-                        )]);
+                        let mut events =
+                            vec![crate::protocol::OutgoingEvent::input(id.clone(), new_text)];
+                        if let Some(pasted_text) = pasted_text {
+                            events.push(crate::protocol::OutgoingEvent::generic(
+                                "paste",
+                                id.clone(),
+                                Some(Value::String(pasted_text)),
+                            ));
+                        }
+                        return HandleResult::emit(events);
                     }
                 }
                 HandleResult::consume()
@@ -435,6 +457,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for TextEditorWidget<R> {
     fn prune_stale(&mut self, live_ids: &std::collections::HashSet<(String, String)>) {
         self.contents.retain(|k, _| live_ids.contains(k));
         self.content_hashes.retain(|k, _| live_ids.contains(k));
+        self.paste_enabled.retain(|k| live_ids.contains(k));
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
@@ -524,26 +547,63 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     if let Some(f) = font {
         te = te.font(f);
     }
-    if let Some(sz) = tp.size.or(ctx.default_text_size) {
+    let size = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "size",
+    )
+    .or(tp.size)
+    .or(ctx.default_text_size);
+    if let Some(sz) = size {
         te = te.size(sz);
     }
-    if let Some(ref lh) = tp.line_height {
-        te = te.line_height(iced_convert::line_height(*lh));
+    let line_height = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "line_height",
+    )
+    .map(LineHeight::Relative)
+    .or(tp.line_height);
+    if let Some(lh) = line_height {
+        te = te.line_height(iced_convert::line_height(lh));
     }
     if let Some(p) = tp.padding {
         te = te.padding(p);
     }
-    if let Some(minh) = tp.min_height {
+    let min_height = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "min_height",
+    )
+    .or(tp.min_height);
+    if let Some(minh) = min_height {
         te = te.min_height(minh);
     }
-    if let Some(maxh) = tp.max_height {
+    let max_height = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "max_height",
+    )
+    .or(tp.max_height);
+    if let Some(maxh) = max_height {
         te = te.max_height(maxh);
     }
     if let Some(w) = tp.wrapping {
         te = te.wrapping(iced_convert::wrapping(w));
     }
     // text_editor.width() takes impl Into<Pixels>, not Length
-    if let Some(w) = tp.width {
+    let width = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "width",
+    )
+    .or(tp.width);
+    if let Some(w) = width {
         te = te.width(w);
     }
 
@@ -626,8 +686,20 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
     }
 
     // Direct color props for placeholder and selection
-    let placeholder_color = tp.placeholder_color.as_ref().map(iced_convert::color);
-    let selection_color = tp.selection_color.as_ref().map(iced_convert::color);
+    let placeholder_color = prop_animated_color(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "placeholder_color",
+    )
+    .or_else(|| tp.placeholder_color.as_ref().map(iced_convert::color));
+    let selection_color = prop_animated_color(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "selection_color",
+    )
+    .or_else(|| tp.selection_color.as_ref().map(iced_convert::color));
     let cursor_color = ctx.theme_chrome.cursor_color;
 
     // Style closure, shared between plain and highlighted paths
@@ -786,6 +858,9 @@ fn render_text_editor_with_content<'a, R: PlushieRenderer>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::registry::{HandleResult, PlushieWidget};
+    use serde_json::json;
+    use std::sync::Arc;
 
     fn modifier_names(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_string()).collect()
@@ -814,6 +889,54 @@ mod tests {
             text: None,
             status: text_editor::Status::Active,
         }
+    }
+
+    #[test]
+    fn paste_action_emits_paste_event_when_enabled() {
+        let mut widget = TextEditorWidget::<iced::Renderer>::new();
+        let node = crate::testing::node_with_props(
+            "editor",
+            "text_editor",
+            json!({"content": "", "on_paste": true}),
+        );
+        widget.prepare(&node, "main", &iced::Theme::Dark);
+
+        let result = widget.handle_message(&Message::TextEditorAction(
+            "main".to_string(),
+            "editor".to_string(),
+            text_editor::Action::Edit(text_editor::Edit::Paste(Arc::new("clip".to_string()))),
+        ));
+
+        let HandleResult::Handled(events) = result else {
+            panic!("text editor action should be handled");
+        };
+        assert!(events.iter().any(|event| {
+            event.family == "paste"
+                && event.id == "editor"
+                && event.value == Some(Value::String("clip".to_string()))
+        }));
+    }
+
+    #[test]
+    fn paste_action_does_not_emit_paste_event_when_disabled() {
+        let mut widget = TextEditorWidget::<iced::Renderer>::new();
+        let node = crate::testing::node_with_props(
+            "editor",
+            "text_editor",
+            json!({"content": "", "on_paste": false}),
+        );
+        widget.prepare(&node, "main", &iced::Theme::Dark);
+
+        let result = widget.handle_message(&Message::TextEditorAction(
+            "main".to_string(),
+            "editor".to_string(),
+            text_editor::Action::Edit(text_editor::Edit::Paste(Arc::new("clip".to_string()))),
+        ));
+
+        let HandleResult::Handled(events) = result else {
+            panic!("text editor action should be handled");
+        };
+        assert!(events.iter().all(|event| event.family != "paste"));
     }
 
     #[test]

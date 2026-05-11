@@ -105,7 +105,14 @@ fn render_text_input<'a, R: PlushieRenderer>(
         .as_ref()
         .map(iced_convert::length)
         .unwrap_or(iced::Length::Fill);
-    let size = tp.size.or(ctx.default_text_size);
+    let size = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "size",
+    )
+    .or(tp.size)
+    .or(ctx.default_text_size);
     let secure = prop_bool_default(props, "secure", false);
     let id = node.id.clone();
     let has_on_submit = prop_bool_default(props, "on_submit", false);
@@ -139,8 +146,16 @@ fn render_text_input<'a, R: PlushieRenderer>(
     if let Some(f) = font {
         ti = ti.font(f);
     }
-    if let Some(ref lh) = tp.line_height {
-        ti = ti.line_height(iced_convert::line_height(*lh));
+    let line_height = prop_animated_f32(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "line_height",
+    )
+    .map(LineHeight::Relative)
+    .or(tp.line_height);
+    if let Some(lh) = line_height {
+        ti = ti.line_height(iced_convert::line_height(lh));
     }
     if let Some(ax) = tp
         .align_x
@@ -197,8 +212,20 @@ fn render_text_input<'a, R: PlushieRenderer>(
 
     // Direct color props for placeholder and selection, applied on top of
     // any style preset or StyleMap.
-    let placeholder_color = tp.placeholder_color.as_ref().map(iced_convert::color);
-    let selection_color = tp.selection_color.as_ref().map(iced_convert::color);
+    let placeholder_color = prop_animated_color(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "placeholder_color",
+    )
+    .or_else(|| tp.placeholder_color.as_ref().map(iced_convert::color));
+    let selection_color = prop_animated_color(
+        &ctx.caches.interpolated_props,
+        &node.id,
+        &node.props,
+        "selection_color",
+    )
+    .or_else(|| tp.selection_color.as_ref().map(iced_convert::color));
     let cursor_color = ctx.theme_chrome.cursor_color;
 
     // Style: preset name or custom style map

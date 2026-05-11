@@ -895,43 +895,67 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
             }
         }
 
-        let position = match cursor.position_in(bounds) {
-            Some(pos) => {
+        let position = match event {
+            iced::Event::Touch(
+                iced::touch::Event::FingerPressed {
+                    position: touch_pos,
+                    ..
+                }
+                | iced::touch::Event::FingerMoved {
+                    position: touch_pos,
+                    ..
+                }
+                | iced::touch::Event::FingerLifted {
+                    position: touch_pos,
+                    ..
+                }
+                | iced::touch::Event::FingerLost {
+                    position: touch_pos,
+                    ..
+                },
+            ) => {
+                let pos = Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y);
                 state.cursor_position = Some(pos);
                 pos
             }
-            None => {
-                // Cursor is outside canvas bounds. Clean up interaction
-                // state so we don't have stale hover/drag.
-                //
-                // DragEnd is processed first (higher priority) because
-                // losing a drag-end event leaves the host thinking the
-                // drag is still active. ShapeLeave is less critical --
-                // the host can infer leave from the drag-end.
-                let mut action: Option<iced::widget::Action<Message>> = None;
-                if let Some(drag) = state.dragging.take() {
-                    let pos = state.cursor_position.unwrap_or(Point::ORIGIN);
-                    let msg = Message::Event {
-                        window_id: self.window_id.clone(),
-                        id: drag.element_id,
-                        family: "drag_end".to_string(),
-                        value: json!({"x": sanitize_f32(pos.x), "y": sanitize_f32(pos.y)}),
-                    };
-                    action = Some(iced::widget::Action::publish(msg));
+            _ => match cursor.position_in(bounds) {
+                Some(pos) => {
+                    state.cursor_position = Some(pos);
+                    pos
                 }
-                if let Some(hovered_id) = state.hovered_element.take() {
-                    let msg = Message::Event {
-                        window_id: self.window_id.clone(),
-                        id: hovered_id,
-                        family: "exit".to_string(),
-                        value: serde_json::Value::Null,
-                    };
-                    action = Some(pick_action(action, iced::widget::Action::publish(msg)));
+                None => {
+                    // Cursor is outside canvas bounds. Clean up interaction
+                    // state so we don't have stale hover/drag.
+                    //
+                    // DragEnd is processed first (higher priority) because
+                    // losing a drag-end event leaves the host thinking the
+                    // drag is still active. ShapeLeave is less critical.
+                    // The host can infer leave from the drag-end.
+                    let mut action: Option<iced::widget::Action<Message>> = None;
+                    if let Some(drag) = state.dragging.take() {
+                        let pos = state.cursor_position.unwrap_or(Point::ORIGIN);
+                        let msg = Message::Event {
+                            window_id: self.window_id.clone(),
+                            id: drag.element_id,
+                            family: "drag_end".to_string(),
+                            value: json!({"x": sanitize_f32(pos.x), "y": sanitize_f32(pos.y)}),
+                        };
+                        action = Some(iced::widget::Action::publish(msg));
+                    }
+                    if let Some(hovered_id) = state.hovered_element.take() {
+                        let msg = Message::Event {
+                            window_id: self.window_id.clone(),
+                            id: hovered_id,
+                            family: "exit".to_string(),
+                            value: serde_json::Value::Null,
+                        };
+                        action = Some(pick_action(action, iced::widget::Action::publish(msg)));
+                    }
+                    state.pressed_element = None;
+                    state.cursor_position = None;
+                    return action;
                 }
-                state.pressed_element = None;
-                state.cursor_position = None;
-                return action;
-            }
+            },
         };
 
         match event {
@@ -1123,12 +1147,10 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                         action = Some(pick_action(action, iced::widget::Action::publish(msg)));
                     }
 
-                    // -- Click detection: pressed shape == current hover --
+                    // -- Click detection: release over pressed shape --
                     if let Some(pressed_id) = state.pressed_element.take() {
-                        let still_over = state
-                            .hovered_element
-                            .as_ref()
-                            .map(|h| h == &pressed_id)
+                        let still_over = find_hit_element(position, self.interactive_elements)
+                            .map(|shape| shape.id == pressed_id)
                             .unwrap_or(false);
                         if still_over {
                             let msg = Message::Event {
@@ -1189,10 +1211,7 @@ impl<R: PlushieRenderer> canvas::Program<Message, iced::Theme, R> for CanvasProg
                 id: finger,
                 position: touch_pos,
             }) => {
-                let touch_position = match cursor.position_in(bounds) {
-                    Some(_) => Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y),
-                    None => return None,
-                };
+                let touch_position = Point::new(touch_pos.x - bounds.x, touch_pos.y - bounds.y);
                 let mut action: Option<iced::widget::Action<Message>> = None;
                 state.focus_visible = false;
 

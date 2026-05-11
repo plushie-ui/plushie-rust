@@ -1,4 +1,4 @@
-//! Animation system: renderer-side transitions, springs, sequences, and exit ghosts.
+//! Animation system: renderer-side transitions, springs, sequences, and exit hooks.
 //!
 //! The SDK sends animation descriptors as prop values. The renderer detects
 //! them during patch application, sets up internal animation state, and
@@ -13,8 +13,8 @@
 //!   interpolated values to the `interpolated_props` cache.
 //! - Widget render functions use `prop_animated_*` helpers that check the
 //!   cache before falling back to tree props.
-//! - Ghost management handles exit animations by keeping removed nodes in
-//!   layout flow with index adjustment on patches.
+//! - Exit ghost storage is present but disabled until removed nodes can be
+//!   rendered, advanced, and pruned through the normal lifecycle.
 
 pub mod color;
 pub mod easing;
@@ -473,8 +473,6 @@ fn advance_single(state: &mut TransitionState, dt: f32) -> (AnimValue, bool) {
         return (state.current.clone(), true);
     }
 
-    state.elapsed_ms += dt * 1000.0;
-
     match &state.kind {
         AnimationKind::Timed {
             duration_ms,
@@ -484,6 +482,8 @@ fn advance_single(state: &mut TransitionState, dt: f32) -> (AnimValue, bool) {
             repeat: repeat_mode,
             auto_reverse,
         } => {
+            state.elapsed_ms += dt * 1000.0;
+
             // Clone values upfront to avoid borrow conflicts when
             // mutating state for repeat/auto_reverse
             let dur = *duration_ms;
@@ -558,36 +558,47 @@ fn advance_single(state: &mut TransitionState, dt: f32) -> (AnimValue, bool) {
             damping,
             mass,
         } => {
-            let target = match &state.to {
-                AnimValue::Number(t) => *t,
-                _ => {
-                    state.finished = true;
-                    return (state.to.clone(), true);
-                }
-            };
-
-            let current = match &state.current {
-                AnimValue::Number(c) => *c,
-                _ => target,
-            };
-
             let params = spring::SpringParams {
                 stiffness: *stiffness,
                 damping: *damping,
                 mass: *mass,
             };
 
-            let spring_state = spring::SpringState {
-                position: current,
-                velocity: state.velocity,
-            };
+            match (&state.from, &state.to, &state.current) {
+                (_, AnimValue::Number(target), AnimValue::Number(current)) => {
+                    let spring_state = spring::SpringState {
+                        position: *current,
+                        velocity: state.velocity,
+                    };
+                    let (new_state, settled) = spring::advance(spring_state, *target, &params, dt);
 
-            let (new_state, settled) = spring::advance(spring_state, target, &params, dt);
-
-            state.current = AnimValue::Number(new_state.position);
-            state.velocity = new_state.velocity;
-            state.finished = settled;
-            (state.current.clone(), settled)
+                    state.current = AnimValue::Number(new_state.position);
+                    state.velocity = new_state.velocity;
+                    state.finished = settled;
+                    (state.current.clone(), settled)
+                }
+                (AnimValue::Color(from), AnimValue::Color(to), AnimValue::Color(_)) => {
+                    let spring_state = spring::SpringState {
+                        position: state.elapsed_ms,
+                        velocity: state.velocity,
+                    };
+                    let (new_state, settled) = spring::advance(spring_state, 1.0, &params, dt);
+                    let progress = new_state.position.clamp(0.0, 1.0);
+                    state.elapsed_ms = new_state.position;
+                    state.velocity = new_state.velocity;
+                    state.finished = settled;
+                    state.current = if settled {
+                        AnimValue::Color(*to)
+                    } else {
+                        AnimValue::Color(color::interpolate(*from, *to, progress))
+                    };
+                    (state.current.clone(), settled)
+                }
+                _ => {
+                    state.finished = true;
+                    (state.to.clone(), true)
+                }
+            }
         }
     }
 }
@@ -787,7 +798,7 @@ fn parse_spring(
     obj: &serde_json::Map<String, Value>,
     old_value: Option<AnimValue>,
 ) -> Option<ActiveAnimation> {
-    let to = obj.get("to")?.as_f64()? as f32;
+    let to_val = parse_anim_value(obj.get("to")?)?;
     let stiffness = obj
         .get("stiffness")
         .and_then(|v| v.as_f64())
@@ -795,15 +806,11 @@ fn parse_spring(
     let damping = obj.get("damping").and_then(|v| v.as_f64()).unwrap_or(10.0) as f32;
     let mass = parse_spring_mass(obj)?;
     let velocity = obj.get("velocity").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    let from = obj
+    let from_val = obj
         .get("from")
-        .and_then(|v| v.as_f64())
-        .map(|v| v as f32)
-        .or(match old_value {
-            Some(AnimValue::Number(n)) => Some(n),
-            _ => None,
-        })
-        .unwrap_or(to);
+        .and_then(parse_anim_value)
+        .or_else(|| compatible_old_value(&to_val, old_value))
+        .unwrap_or_else(|| to_val.clone());
     let on_complete = obj
         .get("on_complete")
         .and_then(|v| v.as_str())
@@ -815,9 +822,9 @@ fn parse_spring(
             damping,
             mass,
         },
-        from: AnimValue::Number(from),
-        to: AnimValue::Number(to),
-        current: AnimValue::Number(from),
+        from: from_val.clone(),
+        to: to_val,
+        current: from_val,
         velocity,
         elapsed_ms: 0.0,
         on_complete,
@@ -1048,5 +1055,41 @@ mod tests {
             }
             _ => panic!("expected color from value"),
         }
+    }
+
+    #[test]
+    fn color_spring_descriptor_parses() {
+        let descriptor = json!({
+            "type": "spring",
+            "from": "#000000",
+            "to": "#ffffff",
+            "stiffness": 100.0,
+            "damping": 10.0
+        });
+
+        let animation = parse_descriptor(&descriptor, None);
+
+        let Some(ActiveAnimation::Single(state)) = animation else {
+            panic!("expected single spring");
+        };
+        assert!(matches!(state.from, AnimValue::Color(_)));
+        assert!(matches!(state.to, AnimValue::Color(_)));
+    }
+
+    #[test]
+    fn color_spring_advances_to_color_value() {
+        let descriptor = json!({
+            "type": "spring",
+            "from": "#000000",
+            "to": "#ffffff",
+            "stiffness": 100.0,
+            "damping": 10.0
+        });
+        let mut animation = parse_descriptor(&descriptor, None).unwrap();
+
+        let (value, finished) = advance_animation(&mut animation, 0.016);
+
+        assert!(!finished);
+        assert!(matches!(value, AnimValue::Color(_)));
     }
 }

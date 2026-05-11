@@ -9,12 +9,13 @@ use crate::registry::PlushieWidget;
 use crate::render_ctx::RenderCtx;
 use crate::widget::helpers::*;
 
-use plushie_core::types::{Length, Padding, PlushieType, VerticalAlignment};
+use plushie_core::types::{HorizontalAlignment, Length, Padding, PlushieType, VerticalAlignment};
 
 struct RowProps {
     padding: Option<Padding>,
     width: Option<Length>,
     height: Option<Length>,
+    align_x: Option<HorizontalAlignment>,
     align_y: Option<VerticalAlignment>,
     clip: Option<bool>,
     wrap: Option<bool>,
@@ -27,6 +28,7 @@ impl RowProps {
             padding: Padding::extract(p, "padding"),
             width: Length::extract(p, "width"),
             height: Length::extract(p, "height"),
+            align_x: HorizontalAlignment::extract(p, "align_x"),
             align_y: VerticalAlignment::extract(p, "align_y"),
             clip: bool::extract(p, "clip"),
             wrap: bool::extract(p, "wrap"),
@@ -97,18 +99,32 @@ impl<R: PlushieRenderer> PlushieWidget<R> for RowWidget {
         };
 
         // Row doesn't have max_width natively; wrap in a container to constrain it.
-        let row_elem = if let Some(mw) = max_width {
-            container(elem).max_width(mw).into()
-        } else {
-            elem
-        };
+        let mut row_container = container(elem).id(widget::Id::from(node.id.clone()));
+        if let Some(mw) = max_width {
+            row_container = row_container.max_width(mw);
+        }
+        if let Some(ax) = rp.align_x {
+            row_container = row_container.align_x(iced_convert::horizontal_alignment(ax));
+        }
 
-        container(row_elem)
-            .id(widget::Id::from(node.id.clone()))
-            .into()
+        row_container.into()
     }
 
     fn fresh_for_session(&self) -> Box<dyn PlushieWidget<R>> {
         Box::new(RowWidget)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_align_x() {
+        let node = crate::testing::node_with_props("row", "row", json!({"align_x": "center"}));
+        let props = RowProps::from_node(&node);
+
+        assert_eq!(props.align_x, Some(HorizontalAlignment::Center));
     }
 }

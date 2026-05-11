@@ -38,27 +38,41 @@ const MAX_CONCURRENT_SVG_WORKERS: usize = 8;
 
 static ACTIVE_SVG_WORKERS: AtomicUsize = AtomicUsize::new(0);
 
-pub fn parse_with_timeout(source: String, deadline: Duration) -> DecodeOutcome {
+struct SvgWorkerSlot;
+
+impl Drop for SvgWorkerSlot {
+    fn drop(&mut self) {
+        ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+fn try_acquire_worker_slot() -> Option<SvgWorkerSlot> {
     if ACTIVE_SVG_WORKERS.fetch_add(1, Ordering::Relaxed) >= MAX_CONCURRENT_SVG_WORKERS {
         ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
-        return DecodeOutcome::Timeout;
+        None
+    } else {
+        Some(SvgWorkerSlot)
     }
+}
+
+pub fn parse_with_timeout(source: String, deadline: Duration) -> DecodeOutcome {
+    let Some(slot) = try_acquire_worker_slot() else {
+        return DecodeOutcome::Timeout;
+    };
 
     let (tx, rx) = mpsc::channel();
-    let worker_tx = tx.clone();
     let spawn_result = std::thread::Builder::new()
         .name("plushie-svg-guard".into())
         .spawn(move || {
+            let _slot = slot;
             let opt = usvg::Options::default();
             let result = usvg::Tree::from_str(&source, &opt).map_err(|e| e.to_string());
-            let _ = worker_tx.send(result);
-            ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
+            let _ = tx.send(result);
         });
     if let Err(e) = spawn_result {
-        ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
         let msg = format!("svg_guard: failed to spawn worker: {e}");
         log::error!("{msg}");
-        let _ = tx.send(Err(msg));
+        return DecodeOutcome::ParseError(msg);
     }
 
     match rx.recv_timeout(deadline) {

@@ -1537,8 +1537,9 @@ fn run_multiplexed<R: PlushieRenderer>(
     let mut closing_sessions: HashSet<String> = HashSet::new();
 
     // The initial Settings was already validated by the startup gate.
-    // Feed it as the first message so the first session gets Core.apply().
-    let mut pending_initial_settings = Some(initial.into_incoming_message());
+    // Feed a copy as the first message for every new session so each
+    // isolated Core observes the renderer defaults.
+    let initial_settings = initial.into_incoming_message();
 
     // Helper: emit a structured session_error on the writer channel.
     // Uses try_send so a stalled writer cannot block the dispatcher.
@@ -1547,13 +1548,12 @@ fn run_multiplexed<R: PlushieRenderer>(
     // not draining the writer will never see this event regardless.
     let emit_session_error =
         |writer_tx: &mpsc::SyncSender<Vec<u8>>, session_id: &str, code: &str, message: &str| {
-            let event = serde_json::json!({
-                "type": "event",
-                "session": session_id,
-                "family": "session_error",
-                "id": "",
-                "data": { "code": code, "error": message }
-            });
+            let event = OutgoingEvent::generic(
+                "session_error",
+                "",
+                Some(serde_json::json!({ "code": code, "error": message })),
+            )
+            .with_session(session_id);
             if let Ok(bytes) = codec.encode(&event) {
                 let _ = writer_tx.try_send(bytes);
             }
@@ -1743,7 +1743,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                                                 "session": sid,
                                                 "family": "session_error",
                                                 "id": "",
-                                                "data": {
+                                                "value": {
                                                     "code": "host_disconnect",
                                                     "error": "host stopped delivering messages \
                                                      during interact"
@@ -1778,7 +1778,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                                     "session": sid,
                                     "family": "session_error",
                                     "id": "",
-                                    "data": { "code": "session_panic", "error": msg }
+                                    "value": { "code": "session_panic", "error": msg }
                                 });
                                 if let Ok(bytes) = codec.encode(&error) {
                                     let _ = closed_writer_tx.send(bytes);
@@ -1816,7 +1816,7 @@ fn run_multiplexed<R: PlushieRenderer>(
                             "session": sid,
                             "family": "session_closed",
                             "id": "",
-                            "data": {}
+                            "value": {}
                         });
                         match codec.encode(&closed) {
                             Ok(bytes) => {
@@ -1851,10 +1851,11 @@ fn run_multiplexed<R: PlushieRenderer>(
                         sessions.len()
                     );
 
-                    // Send the initial Settings to the first session so
-                    // Core.apply() processes it.
-                    if let Some(settings_msg) = pending_initial_settings.take()
-                        && let Some(d) = sessions.get_mut(&session_id)
+                    // Send the initial Settings to this new session so
+                    // Core.apply() processes it before any routed host
+                    // message reaches the isolated session state.
+                    let settings_msg = initial_settings.clone();
+                    if let Some(d) = sessions.get_mut(&session_id)
                         && try_enqueue(&mut d.tx, &mut d.pending, settings_msg).is_err()
                     {
                         let msg = "failed to queue initial settings";

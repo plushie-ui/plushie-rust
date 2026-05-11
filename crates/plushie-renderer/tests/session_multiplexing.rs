@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStderr, Command, Stdio};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Default timeout for reading a single response from the subprocess.
 /// Long enough for CI, short enough to catch real hangs.
@@ -94,6 +94,23 @@ impl LineReceiver {
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 panic!("subprocess stdout closed unexpectedly (reader thread exited)");
+            }
+        }
+    }
+
+    fn recv_matching(
+        &self,
+        timeout: Duration,
+        description: &str,
+        matches: impl Fn(&serde_json::Value) -> bool,
+    ) -> serde_json::Value {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let now = Instant::now();
+            assert!(now < deadline, "timed out waiting for {description}");
+            let msg = self.recv_timeout(deadline - now);
+            if matches(&msg) {
+                return msg;
             }
         }
     }
@@ -423,6 +440,173 @@ fn multiplexed_sessions_are_isolated() {
     assert_eq!(s2_tree["type"], "query_response");
     assert_eq!(s2_tree["id"], "q2");
     assert_eq!(s2_tree["data"]["props"]["content"], "session two");
+
+    drop(stdin);
+    child.wait().unwrap();
+}
+
+#[test]
+fn startup_settings_apply_to_each_multiplexed_headless_session() {
+    let (mut child, _stderr) = spawn_renderer(&["--headless", "--max-sessions", "4", "--json"]);
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = LineReceiver::new(child.stdout.take().unwrap());
+
+    send(
+        &mut stdin,
+        &serde_json::json!({
+            "session": "bootstrap",
+            "type": "settings",
+            "settings": {
+                "protocol_version": 1,
+                "default_text_size": 64.0
+            }
+        }),
+    );
+    let hello = stdout.recv();
+    assert_eq!(hello["type"], "hello");
+
+    for sid in ["s1", "s2"] {
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": sid,
+                "type": "snapshot",
+                "tree": {
+                    "id": "root",
+                    "type": "text",
+                    "props": {"content": "startup settings"},
+                    "children": []
+                }
+            }),
+        );
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": sid,
+                "type": "screenshot",
+                "id": format!("shot-{sid}"),
+                "name": "text-size",
+                "width": 320,
+                "height": 120
+            }),
+        );
+    }
+
+    let mut s1_shot = None;
+    let mut s2_shot = None;
+    let deadline = Instant::now() + RECV_TIMEOUT;
+    while s1_shot.is_none() || s2_shot.is_none() {
+        let now = Instant::now();
+        assert!(now < deadline, "timed out waiting for screenshots");
+        let msg = stdout.recv_timeout(deadline - now);
+        if msg["type"] == "screenshot_response" && msg["id"] == "shot-s1" {
+            s1_shot = Some(msg);
+        } else if msg["type"] == "screenshot_response" && msg["id"] == "shot-s2" {
+            s2_shot = Some(msg);
+        }
+    }
+    let s1_shot = s1_shot.expect("s1 screenshot response");
+    let s2_shot = s2_shot.expect("s2 screenshot response");
+
+    assert_eq!(s1_shot["session"], "s1");
+    assert_eq!(s2_shot["session"], "s2");
+    assert_eq!(
+        s1_shot["hash"], s2_shot["hash"],
+        "identical trees in separate sessions should render with the same startup settings"
+    );
+
+    send(
+        &mut stdin,
+        &serde_json::json!({
+            "session": "s1",
+            "type": "settings",
+            "settings": {
+                "protocol_version": 1,
+                "default_text_size": 16.0
+            }
+        }),
+    );
+    send(
+        &mut stdin,
+        &serde_json::json!({
+            "session": "s1",
+            "type": "screenshot",
+            "id": "shot-s1-small",
+            "name": "text-size",
+            "width": 320,
+            "height": 120
+        }),
+    );
+    let smaller = stdout.recv_matching(RECV_TIMEOUT, "s1 resized screenshot", |msg| {
+        msg["type"] == "screenshot_response" && msg["id"] == "shot-s1-small"
+    });
+    assert_ne!(
+        s1_shot["hash"], smaller["hash"],
+        "changing default_text_size should affect the rendered output"
+    );
+
+    drop(stdin);
+    child.wait().unwrap();
+}
+
+#[test]
+fn session_lifecycle_and_error_events_use_value_payload() {
+    let (mut child, _stderr) = spawn_renderer(&["--mock", "--max-sessions", "2", "--json"]);
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = LineReceiver::new(child.stdout.take().unwrap());
+
+    send(
+        &mut stdin,
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
+    );
+    let hello = stdout.recv();
+    assert_eq!(hello["type"], "hello");
+
+    for sid in ["s1", "s2"] {
+        send(
+            &mut stdin,
+            &serde_json::json!({
+                "session": sid,
+                "type": "snapshot",
+                "tree": {"id": "root", "type": "text", "props": {"content": sid}, "children": []}
+            }),
+        );
+    }
+
+    send(
+        &mut stdin,
+        &serde_json::json!({
+            "session": "s3",
+            "type": "query",
+            "id": "q-overflow",
+            "target": "tree",
+            "selector": {}
+        }),
+    );
+    let error_event = stdout.recv_matching(RECV_TIMEOUT, "session_error event", |msg| {
+        msg["type"] == "event" && msg["session"] == "s3" && msg["family"] == "session_error"
+    });
+    assert_eq!(error_event["id"], "");
+    assert_eq!(error_event["value"]["code"], "max_sessions_reached");
+    assert!(error_event.get("data").is_none());
+
+    send(
+        &mut stdin,
+        &serde_json::json!({"session": "s1", "type": "reset", "id": "r-close"}),
+    );
+    let reset_response = stdout.recv_matching(RECV_TIMEOUT, "reset response", |msg| {
+        msg["type"] == "reset_response" && msg["session"] == "s1" && msg["id"] == "r-close"
+    });
+    assert_eq!(reset_response["id"], "r-close");
+
+    let closed_event = stdout.recv_matching(RECV_TIMEOUT, "session_closed event", |msg| {
+        msg["type"] == "event" && msg["session"] == "s1" && msg["family"] == "session_closed"
+    });
+    assert_eq!(closed_event["id"], "");
+    assert_eq!(closed_event["value"], serde_json::json!({}));
+    assert!(closed_event.get("data").is_none());
 
     drop(stdin);
     child.wait().unwrap();

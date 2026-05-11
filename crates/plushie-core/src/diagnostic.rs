@@ -299,10 +299,11 @@ pub enum Diagnostic {
         message: String,
     },
     /// `A::update()` panicked and was caught by the runtime's safety
-    /// net. The model is reverted to the last-good snapshot so the
-    /// app keeps running; the consecutive counter is shared with
-    /// [`Diagnostic::ViewPanicked`] so the frozen-UI overlay surfaces
-    /// after enough total panics across either callback.
+    /// net. The current Rust API cannot generically roll back
+    /// mutations already made through `&mut Model`; the consecutive
+    /// counter is shared with [`Diagnostic::ViewPanicked`] so the
+    /// frozen-UI overlay surfaces after enough total panics across
+    /// either callback.
     UpdatePanicked {
         /// Consecutive panic count (including this one). Counts any
         /// combination of view and update panics since the last

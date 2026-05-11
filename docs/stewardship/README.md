@@ -32,6 +32,9 @@ below are the authority on each axis when an axis is in play.
   wrong (panic isolation, fault tolerance, parser timeouts,
   hard caps as correctness bounds), and where fail-fast is the
   right answer instead of graceful degradation.
+- `diagnostics.md` describes the taxonomy for structured
+  diagnostics: fatality, scope, delivery surface, payload shape,
+  and how those choices differ from log severity.
 - `performance-bar.md` lists the working principle for keeping
   plushie lightweight, the readability-as-bound rule for
   optimizations, and numeric direction for the realistic

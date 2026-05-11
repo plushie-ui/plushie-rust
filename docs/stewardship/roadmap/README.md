@@ -17,5 +17,12 @@ tracked as standalone work.
   host-to-renderer surface. Pairs with the structural
   renderer-to-host protection already in place; see
   `../trust-model.md`.
+- `exit-animations.md` - Renderer-local ghost lifecycle for
+  re-enabling exit animations without changing protocol tree
+  semantics.
+- `rust-sdk-panic-semantics.md` - Rust SDK app-callback panic
+  rollback and typed diagnostic direction.
+- `sensor-resize-parity.md` - Canonical sensor resize prop and
+  event shape across SDKs.
 
 (More items appear here as directions get articulated.)

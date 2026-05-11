@@ -46,6 +46,7 @@ Lookup material organized by topic. Each page is self-contained.
 - [Testing](reference/testing.md) - `TestSession`, selectors, interactions, assertions, async
 - [Themes and Styling](reference/themes-and-styling.md) - built-in themes, custom palettes, style maps
 - [Versioning](reference/versioning.md) - workspace version, wire protocol version, pinning, host-SDK coordination
+- [WASM Transport](reference/wasm-transport.md) - browser callback transport, JSON-only codec, web-specific behavior
 - [Windows and Layout](reference/windows-and-layout.md) - `Length`, `Padding`, `Align`, window config, layout containers
 - [Wire Protocol](reference/wire-protocol.md) - MessagePack/JSON framing, message types, transport modes
 
@@ -77,6 +78,7 @@ When you know what you want to do but not which page to start on:
 
 **Deployment**: [Direct vs Wire](reference/direct-vs-wire.md),
 [Configuration](reference/configuration.md),
+[WASM Transport](reference/wasm-transport.md),
 [Versioning](reference/versioning.md),
 [Wire Protocol](reference/wire-protocol.md).
 

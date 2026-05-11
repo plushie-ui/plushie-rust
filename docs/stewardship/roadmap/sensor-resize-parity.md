@@ -7,10 +7,9 @@ Investigated on 2026-05-11. This is a cross-SDK shape issue.
 drift to the parity workflow, and `docs/stewardship/triage.md:40`
 calls out cross-SDK shape as the first routing check.
 
-Rust has been moved to the canonical shape. The remaining work is a
-coordinated sibling-SDK parity rollout. Cross-SDK change cost is not a
-reason to keep the wrong shape; it is the work required to keep the
-SDK family coherent.
+Rust and the sibling host SDKs have been moved to the canonical shape.
+Cross-SDK change cost was not a reason to keep the wrong shape; it was
+the work required to keep the SDK family coherent.
 
 ## Source-backed findings
 
@@ -47,33 +46,33 @@ event parser converts resize values into `ResizeDimensions`
 renderer widget emits family `"resize"` with `width` and `height`
 (`crates/plushie-widget-sdk/src/widget/responsive_widget.rs:68`).
 
-Sibling SDKs are split on the `on_resize` prop shape but agree on the
-decoded event payload:
+At investigation time, sibling SDKs were split on the `on_resize` prop
+shape but agreed on the decoded event payload:
 
-- Elixir declares `on_resize` as a string field
+- Elixir declared `on_resize` as a string field
   (`../plushie-elixir/lib/plushie/widget/sensor.ex:13`), yet some
   runtime tests build sensors with `on_resize: true`
   (`../plushie-elixir/test/plushie/runtime_test.exs:211`). Its decoder
   recognizes only family `"resize"` as the typed resize event and
   returns `%{width: ..., height: ...}`
   (`../plushie-elixir/lib/plushie/protocol/decode.ex:972`).
-- Gleam stores `on_resize` as `Option(String)` and writes it as a
+- Gleam stored `on_resize` as `Option(String)` and wrote it as a
   string prop (`../plushie-gleam/src/plushie/widget/sensor.gleam:16`,
   `../plushie-gleam/src/plushie/widget/sensor.gleam:99`). Its decoder
   maps family `"resize"` to `event.Resize` with width and height
   (`../plushie-gleam/src/plushie/protocol/decode.gleam:1374`).
-- Python has a generic sensor builder and documents `on_resize` as a
+- Python had a generic sensor builder and documented `on_resize` as a
   bool (`../plushie-python/src/plushie/ui.py:207`,
   `../plushie-python/docs/reference/built-in-widgets.md:441`). Its
   decoder maps family `"resize"` to a `Resize` event with width and
   height (`../plushie-python/src/plushie/protocol.py:1346`).
-- Ruby documents `on_resize` as a string prop and has builder tests for
+- Ruby documented `on_resize` as a string prop and had builder tests for
   `set_on_resize("resized")`
   (`../plushie-ruby/lib/plushie/widget/sensor.rb:15`,
   `../plushie-ruby/test/plushie/test_widget_builders_complete.rb:355`).
   Its decoder maps family `"resize"` to a widget event value with width
   and height (`../plushie-ruby/lib/plushie/protocol/decode.rb:287`).
-- TypeScript treats `onResize` as either a callback or boolean and
+- TypeScript treated `onResize` as either a callback or boolean and
   serializes both forms to `on_resize: true`
   (`../plushie-typescript/src/ui/widgets/sensor.ts:26`,
   `../plushie-typescript/src/ui/widgets/sensor.ts:44`). Its event type
@@ -124,38 +123,25 @@ other string previously received a custom family rather than
 `WidgetMatch::Resize`; it should migrate to matching the sensor ID or
 local app state.
 
-Elixir should change the sensor field type and docs from string to
-boolean. Existing `on_resize: true` test coverage already points in the
-recommended direction. Tests and examples that expect `on_resize:
-:resized` or a stored string should switch to the built-in `:resize`
-event and use the widget ID for routing.
+Elixir, Gleam, and Ruby have moved their sensor builder surfaces from
+string event tags to boolean enablement. Python already exposed the
+boolean shape and now has regression coverage for `on_resize=True`.
+TypeScript already serialized callbacks and boolean options to
+`on_resize: true`; its handler type now carries `ResizeData`.
 
-Gleam should change `OnResize(String)` and the optional string prop to
-a boolean enable option, then keep decoding `event.Resize` from family
-`"resize"`.
+Decoding remains unchanged across the host SDKs because the typed event
+path already expected family `"resize"` with `width` and `height`.
 
-Python appears aligned at the documentation level. It should add or
-confirm builder tests that serialize `on_resize=True` and reject or
-avoid string tag examples.
+## Parity rollout
 
-Ruby should change the sensor docs and builder tests from string tag to
-boolean enablement. Decoding can remain as-is because it already maps
-family `"resize"` to a typed widget event value.
+This shape is now the accepted SDK-family contract:
 
-TypeScript is closest to the recommendation. Keep `onResize: true` and
-function handler metadata emitting `on_resize: true`; narrow the handler
-data type to `ResizeData` if the public API allows it.
+1. The canonical sensor node serializes `on_resize: true`.
+2. The renderer emits family `"resize"` with `value.width` and
+   `value.height`.
+3. Host SDKs surface typed resize data in their local idiom.
+4. Callback-capable SDKs may keep local handler metadata, but that
+   metadata must not alter the wire family.
 
-## Proposed parity rollout
-
-1. Record the canonical sensor fixture in the parity suite: a sensor
-   node with `on_resize: true`, and an inbound family `"resize"` event
-   with `value.width` and `value.height`.
-2. Keep plushie-rust as the protocol authority for this shape:
-   `on_resize: true` and family `"resize"` with width and height.
-3. Update host SDK builders and docs to emit the boolean wire prop while
-   keeping local handler registration idiomatic to each language.
-4. Remove string-tag examples and tests across SDKs. Pre-1.0 policy
-   permits the breaking cleanup without compatibility shims.
-5. Verify parity with real renderer tests in every SDK mode that can
-   observe resize, using the same expected wire event shape.
+The parity suite should include this case when that sibling repository
+is available in the workspace.

@@ -49,18 +49,12 @@ impl From<f32> for Radius {
 impl PlushieType for Radius {
     fn wire_decode(value: &Value) -> Option<Self> {
         match value {
-            Value::Number(n) => Some(Self::Uniform(n.as_f64()? as f32)),
+            Value::Number(n) => decode_non_negative_f32(n.as_f64()?).map(Self::Uniform),
             Value::Object(obj) => {
-                let tl = obj.get("top_left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                let tr = obj.get("top_right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                let br = obj
-                    .get("bottom_right")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0) as f32;
-                let bl = obj
-                    .get("bottom_left")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0) as f32;
+                let tl = optional_non_negative_f32(obj.get("top_left"))?;
+                let tr = optional_non_negative_f32(obj.get("top_right"))?;
+                let br = optional_non_negative_f32(obj.get("bottom_right"))?;
+                let bl = optional_non_negative_f32(obj.get("bottom_left"))?;
                 Some(Self::PerCorner {
                     top_left: tl,
                     top_right: tr,
@@ -104,6 +98,18 @@ impl PlushieType for Radius {
     fn type_name() -> &'static str {
         "radius"
     }
+}
+
+fn optional_non_negative_f32(value: Option<&Value>) -> Option<f32> {
+    match value {
+        Some(value) => decode_non_negative_f32(value.as_f64()?),
+        None => Some(0.0),
+    }
+}
+
+fn decode_non_negative_f32(value: f64) -> Option<f32> {
+    let value = value as f32;
+    (value.is_finite() && value >= 0.0).then_some(value)
 }
 
 /// A widget border with color, width, and corner radius.
@@ -177,11 +183,11 @@ impl PlushieType for Border {
         let obj = value.as_object()?;
 
         let color = obj.get("color").and_then(Color::wire_decode);
-        let width = obj.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-        let radius = obj
-            .get("radius")
-            .and_then(Radius::wire_decode)
-            .unwrap_or_default();
+        let width = optional_non_negative_f32(obj.get("width"))?;
+        let radius = match obj.get("radius") {
+            Some(radius) => Radius::wire_decode(radius)?,
+            None => Radius::default(),
+        };
 
         Some(Self {
             color,
@@ -232,5 +238,25 @@ mod tests {
         Border::new()
             .radius_corners(-1.0, 0.0, 0.0, 0.0)
             .wire_encode();
+    }
+
+    #[test]
+    fn decode_rejects_negative_width() {
+        assert_eq!(
+            Border::wire_decode(&serde_json::json!({"width": -1.0})),
+            None
+        );
+    }
+
+    #[test]
+    fn decode_rejects_negative_radius() {
+        assert_eq!(
+            Border::wire_decode(&serde_json::json!({"radius": -1.0})),
+            None
+        );
+        assert_eq!(
+            Border::wire_decode(&serde_json::json!({"radius": {"top_left": -1.0}})),
+            None
+        );
     }
 }

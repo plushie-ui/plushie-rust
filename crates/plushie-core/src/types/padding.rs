@@ -111,14 +111,14 @@ impl PlushieType for Padding {
     fn wire_decode(value: &Value) -> Option<Self> {
         match value {
             Value::Number(n) => {
-                let v = n.as_f64()? as f32;
+                let v = decode_non_negative_f32(n.as_f64()?)?;
                 Some(Self::all(v))
             }
             Value::Object(obj) => {
-                let top = obj.get("top").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                let right = obj.get("right").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                let bottom = obj.get("bottom").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                let left = obj.get("left").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                let top = optional_non_negative_f32(obj.get("top"))?;
+                let right = optional_non_negative_f32(obj.get("right"))?;
+                let bottom = optional_non_negative_f32(obj.get("bottom"))?;
+                let left = optional_non_negative_f32(obj.get("left"))?;
                 Some(Self::new(top, right, bottom, left))
             }
             _ => None,
@@ -181,6 +181,18 @@ impl From<(f32, f32, f32, f32)> for Padding {
     }
 }
 
+fn optional_non_negative_f32(value: Option<&Value>) -> Option<f32> {
+    match value {
+        Some(value) => decode_non_negative_f32(value.as_f64()?),
+        None => Some(0.0),
+    }
+}
+
+fn decode_non_negative_f32(value: f64) -> Option<f32> {
+    let value = value as f32;
+    (value.is_finite() && value >= 0.0).then_some(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,5 +207,14 @@ mod tests {
     #[should_panic(expected = "padding must be non-negative")]
     fn encode_rejects_negative_padding() {
         Padding::new(-1.0, 0.0, 0.0, 0.0).wire_encode();
+    }
+
+    #[test]
+    fn decode_rejects_negative_padding() {
+        assert_eq!(Padding::wire_decode(&serde_json::json!(-1.0)), None);
+        assert_eq!(
+            Padding::wire_decode(&serde_json::json!({"top": -1.0})),
+            None
+        );
     }
 }

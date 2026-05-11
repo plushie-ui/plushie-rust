@@ -164,13 +164,13 @@ impl PlushieType for Font {
                     font.family = Some(family.to_string());
                 }
                 if let Some(weight_val) = obj.get("weight") {
-                    font.weight = FontWeight::wire_decode(weight_val);
+                    font.weight = Some(FontWeight::wire_decode(weight_val)?);
                 }
                 if let Some(style_val) = obj.get("style") {
-                    font.style = FontStyle::wire_decode(style_val);
+                    font.style = Some(FontStyle::wire_decode(style_val)?);
                 }
                 if let Some(stretch_val) = obj.get("stretch") {
-                    font.stretch = FontStretch::wire_decode(stretch_val);
+                    font.stretch = Some(FontStretch::wire_decode(stretch_val)?);
                 }
 
                 Some(font)
@@ -207,5 +207,39 @@ impl PlushieType for Font {
 
     fn type_name() -> &'static str {
         "font"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    #[test]
+    fn font_round_trip() {
+        let original = Font::new()
+            .family("Fira Code")
+            .weight(FontWeight::Bold)
+            .style(FontStyle::Italic)
+            .stretch(FontStretch::Condensed);
+
+        let value = Value::from(original.wire_encode());
+        assert_eq!(Font::wire_decode(&value), Some(original));
+    }
+
+    #[test]
+    fn font_rejects_invalid_present_subfields() {
+        assert_eq!(
+            Font::wire_decode(&json!({"family": "Fira Code", "weight": "heavy"})),
+            None
+        );
+        assert_eq!(
+            Font::wire_decode(&json!({"family": "Fira Code", "style": false})),
+            None
+        );
+        assert_eq!(
+            Font::wire_decode(&json!({"family": "Fira Code", "stretch": "wide"})),
+            None
+        );
     }
 }

@@ -9,8 +9,8 @@ use super::Stroke;
 
 /// Style overrides applied to canvas shapes in hover/pressed/focus states.
 ///
-/// At least one field must be present for a valid style. All fields are
-/// optional overrides that replace the shape's base property for that state.
+/// All fields are optional overrides that replace the shape's base
+/// property for that state. An empty style is a no-op.
 ///
 /// ## Wire format
 ///
@@ -36,10 +36,6 @@ impl PlushieType for ShapeStyle {
             .get("opacity")
             .and_then(|v| v.as_f64())
             .map(|f| f as f32);
-        // At least one field must be present to be a valid style.
-        if fill.is_none() && stroke.is_none() && opacity.is_none() {
-            return None;
-        }
         Some(Self {
             fill,
             stroke,
@@ -97,8 +93,15 @@ mod tests {
     }
 
     #[test]
-    fn shape_style_empty_is_none() {
-        assert!(ShapeStyle::wire_decode(&json!({})).is_none());
+    fn shape_style_empty_is_no_op() {
+        assert_eq!(
+            ShapeStyle::wire_decode(&json!({})),
+            Some(ShapeStyle {
+                fill: None,
+                stroke: None,
+                opacity: None
+            })
+        );
     }
 
     #[test]
@@ -113,6 +116,19 @@ mod tests {
                 dash: None,
             }),
             opacity: Some(0.75),
+        };
+        let encoded = original.wire_encode();
+        let json_val: Value = encoded.into();
+        let decoded = ShapeStyle::wire_decode(&json_val).unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn empty_shape_style_round_trips() {
+        let original = ShapeStyle {
+            fill: None,
+            stroke: None,
+            opacity: None,
         };
         let encoded = original.wire_encode();
         let json_val: Value = encoded.into();

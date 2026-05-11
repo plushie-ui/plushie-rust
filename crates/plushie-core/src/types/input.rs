@@ -2,6 +2,7 @@
 
 use crate::PlushieEnum;
 use crate::protocol::PropValue;
+use crate::types::PlushieType;
 
 /// Form-validation state for input-accepting widgets.
 ///
@@ -63,6 +64,80 @@ impl Validation {
                 PropValue::from(serde_json::Value::Object(map))
             }
         }
+    }
+}
+
+impl PlushieType for Validation {
+    fn wire_decode(value: &serde_json::Value) -> Option<Self> {
+        match value {
+            serde_json::Value::String(state) => match state.as_str() {
+                "valid" => Some(Self::Valid),
+                "pending" => Some(Self::Pending),
+                "invalid" => Some(Self::Invalid {
+                    message: String::new(),
+                }),
+                _ => None,
+            },
+            serde_json::Value::Object(obj) => {
+                let state = obj.get("state")?.as_str()?;
+                match state {
+                    "valid" => Some(Self::Valid),
+                    "pending" => Some(Self::Pending),
+                    "invalid" => Some(Self::Invalid {
+                        message: obj
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                    }),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn wire_encode(&self) -> PropValue {
+        Self::wire_encode(self)
+    }
+
+    fn type_name() -> &'static str {
+        "validation"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    #[test]
+    fn validation_round_trip() {
+        for original in [
+            Validation::Valid,
+            Validation::Pending,
+            Validation::invalid("Required"),
+        ] {
+            let value = Value::from(original.wire_encode());
+            assert_eq!(Validation::wire_decode(&value), Some(original));
+        }
+    }
+
+    #[test]
+    fn validation_decodes_invalid_string_as_empty_message() {
+        assert_eq!(
+            Validation::wire_decode(&json!("invalid")),
+            Some(Validation::invalid(""))
+        );
+    }
+
+    #[test]
+    fn validation_rejects_unknown_state() {
+        assert_eq!(Validation::wire_decode(&json!("unknown")), None);
+        assert_eq!(
+            Validation::wire_decode(&json!({"state": "unknown", "message": "No"})),
+            None
+        );
     }
 }
 

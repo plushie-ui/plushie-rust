@@ -18,14 +18,15 @@ pub enum LineHeight {
 impl PlushieType for LineHeight {
     fn wire_decode(value: &Value) -> Option<Self> {
         match value {
-            Value::Number(n) => Some(Self::Relative(n.as_f64()? as f32)),
+            Value::Number(n) => decode_positive_f32(n.as_f64()?).map(Self::Relative),
             Value::Object(obj) => {
                 if let Some(n) = obj.get("relative").and_then(|v| v.as_f64()) {
-                    Some(Self::Relative(n as f32))
+                    decode_positive_f32(n).map(Self::Relative)
                 } else {
                     obj.get("absolute")
                         .and_then(|v| v.as_f64())
-                        .map(|n| Self::Absolute(n as f32))
+                        .and_then(decode_positive_f32)
+                        .map(Self::Absolute)
                 }
             }
             _ => None,
@@ -45,5 +46,37 @@ impl PlushieType for LineHeight {
 
     fn type_name() -> &'static str {
         "line_height"
+    }
+}
+
+fn decode_positive_f32(value: f64) -> Option<f32> {
+    let value = value as f32;
+    (value.is_finite() && value > 0.0).then_some(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    #[test]
+    fn line_height_round_trip() {
+        for original in [LineHeight::Relative(1.5), LineHeight::Absolute(24.0)] {
+            let value = Value::from(original.wire_encode());
+            assert_eq!(LineHeight::wire_decode(&value), Some(original));
+        }
+    }
+
+    #[test]
+    fn line_height_rejects_non_positive_values() {
+        assert_eq!(LineHeight::wire_decode(&json!(0.0)), None);
+        assert_eq!(LineHeight::wire_decode(&json!(-1.0)), None);
+        assert_eq!(LineHeight::wire_decode(&json!({"relative": 0.0})), None);
+        assert_eq!(LineHeight::wire_decode(&json!({"absolute": -1.0})), None);
+    }
+
+    #[test]
+    fn line_height_rejects_infinite_after_f32_conversion() {
+        assert_eq!(LineHeight::wire_decode(&json!(f64::MAX)), None);
     }
 }

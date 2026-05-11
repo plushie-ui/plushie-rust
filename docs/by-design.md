@@ -87,6 +87,29 @@ and `#[must_use]` requests with a pointer to this section.
 
 ---
 
+## Animation target comparison is exact after parsing
+
+Animation restart checks compare parsed target values exactly for the
+stored representation. For colors, a target that differs by a hex
+channel is a different requested color and should retarget the active
+animation. Do not broaden this comparison to a display-oriented
+epsilon such as one color channel step unless the restart semantics
+themselves change.
+
+Animation color values are serialized back to CSS-compatible hex for
+the interpolated prop cache. Opaque colors omit alpha and translucent
+colors include it. This mirrors normal CSS authoring and keeps the
+cache easy for render code to consume; fixed-width color strings are
+not a renderer invariant.
+
+`TransitionState` is shared by timed and spring animations. Some fields
+are meaningful only for one kind, for example spring velocity. Keep the
+shape until a broader animation-state redesign has a concrete forcing
+function; splitting it only to remove an inactive field adds matching
+and conversion cost without improving behavior.
+
+---
+
 ## Renderer-to-host integrity is defended; host-to-renderer is broad by design
 
 The trust model (see `docs/stewardship/trust-model.md`) makes the
@@ -295,6 +318,57 @@ Revisit when a real change shows up that the existing structure
 cannot accommodate cleanly. If a future feature spans both the
 direct and wire effect handlers and the duplication actively
 costs the implementation, that is the forcing function.
+
+---
+
+## Widget SDK debug guards stay development-only
+
+The widget SDK has debug assertions that verify `prepare` ran before
+`render` and that the node did not change between those phases. These
+checks intentionally clone node snapshots and panic in debug builds,
+because they catch programming errors in the prepare/render split.
+
+Release builds rely on the normal renderer path, which always prepares
+the tree before rendering. Keeping the full snapshot check in release
+would add per-frame cost to protect against a registry misuse pattern,
+not user-facing bad input.
+
+Revisit if a public API allows callers to bypass prepare in ordinary
+renderer use, or if a production failure shows the invariant can be
+violated without programmer error.
+
+---
+
+## Keyboard `command` is the platform shortcut modifier
+
+`KeyModifiers.command` means "the platform command shortcut is active",
+matching `plushie_core::key` combo parsing and the wire docs. On macOS
+that usually tracks Command. On Linux and Windows it usually tracks
+Control. This is intentionally distinct from `logo`, which reports the
+platform logo key itself.
+
+Do not redefine `command` to mean only the physical Command or logo key.
+Hosts that need the physical modifier should read `logo`; hosts that
+need shortcut semantics should read `command`.
+
+Revisit only if the cross-SDK key model changes through the parity
+workflow.
+
+---
+
+## Widget family collision diagnostics prefer deterministic order
+
+`WidgetRegistry::family_collision_diagnostics` walks active widget
+implementations in sorted type-name order before de-duplicating
+implementations that own multiple type names. The extra sort keeps
+diagnostic ownership stable across `HashMap` iteration order and across
+process runs.
+
+This path runs around settings/init time, not in the frame loop. Avoid
+replacing it with insertion-order or unsorted iteration unless the
+diagnostic contract changes.
+
+Revisit if this path ever moves into a hot loop.
 
 ---
 

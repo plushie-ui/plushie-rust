@@ -5,8 +5,7 @@
 //! names or type mismatches are emitted as prop_validation events over
 //! the wire so the SDK can detect and report them.
 //!
-//! Validation is opt-in via `validate_props: true` in the Settings
-//! message. SDKs can opt in via `validate_props: true` in the Settings message.
+//! Validation is opt-in via `validate_props: true` in the Settings message.
 
 use std::cell::Cell;
 use std::sync::OnceLock;
@@ -257,16 +256,6 @@ impl NumericRange {
         Self {
             min: Some(min),
             max: Some(max),
-        }
-    }
-
-    /// Legitimate negative values (shadow offsets, translate offsets)
-    /// bypass the >= 0 check for Length props that generally should
-    /// be non-negative.
-    const fn any() -> Self {
-        Self {
-            min: None,
-            max: None,
         }
     }
 }
@@ -955,10 +944,6 @@ pub fn collect_prop_warnings(node: &TreeNode) -> Vec<String> {
             }
         }
     }
-
-    // NumericRange is intentionally opaque outside this module; nudge
-    // the linter to keep the unused-but-reachable variant allowed.
-    let _ = NumericRange::any();
 
     warnings
 }

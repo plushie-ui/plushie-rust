@@ -45,19 +45,21 @@ pub fn parse_with_timeout(source: String, deadline: Duration) -> DecodeOutcome {
     }
 
     let (tx, rx) = mpsc::channel();
-    std::thread::Builder::new()
+    let worker_tx = tx.clone();
+    let spawn_result = std::thread::Builder::new()
         .name("plushie-svg-guard".into())
         .spawn(move || {
             let opt = usvg::Options::default();
             let result = usvg::Tree::from_str(&source, &opt).map_err(|e| e.to_string());
-            let _ = tx.send(result);
-            ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
-        })
-        .map(|_| ())
-        .unwrap_or_else(|e| {
-            log::error!("svg_guard: failed to spawn worker: {e}");
+            let _ = worker_tx.send(result);
             ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
         });
+    if let Err(e) = spawn_result {
+        ACTIVE_SVG_WORKERS.fetch_sub(1, Ordering::Relaxed);
+        let msg = format!("svg_guard: failed to spawn worker: {e}");
+        log::error!("{msg}");
+        let _ = tx.send(Err(msg));
+    }
 
     match rx.recv_timeout(deadline) {
         Ok(Ok(_tree)) => DecodeOutcome::Ok,

@@ -111,3 +111,69 @@ impl GhostManager {
         self.ghosts.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{Props, TreeNode};
+
+    fn node(id: &str) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: "text".to_string(),
+            props: Props::default(),
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn add_ghost_tracks_parent_and_index() {
+        let mut ghosts = GhostManager::new();
+
+        ghosts.add_ghost("root", node("child"), 2);
+
+        let entries = ghosts.ghosts_for("root").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].node.id, "child");
+        assert_eq!(entries[0].insert_index, 2);
+        assert!(!entries[0].finished);
+    }
+
+    #[test]
+    fn adjust_index_counts_ghosts_before_or_at_sdk_index() {
+        let mut ghosts = GhostManager::new();
+        ghosts.add_ghost("root", node("a"), 0);
+        ghosts.add_ghost("root", node("b"), 2);
+        ghosts.add_ghost("root", node("c"), 4);
+
+        assert_eq!(ghosts.ghost_count_before("root", 1), 1);
+        assert_eq!(ghosts.adjust_index("root", 2), 4);
+        assert_eq!(ghosts.adjust_index("root", 3), 5);
+    }
+
+    #[test]
+    fn prune_finished_removes_only_finished_ghosts() {
+        let mut ghosts = GhostManager::new();
+        ghosts.add_ghost("root", node("a"), 0);
+        ghosts.add_ghost("root", node("b"), 1);
+
+        ghosts.mark_finished("root", 0);
+        let removed = ghosts.prune_finished();
+
+        assert_eq!(removed, vec!["a"]);
+        let entries = ghosts.ghosts_for("root").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].node.id, "b");
+    }
+
+    #[test]
+    fn clear_removes_all_ghosts() {
+        let mut ghosts = GhostManager::new();
+        ghosts.add_ghost("root", node("a"), 0);
+
+        ghosts.clear();
+
+        assert!(!ghosts.has_active());
+        assert!(ghosts.ghosts_for("root").is_none());
+    }
+}

@@ -97,3 +97,30 @@ fn bezier_derivative(s: f32, p1: f32, p2: f32) -> f32 {
     let inv = 1.0 - s;
     3.0 * inv * inv * p1 + 6.0 * inv * s * (p2 - p1) + 3.0 * s * s * (1.0 - p2)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cubic_bezier_clamps_endpoints() {
+        assert_eq!(cubic_bezier(0.0, 0.42, 0.0, 0.58, 1.0), 0.0);
+        assert_eq!(cubic_bezier(1.0, 0.42, 0.0, 0.58, 1.0), 1.0);
+    }
+
+    #[test]
+    fn cubic_bezier_linear_curve_tracks_progress() {
+        for t in [0.1, 0.25, 0.5, 0.75, 0.9] {
+            let eased = cubic_bezier(t, 0.0, 0.0, 1.0, 1.0);
+            assert!((eased - t).abs() < 1.0e-5);
+        }
+    }
+
+    #[test]
+    fn cubic_bezier_handles_degenerate_x_curve() {
+        let eased = cubic_bezier(0.5, 0.0, 0.25, 0.0, 0.75);
+
+        assert!(eased.is_finite());
+        assert!((0.0..=1.0).contains(&eased));
+    }
+}

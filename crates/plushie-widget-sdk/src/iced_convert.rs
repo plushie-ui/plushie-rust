@@ -215,7 +215,14 @@ pub fn length(l: &types::Length) -> iced::Length {
         types::Length::Fill => iced::Length::Fill,
         types::Length::Shrink => iced::Length::Shrink,
         types::Length::FillPortion(n) => {
-            iced::Length::FillPortion(u16::try_from(n).unwrap_or(u16::MAX))
+            let portion = u16::try_from(n).unwrap_or_else(|_| {
+                log::warn!(
+                    "fill_portion value {n} exceeds iced's maximum; clamping to {}",
+                    u16::MAX
+                );
+                u16::MAX
+            });
+            iced::Length::FillPortion(portion)
         }
         types::Length::Fixed(f) => iced::Length::Fixed(f),
     }
@@ -825,6 +832,10 @@ mod tests {
         assert_eq!(
             length(&types::Length::FillPortion(3)),
             iced::Length::FillPortion(3)
+        );
+        assert_eq!(
+            length(&types::Length::FillPortion(u32::from(u16::MAX) + 1)),
+            iced::Length::FillPortion(u16::MAX)
         );
         assert_eq!(
             length(&types::Length::Fixed(42.0)),

@@ -33,7 +33,7 @@ use std::collections::{HashMap, HashSet};
 pub enum AnimValue {
     /// Scalar f32 value (pixels, angles, opacity, etc.).
     Number(f32),
-    /// Color value interpolated in linear RGBA.
+    /// Color value interpolated in Oklch.
     Color(iced::Color),
 }
 
@@ -352,9 +352,13 @@ impl TransitionManager {
         self.active
             .get(widget_id)
             .and_then(|props| props.get(prop_name))
-            .map(|anim| match anim {
-                ActiveAnimation::Single(s) => &s.current,
-                ActiveAnimation::Sequence(seq) => &seq.steps[seq.current_step].current,
+            .and_then(|anim| match anim {
+                ActiveAnimation::Single(s) => Some(&s.current),
+                ActiveAnimation::Sequence(seq) => seq
+                    .steps
+                    .get(seq.current_step)
+                    .or_else(|| seq.steps.last())
+                    .map(|step| &step.current),
             })
     }
 
@@ -392,16 +396,13 @@ impl TransitionManager {
             }
 
             if is_descriptor_prop(value) {
-                let old_value = self.current_value(&node.id, key).and_then(|v| match v {
-                    AnimValue::Number(n) => Some(*n),
-                    _ => None,
-                });
+                let old_value = self.current_value(&node.id, key).cloned();
 
                 // Convert just the descriptor value once, so
                 // parse_descriptor can keep working on
                 // serde_json::Value without rewriting every parser.
                 let json_value = serde_json::Value::from(value.clone());
-                if let Some(new_anim) = parse_descriptor(&json_value, old_value) {
+                if let Some(new_anim) = parse_descriptor_with_old_value(&json_value, old_value) {
                     let target_same = self
                         .active
                         .get(node.id.as_str())
@@ -681,6 +682,13 @@ pub(crate) fn is_descriptor_prop(value: &plushie_core::protocol::PropValue) -> b
 
 /// Parses a transition descriptor from a prop value.
 pub fn parse_descriptor(value: &Value, old_value: Option<f32>) -> Option<ActiveAnimation> {
+    parse_descriptor_with_old_value(value, old_value.map(AnimValue::Number))
+}
+
+fn parse_descriptor_with_old_value(
+    value: &Value,
+    old_value: Option<AnimValue>,
+) -> Option<ActiveAnimation> {
     let obj = value.as_object()?;
     let desc_type = obj.get("type")?.as_str()?;
 
@@ -705,7 +713,7 @@ fn parse_anim_value(value: &Value) -> Option<AnimValue> {
 
 fn parse_timed(
     obj: &serde_json::Map<String, Value>,
-    old_value: Option<f32>,
+    old_value: Option<AnimValue>,
 ) -> Option<ActiveAnimation> {
     let to_val = parse_anim_value(obj.get("to")?)?;
     let duration = obj.get("duration")?.as_f64()? as f32;
@@ -733,7 +741,7 @@ fn parse_timed(
     let from_val = obj
         .get("from")
         .and_then(parse_anim_value)
-        .or_else(|| old_value.map(AnimValue::Number))
+        .or_else(|| compatible_old_value(&to_val, old_value))
         .unwrap_or_else(|| to_val.clone());
     let repeat = match obj.get("repeat").and_then(|v| v.as_i64()) {
         Some(-1) => RepeatMode::Forever,
@@ -770,7 +778,7 @@ fn parse_timed(
 
 fn parse_spring(
     obj: &serde_json::Map<String, Value>,
-    old_value: Option<f32>,
+    old_value: Option<AnimValue>,
 ) -> Option<ActiveAnimation> {
     let to = obj.get("to")?.as_f64()? as f32;
     let stiffness = obj
@@ -784,7 +792,10 @@ fn parse_spring(
         .get("from")
         .and_then(|v| v.as_f64())
         .map(|v| v as f32)
-        .or(old_value)
+        .or(match old_value {
+            Some(AnimValue::Number(n)) => Some(n),
+            _ => None,
+        })
         .unwrap_or(to);
     let on_complete = obj
         .get("on_complete")
@@ -817,9 +828,17 @@ fn parse_spring_mass(obj: &serde_json::Map<String, Value>) -> Option<f32> {
     }
 }
 
+fn compatible_old_value(to: &AnimValue, old_value: Option<AnimValue>) -> Option<AnimValue> {
+    match (to, old_value) {
+        (AnimValue::Number(_), Some(old @ AnimValue::Number(_)))
+        | (AnimValue::Color(_), Some(old @ AnimValue::Color(_))) => Some(old),
+        _ => None,
+    }
+}
+
 fn parse_sequence(
     obj: &serde_json::Map<String, Value>,
-    old_value: Option<f32>,
+    old_value: Option<AnimValue>,
 ) -> Option<ActiveAnimation> {
     let steps_val = obj.get("steps")?.as_array()?;
     let on_complete = obj
@@ -837,16 +856,14 @@ fn parse_sequence(
         let anim = match step_type {
             "transition" => parse_timed(step_obj, prev_to),
             "spring" => parse_spring(step_obj, prev_to),
-            _ => continue,
-        };
+            _ => None,
+        }?;
 
-        if let Some(ActiveAnimation::Single(state)) = anim {
-            prev_to = match &state.to {
-                AnimValue::Number(n) => Some(*n),
-                _ => None,
-            };
-            steps.push(state);
-        }
+        let ActiveAnimation::Single(state) = anim else {
+            return None;
+        };
+        prev_to = Some(state.to.clone());
+        steps.push(state);
     }
 
     if steps.is_empty() {
@@ -936,5 +953,93 @@ mod tests {
         let value = props["panel"]["width"].as_f64().unwrap();
         assert!(value.is_finite());
         assert!((0.0..=150.0).contains(&value));
+    }
+
+    #[test]
+    fn current_value_for_finished_sequence_returns_last_step() {
+        let mut manager = TransitionManager::new();
+        manager.start_animation(
+            "panel".to_string(),
+            "opacity".to_string(),
+            ActiveAnimation::Sequence(SequenceState {
+                steps: vec![TransitionState {
+                    kind: AnimationKind::Timed {
+                        duration_ms: 100.0,
+                        easing: Easing::Linear,
+                        bezier: None,
+                        delay_ms: 0.0,
+                        repeat: RepeatMode::None,
+                        auto_reverse: false,
+                    },
+                    from: AnimValue::Number(0.0),
+                    to: AnimValue::Number(1.0),
+                    current: AnimValue::Number(1.0),
+                    velocity: 0.0,
+                    elapsed_ms: 100.0,
+                    on_complete: None,
+                    finished: true,
+                }],
+                current_step: 1,
+                on_complete: None,
+            }),
+        );
+
+        let value = manager.current_value("panel", "opacity");
+
+        assert!(matches!(value, Some(AnimValue::Number(1.0))));
+    }
+
+    #[test]
+    fn sequence_with_unknown_step_type_is_rejected() {
+        let descriptor = json!({
+            "type": "sequence",
+            "steps": [
+                {"type": "transition", "to": 1.0, "duration": 100.0},
+                {"type": "pause", "duration": 100.0}
+            ]
+        });
+
+        assert!(parse_descriptor(&descriptor, Some(0.0)).is_none());
+    }
+
+    #[test]
+    fn sequence_with_invalid_step_is_rejected() {
+        let descriptor = json!({
+            "type": "sequence",
+            "steps": [
+                {"type": "transition", "to": 1.0, "duration": 100.0},
+                {"type": "transition", "duration": 100.0}
+            ]
+        });
+
+        assert!(parse_descriptor(&descriptor, Some(0.0)).is_none());
+    }
+
+    #[test]
+    fn color_transition_carries_current_value_when_retargeted() {
+        let previous = AnimValue::Color(iced::Color::from_rgba(0.25, 0.5, 0.75, 1.0));
+        let descriptor = json!({
+            "type": "transition",
+            "to": "#ff0000",
+            "duration": 100.0
+        });
+
+        let animation = parse_descriptor_with_old_value(&descriptor, Some(previous.clone()));
+
+        let Some(ActiveAnimation::Single(state)) = animation else {
+            panic!("expected single transition");
+        };
+        match state.from {
+            AnimValue::Color(color) => {
+                let AnimValue::Color(previous_color) = previous else {
+                    unreachable!();
+                };
+                assert!((color.r - previous_color.r).abs() < f32::EPSILON);
+                assert!((color.g - previous_color.g).abs() < f32::EPSILON);
+                assert!((color.b - previous_color.b).abs() < f32::EPSILON);
+                assert!((color.a - previous_color.a).abs() < f32::EPSILON);
+            }
+            _ => panic!("expected color from value"),
+        }
     }
 }

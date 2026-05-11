@@ -86,3 +86,45 @@ pub fn color_to_hex(c: Color) -> String {
         format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_color_close(actual: Color, expected: Color) {
+        assert!((actual.r - expected.r).abs() < 1.0e-6);
+        assert!((actual.g - expected.g).abs() < 1.0e-6);
+        assert!((actual.b - expected.b).abs() < 1.0e-6);
+        assert!((actual.a - expected.a).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn interpolation_returns_endpoints() {
+        let from = Color::from_rgba(1.0, 0.0, 0.0, 0.5);
+        let to = Color::from_rgba(0.0, 0.0, 1.0, 1.0);
+
+        assert_color_close(interpolate(from, to, 0.0), from);
+        assert_color_close(interpolate(from, to, 1.0), to);
+    }
+
+    #[test]
+    fn interpolation_lerps_alpha() {
+        let from = Color::from_rgba(1.0, 0.0, 0.0, 0.25);
+        let to = Color::from_rgba(0.0, 0.0, 1.0, 0.75);
+        let midpoint = interpolate(from, to, 0.5);
+
+        assert!((midpoint.a - 0.5).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn achromatic_to_chromatic_interpolation_is_finite() {
+        let from = Color::from_rgb(0.5, 0.5, 0.5);
+        let to = Color::from_rgb(1.0, 0.0, 0.0);
+        let midpoint = interpolate(from, to, 0.5);
+
+        assert!(midpoint.r.is_finite());
+        assert!(midpoint.g.is_finite());
+        assert!(midpoint.b.is_finite());
+        assert!(midpoint.a.is_finite());
+    }
+}

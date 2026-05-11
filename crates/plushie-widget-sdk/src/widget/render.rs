@@ -17,6 +17,10 @@ use crate::render_ctx::RenderCtx;
 use crate::shared_state::MAX_TREE_DEPTH;
 use crate::validate;
 
+thread_local! {
+    static RENDER_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
 // ---------------------------------------------------------------------------
 // Main render dispatch
 // ---------------------------------------------------------------------------
@@ -34,9 +38,6 @@ pub fn render<'a, R: PlushieRenderer>(
 ) -> Element<'a, Message, Theme, R> {
     // Track recursion depth via thread-local counter. Each call increments
     // on entry; the DepthGuard decrements on drop (including early returns).
-    thread_local! {
-        static RENDER_DEPTH: Cell<usize> = const { Cell::new(0) };
-    }
     struct DepthGuard;
     impl Drop for DepthGuard {
         fn drop(&mut self) {
@@ -51,7 +52,8 @@ pub fn render<'a, R: PlushieRenderer>(
     });
     let _guard = DepthGuard;
 
-    if depth > MAX_TREE_DEPTH {
+    let node_depth = depth.saturating_sub(1);
+    if node_depth > MAX_TREE_DEPTH {
         log::warn!(
             "[id={}] render depth exceeds {MAX_TREE_DEPTH}, returning placeholder",
             node.id

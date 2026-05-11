@@ -236,7 +236,18 @@ impl InitCtx<'_> {
     /// fallback path also covers the "widget has no namespace" case,
     /// where `config` is [`Value::Null`].
     pub fn config_or_default<T: serde::de::DeserializeOwned + Default>(&self) -> T {
-        self.config_as::<T>().unwrap_or_default()
+        match self.config_as::<T>() {
+            Ok(config) => config,
+            Err(err) => {
+                if !self.config.is_null() {
+                    log::warn!(
+                        "widget config for {} was malformed; using defaults: {err}",
+                        std::any::type_name::<T>()
+                    );
+                }
+                T::default()
+            }
+        }
     }
 }
 
@@ -1343,20 +1354,9 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
     /// receives `Value::Null`. Every call runs under panic isolation
     /// for untrusted widgets.
     pub fn init_all(&mut self, ctx: &InitCtx<'_>) {
-        // Collect (type_name, namespace) pairs to drive the panic-
-        // isolated dispatch. Iterating over `impls` directly would
-        // borrow `self` for the whole loop and block call_widget_mut.
-        let per_widget: Vec<(String, String)> = self
-            .impls
-            .iter()
-            .enumerate()
-            .map(|(idx, widget)| {
-                let type_name = self.diagnostic_type_name_for_idx(idx);
-                (type_name, widget.namespace().to_string())
-            })
-            .collect();
-
-        for (idx, (type_name, ns)) in per_widget.into_iter().enumerate() {
+        for idx in 0..self.impls.len() {
+            let type_name = self.diagnostic_type_name_for_idx(idx);
+            let ns = self.impls[idx].namespace().to_string();
             let (ns_config, config_provided) = if ns.is_empty() {
                 (Value::Null, false)
             } else {
@@ -1554,19 +1554,14 @@ impl<R: PlushieRenderer> WidgetRegistry<R> {
         // Dispatch prune_stale to every registered widget. This
         // shrinks factory-owned per-instance state keyed by
         // (window_id, node_id) when nodes leave the tree.
-        let type_names: Vec<String> = self
-            .impls
-            .iter()
-            .enumerate()
-            .map(|(idx, _widget)| self.diagnostic_type_name_for_idx(idx))
-            .collect();
-        for (idx, type_name) in type_names.into_iter().enumerate() {
+        for idx in 0..self.impls.len() {
+            let type_name = self.diagnostic_type_name_for_idx(idx);
             let live_keys_ref = &live_keys;
             self.call_widget_mut_by_idx(
                 idx,
-                &type_name,
+                type_name.as_str(),
                 "prune_stale",
-                &type_name,
+                type_name.as_str(),
                 |widget| widget.prune_stale(live_keys_ref),
                 || {},
             );

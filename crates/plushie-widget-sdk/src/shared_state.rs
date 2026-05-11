@@ -18,8 +18,7 @@ use crate::protocol::TreeNode;
 /// [`plushie_core::tree_walk::MAX_TREE_DEPTH`] so the walker and the
 /// widget SDK agree on the cap. The walker enforces descent; per-
 /// widget passes and render use the same constant for defence-in-
-/// depth on paths the walker does not drive (render.rs, tree.rs
-/// search helpers).
+/// depth on paths the walker does not drive.
 pub use plushie_core::tree_walk::MAX_TREE_DEPTH;
 
 /// Maximum recursion depth for [`hash_json_value`]. JSON values within

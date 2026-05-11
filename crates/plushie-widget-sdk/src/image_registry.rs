@@ -430,8 +430,12 @@ impl ImageRegistry {
         match op {
             "create_image" | "update_image" => {
                 if let Some(pixel_bytes) = pixels {
-                    let w = width.unwrap_or(0);
-                    let h = height.unwrap_or(0);
+                    let w = width.ok_or_else(|| {
+                        format!("image_op {op}: missing width for raw RGBA pixels")
+                    })?;
+                    let h = height.ok_or_else(|| {
+                        format!("image_op {op}: missing height for raw RGBA pixels")
+                    })?;
                     self.create_from_rgba(handle, w, h, pixel_bytes)
                 } else if let Some(image_bytes) = data {
                     self.create_from_bytes(handle, image_bytes)
@@ -624,6 +628,20 @@ mod tests {
             .is_ok()
         );
         assert!(reg.get("img").is_some());
+    }
+
+    #[test]
+    fn apply_op_raw_pixels_require_dimensions() {
+        let mut reg = ImageRegistry::new();
+        let missing_width =
+            reg.apply_op("create_image", "img", None, Some(vec![0; 4]), None, Some(1));
+        assert!(missing_width.is_err());
+        assert!(reg.get("img").is_none());
+
+        let missing_height =
+            reg.apply_op("create_image", "img", None, Some(vec![0; 4]), Some(1), None);
+        assert!(missing_height.is_err());
+        assert!(reg.get("img").is_none());
     }
 
     #[test]

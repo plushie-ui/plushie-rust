@@ -155,13 +155,12 @@ fn validate_widget_id(id: &str, type_name: &str, warnings: &mut Vec<Diagnostic>)
 /// tree whose IDs are already scope-normalized. Continues accumulating
 /// warnings into the supplied [`WalkCtx`].
 ///
-/// Split from `normalize_in_place` so callers that compose
+/// Split from the scope-normalization walk so callers that compose
 /// normalization with other transforms in a single traversal can still
 /// reuse the cross-widget a11y logic, which has to run *after* the
 /// full set of declared IDs is known.
 pub(crate) fn finalize_a11y(tree: &mut TreeNode, mut ctx: WalkCtx) -> (Vec<Diagnostic>, WalkCtx) {
-    let declared_ids = collect_ids(tree);
-    let radio_groups = collect_radio_groups(tree);
+    let (declared_ids, radio_groups) = collect_a11y_context(tree);
     rewrite_a11y_in_place(tree, "", &declared_ids, &radio_groups, &mut ctx.warnings, 0);
     check_missing_accessible_name(tree, &mut ctx.warnings);
 
@@ -396,19 +395,46 @@ impl NormalizeTransform<'_> {
 // Pass 2: a11y rewrites
 // ---------------------------------------------------------------------------
 
-/// Collect every declared scoped ID in the normalized tree.
-fn collect_ids(node: &TreeNode) -> HashSet<String> {
-    fn walk(node: &TreeNode, out: &mut HashSet<String>) {
+/// Collect the cross-widget a11y context from the normalized tree.
+fn collect_a11y_context(
+    root: &TreeNode,
+) -> (HashSet<String>, BTreeMap<RadioGroupKey, RadioGroupInfo>) {
+    fn walk(
+        node: &TreeNode,
+        scope: &str,
+        ids: &mut HashSet<String>,
+        groups: &mut BTreeMap<RadioGroupKey, RadioGroupInfo>,
+    ) {
         if !node.id.is_empty() && !node.id.starts_with("auto:") {
-            out.insert(node.id.clone());
+            ids.insert(node.id.clone());
         }
+
+        let next_scope = child_scope_of(node, scope);
+        if node.type_name == "radio"
+            && let Some(group) = node.props.get_str("group")
+        {
+            let key = (scope.to_string(), group.to_string());
+            let info = groups.entry(key).or_default();
+            if !info.ids.iter().any(|id| id == &node.id) {
+                info.ids.push(node.id.clone());
+            }
+            if let (Some(value), Some(selected)) =
+                (node.props.get_str("value"), node.props.get_str("selected"))
+                && value == selected
+            {
+                info.active_descendant = Some(node.id.clone());
+            }
+        }
+
         for child in &node.children {
-            walk(child, out);
+            walk(child, &next_scope, ids, groups);
         }
     }
+
     let mut ids = HashSet::new();
-    walk(node, &mut ids);
-    ids
+    let mut groups = BTreeMap::new();
+    walk(root, "", &mut ids, &mut groups);
+    (ids, groups)
 }
 
 /// Key used to collect radios into a shared group: (enclosing scope, group name).
@@ -423,35 +449,6 @@ type RadioGroupKey = (String, String);
 struct RadioGroupInfo {
     ids: Vec<String>,
     active_descendant: Option<String>,
-}
-
-/// Collect radio widgets sharing the same `group` prop value within
-/// the same enclosing scope. Returns a map from `(scope, group_name)`
-/// to the ordered scoped IDs and the currently selected radio, when
-/// one can be inferred from matching `value` and `selected` props.
-fn collect_radio_groups(root: &TreeNode) -> BTreeMap<RadioGroupKey, RadioGroupInfo> {
-    fn walk(node: &TreeNode, scope: &str, groups: &mut BTreeMap<RadioGroupKey, RadioGroupInfo>) {
-        let next_scope = child_scope_of(node, scope);
-        if node.type_name == "radio"
-            && let Some(group) = node.props.get_str("group")
-        {
-            let key = (scope.to_string(), group.to_string());
-            let info = groups.entry(key).or_default();
-            info.ids.push(node.id.clone());
-            if let (Some(value), Some(selected)) =
-                (node.props.get_str("value"), node.props.get_str("selected"))
-                && value == selected
-            {
-                info.active_descendant = Some(node.id.clone());
-            }
-        }
-        for child in &node.children {
-            walk(child, &next_scope, groups);
-        }
-    }
-    let mut groups = BTreeMap::new();
-    walk(root, "", &mut groups);
-    groups
 }
 
 /// Scope string under which this node's children live after
@@ -484,7 +481,7 @@ fn rewrite_a11y_in_place(
     }
 
     let next_scope = child_scope_of(node, scope);
-    node.props = apply_a11y_rewrites(node, scope, declared, radio_groups, warnings);
+    apply_a11y_rewrites(node, scope, declared, radio_groups, warnings);
     for child in &mut node.children {
         rewrite_a11y_in_place(
             child,
@@ -571,16 +568,14 @@ fn invalid_from_props(
     (None, None)
 }
 
-/// Build a new Props for `node` with its a11y sub-object rewritten.
-///
-/// Returns the input node's props unchanged if there is nothing to do.
+/// Rewrite `node` props only when the a11y sub-object changes.
 fn apply_a11y_rewrites(
-    node: &TreeNode,
+    node: &mut TreeNode,
     scope: &str,
     declared: &HashSet<String>,
     radio_groups: &BTreeMap<RadioGroupKey, RadioGroupInfo>,
     warnings: &mut Vec<Diagnostic>,
-) -> plushie_core::protocol::Props {
+) {
     let radio_info = if node.type_name == "radio" {
         node.props.get_str("group").and_then(|g| {
             radio_groups
@@ -607,7 +602,7 @@ fn apply_a11y_rewrites(
         && invalid_prop.is_none()
         && error_text.is_none()
     {
-        return node.props.clone();
+        return;
     }
 
     let mut obj = a11y_obj.unwrap_or_default();
@@ -704,7 +699,7 @@ fn apply_a11y_rewrites(
     }
 
     // Reassemble props with the updated a11y object.
-    install_a11y(&node.props, obj)
+    node.props = install_a11y(&node.props, obj);
 }
 
 /// Produce a new `Props` value with `a11y` replaced by the given map.
@@ -1452,6 +1447,39 @@ mod tests {
                 .collect();
             assert_eq!(ids, vec!["form/r1", "form/r2", "form/r3"]);
         }
+    }
+
+    #[test]
+    fn implicit_radio_group_dedupes_duplicate_ids_in_order() {
+        let tree = node(
+            "form",
+            "container",
+            vec![
+                node_with_props("r1", "radio", json!({"group": "flavor"})),
+                node_with_props("r1", "radio", json!({"group": "flavor"})),
+                node_with_props("r2", "radio", json!({"group": "flavor"})),
+            ],
+        );
+
+        let (result, warnings) = normalize(&tree);
+
+        assert!(
+            warnings
+                .iter()
+                .any(|w| matches!(w, Diagnostic::DuplicateId { .. })),
+            "duplicate IDs should still be diagnosed"
+        );
+        let group = result.children[0]
+            .props
+            .get_value("a11y")
+            .and_then(|v| v.get("radio_group").cloned())
+            .and_then(|v| v.as_array().cloned())
+            .expect("radio_group should be populated");
+        let ids: Vec<String> = group
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+        assert_eq!(ids, vec!["form/r1", "form/r2"]);
     }
 
     #[test]

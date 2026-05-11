@@ -67,3 +67,58 @@ impl MemoCache {
         self.entries.insert(scoped_id, (deps_hash, children));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie_core::protocol::{PropMap, Props};
+
+    fn node(id: &str) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: "text".to_string(),
+            props: Props::from(PropMap::new()),
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn get_requires_matching_deps_hash() {
+        let mut cache = MemoCache::new();
+        cache.insert("memo".to_string(), 42, vec![node("child")]);
+
+        assert!(cache.get("memo", 41).is_none());
+        assert_eq!(cache.get("memo", 42).unwrap()[0].id, "child");
+    }
+
+    #[test]
+    fn finish_cycle_evicts_entries_not_marked_live() {
+        let mut cache = MemoCache::new();
+        cache.insert("keep".to_string(), 1, vec![node("a")]);
+        cache.insert("drop".to_string(), 1, vec![node("b")]);
+
+        cache.begin_cycle();
+        cache.mark_live("keep");
+        cache.finish_cycle();
+
+        assert!(cache.get("keep", 1).is_some());
+        assert!(cache.get("drop", 1).is_none());
+    }
+
+    #[test]
+    fn removed_then_readded_id_uses_new_entry() {
+        let mut cache = MemoCache::new();
+        cache.insert("memo".to_string(), 1, vec![node("old")]);
+
+        cache.begin_cycle();
+        cache.finish_cycle();
+        assert!(cache.get("memo", 1).is_none());
+
+        cache.begin_cycle();
+        cache.mark_live("memo");
+        cache.insert("memo".to_string(), 1, vec![node("new")]);
+        cache.finish_cycle();
+
+        assert_eq!(cache.get("memo", 1).unwrap()[0].id, "new");
+    }
+}

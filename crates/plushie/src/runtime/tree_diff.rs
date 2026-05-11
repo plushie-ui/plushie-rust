@@ -1,6 +1,3 @@
-// Public API used by the wire runner; tests exercise it unconditionally.
-#![allow(dead_code)]
-
 //! Tree diffing: produce minimal patch operations between two trees.
 //!
 //! Walks old and new TreeNode trees simultaneously, emitting replace,
@@ -81,7 +78,13 @@ pub enum PatchOp {
 }
 
 fn node_to_value(node: &TreeNode) -> Value {
-    serde_json::to_value(node).expect("TreeNode serialization cannot fail")
+    let children: Vec<Value> = node.children.iter().map(node_to_value).collect();
+    serde_json::json!({
+        "id": node.id,
+        "type": node.type_name,
+        "props": node.props.to_value(),
+        "children": children,
+    })
 }
 
 /// Diff two TreeNode trees and return a list of patch operations.

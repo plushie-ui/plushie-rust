@@ -79,3 +79,58 @@ impl WidgetViewCache {
         self.entries.insert(widget_id, (key_hash, view));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use plushie_core::protocol::{PropMap, Props};
+
+    fn node(id: &str) -> TreeNode {
+        TreeNode {
+            id: id.to_string(),
+            type_name: "container".to_string(),
+            props: Props::from(PropMap::new()),
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn get_requires_matching_cache_key_hash() {
+        let mut cache = WidgetViewCache::new();
+        cache.insert("widget".to_string(), 7, node("expanded"));
+
+        assert!(cache.get("widget", 8).is_none());
+        assert_eq!(cache.get("widget", 7).unwrap().id, "expanded");
+    }
+
+    #[test]
+    fn finish_cycle_evicts_entries_not_marked_live() {
+        let mut cache = WidgetViewCache::new();
+        cache.insert("keep".to_string(), 1, node("a"));
+        cache.insert("drop".to_string(), 1, node("b"));
+
+        cache.begin_cycle();
+        cache.mark_live("keep");
+        cache.finish_cycle();
+
+        assert!(cache.get("keep", 1).is_some());
+        assert!(cache.get("drop", 1).is_none());
+    }
+
+    #[test]
+    fn removed_then_readded_id_uses_new_entry() {
+        let mut cache = WidgetViewCache::new();
+        cache.insert("widget".to_string(), 1, node("old"));
+
+        cache.begin_cycle();
+        cache.finish_cycle();
+        assert!(cache.get("widget", 1).is_none());
+
+        cache.begin_cycle();
+        cache.mark_live("widget");
+        cache.insert("widget".to_string(), 1, node("new"));
+        cache.finish_cycle();
+
+        assert_eq!(cache.get("widget", 1).unwrap().id, "new");
+    }
+}

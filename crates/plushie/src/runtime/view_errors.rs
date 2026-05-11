@@ -528,7 +528,143 @@ mod tests {
         assert!(
             !state.overlay_active,
             "update guard should not flip the overlay flag directly; \
-             the view guard owns overlay injection"
+            the view guard owns overlay injection"
         );
+    }
+
+    struct ViewBoomApp;
+
+    impl App for ViewBoomApp {
+        type Model = bool;
+
+        fn init() -> (Self::Model, Command) {
+            (false, Command::None)
+        }
+
+        fn update(_model: &mut Self::Model, _event: Event) -> Command {
+            Command::None
+        }
+
+        fn view(model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::ViewList {
+            if *model {
+                panic!("view boom");
+            }
+            crate::View::empty().into()
+        }
+    }
+
+    #[cfg(feature = "direct")]
+    #[test]
+    fn run_guarded_view_catches_panic_and_injects_overlay_at_threshold() {
+        let mut state = ViewErrors {
+            consecutive: VIEW_ERROR_THRESHOLD - 1,
+            ..ViewErrors::default()
+        };
+        let model = true;
+        let mut widget_store = crate::widget::WidgetStateStore::new();
+        let mut memo_cache = crate::runtime::MemoCache::new();
+        let mut widget_view_cache = crate::runtime::WidgetViewCache::new();
+
+        let outcome = run_guarded_view::<ViewBoomApp>(
+            &mut state,
+            &model,
+            &mut widget_store,
+            &mut memo_cache,
+            &mut widget_view_cache,
+            &window_node("main"),
+        );
+
+        match outcome {
+            ViewOutcome::Panicked {
+                last_good, message, ..
+            } => {
+                assert!(message.contains("view boom"));
+                assert_eq!(overlay_count(&last_good), 1);
+            }
+            ViewOutcome::Ok(..) => panic!("expected panic to be caught"),
+        }
+        assert_eq!(state.consecutive, VIEW_ERROR_THRESHOLD);
+        assert!(state.overlay_active);
+    }
+
+    #[cfg(feature = "direct")]
+    #[test]
+    fn run_guarded_view_success_clears_counter_and_overlay_flag() {
+        let mut state = ViewErrors {
+            consecutive: 3,
+            overlay_active: true,
+        };
+        let model = false;
+        let mut widget_store = crate::widget::WidgetStateStore::new();
+        let mut memo_cache = crate::runtime::MemoCache::new();
+        let mut widget_view_cache = crate::runtime::WidgetViewCache::new();
+
+        let outcome = run_guarded_view::<ViewBoomApp>(
+            &mut state,
+            &model,
+            &mut widget_store,
+            &mut memo_cache,
+            &mut widget_view_cache,
+            &inject_overlay(&window_node("main")),
+        );
+
+        match outcome {
+            ViewOutcome::Ok(tree, _warnings) => {
+                assert_eq!(overlay_count(&tree), 0);
+            }
+            ViewOutcome::Panicked { .. } => panic!("successful view should pass through"),
+        }
+        assert_eq!(state.consecutive, 0);
+        assert!(!state.overlay_active);
+    }
+
+    #[cfg(feature = "wire")]
+    #[test]
+    fn run_guarded_view_wire_catches_panic_and_injects_overlay_at_threshold() {
+        let mut state = ViewErrors {
+            consecutive: VIEW_ERROR_THRESHOLD - 1,
+            ..ViewErrors::default()
+        };
+        let model = true;
+
+        let outcome =
+            run_guarded_view_wire::<ViewBoomApp>(&mut state, &model, &window_node("main"));
+
+        match outcome {
+            ViewOutcome::Panicked {
+                last_good, message, ..
+            } => {
+                assert!(message.contains("view boom"));
+                assert_eq!(overlay_count(&last_good), 1);
+            }
+            ViewOutcome::Ok(..) => panic!("expected panic to be caught"),
+        }
+        assert_eq!(state.consecutive, VIEW_ERROR_THRESHOLD);
+        assert!(state.overlay_active);
+    }
+
+    #[cfg(feature = "wire")]
+    #[test]
+    fn run_guarded_view_wire_success_clears_counter_and_overlay_flag() {
+        let mut state = ViewErrors {
+            consecutive: 3,
+            overlay_active: true,
+        };
+        let model = false;
+
+        let outcome = run_guarded_view_wire::<ViewBoomApp>(
+            &mut state,
+            &model,
+            &inject_overlay(&window_node("main")),
+        );
+
+        match outcome {
+            ViewOutcome::Ok(tree, _warnings) => {
+                assert_eq!(overlay_count(&tree), 0);
+            }
+            ViewOutcome::Panicked { .. } => panic!("successful view should pass through"),
+        }
+        assert_eq!(state.consecutive, 0);
+        assert!(!state.overlay_active);
     }
 }

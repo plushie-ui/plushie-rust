@@ -296,4 +296,125 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn sync_can_add_remove_and_change_in_one_batch() {
+        let mut manager = SubscriptionManager::new();
+        manager.sync(vec![
+            Subscription::on_key_press(),
+            Subscription::on_pointer_move().max_rate(30),
+            Subscription::on_theme_change(),
+        ]);
+
+        let ops = manager.sync(vec![
+            Subscription::on_key_release(),
+            Subscription::on_pointer_move().max_rate(60),
+            Subscription::on_theme_change(),
+        ]);
+
+        assert_eq!(
+            ops,
+            vec![
+                SubOp::Unsubscribe {
+                    kind: "on_key_press".to_string(),
+                    tag: "on_key_press".to_string(),
+                },
+                SubOp::Subscribe {
+                    kind: "on_pointer_move".to_string(),
+                    tag: "on_pointer_move".to_string(),
+                    max_rate: Some(60),
+                    window_id: None,
+                },
+                SubOp::Subscribe {
+                    kind: "on_key_release".to_string(),
+                    tag: "on_key_release".to_string(),
+                    max_rate: None,
+                    window_id: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_sync_removes_all_active_subscriptions() {
+        let mut manager = SubscriptionManager::new();
+        manager.sync(vec![
+            Subscription::every(std::time::Duration::from_millis(16), "tick"),
+            Subscription::on_key_press(),
+        ]);
+
+        let ops = manager.sync(vec![]);
+
+        assert_eq!(
+            ops,
+            vec![
+                SubOp::StopTimer {
+                    tag: "tick".to_string(),
+                },
+                SubOp::Unsubscribe {
+                    kind: "on_key_press".to_string(),
+                    tag: "on_key_press".to_string(),
+                },
+            ]
+        );
+        assert!(manager.active().is_empty());
+    }
+
+    #[test]
+    fn timer_removed_then_renderer_subscription_with_same_tag_is_added() {
+        let mut manager = SubscriptionManager::new();
+        manager.sync(vec![Subscription::every(
+            std::time::Duration::from_millis(16),
+            "shared",
+        )]);
+        let next = Subscription {
+            kind: SubscriptionKind::OnKeyPress,
+            tag: "shared".to_string(),
+            max_rate: None,
+            window_id: None,
+        };
+
+        let ops = manager.sync(vec![next]);
+
+        assert_eq!(
+            ops,
+            vec![
+                SubOp::StopTimer {
+                    tag: "shared".to_string(),
+                },
+                SubOp::Subscribe {
+                    kind: "on_key_press".to_string(),
+                    tag: "shared".to_string(),
+                    max_rate: None,
+                    window_id: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn mixed_timer_and_renderer_subscriptions_start_together() {
+        let mut manager = SubscriptionManager::new();
+
+        let ops = manager.sync(vec![
+            Subscription::every(std::time::Duration::from_millis(16), "tick"),
+            Subscription::on_animation_frame().max_rate(60),
+        ]);
+
+        assert_eq!(
+            ops,
+            vec![
+                SubOp::StartTimer {
+                    tag: "tick".to_string(),
+                    interval: std::time::Duration::from_millis(16),
+                },
+                SubOp::Subscribe {
+                    kind: "on_animation_frame".to_string(),
+                    tag: "on_animation_frame".to_string(),
+                    max_rate: Some(60),
+                    window_id: None,
+                },
+            ]
+        );
+    }
 }

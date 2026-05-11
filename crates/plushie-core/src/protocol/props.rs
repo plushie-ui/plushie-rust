@@ -275,10 +275,7 @@ impl From<PropValue> for Value {
             PropValue::Bool(b) => Value::Bool(b),
             PropValue::F64(f) => {
                 if !f.is_finite() {
-                    log::warn!(
-                        "non-finite f64 ({f}) in PropValue silently encoded as JSON null; \
-                         caller passed an invalid value through `From<f32>`/`From<f64>`"
-                    );
+                    log::warn!("non-finite f64 ({f}) in PropValue encoded as JSON null");
                 }
                 serde_json::json!(f)
             }

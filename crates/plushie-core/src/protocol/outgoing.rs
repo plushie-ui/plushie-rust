@@ -156,10 +156,13 @@ pub struct KeyModifiers {
     /// Whether Alt is held.
     pub alt: bool,
     #[serde(default)]
-    /// Whether the Super/Command key is held.
+    /// Whether the platform logo key is held (Super on Linux/Windows,
+    /// Command on macOS).
     pub logo: bool,
     #[serde(default)]
-    /// Whether the Command key is held (macOS).
+    /// Whether the platform command modifier is active. On macOS this
+    /// usually tracks Command; on other platforms it usually tracks
+    /// Control.
     pub command: bool,
 }
 
@@ -198,8 +201,9 @@ impl OutgoingEvent {
         }
     }
 
-    /// Generic widget event with a family string and optional value payload.
-    /// Used for built-in renderer events such as on_open, on_close, and sort.
+    /// Generic event with a family string and optional value payload.
+    /// Used for built-in renderer events and subscription events that
+    /// do not need a specialized constructor.
     pub fn generic(family: impl Into<String>, id: impl Into<String>, value: Option<Value>) -> Self {
         Self {
             value,
@@ -211,7 +215,8 @@ impl OutgoingEvent {
     ///
     /// Custom widget families must not reuse built-in family strings such
     /// as `"click"` or `"select"`, because SDK event parsing reserves those
-    /// names for built-in events.
+    /// names for built-in events. Panics if `family` names a built-in
+    /// event family.
     pub fn widget_event(
         family: impl Into<String>,
         id: impl Into<String>,

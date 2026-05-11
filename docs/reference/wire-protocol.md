@@ -115,7 +115,7 @@ matching `Settings` option is `None`.
 | Key | Type | Source |
 |---|---|---|
 | `protocol_version` | `u32` | `plushie_core::protocol::PROTOCOL_VERSION` |
-| `default_font` | string | `settings.default_font` |
+| `default_font` | object `{ "family": string }` | `settings.default_font` |
 | `default_text_size` | number | `settings.default_text_size` |
 | `antialiasing` | bool | `settings.antialiasing` |
 | `vsync` | bool | `settings.vsync` |
@@ -183,10 +183,13 @@ pub struct OutgoingEvent {
 
 ## Event families
 
-Every family string below is declared in
+Widget interaction families are declared in
 `plushie_core::event_type` via the `event_types!` macro, so the
 enum, `EventType::from_family`, and `EventType::as_family` stay
-in lock-step.
+in lock-step. Subscription-only families such as window, IME,
+theme, animation, and diagnostic events are emitted by
+`OutgoingEvent` constructors and are listed separately from the
+widget interaction enum.
 
 ### Widget interactions
 

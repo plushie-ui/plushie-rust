@@ -87,7 +87,7 @@ impl Settings {
         if !self.widget_config.is_empty() {
             obj.insert(
                 "widget_config".to_string(),
-                serde_json::to_value(&self.widget_config).unwrap_or(Value::Null),
+                Value::Object(self.widget_config.clone().into_iter().collect()),
             );
         }
         if !self.required_widgets.is_empty() {

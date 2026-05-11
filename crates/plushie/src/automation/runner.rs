@@ -175,7 +175,7 @@ fn run_windowed<A: App>(_file: &PlushieFile) -> PlushieResult {
     Err(Error::NoRunnerFeature)
 }
 
-fn execute_instruction<A: App>(
+pub(crate) fn execute_instruction<A: App>(
     session: &mut TestSession<A>,
     instruction: &Instruction,
 ) -> Result<(), String> {
@@ -234,7 +234,7 @@ fn execute_instruction<A: App>(
         }
         Instruction::Expect(text) => {
             let tree = session.tree();
-            if tree_contains_text(tree, text) {
+            if plushie_core::Selector::text(text).find(tree).is_some() {
                 Ok(())
             } else {
                 Err(format!("expected text \"{text}\" not found in tree"))
@@ -271,10 +271,7 @@ fn execute_instruction<A: App>(
             // Callers that need this instruction should resolve it
             // against `session.model()` in a wrapper runner that
             // adds the Debug bound.
-            Err(
-                "assert_model requires App::Model: Debug; use a wrapper runner with the bound"
-                    .to_string(),
-            )
+            Err("assert_model requires App::Model: Debug; use run_with_model_debug".to_string())
         }
         Instruction::Screenshot(_name) => {
             // Screenshots are a no-op in headless TestSession.
@@ -285,15 +282,4 @@ fn execute_instruction<A: App>(
             Ok(())
         }
     }
-}
-
-/// Check if any node in the tree contains the given text in its
-/// content, label, value, or placeholder props.
-fn tree_contains_text(node: &plushie_core::protocol::TreeNode, text: &str) -> bool {
-    for key in &["content", "label", "value", "placeholder"] {
-        if node.props.get_str(key) == Some(text) {
-            return true;
-        }
-    }
-    node.children.iter().any(|c| tree_contains_text(c, text))
 }

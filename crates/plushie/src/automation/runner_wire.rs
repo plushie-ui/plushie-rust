@@ -132,12 +132,9 @@ pub fn run_windowed_with_renderer<A: App>(binary: &str, file: &PlushieFile) -> P
                 failures.push((*line_no, msg));
             }
         }
-        // Refresh the renderer after every step so the visible frame
-        // tracks the MVU state. Failures sending the snapshot are
-        // logged but don't abort the script; the remaining
-        // instructions still exercise the MVU locally.
         if let Err(e) = send_current_tree(&mut bridge, &session) {
-            log::warn!("windowed: tree refresh failed: {e}");
+            failures.push((*line_no, format!("windowed tree refresh failed: {e}")));
+            break;
         }
     }
 
@@ -158,29 +155,11 @@ pub fn run_windowed_with_renderer<A: App>(binary: &str, file: &PlushieFile) -> P
 
 /// Delegate a single instruction to the shared executor.
 ///
-/// Wrapping the single instruction in a one-line `PlushieFile` keeps
-/// the per-step control flow explicit (so the windowed-specific
-/// `Wait` handling above can live alongside the normal path) without
-/// duplicating the pattern match in `runner::execute_instruction`.
 fn execute_once<A: App>(
     session: &mut TestSession<A>,
     instruction: &Instruction,
 ) -> Result<(), String> {
-    let single = PlushieFile {
-        header: crate::automation::file::Header::default(),
-        instructions: vec![(1, instruction.clone())],
-    };
-    let result = runner::run::<A>(&single, session);
-    if result.is_ok() {
-        Ok(())
-    } else {
-        Err(result
-            .failures
-            .into_iter()
-            .map(|(_, msg)| msg)
-            .next()
-            .unwrap_or_else(|| "unknown failure".to_string()))
-    }
+    runner::execute_instruction(session, instruction)
 }
 
 fn verify_protocol_version(hello: &serde_json::Value) -> Result<(), Error> {
@@ -205,10 +184,13 @@ fn send_current_tree<A: App>(bridge: &mut Bridge, session: &TestSession<A>) -> P
         .map_err(|e| Error::WireEncode(format!("tree: {e}")))?;
     bridge.send_snapshot(&snapshot)?;
 
-    // Drain any renderer output (events, heartbeats) so the reader
-    // channel doesn't stall. Windowed automation ignores the events
-    // themselves today; this loop just prevents back-pressure.
-    while let Incoming::Message(_) = bridge.recv_timeout(Some(DRAIN_POLL)) {}
+    loop {
+        match bridge.recv_timeout(Some(DRAIN_POLL)) {
+            Incoming::Message(_) => {}
+            Incoming::Timeout => break,
+            Incoming::Error(e) => return Err(Error::WireDecode(format!("drain: {e}"))),
+        }
+    }
     Ok(())
 }
 

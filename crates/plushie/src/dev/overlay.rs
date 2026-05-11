@@ -69,8 +69,8 @@ impl Status {
     }
 }
 
-/// Immutable overlay snapshot: the data the watcher pushes to the
-/// UI side after every build-state change.
+/// Overlay snapshot: the data the watcher pushes to the UI side
+/// after every build-state change.
 #[derive(Debug, Clone)]
 pub struct RebuildingOverlay {
     /// Current status variant.
@@ -128,14 +128,13 @@ impl DevOverlayHandle {
 
     /// Replace the current overlay snapshot (`None` hides the overlay).
     pub fn set(&self, overlay: Option<RebuildingOverlay>) {
-        if let Ok(mut guard) = self.inner.lock() {
-            *guard = overlay;
-        }
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = overlay;
     }
 
     /// Read the current overlay snapshot, dismissing expired ones.
     pub fn snapshot(&self) -> Option<RebuildingOverlay> {
-        let mut guard = self.inner.lock().ok()?;
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(o) = guard.as_ref()
             && o.should_dismiss()
         {
@@ -143,20 +142,6 @@ impl DevOverlayHandle {
             return None;
         }
         guard.clone()
-    }
-
-    /// Publish a fresh status + detail combination. Sets `success_at`
-    /// on transition into `Success` so auto-dismiss starts ticking.
-    pub fn publish(&self, status: Status, detail: impl Into<String>) {
-        let detail = detail.into();
-        let expanded = matches!(status, Status::Failed | Status::Frozen);
-        let success_at = matches!(status, Status::Success).then(Instant::now);
-        self.set(Some(RebuildingOverlay {
-            status,
-            detail,
-            expanded,
-            success_at,
-        }));
     }
 }
 
@@ -310,6 +295,15 @@ fn simple_button(id: &str, label: &str) -> TreeNode {
 mod tests {
     use super::*;
 
+    fn overlay(status: Status, detail: impl Into<String>) -> RebuildingOverlay {
+        RebuildingOverlay {
+            status,
+            detail: detail.into(),
+            expanded: matches!(status, Status::Failed | Status::Frozen),
+            success_at: matches!(status, Status::Success).then(Instant::now),
+        }
+    }
+
     #[test]
     fn is_overlay_id_matches_prefix_and_sub_ids() {
         assert!(is_overlay_id("__plushie_dev__"));
@@ -346,9 +340,9 @@ mod tests {
     fn handle_publishes_and_dismisses() {
         let handle = DevOverlayHandle::new();
         assert!(handle.snapshot().is_none());
-        handle.publish(Status::Rebuilding, "");
+        handle.set(Some(overlay(Status::Rebuilding, "")));
         assert_eq!(handle.snapshot().unwrap().status, Status::Rebuilding);
-        handle.publish(Status::Success, "done");
+        handle.set(Some(overlay(Status::Success, "done")));
         // Not yet expired.
         assert_eq!(handle.snapshot().unwrap().status, Status::Success);
     }

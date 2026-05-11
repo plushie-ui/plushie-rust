@@ -157,7 +157,7 @@ pub fn parse(content: &str) -> Result<PlushieFile, String> {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        let tokens = tokenize(trimmed);
+        let tokens = tokenize(trimmed).map_err(|e| format!("line {}: {e}", line_no + 1))?;
         if tokens.is_empty() {
             continue;
         }
@@ -227,7 +227,7 @@ fn sel(s: &str) -> Selector {
 /// Tokenize an instruction line.
 ///
 /// Supports quoted strings (`"hello world"`) and bare tokens.
-fn tokenize(line: &str) -> Vec<String> {
+fn tokenize(line: &str) -> Result<Vec<String>, String> {
     let mut tokens = Vec::new();
     let mut chars = line.chars().peekable();
 
@@ -239,11 +239,28 @@ fn tokenize(line: &str) -> Vec<String> {
         if ch == '"' {
             chars.next(); // consume opening quote
             let mut token = String::new();
-            for c in chars.by_ref() {
+            let mut closed = false;
+            while let Some(c) = chars.next() {
+                if c == '\\' {
+                    match chars.next() {
+                        Some('"') => token.push('"'),
+                        Some('\\') => token.push('\\'),
+                        Some(other) => {
+                            token.push('\\');
+                            token.push(other);
+                        }
+                        None => token.push('\\'),
+                    }
+                    continue;
+                }
                 if c == '"' {
+                    closed = true;
                     break;
                 }
                 token.push(c);
+            }
+            if !closed {
+                return Err("unterminated quoted string".to_string());
             }
             tokens.push(token);
         } else {
@@ -259,11 +276,14 @@ fn tokenize(line: &str) -> Vec<String> {
         }
     }
 
-    tokens
+    Ok(tokens)
 }
 
 fn parse_instruction(tokens: &[String]) -> Result<Instruction, String> {
-    let cmd = tokens[0].as_str();
+    let cmd = tokens
+        .first()
+        .ok_or_else(|| "missing instruction".to_string())?
+        .as_str();
     let args = &tokens[1..];
 
     match cmd {
@@ -292,7 +312,14 @@ fn parse_instruction(tokens: &[String]) -> Result<Instruction, String> {
             if args.is_empty() {
                 return Err("toggle requires at least 1 argument".to_string());
             }
-            let value = args.get(1).map(|v| v == "true");
+            let value = args
+                .get(1)
+                .map(|v| match v.as_str() {
+                    "true" => Ok(true),
+                    "false" => Ok(false),
+                    _ => Err(format!("toggle: invalid boolean '{v}'")),
+                })
+                .transpose()?;
             Ok(Instruction::Toggle(sel(&args[0]), value))
         }
         "select" => {
@@ -402,14 +429,26 @@ mod tests {
 
     #[test]
     fn tokenize_quoted_and_bare() {
-        let tokens = tokenize("click \"#my btn\"");
+        let tokens = tokenize("click \"#my btn\"").unwrap();
         assert_eq!(tokens, vec!["click", "#my btn"]);
     }
 
     #[test]
     fn tokenize_multiple_args() {
-        let tokens = tokenize("type \"#input\" \"hello world\"");
+        let tokens = tokenize("type \"#input\" \"hello world\"").unwrap();
         assert_eq!(tokens, vec!["type", "#input", "hello world"]);
+    }
+
+    #[test]
+    fn tokenize_supports_escaped_quotes() {
+        let tokens = tokenize("click \"\\\"Save\\\"\"").unwrap();
+        assert_eq!(tokens, vec!["click", "\"Save\""]);
+    }
+
+    #[test]
+    fn unclosed_quote_is_error() {
+        let err = parse("app: T\n-----\nclick \"#button\n").unwrap_err();
+        assert!(err.contains("unterminated quoted string"));
     }
 
     #[test]
@@ -427,6 +466,22 @@ mod tests {
             file.instructions[0].1,
             Instruction::Toggle(Selector::id("#cb"), Some(true))
         );
+    }
+
+    #[test]
+    fn parse_toggle_false_with_value() {
+        let content = "app: T\n-----\ntoggle \"#cb\" false\n";
+        let file = parse(content).unwrap();
+        assert_eq!(
+            file.instructions[0].1,
+            Instruction::Toggle(Selector::id("#cb"), Some(false))
+        );
+    }
+
+    #[test]
+    fn parse_toggle_rejects_invalid_boolean() {
+        let err = parse("app: T\n-----\ntoggle \"#cb\" yes\n").unwrap_err();
+        assert!(err.contains("invalid boolean"));
     }
 
     #[test]

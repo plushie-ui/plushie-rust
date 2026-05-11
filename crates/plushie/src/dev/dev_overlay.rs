@@ -94,7 +94,7 @@ fn apply_action(handle: &DevOverlayHandle, action: OverlayAction) {
 /// handle is cleared unless the user expanded the drawer in the
 /// meantime, in which case the dismiss is skipped.
 pub(crate) fn schedule_dismiss(handle: DevOverlayHandle) {
-    std::thread::Builder::new()
+    if let Err(e) = std::thread::Builder::new()
         .name("plushie-dev-overlay-dismiss".to_string())
         .spawn(move || {
             std::thread::sleep(super::overlay::DISMISS_DELAY);
@@ -108,7 +108,9 @@ pub(crate) fn schedule_dismiss(handle: DevOverlayHandle) {
             }
             handle.set(None);
         })
-        .expect("failed to spawn dev-overlay dismiss thread");
+    {
+        log::warn!("dev overlay: failed to spawn dismiss thread: {e}");
+    }
 }
 
 /// Install a fresh overlay snapshot. Cancels the auto-dismiss by
@@ -139,6 +141,15 @@ mod tests {
         })
     }
 
+    fn overlay(status: Status, detail: impl Into<String>) -> RebuildingOverlay {
+        RebuildingOverlay {
+            status,
+            detail: detail.into(),
+            expanded: matches!(status, Status::Failed | Status::Frozen),
+            success_at: matches!(status, Status::Success).then(std::time::Instant::now),
+        }
+    }
+
     #[test]
     fn non_overlay_events_pass_through() {
         let handle = DevOverlayHandle::new();
@@ -149,7 +160,7 @@ mod tests {
     #[test]
     fn toggle_expands_and_collapses() {
         let handle = DevOverlayHandle::new();
-        handle.publish(Status::Rebuilding, "building");
+        handle.set(Some(overlay(Status::Rebuilding, "building")));
         let event = click_event(&format!("{OVERLAY_PREFIX}/toggle"));
         assert!(maybe_handle_event(&handle, &event));
         assert!(handle.snapshot().unwrap().expanded);
@@ -174,7 +185,7 @@ mod tests {
     #[test]
     fn dismiss_removes_overlay() {
         let handle = DevOverlayHandle::new();
-        handle.publish(Status::Failed, "boom");
+        handle.set(Some(overlay(Status::Failed, "boom")));
         let event = click_event(&format!("{OVERLAY_PREFIX}/dismiss"));
         assert!(maybe_handle_event(&handle, &event));
         assert!(handle.snapshot().is_none());

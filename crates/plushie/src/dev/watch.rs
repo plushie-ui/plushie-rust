@@ -148,14 +148,16 @@ fn discover_widget_crates() -> std::result::Result<Vec<WidgetCrate>, Error> {
 /// debounce state. The main thread continues into `crate::run`; the
 /// watcher lives for the lifetime of the process.
 fn spawn_watch_thread(crates: Vec<WidgetCrate>, opts: WatchOpts) {
-    std::thread::Builder::new()
+    if let Err(e) = std::thread::Builder::new()
         .name("plushie-dev-watch".to_string())
         .spawn(move || {
             if let Err(e) = watch_loop(&crates, &opts) {
                 log::warn!("plushie dev: watcher stopped: {e}");
             }
         })
-        .expect("failed to spawn plushie-dev-watch thread");
+    {
+        log::warn!("plushie dev: failed to spawn watch thread: {e}");
+    }
 }
 
 /// Block on the notify channel, debounce events into rebuild windows,

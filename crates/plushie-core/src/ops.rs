@@ -459,13 +459,10 @@ impl WindowOp {
     /// caller can log a diagnostic and continue.
     pub fn from_wire(op: &str, window_id: &str, payload: &Value) -> Option<Self> {
         let wid = || window_id.to_string();
-        let f = |key: &str, default: f32| -> f32 {
-            payload
-                .get(key)
-                .and_then(|v| v.as_f64())
-                .map(|v| v as f32)
-                .unwrap_or(default)
+        let f = |key: &str| -> Option<f32> {
+            payload.get(key).and_then(|v| v.as_f64()).map(|v| v as f32)
         };
+        let f_or = |key: &str, default: f32| -> f32 { f(key).unwrap_or(default) };
         let b = |key: &str, default: bool| -> bool {
             payload
                 .get(key)
@@ -491,13 +488,13 @@ impl WindowOp {
             "close" => Some(Self::Close(wid())),
             "resize" => Some(Self::Resize {
                 window_id: wid(),
-                width: f("width", 800.0),
-                height: f("height", 600.0),
+                width: f("width")?,
+                height: f("height")?,
             }),
             "move" => Some(Self::Move {
                 window_id: wid(),
-                x: f("x", 0.0),
-                y: f("y", 0.0),
+                x: f("x")?,
+                y: f("y")?,
             }),
             "maximize" => Some(Self::Maximize {
                 window_id: wid(),
@@ -511,11 +508,11 @@ impl WindowOp {
                 let mode = payload
                     .get("mode")
                     .and_then(|v| v.as_str())
-                    .map(|s| match s {
-                        "fullscreen" => WindowMode::Fullscreen,
-                        _ => WindowMode::Windowed,
-                    })
-                    .unwrap_or(WindowMode::Windowed);
+                    .and_then(|s| match s {
+                        "windowed" => Some(WindowMode::Windowed),
+                        "fullscreen" => Some(WindowMode::Fullscreen),
+                        _ => None,
+                    })?;
                 Some(Self::SetMode {
                     window_id: wid(),
                     mode,
@@ -525,15 +522,16 @@ impl WindowOp {
             "toggle_decorations" => Some(Self::ToggleDecorations(wid())),
             "gain_focus" => Some(Self::FocusWindow(wid())),
             "set_level" => {
-                let level = payload
-                    .get("level")
-                    .and_then(|v| v.as_str())
-                    .map(|s| match s {
-                        "always_on_top" => WindowLevel::AlwaysOnTop,
-                        "always_on_bottom" => WindowLevel::AlwaysOnBottom,
-                        _ => WindowLevel::Normal,
-                    })
-                    .unwrap_or(WindowLevel::Normal);
+                let level =
+                    payload
+                        .get("level")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| match s {
+                            "normal" => Some(WindowLevel::Normal),
+                            "always_on_top" => Some(WindowLevel::AlwaysOnTop),
+                            "always_on_bottom" => Some(WindowLevel::AlwaysOnBottom),
+                            _ => None,
+                        })?;
                 Some(Self::SetLevel {
                     window_id: wid(),
                     level,
@@ -570,13 +568,13 @@ impl WindowOp {
             }),
             "set_min_size" => Some(Self::SetMinSize {
                 window_id: wid(),
-                width: f("width", 0.0),
-                height: f("height", 0.0),
+                width: f_or("width", 0.0),
+                height: f_or("height", 0.0),
             }),
             "set_max_size" => Some(Self::SetMaxSize {
                 window_id: wid(),
-                width: f("width", 0.0),
-                height: f("height", 0.0),
+                width: f_or("width", 0.0),
+                height: f_or("height", 0.0),
             }),
             "mouse_passthrough" => {
                 let enabled = b("enabled", true);
@@ -591,8 +589,14 @@ impl WindowOp {
                 use base64::Engine as _;
                 let b64 = payload.get("data").and_then(|v| v.as_str())?;
                 let data = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
-                let width = payload.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                let height = payload.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let width = payload
+                    .get("width")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|v| u32::try_from(v).ok())?;
+                let height = payload
+                    .get("height")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|v| u32::try_from(v).ok())?;
                 Some(Self::SetIcon {
                     window_id: wid(),
                     data,
@@ -602,8 +606,8 @@ impl WindowOp {
             }
             "set_resize_increments" => Some(Self::SetResizeIncrements {
                 window_id: wid(),
-                width: f("width", 0.0),
-                height: f("height", 0.0),
+                width: f_or("width", 0.0),
+                height: f_or("height", 0.0),
             }),
             _ => None,
         }
@@ -778,11 +782,7 @@ impl WindowQuery {
     /// op strings.
     pub fn from_wire(op: &str, window_id: &str, payload: &Value) -> Option<Self> {
         let wid = window_id.to_string();
-        let tag = payload
-            .get("tag")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
+        let tag = payload.get("tag").and_then(|v| v.as_str())?.to_string();
         match op {
             "get_size" => Some(Self::GetSize {
                 window_id: wid,
@@ -1955,18 +1955,62 @@ mod tests {
     }
 
     #[test]
-    fn window_op_resize_uses_payload_defaults_when_fields_missing() {
-        // Fields default through the typed `f` extractor when the
-        // payload is incomplete. The renderer's window manager uses
-        // these defaults (800x600) for resize.
-        let parsed = WindowOp::from_wire("resize", "main", &json!({})).unwrap();
-        match parsed {
-            WindowOp::Resize { width, height, .. } => {
-                assert_eq!(width, 800.0);
-                assert_eq!(height, 600.0);
-            }
-            other => panic!("expected Resize, got {other:?}"),
-        }
+    fn window_op_resize_requires_dimensions() {
+        assert!(WindowOp::from_wire("resize", "main", &json!({"height": 600.0})).is_none());
+        assert!(WindowOp::from_wire("resize", "main", &json!({"width": 800.0})).is_none());
+        assert!(
+            WindowOp::from_wire("resize", "main", &json!({"width": "800", "height": 600.0}))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn window_op_move_requires_coordinates() {
+        assert!(WindowOp::from_wire("move", "main", &json!({"y": 10.0})).is_none());
+        assert!(WindowOp::from_wire("move", "main", &json!({"x": 20.0})).is_none());
+        assert!(WindowOp::from_wire("move", "main", &json!({"x": 20.0, "y": "10"})).is_none());
+    }
+
+    #[test]
+    fn window_op_set_mode_rejects_missing_or_unknown_mode() {
+        assert!(WindowOp::from_wire("set_mode", "main", &json!({})).is_none());
+        assert!(WindowOp::from_wire("set_mode", "main", &json!({"mode": "floating"})).is_none());
+        assert!(WindowOp::from_wire("set_mode", "main", &json!({"mode": false})).is_none());
+    }
+
+    #[test]
+    fn window_op_set_level_rejects_missing_or_unknown_level() {
+        assert!(WindowOp::from_wire("set_level", "main", &json!({})).is_none());
+        assert!(WindowOp::from_wire("set_level", "main", &json!({"level": "above_all"})).is_none());
+        assert!(WindowOp::from_wire("set_level", "main", &json!({"level": false})).is_none());
+    }
+
+    #[test]
+    fn window_op_set_icon_rejects_missing_or_oversized_dimensions() {
+        let data = "qrvM3Q==";
+
+        assert!(
+            WindowOp::from_wire("set_icon", "main", &json!({"data": data, "height": 16})).is_none()
+        );
+        assert!(
+            WindowOp::from_wire("set_icon", "main", &json!({"data": data, "width": 16})).is_none()
+        );
+        assert!(
+            WindowOp::from_wire(
+                "set_icon",
+                "main",
+                &json!({"data": data, "width": u64::from(u32::MAX) + 1, "height": 16})
+            )
+            .is_none()
+        );
+        assert!(
+            WindowOp::from_wire(
+                "set_icon",
+                "main",
+                &json!({"data": data, "width": 16, "height": u64::from(u32::MAX) + 1})
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -2020,6 +2064,12 @@ mod tests {
     #[test]
     fn window_query_unknown_op_returns_none() {
         assert!(WindowQuery::from_wire("not_a_query", "main", &json!({})).is_none());
+    }
+
+    #[test]
+    fn window_query_requires_tag() {
+        assert!(WindowQuery::from_wire("get_size", "main", &json!({})).is_none());
+        assert!(WindowQuery::from_wire("get_size", "main", &json!({"tag": false})).is_none());
     }
 
     // -----------------------------------------------------------------------

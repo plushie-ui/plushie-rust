@@ -17,6 +17,8 @@ tracked as standalone work.
   host-to-renderer surface. Pairs with the structural
   renderer-to-host protection already in place; see
   `../trust-model.md`.
+- `diagnostic-parity.md` - Typed diagnostic exposure and test-helper
+  parity across host SDKs.
 - `exit-animations.md` - Renderer-local ghost lifecycle for
   re-enabling exit animations without changing protocol tree
   semantics.

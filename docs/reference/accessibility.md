@@ -336,9 +336,9 @@ widget, push text directly with `Command::announce`:
 use plushie::prelude::*;
 use plushie::types::Live;
 
-pub fn update(model: &mut Model, event: Event) -> Command {
+pub fn update(model: &Model, event: Event) -> (Model, Command) {
     // ...
-    Command::announce("Document saved", Live::Polite)
+    (model.clone(), Command::announce("Document saved", Live::Polite))
 }
 ```
 

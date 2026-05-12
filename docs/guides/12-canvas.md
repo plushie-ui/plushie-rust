@@ -244,7 +244,7 @@ moves extend it, release commits it:
 use plushie::event::WidgetMatch::*;
 use plushie::prelude::*;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Sketch {
     strokes: Vec<Vec<(f32, f32)>>,
     current: Option<Vec<(f32, f32)>>,
@@ -257,30 +257,31 @@ impl App for Sketch {
         (Sketch::default(), Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
             Some(Press("pad", p)) => {
-                model.current = Some(vec![(p.x, p.y)]);
+                next.current = Some(vec![(p.x, p.y)]);
             }
             Some(Move("pad", m)) => {
-                if let Some(stroke) = model.current.as_mut() {
+                if let Some(stroke) = next.current.as_mut() {
                     stroke.push((m.x, m.y));
                 }
             }
             Some(Release("pad", _)) => {
-                if let Some(stroke) = model.current.take() {
+                if let Some(stroke) = next.current.take() {
                     if stroke.len() > 1 {
-                        model.strokes.push(stroke);
+                        next.strokes.push(stroke);
                     }
                 }
             }
             Some(Click("clear")) => {
-                model.strokes.clear();
-                model.current = None;
+                next.strokes.clear();
+                next.current = None;
             }
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

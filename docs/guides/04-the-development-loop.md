@@ -303,10 +303,11 @@ a rolling buffer of every event the pad received, debug-printed
 and truncated to fit. `update` pushes a new entry on every event:
 
 ```rust
-fn update(model: &mut Self::Model, event: Event) -> Command {
+fn update(model: &Self::Model, event: Event) -> (Self::Model, Command) {
+    let mut next = model.clone();
     // ...
-    model.push_log(format!("{event:?}"));
-    Command::none()
+    next.push_log(format!("{event:?}"));
+    (next, Command::none())
 }
 ```
 

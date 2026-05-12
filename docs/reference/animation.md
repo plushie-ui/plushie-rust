@@ -346,22 +346,22 @@ for animated size.
 ## Triggering animations from commands
 
 Animations are prop values, so they start whenever the next view
-renders a new descriptor. To trigger one from `update`, mutate the
-model and let the next render carry the descriptor. A `Command`
-is not required.
+renders a new descriptor. To trigger one from `update`, return a
+next model that carries the descriptor. A `Command` is not required.
 
 ```rust
 use plushie::prelude::*;
 use plushie::animation::{Transition, Easing};
 use WidgetMatch::*;
 
-fn update(model: &mut Self::Model, event: Event) -> Command {
+fn update(model: &Self::Model, event: Event) -> (Self::Model, Command) {
+    let mut next = model.clone();
     if let Some(Click(id)) = event.widget_match() {
         if id == "toggle" {
-            model.sidebar_open = !model.sidebar_open;
+            next.sidebar_open = !model.sidebar_open;
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 
 fn view(model: &Self::Model, _widgets: &mut WidgetRegistrar) -> ViewList {

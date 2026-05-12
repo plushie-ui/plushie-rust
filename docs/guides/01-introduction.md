@@ -41,13 +41,14 @@ impl App for Counter {
         (0, Command::none())
     }
 
-    fn update(model: &mut Self::Model, event: Event) -> Command {
+    fn update(model: &Self::Model, event: Event) -> (Self::Model, Command) {
+        let mut next = *model;
         if let Some(WidgetMatch::Click(id)) = event.widget_match() {
             if id == "inc" {
-                *model += 1;
+                next += 1;
             }
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self::Model, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -77,16 +78,13 @@ Three pieces do all the work.
 works: a struct, an enum, a primitive. Plushie does not impose a
 schema. Whatever `init` returns becomes the initial model.
 
-**Update** receives `&mut Self::Model` and an `Event`, mutates the
-model in place, and returns a `Command`. The `&mut Model` shape is
-the Rust-idiomatic way to express the state transition: ownership
-stays with the runtime, the function borrows mutably for the
-duration of the call, and the compiler enforces single-writer
-access. Events come from user interaction, from the system, or from
-your own async work. `Command::none()` means no side effect;
-richer constructors run async work, open dialogs, drive windows,
-or cancel in-flight tasks. Commands are how side effects stay
-explicit and testable.
+**Update** receives `&Self::Model` and an `Event`, returns the next
+model plus a `Command`, and leaves the previous model untouched if
+the update panics. Events come from user interaction, from the
+system, or from your own async work. `Command::none()` means no side
+effect; richer constructors run async work, open dialogs, drive
+windows, or cancel in-flight tasks. Commands are how side effects
+stay explicit and testable.
 
 **View** takes `&Self::Model` and a `&mut WidgetRegistrar` and
 returns a `ViewList` of top-level windows. The runtime calls `view`

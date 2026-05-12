@@ -14,9 +14,9 @@ broadcasts that flow back through each session's own update cycle.
 ## The shared-state problem
 
 A normal Plushie app is a single process driving a single renderer.
-`App::update` mutates `&mut Self::Model`; the mutation is visible to
-exactly the one view that rendered it. Two users need two views, two
-event streams, and one model that both see.
+`App::update` returns a next model for exactly the one view that
+renders it. Two users need two views, two event streams, and one
+authoritative model that both see.
 
 The wrong shape is a single MVU loop that tries to serve N renderers.
 `update` would need a user identity on every event, `view` would need
@@ -292,26 +292,27 @@ update pipeline, so the runner's loop wakes up the same way it
 does for any subscription:
 
 ```rust
-fn update(model: &mut Session, event: Event) -> Command {
+fn update(model: &Session, event: Event) -> (Session, Command) {
+    let mut next = model.clone();
     if let Some(stream) = event.as_stream() {
         if stream.tag == "broadcast" {
             let bcast: Broadcast = match serde_json::from_value(stream.value.clone()) {
                 Ok(b) => b,
                 Err(e) => {
                     log::warn!("malformed broadcast: {e}");
-                    return Command::none();
+                    return (next, Command::none());
                 }
             };
             if bcast.originator == model.user_id {
                 // Echo of this user's own submit; reconcile only the
                 // fields the optimistic update did not already set.
-                model.model.status = bcast.model.status;
+                next.model.status = bcast.model.status;
             } else {
-                let local_prefs = std::mem::take(&mut model.model.prefs);
-                model.model = bcast.model;
-                model.model.prefs = local_prefs;
+                let local_prefs = std::mem::take(&mut next.model.prefs);
+                next.model = bcast.model;
+                next.model.prefs = local_prefs;
             }
-            return Command::none();
+            return (next, Command::none());
         }
     }
 
@@ -319,14 +320,14 @@ fn update(model: &mut Session, event: Event) -> Command {
         if id == "save" {
             let shared = model.shared.clone();
             let user = model.user_id.clone();
-            return Command::task("submit", move || async move {
+            return (next, Command::task("submit", move || async move {
                 shared.submit(&user, UserMsg::Save).await;
                 Ok(serde_json::Value::Null)
-            });
+            }));
         }
     }
 
-    Command::none()
+    (next, Command::none())
 }
 ```
 

@@ -28,6 +28,7 @@ trait has one associated type and three required methods:
 ```rust
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct Counter { count: i32 }
 
 impl App for Counter {
@@ -35,7 +36,7 @@ impl App for Counter {
 
     fn init() -> (Self, Command) { todo!() }
 
-    fn update(model: &mut Self, event: Event) -> Command { todo!() }
+    fn update(model: &Self, event: Event) -> (Self, Command) { todo!() }
 
     fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {
         todo!()
@@ -56,6 +57,7 @@ The counter holds a single integer. Define it next to the trait
 impl:
 
 ```rust
+#[derive(Clone)]
 struct Counter {
     count: i32,
 }
@@ -127,17 +129,18 @@ layout and styling in later chapters.
 
 ## The update
 
-`update` receives the current model by mutable reference and
-one `Event`. Mutate the model in place, return a `Command`:
+`update` receives the current model by shared reference and one
+`Event`. Return the next model plus a `Command`:
 
 ```rust
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
-        Some(Click("inc")) => model.count += 1,
-        Some(Click("dec")) => model.count -= 1,
+        Some(Click("inc")) => next.count += 1,
+        Some(Click("dec")) => next.count -= 1,
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 

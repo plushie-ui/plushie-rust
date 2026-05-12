@@ -231,15 +231,16 @@ Match on `event.as_widget()` when the family is the widget's own
 `WidgetMatch` vocabulary:
 
 ```rust
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     if let Some(w) = event.as_widget() {
         if w.scoped_id.id == "stars" {
             if let Some(n) = w.value.as_u64() {
-                model.rating = n as usize;
+                next.rating = n as usize;
             }
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -483,15 +484,16 @@ and payload:
 use plushie::prelude::*;
 use WidgetMatch::*;
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     if let Some(Custom { id: "rating", family: "value_changed", value }) =
         event.widget_match()
     {
         if let Some(v) = value.as_f64() {
-            model.rating = v as f32;
+            next.rating = v as f32;
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 

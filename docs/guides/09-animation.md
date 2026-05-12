@@ -32,8 +32,8 @@ bouncing through `update` every tick. See
 cost breakdown.
 
 The payoff is that most animations in a Plushie app are single-line
-prop changes. You mutate the model in `update` the way you always
-do, and the next view render carries the descriptor.
+prop changes. You return a next model from `update` the way you
+always do, and the next view render carries the descriptor.
 
 ## Transition
 
@@ -261,14 +261,15 @@ impl App for Physics {
         }
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(sys) = event.as_system() {
             if sys.event_type == SystemEventType::AnimationFrame {
                 let t = sys.value.as_u64().unwrap_or(0);
-                model.slide.advance(t);
+                next.slide.advance(t);
             }
         }
-        Command::none()
+        (next, Command::none())
     }
 }
 ```
@@ -292,14 +293,15 @@ widget event:
 use plushie::prelude::*;
 use WidgetMatch::*;
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(TransitionComplete(id)) if id == "sidebar" => {
-            model.sidebar_collapsed = true;
+            next.sidebar_collapsed = true;
         }
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 

@@ -98,8 +98,8 @@ impl App for Hello {
         ((), Command::none())
     }
 
-    fn update(_model: &mut Self::Model, _event: Event) -> Command {
-        Command::none()
+    fn update(_model: &Self::Model, _event: Event) -> (Self::Model, Command) {
+        ((), Command::none())
     }
 
     fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> ViewList {

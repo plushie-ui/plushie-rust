@@ -3,7 +3,7 @@
 Commands are values returned from `App::update` (and `App::init`).
 The runner executes them after the update cycle completes. They
 are how an app triggers work that does not fit inside the pure
-`&mut Model` transition: background tasks, focus changes, window
+model transition: background tasks, focus changes, window
 operations, platform effects, and more. The type lives at
 `plushie::command::Command` and is re-exported by the prelude.
 
@@ -14,26 +14,25 @@ execution: a command only runs if an update returns it.
 
 ## Returning commands
 
-`App::update` returns `Command` by value. Mutations happen on
-`&mut Self::Model`; the tuple return of the Elixir and Gleam SDKs
-is compressed into "mutate, then return command":
+`App::update` returns the next model and a `Command` by value:
 
 ```rust
 use plushie::prelude::*;
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
-        Some(Click { id, .. }) if id == "save" => {
-            model.dirty = false;
-            Command::focus("editor")
+        Some(Click("save")) => {
+            next.dirty = false;
+            (next, Command::focus("editor"))
         }
-        Some(Click { id, .. }) if id == "export" => {
-            Command::batch([
+        Some(Click("export")) => {
+            (next, Command::batch([
                 Command::file_save("export"),
                 Command::notification("notify", "Exporting", "Saving to file..."),
-            ])
+            ]))
         }
-        _ => Command::none(),
+        _ => (next, Command::none()),
     }
 }
 ```
@@ -451,18 +450,18 @@ the first `Command::task`, then return the next command from the
 `Event::Async` arm:
 
 ```rust
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
     if let Some(a) = event.as_async() {
         if a.tag == "fetch_index" {
             if let Ok(index) = a.result.as_ref() {
                 let next_url = index["next"].as_str().unwrap_or("").to_string();
-                return Command::task("fetch_body", move || async move {
+                return (model.clone(), Command::task("fetch_body", move || async move {
                     fetch_body(&next_url).await
-                });
+                }));
             }
         }
     }
-    Command::none()
+    (model.clone(), Command::none())
 }
 ```
 
@@ -474,7 +473,7 @@ testable with `TestSession::await_async`.
 `Command::dispatch(Event::...)` queues an event for the next
 update cycle. It is the idiomatic way to finish an update with
 "now react to this value" when a single `update` call cannot
-both mutate the model and see the new state.
+both return a new model and see that new state.
 
 ## Lifecycle and guarantees
 

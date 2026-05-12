@@ -78,13 +78,14 @@ vec![
 Match on the tag in `update`:
 
 ```rust
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
-        Some(WidgetMatch::Timer("clock")) => model.time = now_string(),
-        Some(WidgetMatch::Timer("frame")) => model.frame += 1,
+        Some(WidgetMatch::Timer("clock")) => next.time = now_string(),
+        Some(WidgetMatch::Timer("frame")) => next.frame += 1,
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -109,16 +110,17 @@ fn subscribe(_model: &Self) -> Vec<Subscription> {
     vec![Subscription::on_key_press()]
 }
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     if let Some(key) = event.as_key_press() {
         match (&key.key, key.modifiers.command) {
-            (Key::Char('s'), true) => return model.save(),
-            (Key::Char('n'), true) => return model.new_file(),
-            (Key::Escape, _) => model.dismiss_error(),
+            (Key::Char('s'), true) => return (next, model.save()),
+            (Key::Char('n'), true) => return (next, model.new_file()),
+            (Key::Escape, _) => next.dismiss_error(),
             _ => {}
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -203,23 +205,24 @@ fn subscribe(_model: &Self) -> Vec<Subscription> {
     vec![Subscription::on_window_event()]
 }
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     if let Some(w) = event.as_window() {
         match w.event_type {
             WindowEventType::CloseRequested if model.dirty => {
-                model.prompt_save();
+                next.prompt_save();
             }
             WindowEventType::Resized => {
-                model.width = w.width.unwrap_or(model.width);
-                model.height = w.height.unwrap_or(model.height);
+                next.width = w.width.unwrap_or(model.width);
+                next.height = w.height.unwrap_or(model.height);
             }
             WindowEventType::Focused => {
-                model.focused_window = Some(w.window_id.clone());
+                next.focused_window = Some(w.window_id.clone());
             }
             _ => {}
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -245,13 +248,14 @@ fn subscribe(model: &Self) -> Vec<Subscription> {
     }
 }
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     if let Some(sys) = event.as_system() {
         if matches!(sys.event_type, SystemEventType::AnimationFrame) {
-            model.advance_tween();
+            next.advance_tween();
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -298,6 +302,7 @@ arm, one label:
 use std::time::Duration;
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct Clock {
     time: String,
 }
@@ -313,11 +318,12 @@ impl App for Clock {
         vec![Subscription::every(Duration::from_secs(1), "tick")]
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(WidgetMatch::Timer("tick")) = event.widget_match() {
-            model.time = current_time();
+            next.time = current_time();
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

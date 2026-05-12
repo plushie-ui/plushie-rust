@@ -18,7 +18,7 @@ four more have defaults and can be overridden when needed.
 | Method | Signature | Called | Default |
 |---|---|---|---|
 | `init` | `fn init() -> (Self::Model, Command)` | once at startup | required |
-| `update` | `fn update(model: &mut Self::Model, event: Event) -> Command` | once per event | required |
+| `update` | `fn update(model: &Self::Model, event: Event) -> (Self::Model, Command)` | once per event | required |
 | `view` | `fn view(model: &Self::Model, widgets: &mut WidgetRegistrar) -> ViewList` | after every update | required |
 | `subscribe` | `fn subscribe(model: &Self::Model) -> Vec<Subscription>` | after every update | `vec![]` |
 | `settings` | `fn settings() -> Settings` | once at startup | `Settings::default()` |
@@ -27,11 +27,12 @@ four more have defaults and can be overridden when needed.
 | `restart_policy` | `fn restart_policy() -> RestartPolicy` | once at startup (wire) | `RestartPolicy::default()` |
 
 `Self::Model` must be `Send + 'static`. It is owned by the runner,
-passed as `&mut` to `update` and `&` to `view` and `subscribe`.
+passed as `&` to `update`, `view`, and `subscribe`.
 
 ```rust
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct Counter { count: i32 }
 
 impl App for Counter {
@@ -41,12 +42,13 @@ impl App for Counter {
         (Counter { count: 0 }, Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Click { id, .. }) if id == "inc" => model.count += 1,
+            Some(Click("inc")) => next.count += 1,
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -147,13 +149,12 @@ attach widget state that outlives a single frame.
 ## Update
 
 ```rust
-fn update(model: &mut Self::Model, event: Event) -> Command;
+fn update(model: &Self::Model, event: Event) -> (Self::Model, Command);
 ```
 
-`update` takes `&mut Self::Model` and returns a single `Command`.
-Plushie folds the Elixir and Gleam tuple return (`{model, cmd}`)
-into "mutate, then return the command". To run multiple commands,
-use `Command::batch([..])`.
+`update` takes `&Self::Model` and returns the next model plus a
+single `Command`. To run multiple commands, use
+`Command::batch([..])`.
 
 Events arrive in the order they were produced. Coalescable
 high-frequency events (`PointerMove`, `Resize`) are batched by
@@ -164,7 +165,7 @@ rules.
 
 Ordering guarantees within a single update cycle:
 
-1. `update` runs to completion with `&mut Self::Model`.
+1. `update` runs to completion and returns a next model.
 2. Commands returned from `update` are dispatched to their
    executor (sync commands run immediately, async tasks spawn
    on the tokio runtime, effects go to the renderer).
@@ -185,17 +186,18 @@ helpers, or destructure `Event` variants directly for keyboard,
 pointer, window, or async events:
 
 ```rust
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
-        Some(Click { id, .. }) if id == "save" => {
-            model.dirty = false;
-            Command::focus("editor")
+        Some(Click("save")) => {
+            next.dirty = false;
+            (next, Command::focus("editor"))
         }
-        Some(Submit { id, value, .. }) if id == "search" => {
-            model.query = value.as_str().unwrap_or("").to_string();
-            Command::none()
+        Some(Submit("search", value)) => {
+            next.query = value.to_string();
+            (next, Command::none())
         }
-        _ => Command::none(),
+        _ => (next, Command::none()),
     }
 }
 ```

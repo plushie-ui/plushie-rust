@@ -335,7 +335,16 @@ mod tests {
         let mut session = TestSession::<Notes>::start();
         session.click("new_note");
         session.type_text("title", "My Note");
-        assert_eq!(session.model().undo.current().title, "My Note");
+        assert_eq!(
+            session
+                .model()
+                .undo
+                .lock()
+                .expect("undo stack poisoned")
+                .current()
+                .title,
+            "My Note"
+        );
     }
 
     #[test]

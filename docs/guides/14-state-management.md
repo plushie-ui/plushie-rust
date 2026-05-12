@@ -7,7 +7,7 @@ which screen is active. The model turns into a large record that a
 single `update` has to keep coherent.
 
 This chapter covers how to keep a growing model readable: splitting
-it into sub-structs, updating nested fields through `&mut`, deriving
+it into sub-structs, updating nested fields on a local next model, deriving
 values instead of caching them, wiring navigation and selection, and
 adding undo/redo. The SDK ships a small set of helpers in
 `plushie::route`, `plushie::selection`, `plushie::undo`,
@@ -55,8 +55,8 @@ struct Sidebar {
 
 The payoff is twofold. View helpers take `&Editor` instead of
 `&Pad` and become testable without building a whole application
-model. `update` arms can call small `fn update_editor(editor: &mut
-Editor, event: Event)` functions that own a narrow slice.
+model. `update` arms can clone the current model into `next`, then
+call small helpers that edit a narrow slice of `next`.
 
 Resist nesting more than two levels deep. `model.workspace.editor.
 buffer.cursor` is a hint that either the grouping is wrong or one of
@@ -66,21 +66,23 @@ live under a different parent.
 ## Updating nested state
 
 Rust's borrow checker keeps nested updates honest. `update` receives
-`&mut Self::Model`, so drilling in is a chain of field accesses:
+`&Self::Model`, clones or rebuilds the parts that change, and returns
+the next model:
 
 ```rust
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(Input(id, value)) if id == "editor" => {
-            model.editor.source = value;
-            model.editor.dirty = true;
+            next.editor.source = value.to_string();
+            next.editor.dirty = true;
         }
         Some(Click(id)) if id == "toggle-sidebar" => {
-            model.sidebar.collapsed = !model.sidebar.collapsed;
+            next.sidebar.collapsed = !model.sidebar.collapsed;
         }
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -88,14 +90,15 @@ When the arm gets wider than a few lines, factor it into a helper
 that takes a mutable borrow of the sub-struct:
 
 ```rust
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(Input(id, value)) if id == "editor" => {
-            update_editor_input(&mut model.editor, value);
+            update_editor_input(&mut next.editor, value.to_string());
         }
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 
 fn update_editor_input(editor: &mut Editor, value: String) {
@@ -105,14 +108,14 @@ fn update_editor_input(editor: &mut Editor, value: String) {
 }
 ```
 
-The helper borrows `&mut Editor` for the duration of the call. The
-rest of the model is untouched, so the compiler allows another
-simultaneous borrow elsewhere in the same arm if needed. If two
-helpers need disjoint sub-structs at once, destructure the model
-first:
+The helper borrows `&mut Editor` from the local next model for the
+duration of the call. The rest of the model is untouched, so the
+compiler allows another simultaneous borrow elsewhere in the same arm
+if needed. If two helpers need disjoint sub-structs at once,
+destructure the next model first:
 
 ```rust
-let Pad { editor, sidebar, .. } = model;
+let Pad { editor, sidebar, .. } = &mut next;
 sync_sidebar_with_editor(sidebar, editor);
 ```
 
@@ -206,25 +209,26 @@ route.pop();
 route.current();       // "/detail"
 ```
 
-`Route` is plain data. Store it on the model, mutate it in place
-from `update`, and read from it in `view`:
+`Route` is plain data. Store it on the model, update it on the next
+model from `update`, and read from it in `view`:
 
 ```rust
 struct App {
     route: Route,
 }
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(Click(id)) if id == "open-detail" => {
-            model.route.push("/detail");
+            next.route.push("/detail");
         }
         Some(Click(id)) if id == "back" => {
-            model.route.pop();
+            next.route.pop();
         }
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 
 fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {
@@ -358,11 +362,12 @@ struct Editor {
     history: UndoStack<String>,
 }
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(Input(id, value)) if id == "editor" => {
-            let prev = model.history.current().clone();
-            model.history.apply(
+            let prev = next.history.current().clone();
+            next.history.apply(
                 UndoCommand::new(
                     move |_| value.clone(),
                     move |_| prev.clone(),
@@ -372,14 +377,14 @@ fn update(model: &mut Self, event: Event) -> Command {
         }
         Some(KeyPress(_, kp)) if kp.key == Key::Z && kp.modifiers.command => {
             if kp.modifiers.shift {
-                model.history.redo();
+                next.history.redo();
             } else {
-                model.history.undo();
+                next.history.undo();
             }
         }
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 

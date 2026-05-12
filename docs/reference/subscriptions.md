@@ -144,13 +144,14 @@ impl App for Clock {
         vec![Subscription::every(Duration::from_secs(1), "tick")]
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(timer) = event.as_timer() {
             if timer.tag == "tick" {
-                model.now = chrono::Local::now();
+                next.now = chrono::Local::now();
             }
         }
-        Command::none()
+        (next, Command::none())
     }
 }
 ```
@@ -164,13 +165,13 @@ fn subscribe(_model: &Self) -> Vec<Subscription> {
     vec![Subscription::on_key_press()]
 }
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
     if let Some(key) = event.as_key_press() {
         if key.modifiers.command && key.key == Key::Char("s".into()) {
-            return save(model);
+            return (model.clone(), save(model));
         }
     }
-    Command::none()
+    (model.clone(), Command::none())
 }
 ```
 
@@ -214,13 +215,13 @@ fn subscribe(model: &Self::Model) -> Vec<Subscription> {
 
 A subscription adds an event source. When the source fires, the
 runtime wraps the payload in the appropriate `Event` variant
-and calls `update(&mut model, event)`. The loop is the same
+and calls `update(&model, event)`. The loop is the same
 regardless of whether the event originated in a widget, a
 subscription, or a command result:
 
 ```
 subscribe -> runtime arms source -> event fires ->
-    runtime delivers Event -> update(&mut model, event) -> view
+    runtime delivers Event -> update(&model, event) -> view
 ```
 
 High-frequency sources (pointer moves, pointer scroll,

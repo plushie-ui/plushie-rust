@@ -18,12 +18,12 @@ render, the runtime feeds every inbound event through
 `App::update`:
 
 ```rust
-fn update(model: &mut Self::Model, event: Event) -> Command;
+fn update(model: &Self::Model, event: Event) -> (Self::Model, Command);
 ```
 
-`update` takes `&mut Self::Model` and returns a `Command`. Mutate
-the model in place; return `Command::none()` when no side effect
-is needed. The runtime then calls `view(model, widgets)`, diffs
+`update` takes `&Self::Model` and returns the next model plus a
+`Command`. Return `Command::none()` when no side effect is needed.
+The runtime then calls `view(model, widgets)`, diffs
 the resulting `ViewList`, and forwards patches to the renderer
 (direct-mode engine or wire subprocess). Events arrive in the
 order they were produced, with coalescable high-frequency events
@@ -67,25 +67,26 @@ and ticks in one match block.
 use plushie::prelude::*;
 use plushie::event::WidgetMatch::*;
 
-fn update(model: &mut Model, event: Event) -> Command {
+fn update(model: &Model, event: Event) -> (Model, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(Click("save")) => {
-            model.save();
-            Command::none()
+            next.save();
+            (next, Command::none())
         }
         Some(Input("name", text)) => {
-            model.name = text.to_string();
-            Command::none()
+            next.name = text.to_string();
+            (next, Command::none())
         }
         Some(Toggle("dark", on)) => {
-            model.dark_mode = on;
-            Command::none()
+            next.dark_mode = on;
+            (next, Command::none())
         }
         Some(Slide("volume", level)) => {
-            model.volume = level;
-            Command::none()
+            next.volume = level;
+            (next, Command::none())
         }
-        _ => Command::none(),
+        _ => (next, Command::none()),
     }
 }
 ```
@@ -413,14 +414,15 @@ as `(start, end)` byte offsets in the preedit string, `captured`,
 use plushie::prelude::*;
 use plushie::event::WidgetMatch::*;
 
-fn update(model: &mut Counter, event: Event) -> Command {
+fn update(model: &Counter, event: Event) -> (Counter, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
-        Some(Click("inc")) => model.count += 1,
-        Some(Click("dec")) => model.count -= 1,
-        Some(Input("label", text)) => model.label = text.to_string(),
+        Some(Click("inc")) => next.count += 1,
+        Some(Click("dec")) => next.count -= 1,
+        Some(Input("label", text)) => next.label = text.to_string(),
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -431,15 +433,16 @@ appears in `scope`. The short ID used in the match remains the
 local widget ID; use `Event::scope()` to narrow by container:
 
 ```rust
-fn update(model: &mut Todos, event: Event) -> Command {
+fn update(model: &Todos, event: Event) -> (Todos, Command) {
+    let mut next = model.clone();
     if let Some(WidgetMatch::Click("delete")) = event.widget_match() {
         if let Some(scope) = event.scope()
             && let Some(item_id) = scope.first()
         {
-            model.items.remove(item_id);
+            next.items.remove(item_id);
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -449,16 +452,17 @@ fn update(model: &mut Todos, event: Event) -> Command {
 use plushie::event::{Event, KeyEventType};
 use plushie::prelude::Key;
 
-fn update(model: &mut Editor, event: Event) -> Command {
+fn update(model: &Editor, event: Event) -> (Editor, Command) {
+    let mut next = model.clone();
     if let Some(key) = event.as_key_press() {
         match (&key.key, key.modifiers.command, key.modifiers.shift) {
-            (Key::Char('s'), true, false) => return model.save(),
-            (Key::Char('s'), true, true) => return model.save_as(),
-            (Key::Escape, _, _) => model.close_dialog(),
+            (Key::Char('s'), true, false) => return (next, model.save()),
+            (Key::Char('s'), true, true) => return (next, model.save_as()),
+            (Key::Escape, _, _) => next.close_dialog(),
             _ => {}
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -467,24 +471,25 @@ fn update(model: &mut Editor, event: Event) -> Command {
 ```rust
 use plushie::event::{Event, WindowEventType};
 
-fn update(model: &mut Editor, event: Event) -> Command {
+fn update(model: &Editor, event: Event) -> (Editor, Command) {
+    let mut next = model.clone();
     if let Some(w) = event.as_window() {
         match w.event_type {
             WindowEventType::CloseRequested if model.dirty => {
-                model.prompt_save();
-                return Command::none();
+                next.prompt_save();
+                return (next, Command::none());
             }
             WindowEventType::CloseRequested => {
-                return Command::renderer(RendererOp::window_close(&w.window_id));
+                return (next, Command::renderer(RendererOp::window_close(&w.window_id)));
             }
             WindowEventType::Resized => {
-                model.width = w.width.unwrap_or(model.width);
-                model.height = w.height.unwrap_or(model.height);
+                next.width = w.width.unwrap_or(model.width);
+                next.height = w.height.unwrap_or(model.height);
             }
             _ => {}
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -512,17 +517,18 @@ match event.widget_match() {
 ### Async task result
 
 ```rust
-fn update(model: &mut News, event: Event) -> Command {
+fn update(model: &News, event: Event) -> (News, Command) {
+    let mut next = model.clone();
     if let Some(a) = event.as_async() {
         if a.tag == "fetch_headlines" {
             match &a.result {
-                Ok(value) => model.apply_headlines(value),
-                Err(err) => model.error = err.to_string(),
+                Ok(value) => next.apply_headlines(value),
+                Err(err) => next.error = err.to_string(),
             }
-            model.loading = false;
+            next.loading = false;
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -531,18 +537,19 @@ fn update(model: &mut News, event: Event) -> Command {
 ```rust
 use plushie::event::EffectResult;
 
-fn update(model: &mut App, event: Event) -> Command {
+fn update(model: &App, event: Event) -> (App, Command) {
+    let mut next = model.clone();
     if let Some(e) = event.as_effect() {
         if e.tag == "open_file" {
             match &e.result {
-                EffectResult::FileOpened { path } => model.load(path),
+                EffectResult::FileOpened { path } => next.load(path),
                 EffectResult::Cancelled => { /* user dismissed, nothing to do */ }
-                EffectResult::Error(msg) => model.error = msg.clone(),
+                EffectResult::Error(msg) => next.error = msg.clone(),
                 _ => {}
             }
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 

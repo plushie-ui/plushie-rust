@@ -144,23 +144,24 @@ from inside the helper:
 use plushie::prelude::*;
 use plushie::event::WidgetMatch::*;
 
-fn update(model: &mut TodoApp, event: Event) -> Command {
+fn update(model: &TodoApp, event: Event) -> (TodoApp, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(Click("delete")) => {
             if let Some(todo_id) = event.scope().and_then(|s| s.first()) {
-                model.todos.retain(|t| &t.id != todo_id);
+                next.todos.retain(|t| &t.id != todo_id);
             }
         }
         Some(Toggle("toggle", _)) => {
             if let Some(todo_id) = event.scope().and_then(|s| s.first())
-                && let Some(item) = model.todos.iter_mut().find(|i| &i.id == todo_id)
+                && let Some(item) = next.todos.iter_mut().find(|i| &i.id == todo_id)
             {
                 item.done = !item.done;
             }
         }
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 

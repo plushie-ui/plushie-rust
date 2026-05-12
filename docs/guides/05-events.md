@@ -17,7 +17,7 @@ The Elm loop is `init` -> `view` -> `update`. After the initial render,
 everything that happens in the renderer arrives at `update`:
 
 ```rust
-fn update(model: &mut Self::Model, event: Event) -> Command;
+fn update(model: &Self::Model, event: Event) -> (Self::Model, Command);
 ```
 
 Events come from three sources:
@@ -30,9 +30,9 @@ Events come from three sources:
 - **Commands** emit them as async results (a file dialog response, a
   completed HTTP request).
 
-Each source produces a different `Event` variant. Your `update` mutates
-the model in place, returns a `Command` (often `Command::none()`), and
-the runtime re-runs `view` to diff the tree and ship patches to the
+Each source produces a different `Event` variant. Your `update` returns
+the next model plus a `Command` (often `Command::none()`), and the
+runtime re-runs `view` to diff the tree and ship patches to the
 renderer.
 
 ## Widget events
@@ -65,6 +65,7 @@ slider. Every interaction is one arm of a single `match`:
 use plushie::event::WidgetMatch::*;
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct Counter {
     count: i32,
     step: i32,
@@ -85,20 +86,21 @@ impl App for Counter {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Click(id)) if id == "inc" => model.count += model.step,
-            Some(Click(id)) if id == "dec" => model.count -= model.step,
-            Some(Click(id)) if id == "reset" => model.count = 0,
+            Some(Click(id)) if id == "inc" => next.count += next.step,
+            Some(Click(id)) if id == "dec" => next.count -= next.step,
+            Some(Click(id)) if id == "reset" => next.count = 0,
             Some(Input(id, value)) if id == "label" => {
-                model.label = value.to_string();
+                next.label = value.to_string();
             }
             Some(Slide(id, value)) if id == "step" => {
-                model.step = value as i32;
+                next.step = value as i32;
             }
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -153,13 +155,14 @@ The full catalog lives in the [events reference](../reference/events.md).
 inside a function to keep the arms short:
 
 ```rust
-fn update(model: &mut Model, event: Event) -> Command {
+fn update(model: &Model, event: Event) -> (Model, Command) {
+    let mut next = model.clone();
     use plushie::event::WidgetMatch::*;
     match event.widget_match() {
         Some(Click(id)) if id == "save" => { /* ... */ }
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -236,16 +239,17 @@ Key presses then arrive as `Event::Key(KeyEvent)`. Use the
 ```rust
 use plushie::prelude::Key;
 
-fn update(model: &mut Editor, event: Event) -> Command {
+fn update(model: &Editor, event: Event) -> (Editor, Command) {
+    let mut next = model.clone();
     if let Some(key) = event.as_key_press() {
         match (&key.key, key.modifiers.command, key.modifiers.shift) {
-            (Key::Char('s'), true, false) => return model.save(),
-            (Key::Char('s'), true, true) => return model.save_as(),
-            (Key::Escape, _, _) => model.close_dialog(),
+            (Key::Char('s'), true, false) => return (next, model.save()),
+            (Key::Char('s'), true, true) => return (next, model.save_as()),
+            (Key::Escape, _, _) => next.close_dialog(),
             _ => {}
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -356,25 +360,26 @@ fn subscribe(_model: &Self) -> Vec<Subscription> {
     vec![Subscription::on_window_event()]
 }
 
-fn update(model: &mut Editor, event: Event) -> Command {
+fn update(model: &Editor, event: Event) -> (Editor, Command) {
+    let mut next = model.clone();
     if let Some(w) = event.as_window() {
         match w.event_type {
             WindowEventType::CloseRequested if model.dirty => {
-                model.prompt_save();
-                return Command::none();
+                next.prompt_save();
+                return (next, Command::none());
             }
             WindowEventType::CloseRequested => {
-                return Command::renderer(RendererOp::window_close(&w.window_id));
+                return (next, Command::renderer(RendererOp::window_close(&w.window_id)));
             }
             WindowEventType::Resized => {
-                model.width = w.width.unwrap_or(model.width);
-                model.height = w.height.unwrap_or(model.height);
+                next.width = w.width.unwrap_or(model.width);
+                next.height = w.height.unwrap_or(model.height);
             }
-            WindowEventType::Focused => model.focused_window = Some(w.window_id.clone()),
+            WindowEventType::Focused => next.focused_window = Some(w.window_id.clone()),
             _ => {}
         }
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 

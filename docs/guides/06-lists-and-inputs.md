@@ -24,12 +24,14 @@ text the user is currently typing:
 ```rust
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct TodoApp {
     todos: Vec<TodoItem>,
     input: String,
     next_id: usize,
 }
 
+#[derive(Clone)]
 struct TodoItem {
     id: String,
     text: String,
@@ -50,8 +52,8 @@ impl App for TodoApp {
         )
     }
 
-    fn update(_model: &mut Self, _event: Event) -> Command {
-        Command::none()
+    fn update(model: &Self, _event: Event) -> (Self, Command) {
+        (model.clone(), Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -205,30 +207,31 @@ Two event shapes come out of a `text_input`:
 Wire both into `update`:
 
 ```rust
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(Input("new_todo", text)) => {
-            model.input = text.to_string();
+            next.input = text.to_string();
         }
         Some(Submit("new_todo", _)) => {
-            if !model.input.trim().is_empty() {
-                let id = format!("todo_{}", model.next_id);
-                model.next_id += 1;
-                model.todos.insert(
+            if !next.input.trim().is_empty() {
+                let id = format!("todo_{}", next.next_id);
+                next.next_id += 1;
+                next.todos.insert(
                     0,
                     TodoItem {
                         id,
-                        text: model.input.clone(),
+                        text: next.input.clone(),
                         done: false,
                     },
                 );
-                model.input.clear();
-                return Command::focus("app/new_todo");
+                next.input.clear();
+                return (next, Command::focus("app/new_todo"));
             }
         }
         _ => {}
     }
-    Command::none()
+    (next, Command::none())
 }
 ```
 

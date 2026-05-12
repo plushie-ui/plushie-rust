@@ -17,27 +17,28 @@ renderer. For the full command catalog see the
 
 ## Returning commands from update
 
-`App::update` mutates `&mut Self::Model` in place and returns a
-`Command` by value. The runner runs the command after the update
-returns, then calls `view` and diffs:
+`App::update` returns the next model and a `Command` by value. The
+runner runs the command after the update returns, then calls `view`
+and diffs:
 
 ```rust
 use plushie::prelude::*;
 
-fn update(model: &mut Self, event: Event) -> Command {
+fn update(model: &Self, event: Event) -> (Self, Command) {
+    let mut next = model.clone();
     match event.widget_match() {
         Some(Click(id)) if id == "save" => {
-            model.dirty = false;
-            Command::focus("editor")
+            next.dirty = false;
+            (next, Command::focus("editor"))
         }
-        _ => Command::none(),
+        _ => (next, Command::none()),
     }
 }
 ```
 
-`Command::none()` is the do-nothing return. Every branch of a match
-must return a `Command`; use `Command::none()` wherever the update
-is purely a mutation.
+`Command::none()` is the do-nothing command. Every branch of a match
+must return a model and a `Command`; use `Command::none()` wherever
+the update only changes state.
 
 ## Command::task for async work
 
@@ -70,12 +71,13 @@ The result arrives as `Event::Async(AsyncEvent)`. Use the
 `as_async` accessor to match on the tag and destructure the result:
 
 ```rust
-fn update(model: &mut FetchApp, event: Event) -> Command {
+fn update(model: &FetchApp, event: Event) -> (FetchApp, Command) {
+    let mut next = model.clone();
     if let Some(Click("fetch")) = event.widget_match() {
-        model.status = Status::Loading;
-        return Command::task("fetch_result", || async {
+        next.status = Status::Loading;
+        return (next, Command::task("fetch_result", || async {
             Ok(json!(fetch_data().await?))
-        });
+        }));
     }
 
     if let Some(a) = event.as_async()
@@ -83,17 +85,17 @@ fn update(model: &mut FetchApp, event: Event) -> Command {
     {
         match &a.result {
             Ok(value) => {
-                model.status = Status::Done;
-                model.result = value.as_str().map(String::from);
+                next.status = Status::Done;
+                next.result = value.as_str().map(String::from);
             }
             Err(reason) => {
-                model.status = Status::Error;
-                model.error = reason.as_str().map(String::from);
+                next.status = Status::Error;
+                next.error = reason.as_str().map(String::from);
             }
         }
     }
 
-    Command::none()
+    (next, Command::none())
 }
 ```
 
@@ -184,16 +186,16 @@ tag on `Event::Effect(EffectEvent)`.
 ```rust
 use plushie::prelude::*;
 
-fn update(model: &mut Pad, event: Event) -> Command {
+fn update(model: &Pad, event: Event) -> (Pad, Command) {
     if let Some(Click("import")) = event.widget_match() {
-        return Command::file_open_with(
+        return (model.clone(), Command::file_open_with(
             "import",
             FileDialogOpts::new()
                 .title("Import Experiment")
                 .filter("Rust", &["rs"]),
-        );
+        ));
     }
-    Command::none()
+    (model.clone(), Command::none())
 }
 ```
 

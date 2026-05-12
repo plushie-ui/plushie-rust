@@ -26,5 +26,8 @@ tracked as standalone work.
   rollback and typed diagnostic direction.
 - `sensor-resize-parity.md` - Canonical sensor resize prop and
   event shape across SDKs.
+- `wasm-effects.md` - Browser-backed effect strategy for the WASM
+  renderer, including first implementation targets and permission
+  behavior.
 
 (More items appear here as directions get articulated.)

@@ -28,7 +28,7 @@ pub mod tree_walk;
 pub mod types;
 pub mod widget_builder;
 
-pub use diagnostic::{Diagnostic, DiagnosticKind};
+pub use diagnostic::{Diagnostic, DiagnosticFatality, DiagnosticKind, DiagnosticScope};
 pub use event_type::EventType;
 pub use key::{EffectKind, InteractAction, Key, KeyPress, MouseButton, PointerKind};
 pub use scoped_id::ScopedId;

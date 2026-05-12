@@ -16,6 +16,55 @@
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
+/// What recovery boundary, if any, a diagnostic crossed.
+///
+/// This is independent of [`crate::protocol::DiagnosticLevel`]. Level
+/// describes attention; fatality describes what stopped or changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum DiagnosticFatality {
+    /// Observation only. Work continued with the expected result.
+    None,
+    /// Work continued, but output changed or fallback behavior was used.
+    Degraded,
+    /// One operation, message, command, or subtree was rejected or ignored.
+    DroppedOperation,
+    /// User callback or widget code failed and was isolated.
+    CallbackRecovered,
+    /// One renderer session failed or closed while the process may survive.
+    SessionFatal,
+    /// The peer can no longer trust the stream.
+    TransportFatal,
+    /// Continuing would violate a framework invariant or lacks a usable runtime.
+    ProcessFatal,
+}
+
+/// The identity domain a diagnostic is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum DiagnosticScope {
+    /// Global process state.
+    Process,
+    /// Codec, frame, or protocol stream state.
+    Transport,
+    /// Renderer session state.
+    Session,
+    /// User app callback state.
+    AppCallback,
+    /// User app runtime state outside a single callback.
+    AppRuntime,
+    /// Retained tree or window identity.
+    TreeOrWindow,
+    /// Widget identity.
+    Widget,
+    /// Prop, content, or field identity.
+    PropOrContentField,
+    /// Loaded resource, cache, family, source, cap, or limit identity.
+    Resource,
+    /// Host or renderer protocol skew.
+    SdkProtocolSkew,
+}
+
 /// A structured diagnostic emitted by the SDK or renderer.
 ///
 /// Variants are additive; consumers that pattern-match exhaustively
@@ -383,6 +432,88 @@ impl Diagnostic {
     pub fn kind(&self) -> DiagnosticKind {
         DiagnosticKind::from(self)
     }
+
+    /// Recovery boundary for this diagnostic.
+    pub fn fatality(&self) -> DiagnosticFatality {
+        match self {
+            Self::FontCacheCapExceeded { .. }
+            | Self::DashCacheCapExceeded { .. }
+            | Self::DashSegmentsCapExceeded { .. } => DiagnosticFatality::None,
+            Self::DuplicateId { .. }
+            | Self::EmptyId { .. }
+            | Self::MultipleTopLevelWindows { .. }
+            | Self::UnrecognizedWidgetPlaceholder { .. }
+            | Self::TooManyDuplicates { .. }
+            | Self::WidgetIdInvalid { .. }
+            | Self::MissingAccessibleName { .. }
+            | Self::A11yRefUnresolved { .. }
+            | Self::PropRangeExceeded { .. }
+            | Self::PropTypeMismatch { .. }
+            | Self::PropUnknown { .. }
+            | Self::ContentLengthExceeded { .. }
+            | Self::FontFamilyNotFound { .. }
+            | Self::InvalidSettings { .. }
+            | Self::SvgParseError { .. }
+            | Self::SvgDecodeTimeout { .. }
+            | Self::EmitterCoalesceCapExceeded { .. }
+            | Self::AnimationDescriptorInvalid { .. } => DiagnosticFatality::Degraded,
+            Self::UnknownWindow { .. }
+            | Self::TreeDepthExceeded { .. }
+            | Self::FontCapExceeded { .. }
+            | Self::RequiredWidgetsMissing { .. }
+            | Self::UnknownMessageType { .. }
+            | Self::UnknownPatchOp { .. }
+            | Self::DispatchLoopExceeded { .. }
+            | Self::WireInputError { .. } => DiagnosticFatality::DroppedOperation,
+            Self::WidgetPanic { .. } | Self::ViewPanicked { .. } | Self::UpdatePanicked { .. } => {
+                DiagnosticFatality::CallbackRecovered
+            }
+            Self::BufferOverflow { .. } => DiagnosticFatality::TransportFatal,
+            Self::WidgetIdTypeCollision { .. } | Self::RendererRuntimeError { .. } => {
+                DiagnosticFatality::ProcessFatal
+            }
+        }
+    }
+
+    /// Identity domain this diagnostic is scoped to.
+    pub fn scope(&self) -> DiagnosticScope {
+        match self {
+            Self::FontCacheCapExceeded { .. }
+            | Self::FontCapExceeded { .. }
+            | Self::InvalidSettings { .. }
+            | Self::RequiredWidgetsMissing { .. }
+            | Self::EmitterCoalesceCapExceeded { .. }
+            | Self::RendererRuntimeError { .. } => DiagnosticScope::Process,
+            Self::BufferOverflow { .. } | Self::WireInputError { .. } => DiagnosticScope::Transport,
+            Self::ViewPanicked { .. } | Self::UpdatePanicked { .. } => DiagnosticScope::AppCallback,
+            Self::DispatchLoopExceeded { .. } => DiagnosticScope::AppRuntime,
+            Self::DuplicateId { .. }
+            | Self::EmptyId { .. }
+            | Self::MultipleTopLevelWindows { .. }
+            | Self::UnknownWindow { .. }
+            | Self::TreeDepthExceeded { .. }
+            | Self::TooManyDuplicates { .. } => DiagnosticScope::TreeOrWindow,
+            Self::UnrecognizedWidgetPlaceholder { .. }
+            | Self::WidgetIdInvalid { .. }
+            | Self::MissingAccessibleName { .. }
+            | Self::A11yRefUnresolved { .. }
+            | Self::WidgetPanic { .. }
+            | Self::WidgetIdTypeCollision { .. } => DiagnosticScope::Widget,
+            Self::PropRangeExceeded { .. }
+            | Self::PropTypeMismatch { .. }
+            | Self::PropUnknown { .. }
+            | Self::ContentLengthExceeded { .. }
+            | Self::AnimationDescriptorInvalid { .. } => DiagnosticScope::PropOrContentField,
+            Self::FontFamilyNotFound { .. }
+            | Self::SvgParseError { .. }
+            | Self::SvgDecodeTimeout { .. }
+            | Self::DashCacheCapExceeded { .. }
+            | Self::DashSegmentsCapExceeded { .. } => DiagnosticScope::Resource,
+            Self::UnknownMessageType { .. } | Self::UnknownPatchOp { .. } => {
+                DiagnosticScope::SdkProtocolSkew
+            }
+        }
+    }
 }
 
 impl std::fmt::Display for Diagnostic {
@@ -671,6 +802,67 @@ mod tests {
         assert_eq!(json, serde_json::json!("emitter_coalesce_cap_exceeded"));
         let back: DiagnosticKind = serde_json::from_value(json).unwrap();
         assert_eq!(back, kind);
+    }
+
+    #[test]
+    fn diagnostic_taxonomy_marks_observation_and_resource_scope() {
+        let d = Diagnostic::DashSegmentsCapExceeded { max: 16 };
+        assert_eq!(d.fatality(), DiagnosticFatality::None);
+        assert_eq!(d.scope(), DiagnosticScope::Resource);
+    }
+
+    #[test]
+    fn diagnostic_taxonomy_marks_degraded_prop_scope() {
+        let d = Diagnostic::PropRangeExceeded {
+            id: "slider-1".into(),
+            type_name: "slider".into(),
+            prop: "value".into(),
+            raw: "200".into(),
+            clamped: 100.0,
+            non_finite: false,
+        };
+        assert_eq!(d.fatality(), DiagnosticFatality::Degraded);
+        assert_eq!(d.scope(), DiagnosticScope::PropOrContentField);
+    }
+
+    #[test]
+    fn diagnostic_taxonomy_marks_dropped_protocol_operation() {
+        let d = Diagnostic::UnknownPatchOp {
+            op: "frobnicate".into(),
+            payload: serde_json::json!({ "op": "frobnicate" }),
+        };
+        assert_eq!(d.fatality(), DiagnosticFatality::DroppedOperation);
+        assert_eq!(d.scope(), DiagnosticScope::SdkProtocolSkew);
+    }
+
+    #[test]
+    fn diagnostic_taxonomy_marks_callback_recovery() {
+        let d = Diagnostic::WidgetPanic {
+            id: "btn".into(),
+            type_name: "custom_button".into(),
+            label: "render".into(),
+        };
+        assert_eq!(d.fatality(), DiagnosticFatality::CallbackRecovered);
+        assert_eq!(d.scope(), DiagnosticScope::Widget);
+    }
+
+    #[test]
+    fn diagnostic_taxonomy_marks_transport_fatal() {
+        let d = Diagnostic::BufferOverflow {
+            size: 128,
+            limit: 64,
+        };
+        assert_eq!(d.fatality(), DiagnosticFatality::TransportFatal);
+        assert_eq!(d.scope(), DiagnosticScope::Transport);
+    }
+
+    #[test]
+    fn diagnostic_taxonomy_marks_process_fatal() {
+        let d = Diagnostic::RendererRuntimeError {
+            detail: "event loop exited".into(),
+        };
+        assert_eq!(d.fatality(), DiagnosticFatality::ProcessFatal);
+        assert_eq!(d.scope(), DiagnosticScope::Process);
     }
 
     #[test]

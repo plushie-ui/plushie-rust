@@ -93,6 +93,8 @@ impl Transport {
 
         let mut child = Command::new(shell)
             .args([shell_flag, command])
+            .env_clear()
+            .envs(crate::env::child_env())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -406,6 +408,8 @@ fn spawn_listen_child(command: &str, socket_addr: &str, token: &str) -> io::Resu
 
     let mut child = Command::new(shell)
         .args([shell_flag, command])
+        .env_clear()
+        .envs(crate::env::child_env())
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped())

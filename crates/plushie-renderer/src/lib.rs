@@ -20,6 +20,7 @@
 //! (`{` = JSON, anything else = MessagePack). Override with `--json` or
 //! `--msgpack`.
 
+mod env;
 mod headless;
 mod output;
 mod renderer;

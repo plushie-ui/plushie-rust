@@ -18,13 +18,14 @@
 //!         (Counter { count: 0 }, Command::none())
 //!     }
 //!
-//!     fn update(model: &mut Self, event: Event) -> Command {
+//!     fn update(model: &Self, event: Event) -> (Self, Command) {
+//!         let mut next = Counter { count: model.count };
 //!         match event.widget_match() {
-//!             Some(Click("inc")) => model.count += 1,
-//!             Some(Click("dec")) => model.count -= 1,
+//!             Some(Click("inc")) => next.count += 1,
+//!             Some(Click("dec")) => next.count -= 1,
 //!             _ => {}
 //!         }
-//!         Command::none()
+//!         (next, Command::none())
 //!     }
 //!
 //!     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -361,9 +362,14 @@ pub trait App: Send + 'static {
     /// startup commands (e.g., fetch data, start timers).
     fn init() -> (Self::Model, Command);
 
-    /// Handle an event. Mutate the model and return commands
-    /// for side effects. Called once per event.
-    fn update(model: &mut Self::Model, event: Event) -> Command;
+    /// Handle an event. Return the next model and commands for
+    /// side effects. Called once per event.
+    ///
+    /// The runtime commits the returned model only after `update`
+    /// returns successfully. If `update` panics, the previous model
+    /// remains active and any command from the failed event is
+    /// dropped.
+    fn update(model: &Self::Model, event: Event) -> (Self::Model, Command);
 
     /// Build the view tree from the current model. Called after
     /// every update. Returns the list of top-level windows to

@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct Clock {
     time: String,
 }
@@ -42,11 +43,12 @@ impl App for Clock {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(Timer("tick")) = event.widget_match() {
-            model.time = Self::current_time();
+            next.time = Self::current_time();
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn subscribe(_model: &Self) -> Vec<Subscription> {

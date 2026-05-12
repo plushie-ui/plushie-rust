@@ -25,6 +25,7 @@ use serde_json::{Value, json};
 // Counter app: mirrors the `lib.rs` quick-start snippet.
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct Counter {
     count: i32,
 }
@@ -36,13 +37,14 @@ impl App for Counter {
         (Counter { count: 0 }, Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Click("inc")) => model.count += 1,
-            Some(Click("dec")) => model.count -= 1,
+            Some(Click("inc")) => next.count += 1,
+            Some(Click("dec")) => next.count -= 1,
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -66,13 +68,13 @@ impl App for Counter {
 
 #[test]
 fn counter_init_and_update_compile() {
-    let (mut model, _cmd) = Counter::init();
+    let (model, _cmd) = Counter::init();
     let click = Event::Widget(plushie::event::WidgetEvent {
         event_type: plushie::event::EventType::Click,
         scoped_id: ScopedId::new("inc", vec![], Some("main".to_string())),
         value: Value::Null,
     });
-    let _ = Counter::update(&mut model, click);
+    let (model, _cmd) = Counter::update(&model, click);
     assert_eq!(model.count, 1);
 }
 
@@ -207,8 +209,8 @@ impl App for WrappedApp {
         ((), Command::none())
     }
 
-    fn update(_model: &mut (), _event: Event) -> Command {
-        Command::none()
+    fn update(_model: &(), _event: Event) -> ((), Command) {
+        ((), Command::none())
     }
 
     fn view(_model: &(), widgets: &mut WidgetRegistrar) -> ViewList {

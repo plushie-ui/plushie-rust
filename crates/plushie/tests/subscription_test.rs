@@ -17,7 +17,7 @@ use plushie::test::TestSession;
 // Test app: subscriptions driven by model knobs
 // ---------------------------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct SubscribeApp {
     ticking: bool,
     tick_interval: Duration,
@@ -34,8 +34,8 @@ impl App for SubscribeApp {
         (Self::default(), Command::none())
     }
 
-    fn update(_model: &mut Self, _event: Event) -> Command {
-        Command::none()
+    fn update(model: &Self, _event: Event) -> (Self, Command) {
+        (model.clone(), Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

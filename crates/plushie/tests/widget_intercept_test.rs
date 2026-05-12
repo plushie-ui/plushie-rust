@@ -199,6 +199,7 @@ impl Widget for Outer {
 
 // Host app that registers both widgets and records every event its
 // update function sees.
+#[derive(Clone)]
 struct NestedApp {
     events: Vec<Event>,
 }
@@ -210,9 +211,10 @@ impl App for NestedApp {
         (Self { events: Vec::new() }, Command::None)
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
-        model.events.push(event);
-        Command::None
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
+        next.events.push(event);
+        (next, Command::None)
     }
 
     fn view(_model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {

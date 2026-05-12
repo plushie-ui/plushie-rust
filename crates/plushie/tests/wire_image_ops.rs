@@ -83,6 +83,7 @@ fn rand_suffix() -> u64 {
 // response surfaces as a System(ImageList) event; the handles are
 // captured into shared state for the assertion at the end of the run.
 
+#[derive(Clone)]
 struct Shared {
     init_ran: Arc<AtomicBool>,
     handles: Arc<std::sync::Mutex<Option<Vec<String>>>>,
@@ -107,6 +108,7 @@ fn take_shared() -> Shared {
         .expect("shared already taken")
 }
 
+#[derive(Clone)]
 struct ImageApp {
     shared: Shared,
 }
@@ -140,7 +142,8 @@ impl App for ImageApp {
         (model, cmd)
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let next = model.clone();
         if let Event::System(sys) = &event
             && sys.event_type == SystemEventType::ImageList
             && sys.tag.as_deref() == Some("check")
@@ -156,12 +159,12 @@ impl App for ImageApp {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            *model.shared.handles.lock().unwrap() = Some(handles);
-            if let Some(tx) = model.shared.done_tx.lock().unwrap().take() {
+            *next.shared.handles.lock().unwrap() = Some(handles);
+            if let Some(tx) = next.shared.done_tx.lock().unwrap().take() {
                 let _ = tx.send(());
             }
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

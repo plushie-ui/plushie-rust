@@ -4,12 +4,14 @@
 
 use plushie::prelude::*;
 use plushie::test::TestSession;
+use plushie_core::DiagnosticKind;
 use serde_json::json;
 
 // ---------------------------------------------------------------------------
 // Counter app
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct Counter {
     count: i32,
 }
@@ -21,14 +23,15 @@ impl App for Counter {
         (Counter { count: 0 }, Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Click("inc")) => model.count += 1,
-            Some(Click("dec")) => model.count -= 1,
-            Some(Click("reset")) => model.count = 0,
+            Some(Click("inc")) => next.count += 1,
+            Some(Click("dec")) => next.count -= 1,
+            Some(Click("reset")) => next.count = 0,
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -110,6 +113,7 @@ fn counter_buttons_exist() {
 // Form app (text input + toggle + slider)
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct Form {
     name: String,
     agreed: bool,
@@ -130,17 +134,18 @@ impl App for Form {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Input("name", text)) => model.name = text.to_string(),
-            Some(Toggle("agree", on)) => model.agreed = on,
-            Some(Slide("volume", vol)) => model.volume = vol,
+            Some(Input("name", text)) => next.name = text.to_string(),
+            Some(Toggle("agree", on)) => next.agreed = on,
+            Some(Slide("volume", vol)) => next.volume = vol,
             Some(Submit("name", text)) => {
-                model.name = text.to_string();
+                next.name = text.to_string();
             }
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -212,12 +217,14 @@ fn form_submit() {
 // Todo app (dynamic list with scoped events)
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct TodoItem {
     id: String,
     text: String,
     done: bool,
 }
 
+#[derive(Clone)]
 struct TodoApp {
     items: Vec<TodoItem>,
     next_id: usize,
@@ -249,36 +256,37 @@ impl App for TodoApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
             Some(Input("new_todo", text)) => {
-                model.input = text.to_string();
+                next.input = text.to_string();
             }
             Some(Submit("new_todo", text)) => {
-                let id = model.next_id.to_string();
-                model.next_id += 1;
-                model.items.push(TodoItem {
+                let id = next.next_id.to_string();
+                next.next_id += 1;
+                next.items.push(TodoItem {
                     id,
                     text: text.to_string(),
                     done: false,
                 });
-                model.input.clear();
+                next.input.clear();
             }
             Some(Toggle("done", _)) => {
                 if let Some(item_id) = event.scope().and_then(|s| s.first())
-                    && let Some(item) = model.items.iter_mut().find(|i| i.id == *item_id)
+                    && let Some(item) = next.items.iter_mut().find(|i| i.id == *item_id)
                 {
                     item.done = !item.done;
                 }
             }
             Some(Click("delete")) => {
                 if let Some(item_id) = event.scope().and_then(|s| s.first()) {
-                    model.items.retain(|i| i.id != *item_id);
+                    next.items.retain(|i| i.id != *item_id);
                 }
             }
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -331,6 +339,7 @@ fn todo_text_input_updates_model() {
 // Command inspection
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct CommandApp {
     last_action: String,
 }
@@ -347,17 +356,18 @@ impl App for CommandApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
             Some(Click("focus_email")) => {
-                model.last_action = "focus".into();
-                Command::focus("email")
+                next.last_action = "focus".into();
+                (next, Command::focus("email"))
             }
             Some(Click("quit")) => {
-                model.last_action = "quit".into();
-                Command::exit()
+                next.last_action = "quit".into();
+                (next, Command::exit())
             }
-            _ => Command::none(),
+            _ => (next, Command::none()),
         }
     }
 
@@ -383,6 +393,7 @@ fn command_app_updates_model_on_interaction() {
 // Mixed event types via full Event match
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct MixedEventApp {
     clicks: usize,
     inputs: Vec<String>,
@@ -403,24 +414,25 @@ impl App for MixedEventApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Event::Widget(w) = &event {
             match (&w.event_type, w.scoped_id.id.as_str()) {
-                (EventType::Click, _) => model.clicks += 1,
+                (EventType::Click, _) => next.clicks += 1,
                 (EventType::Input, _) => {
                     if let Some(text) = w.value_string() {
-                        model.inputs.push(text);
+                        next.inputs.push(text);
                     }
                 }
                 (EventType::Select, _) => {
                     if let Some(val) = w.value_string() {
-                        model.selections.push(val);
+                        next.selections.push(val);
                     }
                 }
                 _ => {}
             }
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -486,10 +498,70 @@ fn prop_reads_widget_property() {
 }
 
 // ---------------------------------------------------------------------------
+// Update panic rollback
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct PanicUpdateApp {
+    count: i32,
+}
+
+impl App for PanicUpdateApp {
+    type Model = Self;
+
+    fn init() -> (Self, Command) {
+        (Self { count: 0 }, Command::none())
+    }
+
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
+        match event.widget_match() {
+            Some(Click("boom")) => {
+                next.count += 1;
+                std::hint::black_box(&next);
+                panic!("boom after tentative mutation");
+            }
+            Some(Click("inc")) => {
+                next.count += 1;
+            }
+            _ => {}
+        }
+        (next, Command::none())
+    }
+
+    fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
+        window("main")
+            .child(
+                column()
+                    .child(text(&format!("{}", model.count)).id("display"))
+                    .child(button("boom", "Boom"))
+                    .child(button("inc", "Inc")),
+            )
+            .into()
+    }
+}
+
+#[test]
+fn update_panic_keeps_committed_model_and_tree() {
+    let mut session = TestSession::<PanicUpdateApp>::start().allow_diagnostics();
+
+    session.click("boom");
+
+    assert_eq!(session.model().count, 0);
+    session.assert_text("display", "0");
+    assert!(session.has_diagnostic(DiagnosticKind::UpdatePanicked));
+
+    session.click("inc");
+
+    assert_eq!(session.model().count, 1);
+    session.assert_text("display", "1");
+}
+
+// ---------------------------------------------------------------------------
 // Streaming command
 // ---------------------------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Importer {
     chunks: Vec<String>,
     done: bool,
@@ -510,19 +582,20 @@ impl App for Importer {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event {
             Event::Stream(s) if s.tag == "import" => {
                 if let Some(chunk) = s.value.as_str() {
-                    model.chunks.push(chunk.to_string());
+                    next.chunks.push(chunk.to_string());
                 }
             }
             Event::Async(a) if a.tag == "import" => {
-                model.done = a.result.is_ok();
+                next.done = a.result.is_ok();
             }
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -549,6 +622,7 @@ fn stream_delivers_intermediate_emits_and_final_result() {
 // the test session emits a `DispatchLoopExceeded` diagnostic and drops
 // the offending command rather than overflowing the call stack.
 
+#[derive(Clone)]
 struct LoopApp {
     ticks: u32,
 }
@@ -560,19 +634,23 @@ impl App for LoopApp {
         (LoopApp { ticks: 0 }, Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Event::Timer(t) = &event
             && t.tag == "tick"
         {
-            model.ticks += 1;
+            next.ticks += 1;
             // Re-dispatch unconditionally; the runtime guard is what
             // stops the chain.
-            return Command::dispatch(Event::Timer(plushie::event::TimerEvent {
-                tag: "tick".into(),
-                timestamp: 0,
-            }));
+            return (
+                next,
+                Command::dispatch(Event::Timer(plushie::event::TimerEvent {
+                    tag: "tick".into(),
+                    timestamp: 0,
+                })),
+            );
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -585,7 +663,7 @@ impl App for LoopApp {
 // timer event -> view reflects state. Pins the load-bearing happy path.
 // ---------------------------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct LifecycleApp {
     /// Set when the async fetch task fired by `init` resolves.
     fetched: Option<String>,
@@ -610,23 +688,24 @@ impl App for LifecycleApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(a) = event.as_async()
             && a.tag == "startup_fetch"
             && let Ok(value) = &a.result
             && let Some(g) = value.get("greeting").and_then(|v| v.as_str())
         {
-            model.fetched = Some(g.to_string());
+            next.fetched = Some(g.to_string());
             // Flip the timer subscription on now that the fetch has
             // landed; the next subscription diff picks it up.
-            model.ticking = true;
+            next.ticking = true;
         }
         if let Event::Timer(t) = &event
             && t.tag == "tick"
         {
-            model.ticks += 1;
+            next.ticks += 1;
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn subscribe(model: &Self) -> Vec<Subscription> {

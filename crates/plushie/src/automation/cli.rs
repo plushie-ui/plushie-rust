@@ -2,7 +2,7 @@
 //!
 //! These three functions exist so a caller can wire `--plushie-script`,
 //! `--plushie-replay`, and `--plushie-inspect` into their own CLI
-//! without re-implementing the parse + runner plumbing. The zero-config
+//! without reimplementing the parse + runner plumbing. The zero-config
 //! [`crate::cli::run`] entry wires them up automatically; apps with a
 //! bespoke CLI call them directly.
 //!
@@ -105,8 +105,8 @@ mod tests {
         fn init() -> (Self::Model, Command) {
             ((), Command::none())
         }
-        fn update(_m: &mut Self::Model, _e: Event) -> Command {
-            Command::none()
+        fn update(model: &Self::Model, _e: Event) -> (Self::Model, Command) {
+            (*model, Command::none())
         }
         fn view(_m: &Self::Model, _w: &mut WidgetRegistrar) -> crate::ViewList {
             window("main")

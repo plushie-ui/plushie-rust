@@ -14,7 +14,6 @@ pub(crate) mod memo_cache;
 pub mod normalize;
 pub mod subscriptions;
 pub mod tree_diff;
-#[cfg(any(feature = "direct", feature = "wire"))]
 pub mod view_errors;
 pub(crate) mod widget_view_cache;
 #[cfg(any(feature = "direct", feature = "wire"))]

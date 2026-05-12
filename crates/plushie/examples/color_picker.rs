@@ -83,6 +83,7 @@ fn emit_change(state: &PickerState) -> EventResult {
 // App
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct ColorPickerApp {
     hue: f64,
     saturation: f64,
@@ -103,7 +104,8 @@ impl App for ColorPickerApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         // The widget emits "change" which maps to EventType::Custom(_)
         // since "change" isn't a built-in family. Use as_widget() to
         // read the structured value.
@@ -111,17 +113,17 @@ impl App for ColorPickerApp {
             && w.scoped_id.id == "picker"
             && let Some(obj) = w.value.as_object()
         {
-            model.hue = obj.get("hue").and_then(|v| v.as_f64()).unwrap_or(model.hue);
-            model.saturation = obj
+            next.hue = obj.get("hue").and_then(|v| v.as_f64()).unwrap_or(next.hue);
+            next.saturation = obj
                 .get("saturation")
                 .and_then(|v| v.as_f64())
-                .unwrap_or(model.saturation);
-            model.value = obj
+                .unwrap_or(next.saturation);
+            next.value = obj
                 .get("value")
                 .and_then(|v| v.as_f64())
-                .unwrap_or(model.value);
+                .unwrap_or(next.value);
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {

@@ -10,14 +10,9 @@
 //! increments a shared counter; at [`VIEW_ERROR_THRESHOLD`]
 //! consecutive panics the runtime overlays a minimal error container
 //! onto the tree so the user knows the UI is stale. The counter
-//! resets and the overlay clears the next time a view runs to
-//! completion.
-//!
-//! A panicking `update()` leaves `A::Model` in whatever state the
-//! handler reached before it unwound; Rust's `catch_unwind` does not
-//! roll back mutations made through `&mut`. The frozen-UI overlay is
-//! the app-visible signal that the next event should be treated as
-//! recovery, not continuation.
+//! resets and the overlay clears after a successful update followed
+//! by a successful view. A render of the old model immediately after
+//! an update panic does not count as recovery.
 //!
 //! This is a *production* safety net, not a dev-only banner. It
 //! runs in both debug and release builds; the dev rebuild banner
@@ -46,17 +41,16 @@ use plushie_core::protocol::{PropMap, PropValue, Props, TreeNode};
 use crate::App;
 use crate::command::Command;
 use crate::event::Event;
-#[cfg(feature = "direct")]
 use crate::runtime::prepare_tree;
 #[cfg(feature = "wire")]
 use crate::widget::WidgetRegistrar;
-#[cfg(feature = "direct")]
 use crate::widget::WidgetStateStore;
 
 /// Number of consecutive `A::view()` or `A::update()` panics
 /// before the frozen-UI overlay is injected. Matches the Elixir
 /// SDK's threshold; shared across SDKs via the protocol
 /// documentation.
+#[cfg_attr(not(any(feature = "direct", feature = "wire")), allow(dead_code))]
 pub const VIEW_ERROR_THRESHOLD: u32 = 5;
 
 /// Prop marker used to detect and clear the injected overlay
@@ -72,7 +66,14 @@ pub struct ViewErrors {
     pub consecutive: u32,
     /// Whether a frozen-UI overlay is currently injected into the
     /// last-good tree. Cleared on the first successful render.
+    #[cfg_attr(not(any(feature = "direct", feature = "wire")), allow(dead_code))]
     pub overlay_active: bool,
+    /// True after an update panic until a later update and view both
+    /// complete successfully.
+    pub update_recovery_pending: bool,
+    /// True when the update half of recovery has completed and the
+    /// next successful view may clear the failure state.
+    pub update_recovery_view_ready: bool,
 }
 
 /// Outcome of a guarded `A::view()` call.
@@ -102,16 +103,9 @@ pub enum ViewOutcome {
 pub enum UpdateOutcome {
     /// Update returned normally.
     Ok(Command),
-    /// Update panicked. Model may be partially mutated (Rust's
-    /// panic-unwind does not roll back mutations made via
-    /// `&mut`). The consecutive counter is incremented; callers
-    /// fall through to [`run_guarded_view`] / [`run_guarded_view_wire`]
-    /// which surfaces the frozen-UI overlay at
-    /// [`VIEW_ERROR_THRESHOLD`]. The returned [`Command`] is
-    /// [`Command::None`] so the caller can treat a panic exactly
-    /// like a successful update that produced no side effect.
+    /// Update panicked. The old model remains active and no command
+    /// is produced.
     Panicked {
-        cmd: Command,
         /// Consecutive panic count after this failure.
         #[allow(dead_code)]
         consecutive: u32,
@@ -126,7 +120,6 @@ pub enum UpdateOutcome {
 /// On success, resets the counter and clears any prior overlay
 /// from the returned tree. On panic, increments the counter and
 /// (at threshold) injects the frozen-UI overlay into `last_good`.
-#[cfg(feature = "direct")]
 pub fn run_guarded_view<A: App>(
     state: &mut ViewErrors,
     model: &A::Model,
@@ -140,11 +133,7 @@ pub fn run_guarded_view<A: App>(
     }));
     match result {
         Ok((tree, warnings)) => {
-            state.consecutive = 0;
-            // The successful tree is canonical. Any overlay that
-            // survived into `last_good` is ignored; we commit the
-            // fresh tree.
-            state.overlay_active = false;
+            clear_after_successful_view(state);
             ViewOutcome::Ok(tree, warnings)
         }
         Err(payload) => {
@@ -154,7 +143,7 @@ pub fn run_guarded_view<A: App>(
                 consecutive: state.consecutive,
                 message: message.clone(),
             };
-            log::error!("{diag}");
+            plushie_core::diagnostics::error(diag);
             // Emit is log-only. The typed `Diagnostic` pipeline is
             // fed by `WalkCtx::warnings` on the normal successful
             // walk path, and a panicking walk cannot push into it.
@@ -194,8 +183,7 @@ pub fn run_guarded_view_wire<A: App>(
     }));
     match result {
         Ok((tree, warnings)) => {
-            state.consecutive = 0;
-            state.overlay_active = false;
+            clear_after_successful_view(state);
             ViewOutcome::Ok(tree, warnings)
         }
         Err(payload) => {
@@ -205,7 +193,7 @@ pub fn run_guarded_view_wire<A: App>(
                 consecutive: state.consecutive,
                 message: message.clone(),
             };
-            log::error!("{diag}");
+            plushie_core::diagnostics::error(diag);
             let should_inject = (state.consecutive >= VIEW_ERROR_THRESHOLD
                 || inject_on_first_panic)
                 && !state.overlay_active;
@@ -226,46 +214,50 @@ pub fn run_guarded_view_wire<A: App>(
 
 /// Call `A::update()` under `catch_unwind` and update `state`.
 ///
-/// On success, returns the [`Command`] the user produced. On panic,
-/// increments the same consecutive-error counter that
-/// [`run_guarded_view`] feeds so the frozen-UI overlay surfaces
-/// whether the failures came from view, update, or a mix. The
-/// returned `Command` is [`Command::None`] after a panic.
-///
-/// Note: Rust's `catch_unwind` does not roll back mutations made
-/// to `&mut` bindings before the panic. A partial mutation of
-/// `A::Model` is therefore observable in the next frame. The
-/// frozen-UI overlay at the threshold is the app-visible signal
-/// that recovery is needed; user code that mutates fields in
-/// place before validating should validate first or use a
-/// transactional wrapper.
+/// On success, commits the returned model into `model` and returns
+/// the [`Command`] the user produced. On panic, leaves `model`
+/// unchanged, increments the same consecutive-error counter that
+/// [`run_guarded_view`] feeds, and returns no command.
 pub fn run_guarded_update<A: App>(
     state: &mut ViewErrors,
     model: &mut A::Model,
     event: Event,
 ) -> UpdateOutcome {
-    // AssertUnwindSafe: we do not guarantee model consistency after
-    // a panic (see module docs). Frozen-UI overlay is the recovery
-    // mechanism; a rolling clone would require `A::Model: Clone`
-    // which is a larger API constraint than the safety net is worth.
     let result = catch_unwind(AssertUnwindSafe(|| A::update(model, event)));
     match result {
-        Ok(cmd) => UpdateOutcome::Ok(cmd),
+        Ok((next_model, cmd)) => {
+            *model = next_model;
+            if state.update_recovery_pending {
+                state.update_recovery_view_ready = true;
+            }
+            UpdateOutcome::Ok(cmd)
+        }
         Err(payload) => {
             let message = panic_payload_message(&*payload);
             state.consecutive = state.consecutive.saturating_add(1);
+            state.update_recovery_pending = true;
+            state.update_recovery_view_ready = false;
             let diag = plushie_core::Diagnostic::UpdatePanicked {
                 consecutive: state.consecutive,
                 message: message.clone(),
             };
-            log::error!("{diag}");
+            plushie_core::diagnostics::error(diag);
             UpdateOutcome::Panicked {
-                cmd: Command::None,
                 consecutive: state.consecutive,
                 message,
             }
         }
     }
+}
+
+fn clear_after_successful_view(state: &mut ViewErrors) {
+    if state.update_recovery_pending && !state.update_recovery_view_ready {
+        return;
+    }
+    state.consecutive = 0;
+    state.overlay_active = false;
+    state.update_recovery_pending = false;
+    state.update_recovery_view_ready = false;
 }
 
 /// Extract a best-effort string message from a panic payload.
@@ -341,6 +333,7 @@ fn attach_overlay(tree: &mut TreeNode, overlay: &TreeNode) {
 mod tests {
     use super::*;
 
+    #[allow(dead_code)]
     fn window_node(id: &str) -> TreeNode {
         TreeNode {
             id: id.to_string(),
@@ -350,6 +343,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn overlay_count(node: &TreeNode) -> usize {
         let mut n = if node.id == FROZEN_OVERLAY_ID { 1 } else { 0 };
         for child in &node.children {
@@ -359,6 +353,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(feature = "direct", feature = "wire"))]
     fn inject_overlay_attaches_to_every_window() {
         // Root with three windows: the overlay must land inside every
         // one so the user sees the banner on any visible window.
@@ -392,6 +387,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(feature = "direct", feature = "wire"))]
     fn inject_overlay_falls_through_when_no_windows() {
         // Without any window children, the overlay lands on the root
         // so the frozen-UI banner still reaches a top-level node.
@@ -410,6 +406,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(feature = "direct", feature = "wire"))]
     fn inject_overlay_handles_root_window() {
         // Single top-level window as the root itself: the overlay is
         // appended to its children rather than wrapping.
@@ -439,6 +436,7 @@ mod tests {
     /// Test-only app: update() panics when the incoming event carries
     /// ID "boom"; any other event is a no-op. view() returns an empty
     /// container so normalize never fails.
+    #[derive(Clone, Copy)]
     struct BoomApp;
 
     impl App for BoomApp {
@@ -448,13 +446,13 @@ mod tests {
             (BoomApp, Command::None)
         }
 
-        fn update(_model: &mut Self::Model, event: Event) -> Command {
+        fn update(model: &Self::Model, event: Event) -> (Self::Model, Command) {
             if let Event::Widget(WidgetEvent { scoped_id, .. }) = &event
                 && scoped_id.id == "boom"
             {
                 panic!("update boom");
             }
-            Command::None
+            (*model, Command::None)
         }
 
         fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::ViewList {
@@ -536,8 +534,10 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "direct", feature = "wire"))]
     struct ViewBoomApp;
 
+    #[cfg(any(feature = "direct", feature = "wire"))]
     impl App for ViewBoomApp {
         type Model = bool;
 
@@ -545,8 +545,8 @@ mod tests {
             (false, Command::None)
         }
 
-        fn update(_model: &mut Self::Model, _event: Event) -> Command {
-            Command::None
+        fn update(model: &Self::Model, _event: Event) -> (Self::Model, Command) {
+            (*model, Command::None)
         }
 
         fn view(model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::ViewList {
@@ -597,6 +597,7 @@ mod tests {
         let mut state = ViewErrors {
             consecutive: 3,
             overlay_active: true,
+            ..ViewErrors::default()
         };
         let model = false;
         let mut widget_store = crate::widget::WidgetStateStore::new();
@@ -672,6 +673,7 @@ mod tests {
         let mut state = ViewErrors {
             consecutive: 3,
             overlay_active: true,
+            ..ViewErrors::default()
         };
         let model = false;
 

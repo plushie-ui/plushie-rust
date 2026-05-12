@@ -13,7 +13,7 @@ use plushie::test::TestSession;
 // modal has a button that closes itself.
 // ---------------------------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct TwoWindowApp {
     modal_open: bool,
     last_main_focus: Option<WindowEventType>,
@@ -28,27 +28,28 @@ impl App for TwoWindowApp {
         (Self::default(), Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Click("open_modal")) => model.modal_open = true,
-            Some(Click("close_modal")) => model.modal_open = false,
+            Some(Click("open_modal")) => next.modal_open = true,
+            Some(Click("close_modal")) => next.modal_open = false,
             _ => {}
         }
         if let Event::Window(w) = &event {
             match w.event_type {
                 WindowEventType::Focused | WindowEventType::Unfocused if w.window_id == "main" => {
-                    model.last_main_focus = Some(w.event_type);
+                    next.last_main_focus = Some(w.event_type);
                 }
                 WindowEventType::Resized if w.window_id == "modal" => {
-                    model.last_modal_resize = w.width.zip(w.height);
+                    next.last_modal_resize = w.width.zip(w.height);
                 }
                 WindowEventType::Closed => {
-                    model.last_closed = Some(w.window_id.clone());
+                    next.last_closed = Some(w.window_id.clone());
                 }
                 _ => {}
             }
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

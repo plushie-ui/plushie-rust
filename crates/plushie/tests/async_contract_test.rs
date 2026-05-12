@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 // App fixture: each click kicks off a pre-canned async/stream task.
 // ---------------------------------------------------------------------------
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Outcomes {
     last_ok: Option<Value>,
     last_err: Option<Value>,
@@ -22,6 +22,7 @@ struct Outcomes {
     started: bool,
 }
 
+#[derive(Clone)]
 struct AsyncApp {
     outcomes: Outcomes,
     mode: AsyncMode,
@@ -49,10 +50,11 @@ impl App for AsyncApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(Click("start")) = event.widget_match() {
-            model.outcomes.started = true;
-            return match model.mode {
+            next.outcomes.started = true;
+            let cmd = match next.mode {
                 AsyncMode::Ok => Command::task("job", || async { Ok(json!("done")) }),
                 AsyncMode::Err => Command::task("job", || async { Err(json!("boom")) }),
                 AsyncMode::Panic => {
@@ -64,17 +66,18 @@ impl App for AsyncApp {
                 ]),
                 AsyncMode::StartOnly => Command::task("job", || async { Ok(json!("pending")) }),
             };
+            return (next, cmd);
         }
         if let Some(a) = event.as_async()
             && a.tag == "job"
         {
-            model.outcomes.event_count += 1;
+            next.outcomes.event_count += 1;
             match &a.result {
-                Ok(v) => model.outcomes.last_ok = Some(v.clone()),
-                Err(v) => model.outcomes.last_err = Some(v.clone()),
+                Ok(v) => next.outcomes.last_ok = Some(v.clone()),
+                Err(v) => next.outcomes.last_err = Some(v.clone()),
             }
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

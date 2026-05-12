@@ -12,6 +12,7 @@ use plushie::prelude::*;
 
 const MAX_LOG_ENTRIES: usize = 50;
 
+#[derive(Clone)]
 struct Shortcuts {
     log: Vec<String>,
     count: usize,
@@ -30,14 +31,15 @@ impl App for Shortcuts {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(key_event) = event.as_key_press() {
-            model.count += 1;
-            let entry = format_key_event(key_event, model.count);
-            model.log.insert(0, entry);
-            model.log.truncate(MAX_LOG_ENTRIES);
+            next.count += 1;
+            let entry = format_key_event(key_event, next.count);
+            next.log.insert(0, entry);
+            next.log.truncate(MAX_LOG_ENTRIES);
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn subscribe(_model: &Self) -> Vec<Subscription> {

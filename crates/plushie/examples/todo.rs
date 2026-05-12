@@ -9,6 +9,7 @@
 
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct TodoApp {
     todos: Vec<TodoItem>,
     input: String,
@@ -16,13 +17,14 @@ struct TodoApp {
     next_id: usize,
 }
 
+#[derive(Clone)]
 struct TodoItem {
     id: String,
     text: String,
     done: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum Filter {
     All,
     Active,
@@ -44,45 +46,46 @@ impl App for TodoApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
             Some(Input("new_todo", text)) => {
-                model.input = text.to_string();
+                next.input = text.to_string();
             }
             Some(Submit("new_todo", _)) => {
-                if !model.input.trim().is_empty() {
-                    let id = format!("todo_{}", model.next_id);
-                    model.next_id += 1;
-                    model.todos.insert(
+                if !next.input.trim().is_empty() {
+                    let id = format!("todo_{}", next.next_id);
+                    next.next_id += 1;
+                    next.todos.insert(
                         0,
                         TodoItem {
                             id,
-                            text: model.input.clone(),
+                            text: next.input.clone(),
                             done: false,
                         },
                     );
-                    model.input.clear();
-                    return Command::focus("app/new_todo");
+                    next.input.clear();
+                    return (next, Command::focus("app/new_todo"));
                 }
             }
             Some(Toggle("toggle", _)) => {
                 if let Some(todo_id) = event.scope().and_then(|s| s.first())
-                    && let Some(item) = model.todos.iter_mut().find(|i| i.id == *todo_id)
+                    && let Some(item) = next.todos.iter_mut().find(|i| i.id == *todo_id)
                 {
                     item.done = !item.done;
                 }
             }
             Some(Click("delete")) => {
                 if let Some(todo_id) = event.scope().and_then(|s| s.first()) {
-                    model.todos.retain(|i| i.id != *todo_id);
+                    next.todos.retain(|i| i.id != *todo_id);
                 }
             }
-            Some(Click("filter_all")) => model.filter = Filter::All,
-            Some(Click("filter_active")) => model.filter = Filter::Active,
-            Some(Click("filter_done")) => model.filter = Filter::Done,
+            Some(Click("filter_all")) => next.filter = Filter::All,
+            Some(Click("filter_active")) => next.filter = Filter::Active,
+            Some(Click("filter_done")) => next.filter = Filter::Done,
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

@@ -91,6 +91,7 @@ pub struct TestSession<A: App> {
     widget_store: WidgetStateStore,
     memo_cache: runtime::MemoCache,
     widget_view_cache: runtime::WidgetViewCache,
+    view_errors: runtime::view_errors::ViewErrors,
     /// Completed async task results keyed by tag.
     async_results: HashMap<String, Result<Value, Value>>,
     /// Stubbed effect responses keyed by effect kind.
@@ -128,24 +129,19 @@ impl<A: App> TestSession<A> {
     /// Start a new test session by calling `App::init()`.
     pub fn start() -> Self {
         let (model, init_cmd) = A::init();
-        let mut widget_store = WidgetStateStore::new();
-        let mut memo_cache = runtime::MemoCache::new();
-        let mut widget_view_cache = runtime::WidgetViewCache::new();
-        let (tree, warnings) = runtime::prepare_tree::<A>(
-            &model,
-            &mut widget_store,
-            &mut memo_cache,
-            &mut widget_view_cache,
-        );
+        let widget_store = WidgetStateStore::new();
+        let memo_cache = runtime::MemoCache::new();
+        let widget_view_cache = runtime::WidgetViewCache::new();
         let mut session = Self {
             model,
-            tree,
+            tree: crate::View::empty().into_tree_node(),
             widget_store,
             memo_cache,
             widget_view_cache,
+            view_errors: runtime::view_errors::ViewErrors::default(),
             async_results: HashMap::new(),
             effect_stubs: HashMap::new(),
-            diagnostics: warnings,
+            diagnostics: Vec::new(),
             // Strict by default; tests that expect warnings opt out
             // via `allow_diagnostics()`.
             fail_on_diagnostics: true,
@@ -155,6 +151,7 @@ impl<A: App> TestSession<A> {
             pending_streams: Vec::new(),
             issued_ops: Vec::new(),
         };
+        session.render_guarded();
         session.execute_command(init_cmd);
         session.run_pending_async();
         session
@@ -503,27 +500,26 @@ impl<A: App> TestSession<A> {
                     scoped_id: plushie_core::ScopedId::new(widget_id, outer_scope, Some(window_id)),
                     value,
                 });
-                A::update(&mut self.model, new_event)
+                match self.guarded_update(new_event) {
+                    Some(cmd) => cmd,
+                    None => return,
+                }
             }
             Some(Interception {
                 result: EventResult::Ignored,
                 ..
             })
-            | None => A::update(&mut self.model, event),
+            | None => match self.guarded_update(event) {
+                Some(cmd) => cmd,
+                None => return,
+            },
         };
 
         self.execute_command(cmd);
         self.run_pending_async();
 
         // Re-render and expand widgets.
-        let (tree, warnings) = runtime::prepare_tree::<A>(
-            &self.model,
-            &mut self.widget_store,
-            &mut self.memo_cache,
-            &mut self.widget_view_cache,
-        );
-        self.tree = tree;
-        self.diagnostics.extend(warnings);
+        self.render_guarded();
 
         // Refresh subscriptions: the model may have flipped a flag
         // that gates a subscription start/stop, and tests that want
@@ -546,14 +542,57 @@ impl<A: App> TestSession<A> {
     /// `dispatch(AnimationFrame)` trick used by
     /// [`WidgetTestSession::start`] but names the intent.
     pub fn rerender(&mut self) {
-        let (tree, warnings) = runtime::prepare_tree::<A>(
+        self.render_guarded();
+    }
+
+    fn render_guarded(&mut self) {
+        let fallback = self.tree.clone();
+        match runtime::view_errors::run_guarded_view::<A>(
+            &mut self.view_errors,
             &self.model,
             &mut self.widget_store,
             &mut self.memo_cache,
             &mut self.widget_view_cache,
-        );
-        self.tree = tree;
-        self.diagnostics.extend(warnings);
+            &fallback,
+        ) {
+            runtime::view_errors::ViewOutcome::Ok(tree, warnings) => {
+                self.tree = tree;
+                self.diagnostics.extend(warnings);
+            }
+            runtime::view_errors::ViewOutcome::Panicked {
+                last_good,
+                consecutive,
+                message,
+            } => {
+                self.tree = last_good;
+                self.diagnostics
+                    .push(plushie_core::Diagnostic::ViewPanicked {
+                        consecutive,
+                        message,
+                    });
+            }
+        }
+    }
+
+    fn guarded_update(&mut self, event: Event) -> Option<Command> {
+        match runtime::view_errors::run_guarded_update::<A>(
+            &mut self.view_errors,
+            &mut self.model,
+            event,
+        ) {
+            runtime::view_errors::UpdateOutcome::Ok(cmd) => Some(cmd),
+            runtime::view_errors::UpdateOutcome::Panicked {
+                consecutive,
+                message,
+            } => {
+                self.diagnostics
+                    .push(plushie_core::Diagnostic::UpdatePanicked {
+                        consecutive,
+                        message,
+                    });
+                None
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -607,8 +646,9 @@ impl<A: App> TestSession<A> {
                 // In tests, deliver immediately (ignore delay). The
                 // synchronous chain bumps `depth` so a pathological
                 // update returning another dispatch trips the guard.
-                let cmd = A::update(&mut self.model, *event);
-                self.execute_command_at_depth(cmd, depth + 1);
+                if let Some(cmd) = self.guarded_update(*event) {
+                    self.execute_command_at_depth(cmd, depth + 1);
+                }
             }
             Command::Cancel { tag } => {
                 // Drop any pending async/stream task registered for
@@ -630,8 +670,9 @@ impl<A: App> TestSession<A> {
                             tag: tag.clone(),
                             result,
                         });
-                        let cmd = A::update(&mut self.model, event);
-                        self.execute_command_at_depth(cmd, depth + 1);
+                        if let Some(cmd) = self.guarded_update(event) {
+                            self.execute_command_at_depth(cmd, depth + 1);
+                        }
                         return;
                     }
                 }
@@ -737,14 +778,10 @@ impl<A: App> TestSession<A> {
         self.pending_async.clear();
         self.pending_streams.clear();
         self.issued_ops.clear();
-        let (tree, warnings) = runtime::prepare_tree::<A>(
-            &self.model,
-            &mut self.widget_store,
-            &mut self.memo_cache,
-            &mut self.widget_view_cache,
-        );
-        self.tree = tree;
-        self.diagnostics = warnings;
+        self.view_errors = runtime::view_errors::ViewErrors::default();
+        self.tree = crate::View::empty().into_tree_node();
+        self.diagnostics.clear();
+        self.render_guarded();
         self.execute_command(init_cmd);
         self.run_pending_async();
     }
@@ -885,8 +922,9 @@ impl<A: App> TestSession<A> {
                 let result = run_async_sync(&tag, task);
                 self.async_results.insert(tag.clone(), result.clone());
                 let event = Event::Async(AsyncEvent { tag, result });
-                let cmd = A::update(&mut self.model, event);
-                self.execute_command(cmd);
+                if let Some(cmd) = self.guarded_update(event) {
+                    self.execute_command(cmd);
+                }
             }
 
             for (tag, task) in stream_batch {
@@ -898,12 +936,14 @@ impl<A: App> TestSession<A> {
                         tag: tag.clone(),
                         value,
                     });
-                    let cmd = A::update(&mut self.model, event);
-                    self.execute_command(cmd);
+                    if let Some(cmd) = self.guarded_update(event) {
+                        self.execute_command(cmd);
+                    }
                 }
                 let event = Event::Async(AsyncEvent { tag, result });
-                let cmd = A::update(&mut self.model, event);
-                self.execute_command(cmd);
+                if let Some(cmd) = self.guarded_update(event) {
+                    self.execute_command(cmd);
+                }
             }
         }
     }
@@ -1486,14 +1526,19 @@ impl<W: crate::widget::Widget> App for WidgetHarness<W> {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = Self {
+            widget_id: model.widget_id.clone(),
+            props: model.props.clone(),
+            events: model.events.clone(),
+            _marker: std::marker::PhantomData,
+        };
         // Record all widget events emitted by the hosted widget.
         if let Event::Widget(ref w) = event {
-            model
-                .events
+            next.events
                 .push((w.event_type.as_family().to_string(), w.value.clone()));
         }
-        Command::None
+        (next, Command::None)
     }
 
     fn view(model: &Self, widgets: &mut crate::widget::WidgetRegistrar) -> crate::ViewList {

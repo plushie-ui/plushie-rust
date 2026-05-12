@@ -22,7 +22,7 @@ struct Record {
     y: f32,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct TouchApp {
     events: Vec<Record>,
 }
@@ -34,24 +34,25 @@ impl App for TouchApp {
         (Self::default(), Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(w) = event.as_widget() {
             match event.widget_match() {
-                Some(Press("pad", p)) => model.events.push(Record {
+                Some(Press("pad", p)) => next.events.push(Record {
                     kind: "press",
                     finger: p.finger,
                     pointer: p.pointer,
                     x: p.x,
                     y: p.y,
                 }),
-                Some(Release("pad", p)) => model.events.push(Record {
+                Some(Release("pad", p)) => next.events.push(Record {
                     kind: "release",
                     finger: p.finger,
                     pointer: p.pointer,
                     x: p.x,
                     y: p.y,
                 }),
-                Some(Move("pad", p)) => model.events.push(Record {
+                Some(Move("pad", p)) => next.events.push(Record {
                     kind: "move",
                     finger: p.finger,
                     pointer: p.pointer,
@@ -64,7 +65,7 @@ impl App for TouchApp {
                 }
             }
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

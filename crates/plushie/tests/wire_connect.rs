@@ -38,6 +38,7 @@ fn renderer_binary() -> String {
 // The test App's init() / handle_renderer_exit() hooks record
 // progress through a global Mutex so the test can wait on them.
 
+#[derive(Clone)]
 struct Observed {
     init_ran: Arc<AtomicBool>,
     exit_reason: Arc<std::sync::Mutex<Option<String>>>,
@@ -65,6 +66,7 @@ fn take_shared() -> Observed {
 // Test App
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct Counter {
     count: i32,
     observed: Observed,
@@ -83,11 +85,12 @@ impl App for Counter {
         (model, Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(Click("inc")) = event.widget_match() {
-            model.count += 1;
+            next.count += 1;
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

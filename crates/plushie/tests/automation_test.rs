@@ -228,6 +228,7 @@ fn selector_display() {
 // Script runner failures and captures
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct AutomationCounter {
     count: i32,
     viewport: Option<(f32, f32)>,
@@ -246,19 +247,20 @@ impl App for AutomationCounter {
         )
     }
 
-    fn update(model: &mut Self::Model, event: Event) -> Command {
+    fn update(model: &Self::Model, event: Event) -> (Self::Model, Command) {
+        let mut next = model.clone();
         match event {
             Event::Widget(widget) if widget.scoped_id.id == "inc" => {
-                model.count += 1;
+                next.count += 1;
             }
             Event::Window(window) => {
                 if let (Some(width), Some(height)) = (window.width, window.height) {
-                    model.viewport = Some((width, height));
+                    next.viewport = Some((width, height));
                 }
             }
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self::Model, _widgets: &mut WidgetRegistrar) -> ViewList {

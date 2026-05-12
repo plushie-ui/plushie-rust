@@ -15,6 +15,7 @@ const GOLDEN_DIR: &str = "tests/golden";
 // Counter
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct Counter {
     count: i32,
 }
@@ -26,11 +27,12 @@ impl App for Counter {
         (Counter { count: 0 }, Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(Click("inc")) = event.widget_match() {
-            model.count += 1;
+            next.count += 1;
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -71,12 +73,14 @@ fn test_session_tree_hash_matches_canonical_tree_node_hash() {
 // Todo (add + complete an item)
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct TodoItem {
     id: String,
     text: String,
     done: bool,
 }
 
+#[derive(Clone)]
 struct TodoApp {
     items: Vec<TodoItem>,
     next_id: usize,
@@ -97,31 +101,32 @@ impl App for TodoApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
             Some(Input("new_todo", t)) => {
-                model.input = t.to_string();
+                next.input = t.to_string();
             }
             Some(Submit("new_todo", t)) => {
-                let id = model.next_id.to_string();
-                model.next_id += 1;
-                model.items.push(TodoItem {
+                let id = next.next_id.to_string();
+                next.next_id += 1;
+                next.items.push(TodoItem {
                     id,
                     text: t.to_string(),
                     done: false,
                 });
-                model.input.clear();
+                next.input.clear();
             }
             Some(Toggle("done", _)) => {
                 if let Some(item_id) = event.scope().and_then(|s| s.first())
-                    && let Some(item) = model.items.iter_mut().find(|i| i.id == *item_id)
+                    && let Some(item) = next.items.iter_mut().find(|i| i.id == *item_id)
                 {
                     item.done = !item.done;
                 }
             }
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -162,6 +167,7 @@ fn todo_after_add_and_complete_item() {
 // Form (text input + toggle + slider)
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct Form {
     name: String,
     agreed: bool,
@@ -182,14 +188,15 @@ impl App for Form {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Input("name", t)) => model.name = t.to_string(),
-            Some(Toggle("agree", on)) => model.agreed = on,
-            Some(Slide("volume", v)) => model.volume = v,
+            Some(Input("name", t)) => next.name = t.to_string(),
+            Some(Toggle("agree", on)) => next.agreed = on,
+            Some(Slide("volume", v)) => next.volume = v,
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -226,6 +233,7 @@ enum FetchStatus {
     Done,
 }
 
+#[derive(Clone)]
 struct FetchApp {
     status: FetchStatus,
     result: Option<String>,
@@ -244,24 +252,28 @@ impl App for FetchApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(Click("fetch")) = event.widget_match() {
-            model.status = FetchStatus::Loading;
-            return Command::task("fetch_result", || async {
-                // Pinned literal to keep the resulting tree
-                // deterministic across runs; the real async_fetch
-                // example uses a timestamp that can't be hashed.
-                Ok(serde_json::json!("hello"))
-            });
+            next.status = FetchStatus::Loading;
+            return (
+                next,
+                Command::task("fetch_result", || async {
+                    // Pinned literal to keep the resulting tree
+                    // deterministic across runs; the real async_fetch
+                    // example uses a timestamp that can't be hashed.
+                    Ok(serde_json::json!("hello"))
+                }),
+            );
         }
         if let Some(a) = event.as_async()
             && a.tag == "fetch_result"
             && let Ok(value) = &a.result
         {
-            model.status = FetchStatus::Done;
-            model.result = value.as_str().map(String::from);
+            next.status = FetchStatus::Done;
+            next.result = value.as_str().map(String::from);
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

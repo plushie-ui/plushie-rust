@@ -72,6 +72,7 @@ fn rand_suffix() -> u64 {
 
 // -- Test harness ---------------------------------------------------------
 
+#[derive(Clone)]
 struct Shared {
     init_count: Arc<AtomicUsize>,
     exit_count: Arc<AtomicUsize>,
@@ -95,6 +96,7 @@ fn take_shared() -> Shared {
         .expect("shared already taken")
 }
 
+#[derive(Clone)]
 struct SwapApp {
     #[allow(dead_code)]
     count: i32,
@@ -117,8 +119,8 @@ impl App for SwapApp {
         (model, Command::none())
     }
 
-    fn update(_model: &mut Self, _event: Event) -> Command {
-        Command::none()
+    fn update(model: &Self, _event: Event) -> (Self, Command) {
+        (model.clone(), Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

@@ -302,7 +302,7 @@ impl Widget for CountingWidget {
 /// to flip the label.
 struct CachedApp;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct CachedModel {
     label: &'static str,
 }
@@ -314,8 +314,8 @@ impl App for CachedApp {
         (CachedModel { label: "hello" }, Command::none())
     }
 
-    fn update(_model: &mut Self::Model, _event: Event) -> Command {
-        Command::none()
+    fn update(model: &Self::Model, _event: Event) -> (Self::Model, Command) {
+        (model.clone(), Command::none())
     }
 
     fn view(model: &Self::Model, widgets: &mut WidgetRegistrar) -> ViewList {
@@ -386,6 +386,7 @@ fn widget_view_cache_skips_view_when_key_unchanged() {
 fn memo_marker_node_is_present_in_view_tree() {
     use plushie::test::TestSession;
 
+    #[derive(Clone)]
     struct MemoApp {
         revision: u32,
     }
@@ -397,8 +398,8 @@ fn memo_marker_node_is_present_in_view_tree() {
             (MemoApp { revision: 0 }, Command::none())
         }
 
-        fn update(_model: &mut Self, _event: Event) -> Command {
-            Command::none()
+        fn update(model: &Self, _event: Event) -> (Self, Command) {
+            (model.clone(), Command::none())
         }
 
         fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -425,6 +426,7 @@ fn memo_subtree_survives_unchanged_deps_across_renders() {
 
     static EXPENSIVE_BUILDS: AtomicUsize = AtomicUsize::new(0);
 
+    #[derive(Clone)]
     struct DepsApp {
         revision: u32,
         unrelated_state: u32,
@@ -444,8 +446,8 @@ fn memo_subtree_survives_unchanged_deps_across_renders() {
             )
         }
 
-        fn update(_model: &mut Self, _event: Event) -> Command {
-            Command::none()
+        fn update(model: &Self, _event: Event) -> (Self, Command) {
+            (model.clone(), Command::none())
         }
 
         fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -522,8 +524,8 @@ fn widget_without_cache_key_always_re_runs_view() {
             ((), Command::none())
         }
 
-        fn update(_model: &mut Self::Model, _event: Event) -> Command {
-            Command::none()
+        fn update(_model: &Self::Model, _event: Event) -> (Self::Model, Command) {
+            ((), Command::none())
         }
 
         fn view(_model: &Self::Model, widgets: &mut WidgetRegistrar) -> ViewList {

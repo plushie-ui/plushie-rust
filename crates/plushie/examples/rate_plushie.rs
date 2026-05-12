@@ -137,6 +137,7 @@ impl Widget for ThemeToggle {
 // App
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct RatePlushie {
     rating: usize,
     dark_mode: bool,
@@ -146,6 +147,7 @@ struct RatePlushie {
     errors: HashMap<String, String>,
 }
 
+#[derive(Clone)]
 struct Review {
     stars: usize,
     user: String,
@@ -210,7 +212,8 @@ impl App for RatePlushie {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         // Widget events arrive via as_widget() since the emitted
         // families ("select", "toggle") aren't all covered by
         // WidgetMatch's typed variants.
@@ -218,13 +221,13 @@ impl App for RatePlushie {
             match w.scoped_id.id.as_str() {
                 "stars" => {
                     if let Some(n) = w.value.as_u64() {
-                        model.rating = n as usize;
-                        model.errors.remove("rating");
+                        next.rating = n as usize;
+                        next.errors.remove("rating");
                     }
                 }
                 "theme-toggle" => {
                     if let Some(dark) = w.value.as_bool() {
-                        model.dark_mode = dark;
+                        next.dark_mode = dark;
                     }
                 }
                 _ => {}
@@ -234,20 +237,20 @@ impl App for RatePlushie {
         // Standard widget_match for the form controls.
         match event.widget_match() {
             Some(Input("review-name", name)) => {
-                model.review_name = name.to_string();
-                model.errors.remove("name");
+                next.review_name = name.to_string();
+                next.errors.remove("name");
             }
             Some(Input("review-comment", comment)) => {
-                model.review_comment = comment.to_string();
-                model.errors.remove("comment");
+                next.review_comment = comment.to_string();
+                next.errors.remove("comment");
             }
             Some(Click("submit-review")) | Some(Submit("review-name", _)) => {
-                submit_review(model);
+                submit_review(&mut next);
             }
             _ => {}
         }
 
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, widgets: &mut WidgetRegistrar) -> ViewList {

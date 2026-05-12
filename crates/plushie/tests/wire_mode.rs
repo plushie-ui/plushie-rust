@@ -90,6 +90,7 @@ fn rand_suffix() -> u64 {
 // wrapper subprocess's stdin by dropping the parent once init has
 // been observed. The SDK then classifies the exit and returns.
 
+#[derive(Clone)]
 struct Observed {
     init_ran: Arc<AtomicBool>,
     exit_reason: Arc<std::sync::Mutex<Option<String>>>,
@@ -113,6 +114,7 @@ fn take_shared() -> Observed {
         .expect("shared handles already taken")
 }
 
+#[derive(Clone)]
 struct Counter {
     count: i32,
     observed: Observed,
@@ -131,11 +133,12 @@ impl App for Counter {
         (model, Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(Click("inc")) = event.widget_match() {
-            model.count += 1;
+            next.count += 1;
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

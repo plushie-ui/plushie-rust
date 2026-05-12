@@ -369,17 +369,16 @@ impl<A: App> DirectApp<A> {
                         return None;
                     }
                 }
-                let cmd = self.guarded_update(new_event);
-                Some(self.execute_command(cmd))
+                self.guarded_update(new_event)
+                    .map(|cmd| self.execute_command(cmd))
             }
             Some(Interception {
                 result: WidgetEventResult::Ignored,
                 ..
             })
-            | None => {
-                let cmd = self.guarded_update(event);
-                Some(self.execute_command(cmd))
-            }
+            | None => self
+                .guarded_update(event)
+                .map(|cmd| self.execute_command(cmd)),
         }
     }
 
@@ -387,14 +386,14 @@ impl<A: App> DirectApp<A> {
     /// handler doesn't take the iced task thread down with it. Shares
     /// the consecutive-error counter with view guarding so a steady
     /// stream of update panics also surfaces the frozen-UI overlay.
-    fn guarded_update(&mut self, event: Event) -> Command {
+    fn guarded_update(&mut self, event: Event) -> Option<Command> {
         match crate::runtime::view_errors::run_guarded_update::<A>(
             &mut self.view_errors,
             &mut self.model,
             event,
         ) {
-            UpdateOutcome::Ok(cmd) => cmd,
-            UpdateOutcome::Panicked { cmd, .. } => cmd,
+            UpdateOutcome::Ok(cmd) => Some(cmd),
+            UpdateOutcome::Panicked { .. } => None,
         }
     }
 

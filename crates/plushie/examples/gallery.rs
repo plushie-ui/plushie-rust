@@ -8,6 +8,7 @@
 
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct Gallery {
     input_value: String,
     submit_value: String,
@@ -36,21 +37,22 @@ impl App for Gallery {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Input("input", v)) => model.input_value = v.to_string(),
-            Some(Input("submit-input", v)) => model.submit_value = v.to_string(),
-            Some(Submit("submit-input", _)) => model.submit_value.clear(),
-            Some(Toggle("check", v)) => model.checked = v,
-            Some(Toggle("toggler", v)) => model.toggled = v,
-            Some(Slide("slide", v)) => model.slider_value = v as f32,
-            Some(Select("pick", v)) => model.selected = v.to_string(),
+            Some(Input("input", v)) => next.input_value = v.to_string(),
+            Some(Input("submit-input", v)) => next.submit_value = v.to_string(),
+            Some(Submit("submit-input", _)) => next.submit_value.clear(),
+            Some(Toggle("check", v)) => next.checked = v,
+            Some(Toggle("toggler", v)) => next.toggled = v,
+            Some(Slide("slide", v)) => next.slider_value = v as f32,
+            Some(Select("pick", v)) => next.selected = v.to_string(),
             Some(Select(id, v)) if id.starts_with("radio-") => {
-                model.radio = v.to_string();
+                next.radio = v.to_string();
             }
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

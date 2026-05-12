@@ -21,6 +21,7 @@ use plushie_core::types::PlushieType;
 // Test app: a couple of widgets covering the merge + infer paths
 // ---------------------------------------------------------------------------
 
+#[derive(Clone, Copy)]
 struct A11yHarness;
 
 impl App for A11yHarness {
@@ -30,8 +31,8 @@ impl App for A11yHarness {
         (A11yHarness, Command::none())
     }
 
-    fn update(_model: &mut Self, _event: Event) -> Command {
-        Command::none()
+    fn update(model: &Self, _event: Event) -> (Self, Command) {
+        (*model, Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -155,6 +156,7 @@ fn resolved_a11y_round_trips_via_wire() {
 // key presses through TestSession so a fork-level regression surfaces
 // at the SDK boundary.
 
+#[derive(Clone)]
 struct TabHarness {
     notes: String,
 }
@@ -171,11 +173,12 @@ impl App for TabHarness {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(Input("notes", text)) = event.widget_match() {
-            model.notes = text.to_string();
+            next.notes = text.to_string();
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(_model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

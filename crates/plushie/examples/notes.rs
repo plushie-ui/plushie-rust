@@ -9,6 +9,8 @@
 //!
 //! Run with: `cargo run -p plushie --example notes`
 
+use std::sync::{Arc, Mutex};
+
 use plushie::prelude::*;
 use plushie::query::Query;
 use plushie::route::Route;
@@ -28,13 +30,14 @@ struct Note {
     body: String,
 }
 
+#[derive(Clone)]
 struct Notes {
     notes: Vec<Note>,
     next_id: usize,
     search_query: String,
     editing_id: Option<usize>,
     selection: Selection,
-    undo: UndoStack<NoteContent>,
+    undo: Arc<Mutex<UndoStack<NoteContent>>>,
     route: Route,
 }
 
@@ -49,77 +52,76 @@ impl App for Notes {
                 search_query: String::new(),
                 editing_id: None,
                 selection: Selection::new(SelectionMode::Multi, Vec::new()),
-                undo: UndoStack::new(NoteContent {
+                undo: Arc::new(Mutex::new(UndoStack::new(NoteContent {
                     title: String::new(),
                     body: String::new(),
-                }),
+                }))),
                 route: Route::new("/list"),
             },
             Command::none(),
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
             Some(Click("new_note")) => {
-                let id = model.next_id;
-                model.next_id += 1;
-                model.notes.push(Note {
+                let id = next.next_id;
+                next.next_id += 1;
+                next.notes.push(Note {
                     id,
                     title: String::new(),
                     body: String::new(),
                 });
-                model.editing_id = Some(id);
-                model.undo = UndoStack::new(NoteContent {
+                next.editing_id = Some(id);
+                next.undo = Arc::new(Mutex::new(UndoStack::new(NoteContent {
                     title: String::new(),
                     body: String::new(),
-                });
-                model.route.push("/edit");
-                update_selection_order(model);
+                })));
+                next.route.push("/edit");
+                update_selection_order(&mut next);
             }
 
             Some(Click(id)) if id.starts_with("note:") => {
                 if let Ok(note_id) = id[5..].parse::<usize>()
-                    && let Some(note) = model.notes.iter().find(|n| n.id == note_id)
+                    && let Some(note) = next.notes.iter().find(|n| n.id == note_id)
                 {
-                    model.editing_id = Some(note_id);
-                    model.undo = UndoStack::new(NoteContent {
+                    next.editing_id = Some(note_id);
+                    next.undo = Arc::new(Mutex::new(UndoStack::new(NoteContent {
                         title: note.title.clone(),
                         body: note.body.clone(),
-                    });
-                    model.route.push("/edit");
+                    })));
+                    next.route.push("/edit");
                 }
             }
 
             Some(Click("back")) => {
-                save_current_edit(model);
-                model.editing_id = None;
-                model.route.pop();
+                save_current_edit(&mut next);
+                next.editing_id = None;
+                next.route.pop();
             }
 
             Some(Click("delete_selected")) => {
-                let selected = model.selection.selected().clone();
-                model
-                    .notes
-                    .retain(|n| !selected.contains(&n.id.to_string()));
-                model.selection.clear();
-                update_selection_order(model);
+                let selected = next.selection.selected().clone();
+                next.notes.retain(|n| !selected.contains(&n.id.to_string()));
+                next.selection.clear();
+                update_selection_order(&mut next);
             }
 
             Some(Click("undo")) => {
-                model.undo.undo();
+                next.undo.lock().expect("undo stack poisoned").undo();
             }
             Some(Click("redo")) => {
-                model.undo.redo();
+                next.undo.lock().expect("undo stack poisoned").redo();
             }
 
             Some(Input("search", query)) => {
-                model.search_query = query.to_string();
+                next.search_query = query.to_string();
             }
 
             Some(Input("title", value)) => {
                 let title = value.to_string();
-                model.undo.apply(
+                next.undo.lock().expect("undo stack poisoned").apply(
                     UndoCommand::new(
                         move |c: &NoteContent| NoteContent {
                             title: title.clone(),
@@ -134,7 +136,7 @@ impl App for Notes {
 
             Some(Input("body", value)) => {
                 let body = value.to_string();
-                model.undo.apply(
+                next.undo.lock().expect("undo stack poisoned").apply(
                     UndoCommand::new(
                         move |c: &NoteContent| NoteContent {
                             title: c.title.clone(),
@@ -149,12 +151,12 @@ impl App for Notes {
 
             Some(Toggle(id, _)) if id.starts_with("note_select:") => {
                 let note_id = &id["note_select:".len()..];
-                model.selection.toggle(note_id);
+                next.selection.toggle(note_id);
             }
 
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {
@@ -223,7 +225,8 @@ fn view_list(model: &Notes) -> View {
 }
 
 fn view_edit(model: &Notes) -> View {
-    let current = model.undo.current();
+    let undo = model.undo.lock().expect("undo stack poisoned");
+    let current = undo.current();
 
     window("main")
         .title("Edit Note")
@@ -252,7 +255,12 @@ fn view_edit(model: &Notes) -> View {
 
 fn save_current_edit(model: &mut Notes) {
     if let Some(editing_id) = model.editing_id {
-        let current = model.undo.current().clone();
+        let current = model
+            .undo
+            .lock()
+            .expect("undo stack poisoned")
+            .current()
+            .clone();
         if let Some(note) = model.notes.iter_mut().find(|n| n.id == editing_id) {
             note.title = current.title;
             note.body = current.body;

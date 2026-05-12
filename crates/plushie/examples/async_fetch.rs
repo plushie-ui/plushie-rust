@@ -11,13 +11,14 @@ use std::time::Duration;
 use plushie::prelude::*;
 use serde_json::json;
 
+#[derive(Clone)]
 struct FetchApp {
     status: Status,
     result: Option<String>,
     error: Option<String>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum Status {
     Idle,
     Loading,
@@ -39,22 +40,26 @@ impl App for FetchApp {
         )
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         if let Some(Click("fetch")) = event.widget_match() {
-            model.status = Status::Loading;
-            model.result = None;
-            model.error = None;
+            next.status = Status::Loading;
+            next.result = None;
+            next.error = None;
             // The runner will execute this task on a background
             // thread and deliver the result as an AsyncEvent
             // once async command support is complete.
-            return Command::task("fetch_result", || async {
-                // Simulate network delay.
-                std::thread::sleep(Duration::from_millis(500));
-                Ok(json!(format!(
-                    "Fetched at {:?}",
-                    std::time::SystemTime::now()
-                )))
-            });
+            return (
+                next,
+                Command::task("fetch_result", || async {
+                    // Simulate network delay.
+                    std::thread::sleep(Duration::from_millis(500));
+                    Ok(json!(format!(
+                        "Fetched at {:?}",
+                        std::time::SystemTime::now()
+                    )))
+                }),
+            );
         }
 
         if let Some(a) = event.as_async()
@@ -62,17 +67,17 @@ impl App for FetchApp {
         {
             match &a.result {
                 Ok(value) => {
-                    model.status = Status::Done;
-                    model.result = value.as_str().map(String::from);
+                    next.status = Status::Done;
+                    next.result = value.as_str().map(String::from);
                 }
                 Err(reason) => {
-                    model.status = Status::Error;
-                    model.error = reason.as_str().map(|s| format!("Error: {s}"));
+                    next.status = Status::Error;
+                    next.error = reason.as_str().map(|s| format!("Error: {s}"));
                 }
             }
         }
 
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

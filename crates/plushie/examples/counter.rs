@@ -7,6 +7,7 @@
 
 use plushie::prelude::*;
 
+#[derive(Clone)]
 struct Counter {
     count: i32,
 }
@@ -18,13 +19,14 @@ impl App for Counter {
         (Counter { count: 0 }, Command::none())
     }
 
-    fn update(model: &mut Self, event: Event) -> Command {
+    fn update(model: &Self, event: Event) -> (Self, Command) {
+        let mut next = model.clone();
         match event.widget_match() {
-            Some(Click("inc")) => model.count += 1,
-            Some(Click("dec")) => model.count -= 1,
+            Some(Click("inc")) => next.count += 1,
+            Some(Click("dec")) => next.count -= 1,
             _ => {}
         }
-        Command::none()
+        (next, Command::none())
     }
 
     fn view(model: &Self, _widgets: &mut WidgetRegistrar) -> ViewList {

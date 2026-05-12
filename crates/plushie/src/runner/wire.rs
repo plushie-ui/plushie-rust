@@ -856,12 +856,11 @@ fn process_event<A: App>(
             return Ok(());
         }
     }
-    let cmd = match crate::runtime::view_errors::run_guarded_update::<A>(view_errors, model, event)
+    if let crate::runtime::view_errors::UpdateOutcome::Ok(cmd) =
+        crate::runtime::view_errors::run_guarded_update::<A>(view_errors, model, event)
     {
-        crate::runtime::view_errors::UpdateOutcome::Ok(cmd) => cmd,
-        crate::runtime::view_errors::UpdateOutcome::Panicked { cmd, .. } => cmd,
-    };
-    execute_wire_command(bridge, cmd, effect_tracker, async_mgr, shutdown_requested)?;
+        execute_wire_command(bridge, cmd, effect_tracker, async_mgr, shutdown_requested)?;
+    }
 
     // Re-render and diff under panic guard.
     let outcome = crate::runtime::view_errors::run_guarded_view_wire::<A>(
@@ -1958,8 +1957,8 @@ mod build_settings_tests {
         fn init() -> (Self::Model, crate::Command) {
             ((), crate::Command::none())
         }
-        fn update(_model: &mut Self::Model, _event: Event) -> crate::Command {
-            crate::Command::none()
+        fn update(model: &Self::Model, _event: Event) -> (Self::Model, crate::Command) {
+            (*model, crate::Command::none())
         }
         fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::ViewList {
             crate::ui::window("main").into()
@@ -1981,8 +1980,8 @@ mod build_settings_tests {
         fn init() -> (Self::Model, crate::Command) {
             ((), crate::Command::none())
         }
-        fn update(_model: &mut Self::Model, _event: Event) -> crate::Command {
-            crate::Command::none()
+        fn update(model: &Self::Model, _event: Event) -> (Self::Model, crate::Command) {
+            (*model, crate::Command::none())
         }
         fn view(_model: &Self::Model, _widgets: &mut WidgetRegistrar) -> crate::ViewList {
             crate::ui::window("main").into()

@@ -11,6 +11,7 @@ too: the binary normalises both argv shapes before parsing.
 | [`cargo plushie build`](#cargo-plushie-build) | Build a custom renderer with bundled native widgets |
 | [`cargo plushie download`](#cargo-plushie-download) | Download a precompiled stock renderer |
 | [`cargo plushie run`](#cargo-plushie-run) | Build the custom renderer, then run the app |
+| [`cargo plushie package`](#cargo-plushie-package) | Build a standalone launcher from a package manifest |
 | [`cargo plushie new-widget`](#cargo-plushie-new-widget) | Scaffold a native widget crate |
 | [`cargo plushie init`](#cargo-plushie-init) | Scaffold a plushie app crate |
 | [`cargo plushie doctor`](#cargo-plushie-doctor) | Print a diagnostic report |
@@ -158,6 +159,61 @@ When `--watch` is requested but `cargo-watch` is not installed,
 the command prints a one-line hint and falls through to a single
 `cargo run`.
 
+## cargo plushie package
+
+Build a standalone Rust launcher from a Plushie package manifest and
+payload archive.
+
+```bash
+cargo plushie package --manifest plushie-package.toml --release
+```
+
+| Flag | Type | Description |
+|---|---|---|
+| `--manifest <PATH>` | path | Plushie package manifest |
+| `--out <PATH>` | path | Final launcher path (default `target/plushie/package/<app-id>`) |
+| `--release` | bool | Build the generated launcher with Cargo's release profile |
+| `--verbose` | bool | Print the underlying cargo command |
+
+This command is the shared wrapper step for standalone binaries. SDKs
+still own host-language packaging: an Elixir SDK packages a release, a
+Gleam SDK packages a shipment, Python can package a PyInstaller payload,
+and so on. `cargo plushie package` consumes the resulting payload archive
+and manifest, embeds both into a generated Rust launcher crate, and
+builds one executable.
+
+The manifest stores structured argv:
+
+```toml
+schema_version = 1
+app_id = "com.example.notes"
+app_version = "0.1.0"
+host_sdk = "python"
+plushie_rust_version = "0.7.1"
+protocol_version = 1
+renderer_path = "bin/plushie-renderer"
+host_command = ["bin/notes"]
+working_dir = "."
+exec_env = []
+
+[payload]
+archive = "payload.tar.zst"
+hash = "sha256:..."
+```
+
+The generated launcher verifies the embedded archive hash, extracts it
+into a content-addressed cache, sets executable permissions where
+needed, and starts the packaged renderer with:
+
+```bash
+plushie-renderer --listen --exec-bin <program> --exec-arg <arg> ...
+```
+
+The launcher sets the renderer's working directory to the manifest
+`working_dir` (or the payload root by default), so relative
+`host_command` paths resolve from that directory. It also passes
+`--exec-env` from the manifest when extra runtime variables are needed.
+
 ## cargo plushie new-widget
 
 Scaffold a native widget crate.
@@ -277,8 +333,9 @@ a non-zero exit from `cargo plushie build`.
 | `PLUSHIE_BINARY_PATH` | `run`, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, reported by `doctor` |
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |
 | `PLUSHIE_SOCKET` | `doctor` | Reported in the diagnostic report; consumed by the SDK for socket-mode rendering |
-| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor` | Overrides the `target/` directory used for renderer output and discovery |
-| `CARGO` | `build`, `run` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
+| `PLUSHIE_CACHE_DIR` | generated package launcher | Overrides the extraction cache root |
+| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package` | Overrides the `target/` directory used for renderer output, discovery, and generated launcher crates |
+| `CARGO` | `build`, `run`, `package` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
 
 ## See also
 

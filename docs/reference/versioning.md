@@ -45,7 +45,7 @@ The workspace version pins three surfaces at once:
   constructors all live under this version. Adding a widget is a
   minor bump; renaming a setter is a breaking change.
 - **The `cargo-plushie` CLI.** The subcommand tree (`build`,
-  `download`, `run`, `new-widget`, `init`, `doctor`) and the
+  `download`, `run`, `package`, `new-widget`, `init`, `doctor`) and the
   manifest conventions it reads (`[package.metadata.plushie]`,
   native widget metadata under `[package.metadata.plushie.widget]`)
   are versioned with the SDK. Upgrading the workspace version

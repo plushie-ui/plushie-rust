@@ -6,7 +6,7 @@
 //! through the same clap parser below.
 
 use anyhow::{Context, Result};
-use cargo_plushie::{discover, doctor, download, generator, platform, scaffold};
+use cargo_plushie::{discover, doctor, download, generator, package, platform, scaffold};
 use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
@@ -45,6 +45,8 @@ enum PlushieSubcommand {
     /// SDK's wire discovery picks the freshly built renderer up from
     /// `target/plushie-renderer/` without any extra wiring.
     Run(RunArgs),
+    /// Build a standalone launcher from a Plushie package manifest.
+    Package(PackageArgs),
     /// Scaffold a new native widget crate with the conventional
     /// `[package.metadata.plushie.widget]` layout.
     NewWidget(NewWidgetArgs),
@@ -135,6 +137,22 @@ struct RunArgs {
     manifest_path: Option<PathBuf>,
 }
 
+#[derive(Args, Debug)]
+struct PackageArgs {
+    /// Path to the Plushie package manifest.
+    #[arg(long)]
+    manifest: PathBuf,
+    /// Final launcher output path. Defaults under target/plushie/package/.
+    #[arg(long)]
+    out: Option<PathBuf>,
+    /// Build the generated launcher with the release Cargo profile.
+    #[arg(long)]
+    release: bool,
+    /// Print the underlying cargo command.
+    #[arg(long)]
+    verbose: bool,
+}
+
 fn main() -> Result<()> {
     // The first argv element after the binary name is the subcommand
     // shape Cargo hands us (`plushie`). Accept both shapes: when run
@@ -150,10 +168,29 @@ fn main() -> Result<()> {
         PlushieSubcommand::Build(b) => cmd_build(&b),
         PlushieSubcommand::Download(d) => cmd_download(&d),
         PlushieSubcommand::Run(r) => cmd_run(&r),
+        PlushieSubcommand::Package(p) => cmd_package(&p),
         PlushieSubcommand::NewWidget(n) => cmd_new_widget(&n),
         PlushieSubcommand::Init(i) => cmd_init(&i),
         PlushieSubcommand::Doctor(d) => cmd_doctor(&d),
     }
+}
+
+fn cmd_package(args: &PackageArgs) -> Result<()> {
+    let result = package::build_launcher(&package::PackageOpts {
+        manifest_path: &args.manifest,
+        out_path: args.out.as_deref(),
+        release: args.release,
+        verbose: args.verbose,
+    })?;
+    println!(
+        "plushie: generated standalone launcher at {}",
+        result.binary_path.display()
+    );
+    println!(
+        "plushie: launcher crate retained at {}",
+        result.launcher_crate_dir.display()
+    );
+    Ok(())
 }
 
 fn cmd_doctor(args: &DoctorArgs) -> Result<()> {

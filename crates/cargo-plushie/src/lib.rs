@@ -11,6 +11,8 @@
 //!   dep graph registered, then run `cargo build`.
 //! - `cargo plushie download` - fetch a precompiled stock renderer
 //!   from GitHub releases and place it under `target/plushie/bin/`.
+//! - `cargo plushie package` - build a standalone launcher from a
+//!   Plushie package manifest and payload archive.
 
 #![deny(missing_docs)]
 
@@ -111,6 +113,7 @@ pub mod discover;
 pub mod doctor;
 pub mod download;
 pub mod generator;
+pub mod package;
 pub mod patch_config;
 pub mod platform;
 pub mod scaffold;

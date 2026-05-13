@@ -197,6 +197,10 @@ host_command = ["bin/notes"]
 working_dir = "."
 exec_env = []
 
+[renderer]
+kind = "stock"
+source = "download"
+
 [payload]
 archive = "payload.tar.zst"
 hash = "sha256:..."
@@ -219,6 +223,12 @@ absolute path inside the extracted payload before passing it to the
 renderer. It sets the renderer's working directory to manifest
 `working_dir`, or the payload root by default, and passes `--exec-env`
 from the manifest when extra runtime variables are needed.
+
+The optional `[renderer]` table records provenance for diagnostics and
+SDK validation. `kind` is `stock` or `custom`; `source` is an SDK-defined
+string such as `download` or `local-build`. Native-widget package
+commands should write `kind = "custom"` and fail before packaging if
+they would ship a stock renderer.
 
 After a successful launcher run, cache pruning keeps the active payload
 and the most recent previous payload for the same app ID. Older payload

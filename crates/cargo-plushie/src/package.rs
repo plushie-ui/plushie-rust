@@ -95,7 +95,14 @@ struct PackageManifest {
     working_dir: Option<String>,
     #[serde(default)]
     exec_env: Vec<String>,
+    renderer: Option<RendererManifest>,
     payload: PayloadManifest,
+}
+
+#[derive(Debug, Deserialize)]
+struct RendererManifest {
+    kind: String,
+    source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -388,6 +395,20 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
     if let Some(working_dir) = &manifest.working_dir {
         require_nonempty("working_dir", working_dir)?;
         validate_payload_relative_path("working_dir", working_dir, true)?;
+    }
+    if let Some(renderer) = &manifest.renderer {
+        require_nonempty("renderer.kind", &renderer.kind)?;
+        match renderer.kind.as_str() {
+            "stock" | "custom" => {}
+            value => {
+                return Err(Error::Other(anyhow::anyhow!(
+                    "renderer.kind must be `stock` or `custom`, got `{value}`"
+                )));
+            }
+        }
+        if let Some(source) = &renderer.source {
+            require_nonempty("renderer.source", source)?;
+        }
     }
     require_nonempty("payload.archive", &manifest.payload.archive)?;
     validate_manifest_relative_path("payload.archive", &manifest.payload.archive, false)?;
@@ -713,7 +734,14 @@ struct Manifest {
     working_dir: Option<String>,
     #[serde(default)]
     exec_env: Vec<String>,
+    renderer: Option<Renderer>,
     payload: Payload,
+}
+
+#[derive(Debug, Deserialize)]
+struct Renderer {
+    kind: String,
+    source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -888,6 +916,19 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
     validate_payload_relative_path("host_command[0]", host_program, false)?;
     if let Some(working_dir) = &manifest.working_dir {
         validate_payload_relative_path("working_dir", working_dir, true)?;
+    }
+    if let Some(renderer) = &manifest.renderer {
+        anyhow::ensure!(
+            renderer.kind == "stock" || renderer.kind == "custom",
+            "renderer.kind must be `stock` or `custom`, got `{}`",
+            renderer.kind
+        );
+        if let Some(source) = &renderer.source {
+            anyhow::ensure!(
+                !source.trim().is_empty(),
+                "renderer.source must not be empty"
+            );
+        }
     }
     if manifest.exec_env.iter().any(|name| name.trim().is_empty() || name.contains(|ch| ch == ',' || ch == '=')) {
         anyhow::bail!("exec_env must contain only non-empty variable names without `,` or `=`");
@@ -1267,6 +1308,53 @@ host_command = ["bin/notes"]
     }
 
     #[test]
+    fn accepts_renderer_provenance_metadata() {
+        let text = valid_manifest_text(
+            r#"
+host_command = ["bin/notes"]
+
+[renderer]
+kind = "custom"
+source = "local-build"
+"#,
+        );
+
+        let manifest = parse_manifest(&text).unwrap();
+        let renderer = manifest.renderer.unwrap();
+        assert_eq!(renderer.kind, "custom");
+        assert_eq!(renderer.source.as_deref(), Some("local-build"));
+    }
+
+    #[test]
+    fn rejects_invalid_renderer_provenance_metadata() {
+        for renderer_section in [
+            r#"
+[renderer]
+kind = ""
+"#,
+            r#"
+[renderer]
+kind = "downloaded"
+"#,
+            r#"
+[renderer]
+kind = "stock"
+source = " "
+"#,
+        ] {
+            let text = valid_manifest_text(&format!(
+                r#"
+host_command = ["bin/notes"]
+{renderer_section}
+"#
+            ));
+
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(err.to_string().contains("renderer."));
+        }
+    }
+
+    #[test]
     fn verifies_payload_hash_and_size() {
         let payload = b"payload";
         let hash = format!("sha256:{:x}", Sha256::digest(payload));
@@ -1284,6 +1372,7 @@ host_command = ["bin/notes"]
             host_command: vec!["bin/notes".to_string()],
             working_dir: None,
             exec_env: Vec::new(),
+            renderer: None,
             payload: PayloadManifest {
                 archive: "payload.tar.zst".to_string(),
                 hash,
@@ -1600,6 +1689,7 @@ hash = "{payload_hash}"
             host_command: vec!["bin/notes".to_string()],
             working_dir: None,
             exec_env: Vec::new(),
+            renderer: None,
             payload: PayloadManifest {
                 archive: "payload.tar.zst".to_string(),
                 hash: format!("sha256:{:x}", Sha256::digest(payload)),

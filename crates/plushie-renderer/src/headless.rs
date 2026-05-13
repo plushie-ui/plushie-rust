@@ -1162,11 +1162,9 @@ pub(crate) fn run(
 
     // Branch on mode once at the top. Headless uses iced::Renderer
     // (tiny-skia) for real screenshots. Mock uses the null renderer ()
-    // for speed (synthetic events handle all interactions).
-    //
-    // The session_factory parameter is only honoured for iced::Renderer
-    // sessions; mock mode is protocol-only and always uses the built-in
-    // iced widget set.
+    // for speed unless a custom session factory is present. Native-widget
+    // renderers need that factory so protocol-level mock tests recognize
+    // custom node types.
     match mode {
         Mode::Headless => {
             if max_sessions <= 1 {
@@ -1183,7 +1181,26 @@ pub(crate) fn run(
             }
         }
         Mode::Mock => {
-            if max_sessions <= 1 {
+            if let Some(session_factory) = session_factory {
+                if max_sessions <= 1 {
+                    run_single::<iced::Renderer>(
+                        codec,
+                        mode,
+                        &mut reader,
+                        initial,
+                        Some(session_factory),
+                    );
+                } else {
+                    run_multiplexed::<iced::Renderer>(
+                        codec,
+                        mode,
+                        max_sessions,
+                        &mut reader,
+                        initial,
+                        Some(session_factory),
+                    );
+                }
+            } else if max_sessions <= 1 {
                 run_single::<()>(codec, mode, &mut reader, initial, None);
             } else {
                 run_multiplexed::<()>(codec, mode, max_sessions, &mut reader, initial, None);

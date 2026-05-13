@@ -1204,6 +1204,69 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     }
 
     #[test]
+    fn preserves_host_argv_arguments_with_spaces() {
+        let text = valid_manifest_text(
+            r#"
+host_command = ["bin/notes", "--project", "Daily Notes", "folder/with space/file.txt"]
+"#,
+        );
+
+        let manifest = parse_manifest(&text).unwrap();
+        assert_eq!(
+            manifest.host_command,
+            [
+                "bin/notes",
+                "--project",
+                "Daily Notes",
+                "folder/with space/file.txt"
+            ]
+        );
+
+        let launcher = launcher_main_rs();
+        assert!(launcher.contains("for arg in manifest.host_command.iter().skip(1)"));
+        assert!(launcher.contains("command.arg(\"--exec-arg\").arg(arg);"));
+    }
+
+    #[test]
+    fn validates_exec_env_names() {
+        let valid = valid_manifest_text(
+            r#"
+host_command = ["bin/notes"]
+exec_env = ["PATH", "PLUSHIE_TOKEN"]
+"#,
+        );
+        let manifest = parse_manifest(&valid).unwrap();
+        assert_eq!(manifest.exec_env, ["PATH", "PLUSHIE_TOKEN"]);
+
+        for exec_env in [
+            r#"exec_env = [""]"#,
+            r#"exec_env = [" "]"#,
+            r#"exec_env = ["NAME=VALUE"]"#,
+            r#"exec_env = ["ONE,TWO"]"#,
+        ] {
+            let text = valid_manifest_text(&format!(
+                r#"
+host_command = ["bin/notes"]
+{exec_env}
+"#
+            ));
+
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(err.to_string().contains("exec_env"));
+        }
+    }
+
+    #[test]
+    fn generated_launcher_propagates_exec_env() {
+        let launcher = launcher_main_rs();
+
+        assert!(launcher.contains("if !manifest.exec_env.is_empty()"));
+        assert!(
+            launcher.contains("command.arg(\"--exec-env\").arg(manifest.exec_env.join(\",\"));")
+        );
+    }
+
+    #[test]
     fn verifies_payload_hash_and_size() {
         let payload = b"payload";
         let hash = format!("sha256:{:x}", Sha256::digest(payload));
@@ -1229,6 +1292,27 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
         };
 
         validate_payload(&manifest, payload).unwrap();
+    }
+
+    #[test]
+    fn rejects_payload_hash_mismatch() {
+        let payload = b"payload";
+        let mut manifest = package_manifest_for_payload(payload);
+        manifest.payload.hash =
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string();
+
+        let err = validate_payload(&manifest, payload).unwrap_err();
+        assert!(err.to_string().contains("payload sha256 mismatch"));
+    }
+
+    #[test]
+    fn rejects_payload_size_mismatch() {
+        let payload = b"payload";
+        let mut manifest = package_manifest_for_payload(payload);
+        manifest.payload.size = Some(payload.len() as u64 + 1);
+
+        let err = validate_payload(&manifest, payload).unwrap_err();
+        assert!(err.to_string().contains("payload size mismatch"));
     }
 
     #[test]
@@ -1296,6 +1380,25 @@ hash = "{hash}"
 
         let err = parse_manifest(&text).unwrap_err();
         assert!(err.to_string().contains("host_command[0]"));
+    }
+
+    #[test]
+    fn rejects_manifest_paths_that_escape_roots() {
+        for (field, value) in [
+            ("renderer_path", "/tmp/plushie-renderer"),
+            ("renderer_path", "../bin/plushie-renderer"),
+            ("working_dir", "/tmp/app"),
+            ("working_dir", "../app"),
+            ("payload.archive", "/tmp/payload.tar.zst"),
+            ("payload.archive", "../payload.tar.zst"),
+        ] {
+            let text = manifest_with_path(field, value);
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(
+                err.to_string().contains(field),
+                "expected `{field}` in `{err}`"
+            );
+        }
     }
 
     #[test]
@@ -1380,6 +1483,28 @@ hash = "sha256:{hash}"
         assert!(err.to_string().contains("app_id"));
     }
 
+    #[test]
+    fn generated_launcher_reports_and_checks_cache_metadata() {
+        let launcher = launcher_main_rs();
+
+        for expected in [
+            "cache_status={}",
+            "if payload_root.reused { \"reused\" } else { \"extracted\" }",
+            "fn cache_entry_is_complete(dest: &Path) -> bool",
+            "Ok(text) if text == MANIFEST_TEXT",
+            "app_id={}",
+            "app_version={}",
+            "payload_hash={}",
+            "renderer_path={}",
+            "host_command={}",
+        ] {
+            assert!(
+                launcher.contains(expected),
+                "missing generated launcher text `{expected}`"
+            );
+        }
+    }
+
     fn sample_payload_archive() -> Vec<u8> {
         payload_archive_with_dirs(
             &[
@@ -1388,6 +1513,76 @@ hash = "sha256:{hash}"
             ],
             &[],
         )
+    }
+
+    fn valid_manifest_text(host_section: &str) -> String {
+        let payload_hash = format!("sha256:{:x}", Sha256::digest(b"payload"));
+        format!(
+            r#"
+schema_version = {MANIFEST_SCHEMA_VERSION}
+app_id = "com.example.notes"
+app_version = "0.1.0"
+host_sdk = "python"
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
+renderer_path = "bin/plushie-renderer"
+{host_section}
+
+[payload]
+archive = "payload.tar.zst"
+hash = "{payload_hash}"
+"#
+        )
+    }
+
+    fn manifest_with_path(field: &str, value: &str) -> String {
+        match field {
+            "renderer_path" => {
+                let payload_hash = format!("sha256:{:x}", Sha256::digest(b"payload"));
+                format!(
+                    r#"
+schema_version = {MANIFEST_SCHEMA_VERSION}
+app_id = "com.example.notes"
+app_version = "0.1.0"
+host_sdk = "python"
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
+renderer_path = "{value}"
+host_command = ["bin/notes"]
+
+[payload]
+archive = "payload.tar.zst"
+hash = "{payload_hash}"
+"#
+                )
+            }
+            "working_dir" => valid_manifest_text(&format!(
+                r#"
+host_command = ["bin/notes"]
+working_dir = "{value}"
+"#
+            )),
+            "payload.archive" => {
+                let payload_hash = format!("sha256:{:x}", Sha256::digest(b"payload"));
+                format!(
+                    r#"
+schema_version = {MANIFEST_SCHEMA_VERSION}
+app_id = "com.example.notes"
+app_version = "0.1.0"
+host_sdk = "python"
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
+renderer_path = "bin/plushie-renderer"
+host_command = ["bin/notes"]
+
+[payload]
+archive = "{value}"
+hash = "{payload_hash}"
+"#
+                )
+            }
+            _ => unreachable!("unknown path field"),
+        }
     }
 
     fn package_manifest_for_payload(payload: &[u8]) -> PackageManifest {

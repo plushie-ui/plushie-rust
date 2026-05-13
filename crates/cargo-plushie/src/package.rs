@@ -115,6 +115,7 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut cmd = std::process::Command::new(cargo);
     cmd.current_dir(&prepared.crate_dir).arg("build");
+    cmd.env_remove("CARGO_TARGET_DIR");
     if opts.release {
         cmd.arg("--release");
     }
@@ -199,7 +200,7 @@ fn load_package(manifest_path: &Path) -> Result<LoadedPackage> {
     let payload = std::fs::read(&archive_path)
         .with_context(|| format!("failed to read payload `{}`", archive_path.display()))?;
     validate_payload(&manifest, &payload)?;
-    validate_payload_archive(&payload)?;
+    validate_payload_archive(&manifest, &payload)?;
 
     Ok(LoadedPackage {
         manifest_dir: manifest_dir.to_path_buf(),
@@ -224,6 +225,7 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
         )));
     }
     require_nonempty("app_id", &manifest.app_id)?;
+    validate_app_id(&manifest.app_id)?;
     if let Some(app_name) = &manifest.app_name {
         require_nonempty("app_name", app_name)?;
     }
@@ -250,7 +252,7 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
         validate_payload_relative_path("working_dir", working_dir, true)?;
     }
     require_nonempty("payload.archive", &manifest.payload.archive)?;
-    validate_payload_relative_path("payload.archive", &manifest.payload.archive, false)?;
+    validate_manifest_relative_path("payload.archive", &manifest.payload.archive, false)?;
     if manifest.host_command.is_empty() || manifest.host_command.iter().any(|arg| arg.is_empty()) {
         return Err(Error::Other(anyhow::anyhow!(
             "host_command must contain a non-empty argv"
@@ -323,32 +325,8 @@ fn require_nonempty(name: &str, value: &str) -> Result<()> {
 }
 
 fn validate_payload_relative_path(name: &str, value: &str, allow_dot: bool) -> Result<()> {
-    let path = Path::new(value);
-    if path.is_absolute() {
-        return Err(Error::Other(anyhow::anyhow!(
-            "{name} must be payload-relative, got absolute path `{value}`"
-        )));
-    }
-
-    let mut has_normal_component = false;
-    for component in path.components() {
-        match component {
-            Component::Normal(_) => has_normal_component = true,
-            Component::CurDir => {}
-            Component::ParentDir => {
-                return Err(Error::Other(anyhow::anyhow!(
-                    "{name} must not contain parent traversal: `{value}`"
-                )));
-            }
-            Component::RootDir | Component::Prefix(_) => {
-                return Err(Error::Other(anyhow::anyhow!(
-                    "{name} must be payload-relative: `{value}`"
-                )));
-            }
-        }
-    }
-
-    if !has_normal_component && !allow_dot {
+    let path = clean_relative_path(name, value, "payload-relative")?;
+    if path.as_os_str().is_empty() && !allow_dot {
         return Err(Error::Other(anyhow::anyhow!(
             "{name} must name a payload file path"
         )));
@@ -357,7 +335,73 @@ fn validate_payload_relative_path(name: &str, value: &str, allow_dot: bool) -> R
     Ok(())
 }
 
-fn validate_payload_archive(payload: &[u8]) -> Result<()> {
+fn validate_manifest_relative_path(name: &str, value: &str, allow_dot: bool) -> Result<()> {
+    let path = clean_relative_path(name, value, "manifest-relative")?;
+    if path.as_os_str().is_empty() && !allow_dot {
+        return Err(Error::Other(anyhow::anyhow!(
+            "{name} must name a manifest-relative file path"
+        )));
+    }
+
+    Ok(())
+}
+
+fn validate_app_id(value: &str) -> Result<()> {
+    let safe = safe_name(value);
+    if safe == "." || safe == ".." {
+        return Err(Error::Other(anyhow::anyhow!(
+            "app_id must not map to a path-control component"
+        )));
+    }
+    Ok(())
+}
+
+fn clean_payload_relative_path(name: &str, value: &str) -> Result<PathBuf> {
+    clean_relative_path(name, value, "payload-relative")
+}
+
+fn clean_relative_path(name: &str, value: &str, relation: &str) -> Result<PathBuf> {
+    let path = Path::new(value);
+    if path.is_absolute() {
+        return Err(Error::Other(anyhow::anyhow!(
+            "{name} must be {relation}, got absolute path `{value}`"
+        )));
+    }
+
+    let mut cleaned = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => cleaned.push(part),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                return Err(Error::Other(anyhow::anyhow!(
+                    "{name} must not contain parent traversal: `{value}`"
+                )));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(Error::Other(anyhow::anyhow!(
+                    "{name} must be {relation}: `{value}`"
+                )));
+            }
+        }
+    }
+    Ok(cleaned)
+}
+
+fn validate_payload_archive(manifest: &PackageManifest, payload: &[u8]) -> Result<()> {
+    let renderer_path = clean_payload_relative_path("renderer_path", &manifest.renderer_path)?;
+    let host_path = clean_payload_relative_path("host_command[0]", &manifest.host_command[0])?;
+    let working_dir = manifest
+        .working_dir
+        .as_deref()
+        .map(|path| clean_payload_relative_path("working_dir", path))
+        .transpose()?;
+    let mut found_renderer = false;
+    let mut found_host = false;
+    let mut found_working_dir = working_dir
+        .as_ref()
+        .is_none_or(|path| path.as_os_str().is_empty());
+
     let decoder = zstd::stream::read::Decoder::new(payload)
         .with_context(|| "failed to open payload archive as zstd")?;
     let mut archive = tar::Archive::new(decoder);
@@ -367,6 +411,40 @@ fn validate_payload_archive(payload: &[u8]) -> Result<()> {
     {
         let entry = entry.with_context(|| "failed to read payload archive entry")?;
         validate_archive_entry(&entry)?;
+        let entry_path = entry
+            .path()
+            .with_context(|| "failed to read payload archive entry path")?;
+        let entry_path =
+            clean_payload_relative_path("payload archive entry", &entry_path.to_string_lossy())?;
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_file() {
+            found_renderer |= entry_path == renderer_path;
+            found_host |= entry_path == host_path;
+        }
+        if entry_type.is_dir()
+            && let Some(working_dir) = &working_dir
+        {
+            found_working_dir |= entry_path == *working_dir;
+        }
+    }
+
+    if !found_renderer {
+        return Err(Error::Other(anyhow::anyhow!(
+            "payload archive does not contain renderer_path `{}`",
+            manifest.renderer_path
+        )));
+    }
+    if !found_host {
+        return Err(Error::Other(anyhow::anyhow!(
+            "payload archive does not contain host_command[0] `{}`",
+            manifest.host_command[0]
+        )));
+    }
+    if !found_working_dir {
+        return Err(Error::Other(anyhow::anyhow!(
+            "payload archive does not contain working_dir `{}`",
+            manifest.working_dir.as_deref().unwrap_or(".")
+        )));
     }
     Ok(())
 }
@@ -506,6 +584,11 @@ struct Payload {
     size: Option<u64>,
 }
 
+struct PayloadRoot {
+    path: PathBuf,
+    reused: bool,
+}
+
 struct ExtractionLock {
     path: PathBuf,
 }
@@ -524,7 +607,8 @@ fn run() -> Result<u8> {
     let manifest: Manifest = toml::from_str(MANIFEST_TEXT).context("parse embedded manifest")?;
     validate_manifest(&manifest)?;
     let hash = payload_hash(&manifest.payload)?;
-    let root = ensure_payload(&manifest)?;
+    let payload_root = ensure_payload(&manifest)?;
+    let root = payload_root.path;
     let renderer = absolute_payload_path(&root, &manifest.renderer_path);
     let working_dir = manifest
         .working_dir
@@ -536,6 +620,17 @@ fn run() -> Result<u8> {
         .first()
         .context("host_command is empty")?;
     let host_program = absolute_payload_path(&root, host_program);
+
+    eprintln!(
+        "plushie launcher: app={} version={} payload=sha256:{} cache={} cache_status={} renderer={} host={}",
+        manifest.app_id,
+        manifest.app_version,
+        hash,
+        root.display(),
+        if payload_root.reused { "reused" } else { "extracted" },
+        renderer.display(),
+        host_program.display()
+    );
 
     let mut command = Command::new(&renderer);
     command
@@ -556,6 +651,7 @@ fn run() -> Result<u8> {
     let status = command
         .status()
         .with_context(|| format!("start renderer `{}`", renderer.display()))?;
+    eprintln!("plushie launcher: renderer exited with {status}");
     if status.success() {
         if let Err(err) = prune_cache(&manifest, hash) {
             eprintln!("plushie launcher: cache pruning failed: {err:#}");
@@ -564,20 +660,26 @@ fn run() -> Result<u8> {
     Ok(status.code().unwrap_or(1).try_into().unwrap_or(1))
 }
 
-fn ensure_payload(manifest: &Manifest) -> Result<PathBuf> {
+fn ensure_payload(manifest: &Manifest) -> Result<PayloadRoot> {
     verify_payload(&manifest.payload)?;
     let hash = payload_hash(&manifest.payload)?;
     let root = app_cache_root(manifest);
     let dest = root.join(hash);
 
     if cache_entry_is_complete(&dest) {
-        return Ok(dest);
+        return Ok(PayloadRoot {
+            path: dest,
+            reused: true,
+        });
     }
 
     std::fs::create_dir_all(&root)?;
     let _lock = acquire_extraction_lock(&root, hash, &dest)?;
     if cache_entry_is_complete(&dest) {
-        return Ok(dest);
+        return Ok(PayloadRoot {
+            path: dest,
+            reused: true,
+        });
     }
 
     let tmp = root.join(format!(".{hash}.{}.tmp", std::process::id()));
@@ -599,8 +701,14 @@ fn ensure_payload(manifest: &Manifest) -> Result<PathBuf> {
         }
     }
 
+    if dest.exists() {
+        std::fs::remove_dir_all(&dest).context("remove incomplete payload cache")?;
+    }
     std::fs::rename(&tmp, &dest).context("install extracted payload")?;
-    Ok(dest)
+    Ok(PayloadRoot {
+        path: dest,
+        reused: false,
+    })
 }
 
 fn payload_hash(payload: &Payload) -> Result<&str> {
@@ -628,6 +736,7 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
         manifest.plushie_rust_version,
         EXPECTED_PLUSHIE_RUST_VERSION
     );
+    validate_app_id(&manifest.app_id)?;
     validate_payload_relative_path("renderer_path", &manifest.renderer_path, false)?;
     let host_program = manifest
         .host_command
@@ -859,6 +968,15 @@ fn validate_payload_relative_path(name: &str, value: &str, allow_dot: bool) -> R
     Ok(())
 }
 
+fn validate_app_id(value: &str) -> Result<()> {
+    let safe = safe_name(value);
+    anyhow::ensure!(
+        safe != "." && safe != "..",
+        "app_id must not map to a path-control component"
+    );
+    Ok(())
+}
+
 fn safe_name(value: &str) -> String {
     let mut out = String::new();
     for ch in value.chars() {
@@ -1040,16 +1158,132 @@ hash = "{hash}"
     #[test]
     fn rejects_archive_paths_that_escape_payload_root() {
         let payload = malicious_payload_archive();
-        let err = validate_payload_archive(&payload).unwrap_err();
+        let manifest = package_manifest_for_payload(&payload);
+        let err = validate_payload_archive(&manifest, &payload).unwrap_err();
         assert!(err.to_string().contains("parent traversal"));
     }
 
+    #[test]
+    fn rejects_payload_missing_manifest_renderer() {
+        let payload = payload_archive_with_entries(&[("bin/notes", b"host".as_slice())]);
+        let manifest = package_manifest_for_payload(&payload);
+
+        let err = validate_payload_archive(&manifest, &payload).unwrap_err();
+        assert!(err.to_string().contains("renderer_path"));
+    }
+
+    #[test]
+    fn rejects_payload_missing_manifest_host_program() {
+        let payload =
+            payload_archive_with_entries(&[("bin/plushie-renderer", b"renderer".as_slice())]);
+        let manifest = package_manifest_for_payload(&payload);
+
+        let err = validate_payload_archive(&manifest, &payload).unwrap_err();
+        assert!(err.to_string().contains("host_command[0]"));
+    }
+
+    #[test]
+    fn accepts_non_root_payload_working_dir() {
+        let payload = payload_archive_with_dirs(
+            &[
+                ("bin/plushie-renderer", b"renderer".as_slice()),
+                ("app/bin/notes", b"host".as_slice()),
+            ],
+            &["app"],
+        );
+        let mut manifest = package_manifest_for_payload(&payload);
+        manifest.host_command = vec!["app/bin/notes".to_string()];
+        manifest.working_dir = Some("app".to_string());
+
+        validate_payload_archive(&manifest, &payload).unwrap();
+    }
+
+    #[test]
+    fn rejects_payload_missing_non_root_working_dir() {
+        let payload = payload_archive_with_entries(&[
+            ("bin/plushie-renderer", b"renderer".as_slice()),
+            ("app/bin/notes", b"host".as_slice()),
+        ]);
+        let mut manifest = package_manifest_for_payload(&payload);
+        manifest.host_command = vec!["app/bin/notes".to_string()];
+        manifest.working_dir = Some("app".to_string());
+
+        let err = validate_payload_archive(&manifest, &payload).unwrap_err();
+        assert!(err.to_string().contains("working_dir"));
+    }
+
+    #[test]
+    fn rejects_path_control_app_ids() {
+        let hash = format!("{:x}", Sha256::digest(b"payload"));
+        let text = format!(
+            r#"
+schema_version = 1
+app_id = ".."
+app_version = "0.1.0"
+host_sdk = "python"
+plushie_rust_version = "{}"
+protocol_version = {}
+renderer_path = "bin/plushie-renderer"
+host_command = ["bin/notes"]
+
+[payload]
+archive = "payload.tar.zst"
+hash = "sha256:{hash}"
+"#,
+            EXPECTED_PLUSHIE_RUST_VERSION, EXPECTED_PROTOCOL_VERSION
+        );
+
+        let err = parse_manifest(&text).unwrap_err();
+        assert!(err.to_string().contains("app_id"));
+    }
+
     fn sample_payload_archive() -> Vec<u8> {
+        payload_archive_with_dirs(
+            &[
+                ("bin/plushie-renderer", b"renderer".as_slice()),
+                ("bin/notes", b"host".as_slice()),
+            ],
+            &[],
+        )
+    }
+
+    fn package_manifest_for_payload(payload: &[u8]) -> PackageManifest {
+        PackageManifest {
+            schema_version: MANIFEST_SCHEMA_VERSION,
+            app_id: "com.example.notes".to_string(),
+            app_name: None,
+            app_version: "0.1.0".to_string(),
+            target: None,
+            host_sdk: "python".to_string(),
+            host_sdk_version: None,
+            plushie_rust_version: EXPECTED_PLUSHIE_RUST_VERSION.to_string(),
+            protocol_version: EXPECTED_PROTOCOL_VERSION,
+            renderer_path: "bin/plushie-renderer".to_string(),
+            host_command: vec!["bin/notes".to_string()],
+            working_dir: None,
+            exec_env: Vec::new(),
+            payload: PayloadManifest {
+                archive: "payload.tar.zst".to_string(),
+                hash: format!("sha256:{:x}", Sha256::digest(payload)),
+                size: Some(payload.len() as u64),
+            },
+        }
+    }
+
+    fn payload_archive_with_entries(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        payload_archive_with_dirs(entries, &[])
+    }
+
+    fn payload_archive_with_dirs(entries: &[(&str, &[u8])], dirs: &[&str]) -> Vec<u8> {
         let mut tar_bytes = Vec::new();
         {
             let mut builder = tar::Builder::new(&mut tar_bytes);
-            append_file(&mut builder, "bin/plushie-renderer", b"renderer");
-            append_file(&mut builder, "bin/notes", b"host");
+            for path in dirs {
+                append_dir(&mut builder, path);
+            }
+            for (path, bytes) in entries {
+                append_file(&mut builder, path, bytes);
+            }
             builder.finish().unwrap();
         }
         zstd::stream::encode_all(tar_bytes.as_slice(), 0).unwrap()
@@ -1068,6 +1302,15 @@ hash = "{hash}"
         header.set_mode(0o755);
         header.set_cksum();
         builder.append_data(&mut header, path, bytes).unwrap();
+    }
+
+    fn append_dir(builder: &mut tar::Builder<&mut Vec<u8>>, path: &str) {
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Directory);
+        header.set_size(0);
+        header.set_mode(0o755);
+        header.set_cksum();
+        builder.append_data(&mut header, path, &[][..]).unwrap();
     }
 
     fn append_raw_tar_entry(out: &mut Vec<u8>, path: &str, bytes: &[u8], entry_type: u8) {

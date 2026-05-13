@@ -211,18 +211,21 @@ the packaged renderer with:
 plushie-renderer --listen --exec-bin <program> --exec-arg <arg> ...
 ```
 
-`renderer_path`, `working_dir`, `host_command[0]`, and `payload.archive`
-must be payload-relative paths. Absolute paths and parent traversal are
-rejected so a standalone package cannot silently point at a global
-binary. The launcher resolves `host_command[0]` to an absolute path
-inside the extracted payload before passing it to the renderer. It sets
-the renderer's working directory to manifest `working_dir`, or the
-payload root by default, and passes `--exec-env` from the manifest when
-extra runtime variables are needed.
+`payload.archive` is manifest-relative. `renderer_path`, `working_dir`,
+and `host_command[0]` are payload-relative paths. Absolute paths and
+parent traversal are rejected so a standalone package cannot silently
+point at a global binary. The launcher resolves `host_command[0]` to an
+absolute path inside the extracted payload before passing it to the
+renderer. It sets the renderer's working directory to manifest
+`working_dir`, or the payload root by default, and passes `--exec-env`
+from the manifest when extra runtime variables are needed.
 
 After a successful launcher run, cache pruning keeps the active payload
 and the most recent previous payload for the same app ID. Older payload
 directories are removed. Failed launches do not prune cache entries.
+The launcher writes diagnostics to stderr with the app ID, app version,
+payload hash, cache path, cache reuse status, renderer path, host path,
+and renderer exit status.
 
 ## cargo plushie new-widget
 

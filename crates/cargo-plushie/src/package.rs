@@ -523,6 +523,7 @@ fn main() -> ExitCode {
 fn run() -> Result<u8> {
     let manifest: Manifest = toml::from_str(MANIFEST_TEXT).context("parse embedded manifest")?;
     validate_manifest(&manifest)?;
+    let hash = payload_hash(&manifest.payload)?;
     let root = ensure_payload(&manifest)?;
     let renderer = absolute_payload_path(&root, &manifest.renderer_path);
     let working_dir = manifest
@@ -555,17 +556,18 @@ fn run() -> Result<u8> {
     let status = command
         .status()
         .with_context(|| format!("start renderer `{}`", renderer.display()))?;
+    if status.success() {
+        if let Err(err) = prune_cache(&manifest, hash) {
+            eprintln!("plushie launcher: cache pruning failed: {err:#}");
+        }
+    }
     Ok(status.code().unwrap_or(1).try_into().unwrap_or(1))
 }
 
 fn ensure_payload(manifest: &Manifest) -> Result<PathBuf> {
     verify_payload(&manifest.payload)?;
-    let hash = manifest
-        .payload
-        .hash
-        .strip_prefix("sha256:")
-        .context("payload hash missing sha256 prefix")?;
-    let root = cache_root().join("plushie/apps").join(safe_name(&manifest.app_id));
+    let hash = payload_hash(&manifest.payload)?;
+    let root = app_cache_root(manifest);
     let dest = root.join(hash);
 
     if cache_entry_is_complete(&dest) {
@@ -599,6 +601,13 @@ fn ensure_payload(manifest: &Manifest) -> Result<PathBuf> {
 
     std::fs::rename(&tmp, &dest).context("install extracted payload")?;
     Ok(dest)
+}
+
+fn payload_hash(payload: &Payload) -> Result<&str> {
+    payload
+        .hash
+        .strip_prefix("sha256:")
+        .context("payload hash missing sha256 prefix")
 }
 
 fn validate_manifest(manifest: &Manifest) -> Result<()> {
@@ -754,6 +763,44 @@ fn cache_entry_is_complete(dest: &Path) -> bool {
             .first()
             .map(|program| absolute_payload_path(dest, program).is_file())
             .unwrap_or(false)
+}
+
+fn prune_cache(manifest: &Manifest, current_hash: &str) -> Result<()> {
+    let root = app_cache_root(manifest);
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return Ok(());
+    };
+
+    let mut old_payloads = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if !file_type.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == current_hash || name.starts_with('.') {
+            continue;
+        }
+        let modified = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
+        old_payloads.push((modified, entry.path()));
+    }
+
+    old_payloads.sort_by(|left, right| right.0.cmp(&left.0));
+    for (_, path) in old_payloads.into_iter().skip(1) {
+        std::fs::remove_dir_all(&path)
+            .with_context(|| format!("remove old payload cache `{}`", path.display()))?;
+    }
+
+    Ok(())
+}
+
+fn app_cache_root(manifest: &Manifest) -> PathBuf {
+    cache_root().join("plushie/apps").join(safe_name(&manifest.app_id))
 }
 
 fn cache_root() -> PathBuf {

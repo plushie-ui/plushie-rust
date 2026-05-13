@@ -208,7 +208,21 @@ pub fn smoke_package(opts: &PackageSmokeOpts<'_>) -> Result<PackageSmokeResult> 
         verbose: opts.verbose,
     })?;
     let cache_dir = smoke_cache_dir()?;
-    let output = run_smoke_launcher(&result.binary_path, &cache_dir, opts.timeout)?;
+    let first = run_smoke_launcher(&result.binary_path, &cache_dir, opts.timeout)?;
+    let first_stderr = validate_smoke_output(first, "extracted")?;
+    let second = run_smoke_launcher(&result.binary_path, &cache_dir, opts.timeout)?;
+    let second_stderr = validate_smoke_output(second, "reused")?;
+    let stderr = format!("{first_stderr}{second_stderr}");
+
+    Ok(PackageSmokeResult {
+        launcher_crate_dir: result.launcher_crate_dir,
+        binary_path: result.binary_path,
+        cache_dir,
+        stderr,
+    })
+}
+
+fn validate_smoke_output(output: std::process::Output, cache_status: &str) -> Result<String> {
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
 
@@ -226,9 +240,10 @@ pub fn smoke_package(opts: &PackageSmokeOpts<'_>) -> Result<PackageSmokeResult> 
             stdout
         )));
     }
+    let cache_status = format!("cache_status={cache_status}");
     for expected in [
         "plushie launcher: app=",
-        "cache_status=",
+        cache_status.as_str(),
         "renderer=",
         "host=",
         "plushie launcher: smoke ok",
@@ -240,12 +255,7 @@ pub fn smoke_package(opts: &PackageSmokeOpts<'_>) -> Result<PackageSmokeResult> 
         }
     }
 
-    Ok(PackageSmokeResult {
-        launcher_crate_dir: result.launcher_crate_dir,
-        binary_path: result.binary_path,
-        cache_dir,
-        stderr,
-    })
+    Ok(stderr)
 }
 
 fn run_smoke_launcher(

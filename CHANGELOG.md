@@ -506,9 +506,9 @@ relative to 0.6.1.
   `max_rate` and session-wide `default_event_rate` for rate-limited
   delivery. `CoalesceHint` on `OutgoingEvent` replaces hardcoded
   coalescing tables so extensions get equal footing with built-in events.
-- Transport abstraction with `--exec` flag for SSH and remote rendering
-  scenarios. A background writer thread handles non-blocking I/O in
-  windowed mode.
+- Transport abstraction for renderer-owned host startup, SSH, and remote
+  rendering scenarios. A background writer thread handles non-blocking
+  I/O in windowed mode.
 - Canvas interactive shapes: hit testing, hover/pressed styles, drag
   events, tooltips, and semantic click/press/release events on
   individual shapes.

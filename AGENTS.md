@@ -54,10 +54,10 @@ event variants + structured responses; no opaque blobs, no eval,
 no "run on host"). Host structurally protected today; the remote-
 rendering use case relies on it. Host-to-renderer = broad by
 design (file paths, fonts/images/SVG, screenshots, effects,
-`--exec`); bounding it is the capability/manifest roadmap. Wire =
-byte-stream agnostic; confidentiality + integrity delegated to
-the outer transport. Same-access (user attacking themselves) is
-out of scope.
+structured renderer exec args); bounding it is the capability/manifest
+roadmap. Wire = byte-stream agnostic; confidentiality + integrity
+delegated to the outer transport. Same-access (user attacking
+themselves) is out of scope.
 
 ### Resilience
 

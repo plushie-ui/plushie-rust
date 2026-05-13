@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use cargo_plushie::{discover, doctor, download, generator, package, platform, scaffold};
 use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// Built-in renderer widget type names from `plushie-core`, shared
 /// with the widget SDK without pulling iced into this build tool.
@@ -145,6 +146,12 @@ struct PackageArgs {
     /// Validate the manifest and payload without building a launcher.
     #[arg(long)]
     validate: bool,
+    /// Build the launcher and run its smoke path with an isolated cache.
+    #[arg(long)]
+    smoke: bool,
+    /// Smoke timeout in seconds.
+    #[arg(long, default_value_t = 10)]
+    smoke_timeout: u64,
     /// Final launcher output path. Defaults under target/plushie/package/.
     #[arg(long)]
     out: Option<PathBuf>,
@@ -179,11 +186,34 @@ fn main() -> Result<()> {
 }
 
 fn cmd_package(args: &PackageArgs) -> Result<()> {
+    if args.validate && args.smoke {
+        anyhow::bail!("--validate and --smoke cannot be used together");
+    }
     if args.validate {
         let validation = package::validate_package(&args.manifest)?;
         println!(
             "plushie: validated standalone package {} {} ({})",
             validation.app_id, validation.app_version, validation.payload_hash
+        );
+        return Ok(());
+    }
+
+    if args.smoke {
+        let result = package::smoke_package(&package::PackageSmokeOpts {
+            manifest_path: &args.manifest,
+            out_path: args.out.as_deref(),
+            release: args.release,
+            verbose: args.verbose,
+            timeout: Duration::from_secs(args.smoke_timeout),
+        })?;
+        println!(
+            "plushie: smoked standalone launcher at {}",
+            result.binary_path.display()
+        );
+        println!("plushie: smoke cache at {}", result.cache_dir.display());
+        println!(
+            "plushie: launcher crate retained at {}",
+            result.launcher_crate_dir.display()
         );
         return Ok(());
     }

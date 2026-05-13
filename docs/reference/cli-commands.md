@@ -227,6 +227,17 @@ The launcher writes diagnostics to stderr with the app ID, app version,
 payload hash, cache path, cache reuse status, renderer path, host path,
 and renderer exit status.
 
+Use `--validate` to check the manifest, payload hash, and archive safety
+without building a launcher. Use `--smoke` to build the launcher and run
+its extraction path with an isolated `PLUSHIE_CACHE_DIR`. Smoke mode
+sets `PLUSHIE_PACKAGE_SMOKE=1`, scrubs development renderer overrides,
+asserts launcher diagnostics, and exits before starting the GUI app:
+
+```bash
+cargo plushie package --manifest dist/plushie-package.toml --validate
+cargo plushie package --manifest dist/plushie-package.toml --smoke
+```
+
 ## cargo plushie new-widget
 
 Scaffold a native widget crate.

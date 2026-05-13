@@ -211,7 +211,7 @@ pub(crate) fn read_required_settings(
     }
 }
 
-/// Validate protocol version and token in the initial Settings.
+/// Validate protocol version and listen token digest in the initial Settings.
 ///
 /// Returns [`StartupError`] on:
 ///
@@ -219,10 +219,9 @@ pub(crate) fn read_required_settings(
 ///   match [`PROTOCOL_VERSION`]. A mismatch or missing value is
 ///   fatal: running with mismatched protocols leads to subtle,
 ///   hard-to-debug failures.
-/// - **Token** (listen mode): if `expected_token` is `Some`, the
-///   settings must contain either a matching `token` field or a
-///   matching `token_sha256` field. Comparison uses constant-time
-///   equality to prevent timing attacks.
+/// - **Token digest** (listen mode): if `expected_token` is `Some`,
+///   the settings must contain a matching `token_sha256` field. A
+///   plaintext `token` field is invalid.
 ///
 /// On success, applies the prop validation flag via `OnceLock`, and
 /// emits a `required_widgets_missing` diagnostic if any names declared
@@ -255,12 +254,17 @@ pub(crate) fn validate_settings(
 
     // Token verification (listen mode).
     if let Some(expected_tok) = expected_token {
-        let token = settings.get("token").and_then(|v| v.as_str());
+        if settings.get("token").is_some() {
+            return Err(StartupError::new(
+                "invalid token credential: use token_sha256",
+            ));
+        }
+
         let token_sha256 = settings.get("token_sha256").and_then(|v| v.as_str());
 
-        if token_matches(expected_tok, token, token_sha256) {
+        if token_matches(expected_tok, token_sha256) {
             log::info!("token credential verified");
-        } else if token.is_some() || token_sha256.is_some() {
+        } else if token_sha256.is_some() {
             return Err(StartupError::new("token mismatch: connection rejected"));
         } else {
             return Err(StartupError::new(
@@ -343,14 +347,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-fn token_matches(expected: &str, token: Option<&str>, token_sha256: Option<&str>) -> bool {
-    if token
-        .map(|tok| constant_time_eq(tok.as_bytes(), expected.as_bytes()))
-        .unwrap_or(false)
-    {
-        return true;
-    }
-
+fn token_matches(expected: &str, token_sha256: Option<&str>) -> bool {
     let Some(provided_sha256) = token_sha256 else {
         return false;
     };
@@ -475,13 +472,26 @@ mod tests {
     }
 
     #[test]
-    fn validate_settings_accepts_plaintext_token() {
+    fn validate_settings_rejects_plaintext_token() {
         let settings = json!({
             "protocol_version": PROTOCOL_VERSION,
             "token": "listen-token",
         });
 
-        validate_settings(&settings, Some("listen-token"), &[]).unwrap();
+        let err = validate_settings(&settings, Some("listen-token"), &[]).unwrap_err();
+        assert!(err.to_string().contains("use token_sha256"));
+    }
+
+    #[test]
+    fn validate_settings_rejects_plaintext_token_with_token_sha256() {
+        let settings = json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "token": "listen-token",
+            "token_sha256": "af84a4f1a6d2ff0ec31b6cae05bca90736ddc3b8d925661db8bd19ecf37a6cab",
+        });
+
+        let err = validate_settings(&settings, Some("listen-token"), &[]).unwrap_err();
+        assert!(err.to_string().contains("use token_sha256"));
     }
 
     #[test]

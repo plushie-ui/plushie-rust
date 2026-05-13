@@ -122,7 +122,7 @@ claim deliberately.
 The host-to-renderer channel is broader by design. The host has
 to be able to ask the renderer to do real things: load fonts and
 images from paths, load SVGs, save screenshots, dispatch platform
-effects, spawn child processes via `--exec`. A compromised host
+effects, spawn child processes through renderer-owned exec. A compromised host
 can drive the full operation set against the user's machine.
 Bounding this surface is the focus of the capability-manifest
 roadmap; it is a stated direction, not currently scheduled work.
@@ -139,13 +139,12 @@ Specifically declined under this section:
   capability-manifest's job, not a per-call hardening.
 - Reading raw arbitrary file content via image or SVG widget
   source. Same boundary.
-- The `--exec` flag passing its argument to `sh -c <command>`.
-  This is documented design for trusted operators who need pipe
-  chains and shell features. Apps that interpolate untrusted
-  input into `--exec` are making their own choice.
-- Forwarding `--exec` child stderr unsanitized to the renderer's
+- The renderer-owned exec path uses `--exec-bin` with repeated
+  `--exec-arg`, launching the host with argv directly instead of
+  passing a shell command string.
+- Forwarding renderer-owned exec child stderr unsanitized to the renderer's
   own stderr.
-- Inheriting the renderer's stdout to `--exec` children.
+- Inheriting the renderer's stdout to renderer-owned exec children.
 
 Revisit when the capability-manifest direction is taken up.
 
@@ -165,9 +164,10 @@ Declined under this section:
   to bind there; documenting the recommendation that
   network-exposed listen mode should ride an SSH tunnel or TLS
   is enough.
-- Defaulting to SHA-256 digest token transmission instead of
-  plaintext on TCP. The plaintext-on-TCP concern is a confidentiality
-  concern; it belongs to the outer transport.
+- Encrypting or hiding the listen token digest on TCP. The renderer
+  Settings contract uses `token_sha256`, but that digest is still the
+  bearer credential for the connection. Confidentiality belongs to the
+  outer transport.
 - Per-message MAC, sequence numbers, or other integrity layer
   on the wire after authentication. Same.
 - Constant-time length comparison hardening on token validation.

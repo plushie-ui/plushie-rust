@@ -33,67 +33,38 @@ fn run_inner(
     mut builder: plushie_widget_sdk::app::PlushieAppBuilder,
     args: Vec<String>,
 ) -> iced::Result {
-    // Parse codec flags early so all modes (headless, test, normal) can use them.
-    let has_flag = |flag: &str| args.iter().any(|a| a == flag);
-    let forced_codec = if has_flag("--msgpack") {
-        Some(Codec::MsgPack)
-    } else if has_flag("--json") {
-        Some(Codec::Json)
-    } else {
-        None
-    };
-
-    // Parse --max-sessions N for concurrent session support.
-    let max_sessions = args
-        .windows(2)
-        .find(|w| w[0] == "--max-sessions")
-        .and_then(|w| w[1].parse::<usize>().ok())
-        .unwrap_or(1)
-        .max(1);
-
-    // Parse --exec <command> and --listen [addr] for transport selection.
-    let exec_command = args
-        .windows(2)
-        .find(|w| w[0] == "--exec")
-        .map(|w| w[1].clone());
-    let extra_exec_env = parse_exec_env(&args);
-
-    let listen_arg = if has_flag("--listen") {
-        // --listen may have an optional argument (next arg if it doesn't start with --)
-        // SAFETY: has_flag("--listen") above guarantees position() returns Some.
-        let idx = args
-            .iter()
-            .position(|a| a == "--listen")
-            .expect("has_flag(--listen) gates this branch");
-        let next = args.get(idx + 1);
-        match next {
-            Some(s) if !s.starts_with("--") => Some(Some(s.as_str())),
-            _ => Some(None), // --listen without argument
+    let options = match parse_cli(&args) {
+        Ok(options) => options,
+        Err(e) => {
+            log::error!("invalid renderer arguments: {e}");
+            return Ok(());
         }
-    } else {
-        None
     };
 
     // Create transport based on flags.
-    let transport = if let Some(addr_arg) = listen_arg {
+    let transport = if let Some(addr_arg) = options.listen_arg.as_ref() {
         // --listen mode: socket transport.
-        let addr = match crate::transport::ListenAddr::parse(addr_arg) {
+        let addr = match crate::transport::ListenAddr::parse(addr_arg.as_deref()) {
             Ok(a) => a,
             Err(e) => {
                 log::error!("invalid --listen address: {e}");
                 return Ok(());
             }
         };
-        match crate::transport::Transport::listen(&addr, exec_command.as_deref(), &extra_exec_env) {
+        match crate::transport::Transport::listen(
+            &addr,
+            options.exec_command.as_ref(),
+            &options.extra_exec_env,
+        ) {
             Ok(t) => t,
             Err(e) => {
                 log::error!("failed to start listen transport: {e}");
                 return Ok(());
             }
         }
-    } else if let Some(cmd) = &exec_command {
-        // --exec without --listen: piped stdin/stdout.
-        match crate::transport::Transport::exec(cmd, &extra_exec_env) {
+    } else if let Some(cmd) = &options.exec_command {
+        // Exec without --listen: piped stdin/stdout.
+        match crate::transport::Transport::exec(cmd, &options.extra_exec_env) {
             Ok(t) => t,
             Err(e) => {
                 log::error!("failed to start exec transport: {e}");
@@ -129,14 +100,14 @@ fn run_inner(
 
     // Headless/mock modes handle their own sink initialization
     // after codec detection. They receive the writer directly.
-    if has_flag("--mock") {
+    if options.mock_mode {
         // Invariant: writer_opt is Some on entry; only one of the
         // --mock / --headless / windowed branches takes it.
         let writer = writer_opt.take().expect("writer available on mock path");
         crate::headless::run(
-            forced_codec,
+            options.forced_codec,
             crate::headless::Mode::Mock,
-            max_sessions,
+            options.max_sessions,
             &ext_keys,
             transport_name,
             reader,
@@ -146,16 +117,16 @@ fn run_inner(
         );
         return Ok(());
     }
-    if has_flag("--headless") {
+    if options.headless_mode {
         // Invariant: writer_opt is Some on entry; only one of the
         // --mock / --headless / windowed branches takes it.
         let writer = writer_opt
             .take()
             .expect("writer available on headless path");
         crate::headless::run(
-            forced_codec,
+            options.forced_codec,
             crate::headless::Mode::Headless,
-            max_sessions,
+            options.max_sessions,
             &ext_keys,
             transport_name,
             reader,
@@ -170,7 +141,7 @@ fn run_inner(
     let mut reader = reader;
     // Codec-detection errors have no codec to encode with; log and
     // return so RAII runs (transport sockets, spawned children).
-    let codec = match crate::startup::detect_codec(forced_codec, &mut reader) {
+    let codec = match crate::startup::detect_codec(options.forced_codec, &mut reader) {
         Ok(c) => c,
         Err(e) => {
             log::error!("{e}");
@@ -311,13 +282,128 @@ fn run_inner(
     .run()
 }
 
-fn parse_exec_env(args: &[String]) -> Vec<String> {
-    args.windows(2)
-        .filter(|w| w[0] == "--exec-env")
-        .flat_map(|w| w[1].split(','))
+#[derive(Debug, PartialEq, Eq)]
+struct CliOptions {
+    forced_codec: Option<Codec>,
+    max_sessions: usize,
+    exec_command: Option<crate::transport::ExecCommand>,
+    extra_exec_env: Vec<String>,
+    listen_arg: Option<Option<String>>,
+    mock_mode: bool,
+    headless_mode: bool,
+}
+
+fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
+    let mut forced_codec = None;
+    let mut max_sessions = 1;
+    let mut exec_bin = None;
+    let mut exec_args = Vec::new();
+    let mut extra_exec_env = Vec::new();
+    let mut listen_arg = None;
+    let mut mock_mode = false;
+    let mut headless_mode = false;
+
+    let mut idx = 1;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--msgpack" => {
+                forced_codec = Some(Codec::MsgPack);
+                idx += 1;
+            }
+            "--json" => {
+                forced_codec = Some(Codec::Json);
+                idx += 1;
+            }
+            "--mock" => {
+                mock_mode = true;
+                idx += 1;
+            }
+            "--headless" => {
+                headless_mode = true;
+                idx += 1;
+            }
+            "--max-sessions" => {
+                let value = required_arg(args, idx, "--max-sessions")?;
+                max_sessions = value.parse::<usize>().unwrap_or(1).max(1);
+                idx += 2;
+            }
+            "--exec" => {
+                return Err(
+                    "--exec has been removed; use --exec-bin with repeated --exec-arg".to_string(),
+                );
+            }
+            "--exec-bin" => {
+                exec_bin = Some(required_arg(args, idx, "--exec-bin")?.to_string());
+                idx += 2;
+            }
+            "--exec-arg" => {
+                exec_args.push(required_arg(args, idx, "--exec-arg")?.to_string());
+                idx += 2;
+            }
+            "--exec-env" => {
+                extra_exec_env.extend(parse_exec_env_value(required_arg(args, idx, "--exec-env")?));
+                idx += 2;
+            }
+            "--listen" => match args.get(idx + 1) {
+                Some(value) if !value.starts_with("--") => {
+                    listen_arg = Some(Some(value.clone()));
+                    idx += 2;
+                }
+                _ => {
+                    listen_arg = Some(None);
+                    idx += 1;
+                }
+            },
+            _ => {
+                idx += 1;
+            }
+        }
+    }
+
+    let exec_command = match exec_bin {
+        Some(program) if program.is_empty() => {
+            return Err("--exec-bin requires a non-empty program".to_string());
+        }
+        Some(program) => Some(crate::transport::ExecCommand::Argv {
+            program,
+            args: exec_args,
+        }),
+        None if !exec_args.is_empty() => {
+            return Err("--exec-arg requires --exec-bin".to_string());
+        }
+        None => None,
+    };
+
+    Ok(CliOptions {
+        forced_codec,
+        max_sessions,
+        exec_command,
+        extra_exec_env,
+        listen_arg,
+        mock_mode,
+        headless_mode,
+    })
+}
+
+fn required_arg<'a>(args: &'a [String], idx: usize, flag: &str) -> Result<&'a str, String> {
+    args.get(idx + 1)
+        .map(String::as_str)
+        .ok_or_else(|| format!("{flag} requires a value"))
+}
+
+fn parse_exec_env_value(value: &str) -> impl Iterator<Item = String> + '_ {
+    value
+        .split(',')
         .map(str::trim)
         .filter(|name| !name.is_empty() && !name.contains('=') && !name.contains('\0'))
         .map(ToOwned::to_owned)
+}
+
+#[cfg(test)]
+fn parse_exec_env(args: &[String]) -> Vec<String> {
+    args.windows(2)
+        .filter(|w| w[0] == "--exec-env")
+        .flat_map(|w| parse_exec_env_value(&w[1]))
         .collect()
 }
 
@@ -357,6 +443,71 @@ mod tests {
             ])),
             vec!["MIX_HOME".to_string(), "HEX_HOME".to_string()]
         );
+    }
+
+    #[test]
+    fn parses_structured_exec_command() {
+        let parsed = parse_cli(&args(&[
+            "plushie-renderer",
+            "--exec-bin",
+            "/usr/bin/host",
+            "--exec-arg",
+            "run app",
+            "--exec-arg",
+            "--flag",
+        ]))
+        .unwrap();
+
+        assert_eq!(
+            parsed.exec_command,
+            Some(crate::transport::ExecCommand::Argv {
+                program: "/usr/bin/host".to_string(),
+                args: vec!["run app".to_string(), "--flag".to_string()],
+            })
+        );
+        assert_eq!(parsed.listen_arg, None);
+    }
+
+    #[test]
+    fn parses_listen_with_structured_exec_command() {
+        let parsed = parse_cli(&args(&[
+            "plushie-renderer",
+            "--listen",
+            ":0",
+            "--exec-bin",
+            "host",
+            "--exec-arg",
+            "connect",
+        ]))
+        .unwrap();
+
+        assert_eq!(parsed.listen_arg, Some(Some(":0".to_string())));
+        assert_eq!(
+            parsed.exec_command,
+            Some(crate::transport::ExecCommand::Argv {
+                program: "host".to_string(),
+                args: vec!["connect".to_string()],
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_removed_shell_exec_form() {
+        let err = parse_cli(&args(&[
+            "plushie-renderer",
+            "--exec",
+            "mix plushie.connect MyApp",
+        ]))
+        .unwrap_err();
+
+        assert!(err.contains("--exec has been removed"));
+    }
+
+    #[test]
+    fn rejects_exec_arg_without_exec_bin() {
+        let err = parse_cli(&args(&["plushie-renderer", "--exec-arg", "connect"])).unwrap_err();
+
+        assert!(err.contains("--exec-arg requires --exec-bin"));
     }
 }
 

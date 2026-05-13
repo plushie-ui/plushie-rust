@@ -5,22 +5,50 @@
 //! - **stdio** (default): reads stdin, writes stdout. The host spawned
 //!   plushie as a subprocess.
 //!
-//! - **exec** (`--exec` without `--listen`): spawns a command and pipes
-//!   stdin/stdout to it. For clean runtimes (Gleam, Go) or SSH subsystems.
+//! - **exec** (`--exec-bin` with repeated `--exec-arg` without
+//!   `--listen`): spawns a command and pipes stdin/stdout to it. For
+//!   clean runtimes (Gleam, Go) or SSH subsystems.
 //!
-//! - **listen** (`--listen` with optional `--exec`): creates a Unix socket
-//!   or TCP listener, optionally spawns a command, and communicates over
-//!   the accepted connection. For BEAM-based hosts where stdout is
-//!   contaminated by the runtime.
+//! - **listen** (`--listen` with optional exec): creates a Unix socket or
+//!   TCP listener, optionally spawns a command, and communicates over the
+//!   accepted connection. For BEAM-based hosts where stdout is contaminated
+//!   by the runtime.
 
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::process::{Child, ChildStderr, Command, Stdio};
 use std::thread::{self, JoinHandle};
 
+use sha2::{Digest, Sha256};
+
 // ---------------------------------------------------------------------------
 // Transport
 // ---------------------------------------------------------------------------
+
+/// Host process to spawn for renderer-owned exec modes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ExecCommand {
+    /// Structured argv launch, bypassing shell parsing and quoting.
+    Argv { program: String, args: Vec<String> },
+}
+
+impl ExecCommand {
+    fn command(&self) -> Command {
+        match self {
+            ExecCommand::Argv { program, args } => {
+                let mut cmd = Command::new(program);
+                cmd.args(args);
+                cmd
+            }
+        }
+    }
+
+    fn label(&self) -> &str {
+        match self {
+            ExecCommand::Argv { program, .. } => program,
+        }
+    }
+}
 
 /// The I/O endpoints for protocol communication.
 pub(crate) struct Transport {
@@ -86,20 +114,17 @@ impl Transport {
         }
     }
 
-    /// Piped exec transport (`--exec` without `--listen`).
-    pub fn exec(command: &str, extra_env: &[String]) -> io::Result<Self> {
-        let shell = if cfg!(windows) { "cmd" } else { "sh" };
-        let shell_flag = if cfg!(windows) { "/c" } else { "-c" };
-
-        let mut child = Command::new(shell)
-            .args([shell_flag, command])
+    /// Piped exec transport without `--listen`.
+    pub fn exec(command: &ExecCommand, extra_env: &[String]) -> io::Result<Self> {
+        let mut child = command
+            .command()
             .env_clear()
             .envs(crate::env::child_env(extra_env))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| io::Error::other(format!("failed to exec '{command}': {e}")))?;
+            .map_err(|e| io::Error::other(format!("failed to exec '{}': {e}", command.label())))?;
 
         let child_stdout = child.stdout.take().expect("child stdout piped");
         let child_stdin = child.stdin.take().expect("child stdin piped");
@@ -117,10 +142,10 @@ impl Transport {
         })
     }
 
-    /// Listen transport (`--listen` with optional `--exec`).
+    /// Listen transport (`--listen` with optional structured exec).
     pub fn listen(
         addr: &ListenAddr,
-        exec_command: Option<&str>,
+        exec_command: Option<&ExecCommand>,
         extra_env: &[String],
     ) -> io::Result<Self> {
         let token = generate_token();
@@ -402,21 +427,19 @@ fn set_listener_nonblocking(listener: &Listener, nonblocking: bool) -> io::Resul
 // ---------------------------------------------------------------------------
 
 fn spawn_listen_child(
-    command: &str,
+    command: &ExecCommand,
     socket_addr: &str,
     token: &str,
     extra_env: &[String],
 ) -> io::Result<Child> {
-    let shell = if cfg!(windows) { "cmd" } else { "sh" };
-    let shell_flag = if cfg!(windows) { "/c" } else { "-c" };
-
+    let token_sha256 = token_sha256(token);
     let negotiation = format!(
-        "{{\"token\":\"{token}\",\"protocol\":{}}}\n",
+        "{{\"token_sha256\":\"{token_sha256}\",\"protocol\":{}}}\n",
         plushie_widget_sdk::protocol::PROTOCOL_VERSION
     );
 
-    let mut child = Command::new(shell)
-        .args([shell_flag, command])
+    let mut child = command
+        .command()
         .env_clear()
         .envs(crate::env::child_env(extra_env))
         .stdin(Stdio::piped())
@@ -424,8 +447,9 @@ fn spawn_listen_child(
         .stderr(Stdio::piped())
         .env("PLUSHIE_SOCKET", socket_addr)
         .env("PLUSHIE_TOKEN", token)
+        .env("PLUSHIE_TOKEN_SHA256", token_sha256)
         .spawn()
-        .map_err(|e| io::Error::other(format!("failed to exec '{command}': {e}")))?;
+        .map_err(|e| io::Error::other(format!("failed to exec '{}': {e}", command.label())))?;
 
     // Write negotiation JSON to child's stdin.
     if let Some(ref mut stdin) = child.stdin {
@@ -463,6 +487,10 @@ fn generate_token() -> String {
     random_hex(16)
 }
 
+fn token_sha256(token: &str) -> String {
+    format!("{:x}", Sha256::digest(token.as_bytes()))
+}
+
 fn random_hex(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
     getrandom::fill(&mut buf).expect("getrandom failed");
@@ -481,4 +509,102 @@ fn spawn_stderr_forwarder(stderr: ChildStderr) -> JoinHandle<()> {
             eprintln!("[remote] {line}");
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hashes_listen_token_for_settings_contract() {
+        assert_eq!(
+            token_sha256("listen-token"),
+            "af84a4f1a6d2ff0ec31b6cae05bca90736ddc3b8d925661db8bd19ecf37a6cab"
+        );
+    }
+
+    #[cfg(unix)]
+    mod unix {
+        use super::*;
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::path::PathBuf;
+
+        fn write_script(name: &str, body: &str) -> PathBuf {
+            let dir = std::env::temp_dir().join(format!(
+                "plushie-renderer-transport-test-{}-{}",
+                std::process::id(),
+                random_hex(4)
+            ));
+            fs::create_dir_all(&dir).expect("create script dir");
+            let path = dir.join(name);
+            fs::write(&path, body).expect("write script");
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
+                .expect("mark script executable");
+            path
+        }
+
+        #[test]
+        fn exec_argv_passes_arguments_without_shell_quoting() {
+            let script = write_script(
+                "print-args.sh",
+                "#!/bin/sh\nprintf '%s|%s\\n' \"$1\" \"$2\"\n",
+            );
+            let command = ExecCommand::Argv {
+                program: script.display().to_string(),
+                args: vec!["with space".to_string(), "semi;colon".to_string()],
+            };
+
+            let mut transport = Transport::exec(&command, &[]).expect("spawn exec child");
+            let mut line = String::new();
+            transport
+                .reader
+                .read_line(&mut line)
+                .expect("read child stdout");
+
+            assert_eq!(line, "with space|semi;colon\n");
+            let status = transport
+                ._child
+                .as_mut()
+                .expect("exec child")
+                .wait()
+                .expect("wait child");
+            assert!(status.success());
+        }
+
+        #[test]
+        fn listen_child_receives_argv_and_token_sha256_negotiation() {
+            let output = std::env::temp_dir().join(format!(
+                "plushie-renderer-listen-child-{}-{}.txt",
+                std::process::id(),
+                random_hex(4)
+            ));
+            let script = write_script(
+                "record-listen.sh",
+                "#!/bin/sh\nread line\n{\nprintf 'args=%s|%s\\n' \"$1\" \"$2\"\nprintf 'socket=%s\\n' \"$PLUSHIE_SOCKET\"\nprintf 'token=%s\\n' \"$PLUSHIE_TOKEN\"\nprintf 'sha=%s\\n' \"$PLUSHIE_TOKEN_SHA256\"\nprintf 'stdin=%s\\n' \"$line\"\n} > \"$3\"\n",
+            );
+            let command = ExecCommand::Argv {
+                program: script.display().to_string(),
+                args: vec![
+                    "with space".to_string(),
+                    "semi;colon".to_string(),
+                    output.display().to_string(),
+                ],
+            };
+
+            let mut child = spawn_listen_child(&command, "127.0.0.1:12345", "listen-token", &[])
+                .expect("spawn listen child");
+            let status = child.wait().expect("wait child");
+            assert!(status.success());
+
+            let recorded = fs::read_to_string(&output).expect("read child output");
+            let expected_sha = token_sha256("listen-token");
+            assert!(recorded.contains("args=with space|semi;colon\n"));
+            assert!(recorded.contains("socket=127.0.0.1:12345\n"));
+            assert!(recorded.contains("token=listen-token\n"));
+            assert!(recorded.contains(&format!("sha={expected_sha}\n")));
+            assert!(recorded.contains(&format!("\"token_sha256\":\"{expected_sha}\"")));
+            assert!(!recorded.contains("\"token\":\""));
+        }
+    }
 }

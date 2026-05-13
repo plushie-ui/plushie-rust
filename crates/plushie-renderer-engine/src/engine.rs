@@ -832,8 +832,6 @@ struct WireSettings {
     #[serde(default)]
     log_level: Option<String>,
     #[serde(default)]
-    token: Option<String>,
-    #[serde(default)]
     token_sha256: Option<String>,
 }
 
@@ -1485,11 +1483,19 @@ mod tests {
     fn settings_validation_accepts_startup_fields() {
         let settings = serde_json::json!({
             "required_widgets": ["gauge"],
-            "token": "0123456789abcdef0123456789abcdef",
             "token_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         });
 
         serde_json::from_value::<WireSettings>(settings).expect("startup fields are valid");
+    }
+
+    #[test]
+    fn settings_validation_rejects_plaintext_token_field() {
+        let settings = serde_json::json!({
+            "token": "0123456789abcdef0123456789abcdef",
+        });
+
+        serde_json::from_value::<WireSettings>(settings).unwrap_err();
     }
 
     #[test]

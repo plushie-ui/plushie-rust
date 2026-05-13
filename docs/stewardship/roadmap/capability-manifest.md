@@ -99,15 +99,14 @@ treatment.
   these could become bounded LRU. The unbounded leak is itself a
   correctness concern, see `trust-model.md`; that part is not
   blocked on this roadmap item.
-- The `--exec` transport mode inherits the parent process
-  environment and forwards the child's stdout/stderr unchanged.
-  A capability system could either deprecate this in favor of an
-  explicit-capability spawn, or formalize what the child is
-  allowed to inherit. Today `--exec` is operator-trusted surface
+- Renderer-owned child process startup inherits the filtered parent
+  process environment and forwards the child's stdout/stderr unchanged.
+  A capability system should formalize what the child is allowed to
+  inherit. Today renderer-parent exec is operator-trusted surface
   (developer tooling, hot-reload connect). The Rust SDK's
   `Bridge::spawn` already uses an env whitelist via
-  `runner/env.rs`; the renderer's `Transport::exec` and
-  `spawn_listen_child` do not. Convergence on the whitelist
+  `runner/env.rs`; the renderer uses `renderer_env.rs` with
+  `--exec-env` for configured passthrough. Convergence on the whitelist
   pattern is the natural pre-capability-system step and would
   not preclude a richer capability mechanism later.
 - The renderer-to-host event surface is fixed by the wire

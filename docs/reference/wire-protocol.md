@@ -132,10 +132,14 @@ protocol handshake.
 | `widget_config` | object | `settings.widget_config` |
 | `required_widgets` | array of string | `settings.required_widgets` |
 | `theme` | object | `settings.theme` (wire-encoded) |
+| `token_sha256` | string | Listen-mode credential, lowercase SHA-256 hex digest of the renderer token |
 
 The renderer wraps this object inside `{"type": "settings",
 "session": "...", "settings": {...}}`; the keys above live
 under the inner `"settings"` field.
+
+The plaintext `token` key is not valid in Settings. Listen-mode
+clients hash the listen token and send only `token_sha256`.
 
 ### Load font payload
 

@@ -647,7 +647,7 @@ mod dispatch {
 pub struct ConnectOpts {
     /// Socket address (Unix path, `:port`, or `host:port`).
     pub socket: Option<String>,
-    /// Auth token presented during handshake.
+    /// Auth token used to derive the handshake digest.
     pub token: Option<String>,
 }
 
@@ -713,8 +713,8 @@ pub fn run_spawn<A: App>() -> Result {
 /// Resolves the socket from `opts.socket` then `PLUSHIE_SOCKET`, and
 /// the token from `opts.token` then `PLUSHIE_TOKEN` then a JSON
 /// negotiation line read from stdin with a one-second timeout. The
-/// resolved token is merged into the Settings message so the
-/// renderer's listen-mode verification accepts the connection.
+/// resolved token is hashed and merged into the Settings message so
+/// the renderer's listen-mode verification accepts the connection.
 ///
 /// This is the curated wrapper that adds the stdin-negotiation
 /// token fallback on top of the runner-layer

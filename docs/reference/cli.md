@@ -24,7 +24,7 @@ parser layered on top still sees its own arguments.
 | `--plushie-help` | (none) | Print the reserved-flag summary and exit. |
 | `--plushie-mode` | `direct` or `wire` | Force the runner selection. Honoured by `plushie::run` directly. |
 | `--plushie-socket` | path or `host:port` | Attach to a listen-mode renderer over the given socket. Honoured by `plushie::run`. |
-| `--plushie-token` | string | Token presented during the socket handshake. Used with `--plushie-socket`. |
+| `--plushie-token` | string | Token used to derive the socket handshake digest. Used with `--plushie-socket`. |
 | `--plushie-script` | path | Run a `.plushie` automation script through the headless harness. |
 | `--plushie-replay` | path | Run a `.plushie` script against the windowed renderer so the user can watch. |
 | `--plushie-inspect` | (none) | Print a pretty-JSON snapshot of the initial view tree and exit. |

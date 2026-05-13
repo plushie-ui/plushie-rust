@@ -30,6 +30,15 @@ For manual experimentation:
 echo '{"type":"settings","settings":{}}' | cargo run -p plushie-renderer -- --json
 ```
 
+Renderer-owned host spawning uses structured exec args:
+
+- `--exec-bin <program>` with repeated `--exec-arg <value>` launches
+  the program directly with `Command::new(program).args(args)`.
+
+Listen-mode Settings must send the connection credential as
+`token_sha256`, the lowercase SHA-256 hex digest of the listen token.
+The plaintext `token` Settings key is invalid.
+
 ## License
 
 MIT OR Apache-2.0

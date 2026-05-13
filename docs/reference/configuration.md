@@ -153,7 +153,7 @@ fixed: the same names work across every host SDK.
 | `PLUSHIE_BINARY_PATH` | SDK (wire) | Explicit renderer binary. Highest-precedence discovery step; a missing file fails fast |
 | `PLUSHIE_MODE` | SDK | `wire` forces wire mode; `direct` defers to the feature default. Same effect as `--plushie-mode` |
 | `PLUSHIE_SOCKET` | SDK | Connect to an existing renderer over a Unix or TCP socket instead of spawning |
-| `PLUSHIE_TOKEN` | SDK | Auth token sent with the Settings handshake when connecting to a listen-mode renderer |
+| `PLUSHIE_TOKEN` | SDK | Auth token used to derive the Settings `token_sha256` digest when connecting to a listen-mode renderer |
 | `PLUSHIE_RUST_SOURCE_PATH` | `cargo plushie` | Path to a local plushie-rust checkout. Required for native-widget source builds; optional for WASM (falls back to crates.io) |
 | `PLUSHIE_UPDATE_SNAPSHOTS` | Test harness | When set to `1`, overwrite tree-hash golden files instead of comparing |
 | `RUST_LOG` | Renderer | `env_logger` filter forwarded to the renderer subprocess |

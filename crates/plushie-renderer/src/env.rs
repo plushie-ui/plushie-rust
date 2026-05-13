@@ -1,10 +1,10 @@
 //! Environment whitelist for renderer-spawned host commands.
 //!
-//! `plushie-renderer --exec` starts a host command from inside the
-//! renderer process. Without filtering, that child inherits the full
-//! renderer environment. This mirrors the Rust SDK renderer subprocess
-//! whitelist so exec children get display, locale, graphics, and
-//! plushie control variables without inheriting unrelated secrets.
+//! `plushie-renderer --exec-bin` starts a host command from inside
+//! the renderer process. Without filtering, that child inherits the
+//! full renderer environment. This mirrors the Rust SDK renderer
+//! subprocess whitelist so exec children get display, locale, graphics,
+//! and plushie control variables without inheriting unrelated secrets.
 
 /// Variables passed through to exec children unchanged when set in
 /// the renderer environment.

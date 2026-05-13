@@ -51,7 +51,7 @@ const EXACT: &[&str] = &[
     // Identity
     "HOME",
     "USER",
-    // Windows: required for DLL loader, --exec resolution, and tempdir.
+    // Windows: required for DLL loader, child process resolution, and tempdir.
     // Harmless on other platforms (just absent from the host env).
     "SystemRoot",
     "WINDIR",
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn windows_critical_vars_allowed() {
-        // The DLL loader, --exec PATHEXT lookups, and the temp dir
+        // The DLL loader, child process PATHEXT lookups, and the temp dir
         // resolver all rely on these. The whitelist is the same on
         // every platform; on non-Windows hosts they just won't appear
         // in the env to be passed through.

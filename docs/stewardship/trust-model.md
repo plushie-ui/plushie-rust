@@ -37,9 +37,9 @@ The host-to-renderer channel is broader by design. The host has
 to be able to ask the renderer to do real things: load fonts and
 images from paths, load SVGs, save screenshots, exercise platform
 effects (clipboard, file dialogs, OS notifications), spawn child
-processes in `--exec` mode. A malicious or compromised host can
-drive the full operation set against the user's machine wherever
-the renderer is running.
+processes through structured renderer exec args. A malicious or
+compromised host can drive the full operation set against the user's
+machine wherever the renderer is running.
 
 Bounding this surface is the focus of the capability/manifest
 direction (see `roadmap/capability-manifest.md`). It is a stated

@@ -120,8 +120,8 @@ fn main() -> plushie::Result {
   `Error::InvalidSettings`.
 - `token`: explicit string wins. Falls back to `PLUSHIE_TOKEN`, then
   to a one-line JSON message on stdin with a one-second timeout. The
-  resolved token is merged into the Settings frame; the renderer
-  rejects the connection on mismatch.
+  resolved token is hashed into the Settings `token_sha256` field;
+  the renderer rejects the connection on mismatch.
 
 `run_connect` runs a single session and returns when the socket
 closes. There is no restart loop: a remote renderer the SDK did not

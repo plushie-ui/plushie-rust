@@ -142,8 +142,8 @@ pub fn run_wire_with_runtime<A: App>(
 /// it to [`Bridge::connect`], and drives a single session (no
 /// restart loop; socket mode can't respawn a remote renderer).
 ///
-/// Merges `opts.token` into the Settings message so the renderer's
-/// listen-mode token check accepts the connection.
+/// Merges a digest of `opts.token` into the Settings message so the
+/// renderer's listen-mode token check accepts the connection.
 ///
 /// # Errors
 ///
@@ -201,10 +201,17 @@ fn run_connect_inner<A: App>(
 
     let mut settings = build_settings::<A>();
     if let Some(tok) = opts.token.as_deref() {
-        settings["token"] = Value::String(tok.to_string());
+        settings["token_sha256"] = Value::String(token_sha256(tok));
     }
 
     run_session_single::<A>(bridge, settings, runtime)
+}
+
+#[cfg(feature = "wire")]
+fn token_sha256(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    format!("{:x}", Sha256::digest(token.as_bytes()))
 }
 
 /// Run one full session against a pre-built bridge.
@@ -2009,6 +2016,14 @@ mod build_settings_tests {
         assert!(
             json.get("required_widgets").is_none(),
             "empty required_widgets should not appear on the wire; got: {json}"
+        );
+    }
+
+    #[test]
+    fn connect_token_hash_matches_renderer_contract() {
+        assert_eq!(
+            token_sha256("listen-token"),
+            "af84a4f1a6d2ff0ec31b6cae05bca90736ddc3b8d925661db8bd19ecf37a6cab"
         );
     }
 }

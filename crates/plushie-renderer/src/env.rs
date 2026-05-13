@@ -59,11 +59,11 @@ const PREFIXES: &[&str] = &[
 ];
 
 /// Build the filtered env for a renderer-spawned child process.
-pub(crate) fn child_env() -> Vec<(String, String)> {
-    child_env_from(std::env::vars())
+pub(crate) fn child_env(extra_names: &[String]) -> Vec<(String, String)> {
+    child_env_from(std::env::vars(), extra_names)
 }
 
-fn child_env_from<I, K, V>(vars: I) -> Vec<(String, String)>
+fn child_env_from<I, K, V>(vars: I, extra_names: &[String]) -> Vec<(String, String)>
 where
     I: IntoIterator<Item = (K, V)>,
     K: Into<String>,
@@ -71,13 +71,17 @@ where
 {
     vars.into_iter()
         .map(|(k, v)| (k.into(), v.into()))
-        .filter(|(k, _)| is_allowed(k))
+        .filter(|(k, _)| is_allowed_with_extra(k, extra_names))
         .collect()
 }
 
 /// Return true if `name` is allowed through to exec children.
 pub(crate) fn is_allowed(name: &str) -> bool {
     EXACT.contains(&name) || PREFIXES.iter().any(|p| name.starts_with(p))
+}
+
+fn is_allowed_with_extra(name: &str, extra_names: &[String]) -> bool {
+    is_allowed(name) || extra_names.iter().any(|extra| extra == name)
 }
 
 #[cfg(test)]
@@ -126,13 +130,16 @@ mod tests {
 
     #[test]
     fn filters_env_without_touching_process_state() {
-        let env = child_env_from([
-            ("PATH", "/bin"),
-            ("PLUSHIE_SOCKET", "/tmp/plushie.sock"),
-            ("PLUSHIE_TOKEN", "token"),
-            ("AWS_SECRET_ACCESS_KEY", "secret"),
-            ("DATABASE_URL", "postgres://secret"),
-        ]);
+        let env = child_env_from(
+            [
+                ("PATH", "/bin"),
+                ("PLUSHIE_SOCKET", "/tmp/plushie.sock"),
+                ("PLUSHIE_TOKEN", "token"),
+                ("AWS_SECRET_ACCESS_KEY", "secret"),
+                ("DATABASE_URL", "postgres://secret"),
+            ],
+            &[],
+        );
 
         assert_eq!(
             env,
@@ -143,6 +150,29 @@ mod tests {
                     "/tmp/plushie.sock".to_string()
                 ),
                 ("PLUSHIE_TOKEN".to_string(), "token".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn preserves_explicit_extra_env_names() {
+        let extra_names = vec!["MIX_HOME".to_string(), "HEX_HOME".to_string()];
+        let env = child_env_from(
+            [
+                ("PATH", "/bin"),
+                ("MIX_HOME", "/tmp/mix"),
+                ("HEX_HOME", "/tmp/hex"),
+                ("DATABASE_URL", "postgres://secret"),
+            ],
+            &extra_names,
+        );
+
+        assert_eq!(
+            env,
+            vec![
+                ("PATH".to_string(), "/bin".to_string()),
+                ("MIX_HOME".to_string(), "/tmp/mix".to_string()),
+                ("HEX_HOME".to_string(), "/tmp/hex".to_string()),
             ]
         );
     }

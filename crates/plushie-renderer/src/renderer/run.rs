@@ -56,6 +56,7 @@ fn run_inner(
         .windows(2)
         .find(|w| w[0] == "--exec")
         .map(|w| w[1].clone());
+    let extra_exec_env = parse_exec_env(&args);
 
     let listen_arg = if has_flag("--listen") {
         // --listen may have an optional argument (next arg if it doesn't start with --)
@@ -83,7 +84,7 @@ fn run_inner(
                 return Ok(());
             }
         };
-        match crate::transport::Transport::listen(&addr, exec_command.as_deref()) {
+        match crate::transport::Transport::listen(&addr, exec_command.as_deref(), &extra_exec_env) {
             Ok(t) => t,
             Err(e) => {
                 log::error!("failed to start listen transport: {e}");
@@ -92,7 +93,7 @@ fn run_inner(
         }
     } else if let Some(cmd) = &exec_command {
         // --exec without --listen: piped stdin/stdout.
-        match crate::transport::Transport::exec(cmd) {
+        match crate::transport::Transport::exec(cmd, &extra_exec_env) {
             Ok(t) => t,
             Err(e) => {
                 log::error!("failed to start exec transport: {e}");
@@ -308,6 +309,55 @@ fn run_inner(
     .scale_factor(App::scale_factor_for_window)
     .settings(iced_settings)
     .run()
+}
+
+fn parse_exec_env(args: &[String]) -> Vec<String> {
+    args.windows(2)
+        .filter(|w| w[0] == "--exec-env")
+        .flat_map(|w| w[1].split(','))
+        .map(str::trim)
+        .filter(|name| !name.is_empty() && !name.contains('=') && !name.contains('\0'))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_exec_env_names() {
+        assert_eq!(
+            parse_exec_env(&args(&[
+                "plushie-renderer",
+                "--exec-env",
+                "MIX_HOME,HEX_HOME",
+                "--exec-env",
+                "BUNDLE_GEMFILE",
+            ])),
+            vec![
+                "MIX_HOME".to_string(),
+                "HEX_HOME".to_string(),
+                "BUNDLE_GEMFILE".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn ignores_empty_and_assignment_exec_env_entries() {
+        assert_eq!(
+            parse_exec_env(&args(&[
+                "plushie-renderer",
+                "--exec-env",
+                "MIX_HOME,,BAD=value, HEX_HOME ",
+            ])),
+            vec!["MIX_HOME".to_string(), "HEX_HOME".to_string()]
+        );
+    }
 }
 
 /// Switch stdin and stdout to binary mode on Windows.

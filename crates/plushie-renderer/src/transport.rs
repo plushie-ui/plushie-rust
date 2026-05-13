@@ -87,14 +87,14 @@ impl Transport {
     }
 
     /// Piped exec transport (`--exec` without `--listen`).
-    pub fn exec(command: &str) -> io::Result<Self> {
+    pub fn exec(command: &str, extra_env: &[String]) -> io::Result<Self> {
         let shell = if cfg!(windows) { "cmd" } else { "sh" };
         let shell_flag = if cfg!(windows) { "/c" } else { "-c" };
 
         let mut child = Command::new(shell)
             .args([shell_flag, command])
             .env_clear()
-            .envs(crate::env::child_env())
+            .envs(crate::env::child_env(extra_env))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -118,12 +118,16 @@ impl Transport {
     }
 
     /// Listen transport (`--listen` with optional `--exec`).
-    pub fn listen(addr: &ListenAddr, exec_command: Option<&str>) -> io::Result<Self> {
+    pub fn listen(
+        addr: &ListenAddr,
+        exec_command: Option<&str>,
+        extra_env: &[String],
+    ) -> io::Result<Self> {
         let token = generate_token();
         let (listener, display_addr, socket_path) = create_listener(addr)?;
 
         let (mut child, stderr_thread) = if let Some(command) = exec_command {
-            let mut c = spawn_listen_child(command, &display_addr, &token)?;
+            let mut c = spawn_listen_child(command, &display_addr, &token, extra_env)?;
             let child_stderr = c.stderr.take().expect("child stderr piped");
             let stderr_thread = spawn_stderr_forwarder(child_stderr);
 
@@ -397,7 +401,12 @@ fn set_listener_nonblocking(listener: &Listener, nonblocking: bool) -> io::Resul
 // Child spawning
 // ---------------------------------------------------------------------------
 
-fn spawn_listen_child(command: &str, socket_addr: &str, token: &str) -> io::Result<Child> {
+fn spawn_listen_child(
+    command: &str,
+    socket_addr: &str,
+    token: &str,
+    extra_env: &[String],
+) -> io::Result<Child> {
     let shell = if cfg!(windows) { "cmd" } else { "sh" };
     let shell_flag = if cfg!(windows) { "/c" } else { "-c" };
 
@@ -409,7 +418,7 @@ fn spawn_listen_child(command: &str, socket_addr: &str, token: &str) -> io::Resu
     let mut child = Command::new(shell)
         .args([shell_flag, command])
         .env_clear()
-        .envs(crate::env::child_env())
+        .envs(crate::env::child_env(extra_env))
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped())

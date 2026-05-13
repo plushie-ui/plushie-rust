@@ -101,6 +101,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
         match &bp.style {
             Some(CoreStyle::Preset(name)) => {
                 b = match name.as_str() {
+                    "default" => b.style(button::primary),
                     "primary" => b.style(button::primary),
                     "secondary" => b.style(button::secondary),
                     "success" => b.style(button::success),
@@ -123,6 +124,7 @@ impl<R: PlushieRenderer> PlushieWidget<R> for ButtonWidget {
                 let ov = style_overrides_from_style_map(&node.id, style_map, ctx.caches);
                 b = b.style(move |theme: &iced::Theme, status| {
                     let mut style = match ov.preset_base.as_deref() {
+                        Some("default") => button::primary(theme, status),
                         Some("primary") => button::primary(theme, status),
                         Some("secondary") => button::secondary(theme, status),
                         Some("success") => button::success(theme, status),

@@ -202,17 +202,22 @@ hash = "sha256:..."
 ```
 
 The generated launcher verifies the embedded archive hash, extracts it
-into a content-addressed cache, sets executable permissions where
-needed, and starts the packaged renderer with:
+into a content-addressed cache, rejects archive entries that can escape
+the payload root, sets executable permissions where needed, and starts
+the packaged renderer with:
 
 ```bash
 plushie-renderer --listen --exec-bin <program> --exec-arg <arg> ...
 ```
 
-The launcher sets the renderer's working directory to the manifest
-`working_dir` (or the payload root by default), so relative
-`host_command` paths resolve from that directory. It also passes
-`--exec-env` from the manifest when extra runtime variables are needed.
+`renderer_path`, `working_dir`, `host_command[0]`, and `payload.archive`
+must be payload-relative paths. Absolute paths and parent traversal are
+rejected so a standalone package cannot silently point at a global
+binary. The launcher resolves `host_command[0]` to an absolute path
+inside the extracted payload before passing it to the renderer. It sets
+the renderer's working directory to manifest `working_dir`, or the
+payload root by default, and passes `--exec-env` from the manifest when
+extra runtime variables are needed.
 
 ## cargo plushie new-widget
 

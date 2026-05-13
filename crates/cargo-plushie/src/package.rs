@@ -8,10 +8,13 @@ use crate::{Error, Result, generator};
 use anyhow::Context;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 const GENERATED_MANIFEST: &str = "plushie-package.toml";
 const GENERATED_PAYLOAD: &str = "payload.tar.zst";
+const MANIFEST_SCHEMA_VERSION: u32 = 1;
+const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
+const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
 
 /// Options for building a standalone launcher from a package manifest.
 #[derive(Debug)]
@@ -136,6 +139,7 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
     let payload = std::fs::read(&archive_path)
         .with_context(|| format!("failed to read payload `{}`", archive_path.display()))?;
     validate_payload(&manifest, &payload)?;
+    validate_payload_archive(&payload)?;
 
     let target_root = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
@@ -153,7 +157,7 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
         &crate_dir.join("Cargo.toml"),
         &launcher_cargo_toml(&package_name),
     )?;
-    generator::write_if_changed(&crate_dir.join("src/main.rs"), LAUNCHER_MAIN)?;
+    generator::write_if_changed(&crate_dir.join("src/main.rs"), &launcher_main_rs())?;
     generator::write_if_changed(&crate_dir.join(GENERATED_MANIFEST), &manifest_text)?;
     std::fs::write(crate_dir.join(GENERATED_PAYLOAD), payload)?;
 
@@ -172,7 +176,7 @@ fn parse_manifest(text: &str) -> Result<PackageManifest> {
 }
 
 fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
-    if manifest.schema_version != 1 {
+    if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
         return Err(Error::Other(anyhow::anyhow!(
             "unsupported package manifest schema_version {}",
             manifest.schema_version
@@ -191,24 +195,41 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
         require_nonempty("host_sdk_version", host_sdk_version)?;
     }
     require_nonempty("plushie_rust_version", &manifest.plushie_rust_version)?;
+    if manifest.plushie_rust_version != EXPECTED_PLUSHIE_RUST_VERSION {
+        return Err(Error::Other(anyhow::anyhow!(
+            "plushie_rust_version mismatch: package expects {}, cargo-plushie is {}",
+            manifest.plushie_rust_version,
+            EXPECTED_PLUSHIE_RUST_VERSION
+        )));
+    }
     require_nonempty("renderer_path", &manifest.renderer_path)?;
+    validate_payload_relative_path("renderer_path", &manifest.renderer_path, false)?;
     if let Some(working_dir) = &manifest.working_dir {
         require_nonempty("working_dir", working_dir)?;
+        validate_payload_relative_path("working_dir", working_dir, true)?;
     }
     require_nonempty("payload.archive", &manifest.payload.archive)?;
+    validate_payload_relative_path("payload.archive", &manifest.payload.archive, false)?;
     if manifest.host_command.is_empty() || manifest.host_command.iter().any(|arg| arg.is_empty()) {
         return Err(Error::Other(anyhow::anyhow!(
             "host_command must contain a non-empty argv"
         )));
     }
-    if manifest.exec_env.iter().any(|name| name.trim().is_empty()) {
+    validate_payload_relative_path("host_command[0]", &manifest.host_command[0], false)?;
+    if manifest
+        .exec_env
+        .iter()
+        .any(|name| name.trim().is_empty() || name.contains([',', '=']))
+    {
         return Err(Error::Other(anyhow::anyhow!(
-            "exec_env must contain only non-empty variable names"
+            "exec_env must contain only non-empty variable names without `,` or `=`"
         )));
     }
-    if manifest.protocol_version == 0 {
+    if manifest.protocol_version != EXPECTED_PROTOCOL_VERSION {
         return Err(Error::Other(anyhow::anyhow!(
-            "protocol_version must be greater than zero"
+            "protocol_version mismatch: package expects {}, cargo-plushie supports {}",
+            manifest.protocol_version,
+            EXPECTED_PROTOCOL_VERSION
         )));
     }
     validate_sha256_field(&manifest.payload.hash)?;
@@ -256,6 +277,77 @@ fn validate_sha256_field(hash: &str) -> Result<()> {
 fn require_nonempty(name: &str, value: &str) -> Result<()> {
     if value.trim().is_empty() {
         return Err(Error::Other(anyhow::anyhow!("{name} must not be empty")));
+    }
+    Ok(())
+}
+
+fn validate_payload_relative_path(name: &str, value: &str, allow_dot: bool) -> Result<()> {
+    let path = Path::new(value);
+    if path.is_absolute() {
+        return Err(Error::Other(anyhow::anyhow!(
+            "{name} must be payload-relative, got absolute path `{value}`"
+        )));
+    }
+
+    let mut has_normal_component = false;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => has_normal_component = true,
+            Component::CurDir => {}
+            Component::ParentDir => {
+                return Err(Error::Other(anyhow::anyhow!(
+                    "{name} must not contain parent traversal: `{value}`"
+                )));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(Error::Other(anyhow::anyhow!(
+                    "{name} must be payload-relative: `{value}`"
+                )));
+            }
+        }
+    }
+
+    if !has_normal_component && !allow_dot {
+        return Err(Error::Other(anyhow::anyhow!(
+            "{name} must name a payload file path"
+        )));
+    }
+
+    Ok(())
+}
+
+fn validate_payload_archive(payload: &[u8]) -> Result<()> {
+    let decoder = zstd::stream::read::Decoder::new(payload)
+        .with_context(|| "failed to open payload archive as zstd")?;
+    let mut archive = tar::Archive::new(decoder);
+    for entry in archive
+        .entries()
+        .with_context(|| "failed to read payload archive entries")?
+    {
+        let entry = entry.with_context(|| "failed to read payload archive entry")?;
+        validate_archive_entry(&entry)?;
+    }
+    Ok(())
+}
+
+fn validate_archive_entry<R: std::io::Read>(entry: &tar::Entry<'_, R>) -> Result<()> {
+    let path = entry
+        .path()
+        .with_context(|| "failed to read payload archive entry path")?;
+    validate_payload_relative_path("payload archive entry", &path.to_string_lossy(), true)?;
+
+    let entry_type = entry.header().entry_type();
+    if entry_type.is_symlink() || entry_type.is_hard_link() {
+        return Err(Error::Other(anyhow::anyhow!(
+            "payload archive entry `{}` must not be a link",
+            path.display()
+        )));
+    }
+    if !(entry_type.is_file() || entry_type.is_dir()) {
+        return Err(Error::Other(anyhow::anyhow!(
+            "payload archive entry `{}` has unsupported type",
+            path.display()
+        )));
     }
     Ok(())
 }
@@ -322,18 +414,43 @@ fn make_executable(path: &Path) -> Result<()> {
     Ok(())
 }
 
-const LAUNCHER_MAIN: &str = r###"use anyhow::{Context, Result};
+fn launcher_main_rs() -> String {
+    LAUNCHER_MAIN_TEMPLATE
+        .replace(
+            "__MANIFEST_SCHEMA_VERSION__",
+            &MANIFEST_SCHEMA_VERSION.to_string(),
+        )
+        .replace(
+            "__EXPECTED_PROTOCOL_VERSION__",
+            &EXPECTED_PROTOCOL_VERSION.to_string(),
+        )
+        .replace(
+            "__EXPECTED_PLUSHIE_RUST_VERSION__",
+            EXPECTED_PLUSHIE_RUST_VERSION,
+        )
+}
+
+const LAUNCHER_MAIN_TEMPLATE: &str = r###"use anyhow::{Context, Result};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::time::{Duration, Instant};
 
 const MANIFEST_TEXT: &str = include_str!("../plushie-package.toml");
 const PAYLOAD_BYTES: &[u8] = include_bytes!("../payload.tar.zst");
+const COMPLETE_MARKER: &str = ".plushie-complete";
+const EXPECTED_SCHEMA_VERSION: u32 = __MANIFEST_SCHEMA_VERSION__;
+const EXPECTED_PROTOCOL_VERSION: u32 = __EXPECTED_PROTOCOL_VERSION__;
+const EXPECTED_PLUSHIE_RUST_VERSION: &str = "__EXPECTED_PLUSHIE_RUST_VERSION__";
 
 #[derive(Debug, Deserialize)]
 struct Manifest {
+    schema_version: u32,
     app_id: String,
+    app_version: String,
+    plushie_rust_version: String,
+    protocol_version: u32,
     renderer_path: String,
     host_command: Vec<String>,
     working_dir: Option<String>,
@@ -345,6 +462,11 @@ struct Manifest {
 #[derive(Debug, Deserialize)]
 struct Payload {
     hash: String,
+    size: Option<u64>,
+}
+
+struct ExtractionLock {
+    path: PathBuf,
 }
 
 fn main() -> ExitCode {
@@ -359,6 +481,7 @@ fn main() -> ExitCode {
 
 fn run() -> Result<u8> {
     let manifest: Manifest = toml::from_str(MANIFEST_TEXT).context("parse embedded manifest")?;
+    validate_manifest(&manifest)?;
     let root = ensure_payload(&manifest)?;
     let renderer = absolute_payload_path(&root, &manifest.renderer_path);
     let working_dir = manifest
@@ -370,6 +493,7 @@ fn run() -> Result<u8> {
         .host_command
         .first()
         .context("host_command is empty")?;
+    let host_program = absolute_payload_path(&root, host_program);
 
     let mut command = Command::new(&renderer);
     command
@@ -394,7 +518,7 @@ fn run() -> Result<u8> {
 }
 
 fn ensure_payload(manifest: &Manifest) -> Result<PathBuf> {
-    verify_payload_hash(&manifest.payload.hash)?;
+    verify_payload(&manifest.payload)?;
     let hash = manifest
         .payload
         .hash
@@ -403,22 +527,26 @@ fn ensure_payload(manifest: &Manifest) -> Result<PathBuf> {
     let root = cache_root().join("plushie/apps").join(safe_name(&manifest.app_id));
     let dest = root.join(hash);
 
-    if dest.join("plushie-package.toml").is_file() {
+    if cache_entry_is_complete(&dest) {
         return Ok(dest);
     }
 
     std::fs::create_dir_all(&root)?;
+    let _lock = acquire_extraction_lock(&root, hash, &dest)?;
+    if cache_entry_is_complete(&dest) {
+        return Ok(dest);
+    }
+
     let tmp = root.join(format!(".{hash}.{}.tmp", std::process::id()));
     if tmp.exists() {
         std::fs::remove_dir_all(&tmp)?;
     }
     std::fs::create_dir_all(&tmp)?;
 
-    let decoder = zstd::stream::read::Decoder::new(PAYLOAD_BYTES)
-        .context("open embedded zstd payload")?;
-    let mut archive = tar::Archive::new(decoder);
-    archive.unpack(&tmp).context("extract embedded payload")?;
-    std::fs::write(tmp.join("plushie-package.toml"), MANIFEST_TEXT)?;
+    if let Err(err) = extract_payload(&tmp, manifest) {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(err);
+    }
 
     make_executable(&absolute_payload_path(&tmp, &manifest.renderer_path))?;
     if let Some(program) = manifest.host_command.first() {
@@ -428,19 +556,53 @@ fn ensure_payload(manifest: &Manifest) -> Result<PathBuf> {
         }
     }
 
-    match std::fs::rename(&tmp, &dest) {
-        Ok(()) => Ok(dest),
-        Err(err) if dest.join("plushie-package.toml").is_file() => {
-            let _ = std::fs::remove_dir_all(&tmp);
-            eprintln!("plushie launcher: using concurrently extracted payload after rename failed: {err}");
-            Ok(dest)
-        }
-        Err(err) => Err(err).context("install extracted payload"),
-    }
+    std::fs::rename(&tmp, &dest).context("install extracted payload")?;
+    Ok(dest)
 }
 
-fn verify_payload_hash(expected: &str) -> Result<()> {
-    let expected = expected
+fn validate_manifest(manifest: &Manifest) -> Result<()> {
+    anyhow::ensure!(
+        manifest.schema_version == EXPECTED_SCHEMA_VERSION,
+        "unsupported package manifest schema_version {}",
+        manifest.schema_version
+    );
+    anyhow::ensure!(
+        manifest.protocol_version == EXPECTED_PROTOCOL_VERSION,
+        "protocol_version mismatch: package expects {}, launcher supports {}",
+        manifest.protocol_version,
+        EXPECTED_PROTOCOL_VERSION
+    );
+    anyhow::ensure!(
+        manifest.plushie_rust_version == EXPECTED_PLUSHIE_RUST_VERSION,
+        "plushie_rust_version mismatch: package expects {}, launcher is {}",
+        manifest.plushie_rust_version,
+        EXPECTED_PLUSHIE_RUST_VERSION
+    );
+    validate_payload_relative_path("renderer_path", &manifest.renderer_path, false)?;
+    let host_program = manifest
+        .host_command
+        .first()
+        .context("host_command is empty")?;
+    validate_payload_relative_path("host_command[0]", host_program, false)?;
+    if let Some(working_dir) = &manifest.working_dir {
+        validate_payload_relative_path("working_dir", working_dir, true)?;
+    }
+    if manifest.exec_env.iter().any(|name| name.trim().is_empty() || name.contains(|ch| ch == ',' || ch == '=')) {
+        anyhow::bail!("exec_env must contain only non-empty variable names without `,` or `=`");
+    }
+    Ok(())
+}
+
+fn verify_payload(payload: &Payload) -> Result<()> {
+    if let Some(size) = payload.size {
+        anyhow::ensure!(
+            PAYLOAD_BYTES.len() as u64 == size,
+            "embedded payload size mismatch: manifest expected {size} bytes, archive has {} bytes",
+            PAYLOAD_BYTES.len()
+        );
+    }
+    let expected = payload
+        .hash
         .strip_prefix("sha256:")
         .context("payload hash missing sha256 prefix")?;
     let actual = format!("{:x}", Sha256::digest(PAYLOAD_BYTES));
@@ -449,6 +611,108 @@ fn verify_payload_hash(expected: &str) -> Result<()> {
         "embedded payload sha256 mismatch: expected {expected}, got {actual}"
     );
     Ok(())
+}
+
+fn extract_payload(tmp: &Path, manifest: &Manifest) -> Result<()> {
+    let decoder = zstd::stream::read::Decoder::new(PAYLOAD_BYTES)
+        .context("open embedded zstd payload")?;
+    let mut archive = tar::Archive::new(decoder);
+    for entry in archive.entries().context("read embedded payload entries")? {
+        let mut entry = entry.context("read embedded payload entry")?;
+        let path = entry.path().context("read embedded payload entry path")?;
+        validate_payload_relative_path("payload archive entry", &path.to_string_lossy(), true)?;
+
+        let entry_type = entry.header().entry_type();
+        anyhow::ensure!(
+            !entry_type.is_symlink() && !entry_type.is_hard_link(),
+            "payload archive entry `{}` must not be a link",
+            path.display()
+        );
+        anyhow::ensure!(
+            entry_type.is_file() || entry_type.is_dir(),
+            "payload archive entry `{}` has unsupported type",
+            path.display()
+        );
+
+        let dest = tmp.join(&path);
+        if entry_type.is_dir() {
+            std::fs::create_dir_all(&dest)
+                .with_context(|| format!("create directory `{}`", dest.display()))?;
+        } else {
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("create directory `{}`", parent.display()))?;
+            }
+            entry
+                .unpack(&dest)
+                .with_context(|| format!("extract `{}`", dest.display()))?;
+        }
+    }
+
+    std::fs::write(tmp.join("plushie-package.toml"), MANIFEST_TEXT)?;
+    std::fs::write(
+        tmp.join(COMPLETE_MARKER),
+        format!(
+            "app_id={}\napp_version={}\npayload_hash={}\nrenderer_path={}\nhost_command={}\n",
+            manifest.app_id,
+            manifest.app_version,
+            manifest.payload.hash,
+            manifest.renderer_path,
+            manifest.host_command[0]
+        ),
+    )?;
+    Ok(())
+}
+
+fn acquire_extraction_lock(root: &Path, hash: &str, dest: &Path) -> Result<ExtractionLock> {
+    let lock = root.join(format!(".{hash}.lock"));
+    let start = Instant::now();
+    loop {
+        match std::fs::create_dir(&lock) {
+            Ok(()) => return Ok(ExtractionLock { path: lock }),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                if cache_entry_is_complete(dest) {
+                    return Ok(ExtractionLock { path: PathBuf::new() });
+                }
+                anyhow::ensure!(
+                    start.elapsed() < Duration::from_secs(60),
+                    "timed out waiting for payload extraction lock `{}`",
+                    lock.display()
+                );
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(err) => return Err(err).with_context(|| format!("create extraction lock `{}`", lock.display())),
+        }
+    }
+}
+
+impl Drop for ExtractionLock {
+    fn drop(&mut self) {
+        if !self.path.as_os_str().is_empty() {
+            let _ = std::fs::remove_dir(&self.path);
+        }
+    }
+}
+
+fn cache_entry_is_complete(dest: &Path) -> bool {
+    let manifest_path = dest.join("plushie-package.toml");
+    let marker_path = dest.join(COMPLETE_MARKER);
+    if !manifest_path.is_file() || !marker_path.is_file() {
+        return false;
+    }
+    match std::fs::read_to_string(&manifest_path) {
+        Ok(text) if text == MANIFEST_TEXT => {}
+        _ => return false,
+    }
+    let Ok(manifest) = toml::from_str::<Manifest>(MANIFEST_TEXT) else {
+        return false;
+    };
+    absolute_payload_path(dest, &manifest.renderer_path).is_file()
+        && manifest
+            .host_command
+            .first()
+            .map(|program| absolute_payload_path(dest, program).is_file())
+            .unwrap_or(false)
 }
 
 fn cache_root() -> PathBuf {
@@ -477,6 +741,34 @@ fn absolute_payload_path(root: &Path, value: &str) -> PathBuf {
     } else {
         root.join(path)
     }
+}
+
+fn validate_payload_relative_path(name: &str, value: &str, allow_dot: bool) -> Result<()> {
+    let path = Path::new(value);
+    anyhow::ensure!(
+        !path.is_absolute(),
+        "{name} must be payload-relative, got absolute path `{value}`"
+    );
+
+    let mut has_normal_component = false;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => has_normal_component = true,
+            Component::CurDir => {}
+            Component::ParentDir => {
+                anyhow::bail!("{name} must not contain parent traversal: `{value}`");
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                anyhow::bail!("{name} must be payload-relative: `{value}`");
+            }
+        }
+    }
+
+    anyhow::ensure!(
+        has_normal_component || allow_dot,
+        "{name} must name a payload file path"
+    );
+    Ok(())
 }
 
 fn safe_name(value: &str) -> String {
@@ -593,10 +885,10 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     #[test]
     fn prepares_generated_launcher_crate() {
         let dir = tempdir().unwrap();
-        let payload = b"payload";
+        let payload = sample_payload_archive();
         let archive = dir.path().join("payload.tar.zst");
-        std::fs::write(&archive, payload).unwrap();
-        let hash = format!("sha256:{:x}", Sha256::digest(payload));
+        std::fs::write(&archive, &payload).unwrap();
+        let hash = format!("sha256:{:x}", Sha256::digest(&payload));
         let manifest = dir.path().join("plushie-package.toml");
         std::fs::write(
             &manifest,
@@ -630,5 +922,89 @@ hash = "{hash}"
         assert!(prepared.crate_dir.join("src/main.rs").is_file());
         assert!(prepared.crate_dir.join(GENERATED_MANIFEST).is_file());
         assert!(prepared.crate_dir.join(GENERATED_PAYLOAD).is_file());
+    }
+
+    #[test]
+    fn rejects_global_host_program_paths() {
+        let hash = format!("sha256:{:x}", Sha256::digest(b"payload"));
+        let text = format!(
+            r#"
+schema_version = 1
+app_id = "com.example.notes"
+app_version = "0.1.0"
+host_sdk = "python"
+plushie_rust_version = "{}"
+protocol_version = {}
+renderer_path = "bin/plushie-renderer"
+host_command = ["/usr/bin/python"]
+
+[payload]
+archive = "payload.tar.zst"
+hash = "{hash}"
+"#,
+            EXPECTED_PLUSHIE_RUST_VERSION, EXPECTED_PROTOCOL_VERSION
+        );
+
+        let err = parse_manifest(&text).unwrap_err();
+        assert!(err.to_string().contains("host_command[0]"));
+    }
+
+    #[test]
+    fn rejects_archive_paths_that_escape_payload_root() {
+        let payload = malicious_payload_archive();
+        let err = validate_payload_archive(&payload).unwrap_err();
+        assert!(err.to_string().contains("parent traversal"));
+    }
+
+    fn sample_payload_archive() -> Vec<u8> {
+        let mut tar_bytes = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_bytes);
+            append_file(&mut builder, "bin/plushie-renderer", b"renderer");
+            append_file(&mut builder, "bin/notes", b"host");
+            builder.finish().unwrap();
+        }
+        zstd::stream::encode_all(tar_bytes.as_slice(), 0).unwrap()
+    }
+
+    fn malicious_payload_archive() -> Vec<u8> {
+        let mut tar_bytes = Vec::new();
+        append_raw_tar_entry(&mut tar_bytes, "../escape", b"bad", b'0');
+        tar_bytes.extend_from_slice(&[0; 1024]);
+        zstd::stream::encode_all(tar_bytes.as_slice(), 0).unwrap()
+    }
+
+    fn append_file(builder: &mut tar::Builder<&mut Vec<u8>>, path: &str, bytes: &[u8]) {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        builder.append_data(&mut header, path, bytes).unwrap();
+    }
+
+    fn append_raw_tar_entry(out: &mut Vec<u8>, path: &str, bytes: &[u8], entry_type: u8) {
+        let mut header = [0u8; 512];
+        header[..path.len()].copy_from_slice(path.as_bytes());
+        write_octal(&mut header[100..108], 0o755);
+        write_octal(&mut header[108..116], 0);
+        write_octal(&mut header[116..124], 0);
+        write_octal(&mut header[124..136], bytes.len() as u64);
+        write_octal(&mut header[136..148], 0);
+        header[148..156].fill(b' ');
+        header[156] = entry_type;
+        header[257..263].copy_from_slice(b"ustar\0");
+        header[263..265].copy_from_slice(b"00");
+        let checksum: u32 = header.iter().map(|byte| u32::from(*byte)).sum();
+        write_octal(&mut header[148..156], u64::from(checksum));
+        out.extend_from_slice(&header);
+        out.extend_from_slice(bytes);
+        let padding = (512 - (bytes.len() % 512)) % 512;
+        out.extend(std::iter::repeat_n(0, padding));
+    }
+
+    fn write_octal(field: &mut [u8], value: u64) {
+        field.fill(0);
+        let text = format!("{value:0width$o}", width = field.len() - 1);
+        field[..text.len()].copy_from_slice(text.as_bytes());
     }
 }

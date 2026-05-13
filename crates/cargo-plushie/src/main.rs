@@ -142,6 +142,9 @@ struct PackageArgs {
     /// Path to the Plushie package manifest.
     #[arg(long)]
     manifest: PathBuf,
+    /// Validate the manifest and payload without building a launcher.
+    #[arg(long)]
+    validate: bool,
     /// Final launcher output path. Defaults under target/plushie/package/.
     #[arg(long)]
     out: Option<PathBuf>,
@@ -176,6 +179,15 @@ fn main() -> Result<()> {
 }
 
 fn cmd_package(args: &PackageArgs) -> Result<()> {
+    if args.validate {
+        let validation = package::validate_package(&args.manifest)?;
+        println!(
+            "plushie: validated standalone package {} {} ({})",
+            validation.app_id, validation.app_version, validation.payload_hash
+        );
+        return Ok(());
+    }
+
     let result = package::build_launcher(&package::PackageOpts {
         manifest_path: &args.manifest,
         out_path: args.out.as_deref(),

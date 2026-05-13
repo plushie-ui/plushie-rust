@@ -38,6 +38,17 @@ pub struct PackageResult {
     pub binary_path: PathBuf,
 }
 
+/// Result of validating a standalone package manifest and payload.
+#[derive(Debug)]
+pub struct PackageValidation {
+    /// Package application ID.
+    pub app_id: String,
+    /// Package application version.
+    pub app_version: String,
+    /// Payload SHA-256 field from the manifest.
+    pub payload_hash: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct PackageManifest {
     schema_version: u32,
@@ -68,6 +79,29 @@ struct PreparedLauncher {
     crate_dir: PathBuf,
     package_name: String,
     output_path: PathBuf,
+}
+
+struct LoadedPackage {
+    manifest_dir: PathBuf,
+    manifest_text: String,
+    manifest: PackageManifest,
+    payload: Vec<u8>,
+}
+
+/// Validate a package manifest and payload without building a launcher.
+///
+/// # Errors
+///
+/// Returns an error when the manifest is invalid, the payload is
+/// missing, the payload hash mismatches, or the archive contains an
+/// unsafe entry.
+pub fn validate_package(manifest_path: &Path) -> Result<PackageValidation> {
+    let loaded = load_package(manifest_path)?;
+    Ok(PackageValidation {
+        app_id: loaded.manifest.app_id,
+        app_version: loaded.manifest.app_version,
+        payload_hash: loaded.manifest.payload.hash,
+    })
 }
 
 /// Build the generated launcher and copy it to the requested output.
@@ -123,12 +157,38 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
 }
 
 fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
-    let manifest_path = std::fs::canonicalize(opts.manifest_path).with_context(|| {
-        format!(
-            "package manifest `{}` not found",
-            opts.manifest_path.display()
-        )
-    })?;
+    let loaded = load_package(opts.manifest_path)?;
+
+    let target_root = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| loaded.manifest_dir.join("target"));
+    let package_name = package_name(&loaded.manifest.app_id);
+    let crate_dir = target_root.join("plushie-package").join(&package_name);
+    let output_path = opts.out_path.map(Path::to_path_buf).unwrap_or_else(|| {
+        target_root
+            .join("plushie/package")
+            .join(executable_name(&safe_name(&loaded.manifest.app_id)))
+    });
+
+    std::fs::create_dir_all(crate_dir.join("src"))?;
+    generator::write_if_changed(
+        &crate_dir.join("Cargo.toml"),
+        &launcher_cargo_toml(&package_name),
+    )?;
+    generator::write_if_changed(&crate_dir.join("src/main.rs"), &launcher_main_rs())?;
+    generator::write_if_changed(&crate_dir.join(GENERATED_MANIFEST), &loaded.manifest_text)?;
+    std::fs::write(crate_dir.join(GENERATED_PAYLOAD), loaded.payload)?;
+
+    Ok(PreparedLauncher {
+        crate_dir,
+        package_name,
+        output_path,
+    })
+}
+
+fn load_package(manifest_path: &Path) -> Result<LoadedPackage> {
+    let manifest_path = std::fs::canonicalize(manifest_path)
+        .with_context(|| format!("package manifest `{}` not found", manifest_path.display()))?;
     let manifest_dir = manifest_path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("package manifest has no parent directory"))?;
@@ -141,30 +201,11 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
     validate_payload(&manifest, &payload)?;
     validate_payload_archive(&payload)?;
 
-    let target_root = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| manifest_dir.join("target"));
-    let package_name = package_name(&manifest.app_id);
-    let crate_dir = target_root.join("plushie-package").join(&package_name);
-    let output_path = opts.out_path.map(Path::to_path_buf).unwrap_or_else(|| {
-        target_root
-            .join("plushie/package")
-            .join(executable_name(&safe_name(&manifest.app_id)))
-    });
-
-    std::fs::create_dir_all(crate_dir.join("src"))?;
-    generator::write_if_changed(
-        &crate_dir.join("Cargo.toml"),
-        &launcher_cargo_toml(&package_name),
-    )?;
-    generator::write_if_changed(&crate_dir.join("src/main.rs"), &launcher_main_rs())?;
-    generator::write_if_changed(&crate_dir.join(GENERATED_MANIFEST), &manifest_text)?;
-    std::fs::write(crate_dir.join(GENERATED_PAYLOAD), payload)?;
-
-    Ok(PreparedLauncher {
-        crate_dir,
-        package_name,
-        output_path,
+    Ok(LoadedPackage {
+        manifest_dir: manifest_dir.to_path_buf(),
+        manifest_text,
+        manifest,
+        payload,
     })
 }
 

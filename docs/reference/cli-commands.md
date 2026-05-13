@@ -171,6 +171,7 @@ cargo plushie package --manifest plushie-package.toml --release
 | Flag | Type | Description |
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
+| `--validate` | bool | Validate the manifest and payload without building a launcher |
 | `--out <PATH>` | path | Final launcher path (default `target/plushie/package/<app-id>`) |
 | `--release` | bool | Build the generated launcher with Cargo's release profile |
 | `--verbose` | bool | Print the underlying cargo command |

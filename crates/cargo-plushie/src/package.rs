@@ -385,9 +385,12 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
         require_nonempty("app_name", app_name)?;
     }
     require_nonempty("app_version", &manifest.app_version)?;
-    if let Some(target) = &manifest.target {
-        require_nonempty("target", target)?;
-    }
+    let target = manifest
+        .target
+        .as_deref()
+        .ok_or_else(|| Error::Other(anyhow::anyhow!("target must be set")))?;
+    require_nonempty("target", target)?;
+    validate_package_target(target)?;
     require_nonempty("host_sdk", &manifest.host_sdk)?;
     if let Some(host_sdk_version) = &manifest.host_sdk_version {
         require_nonempty("host_sdk_version", host_sdk_version)?;
@@ -522,6 +525,28 @@ fn validate_app_id(value: &str) -> Result<()> {
             "app_id must not map to a path-control component"
         )));
     }
+    Ok(())
+}
+
+fn validate_package_target(value: &str) -> Result<()> {
+    let Some((os, arch)) = value.split_once('-') else {
+        return Err(Error::Other(anyhow::anyhow!(
+            "target must use `<os>-<arch>`, got `{value}`"
+        )));
+    };
+
+    if !matches!(os, "linux" | "darwin" | "windows") {
+        return Err(Error::Other(anyhow::anyhow!(
+            "target OS must be linux, darwin, or windows, got `{os}`"
+        )));
+    }
+
+    if !matches!(arch, "x86_64" | "aarch64") {
+        return Err(Error::Other(anyhow::anyhow!(
+            "target architecture must be x86_64 or aarch64, got `{arch}`"
+        )));
+    }
+
     Ok(())
 }
 
@@ -1215,6 +1240,7 @@ mod tests {
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "0.7.1"
 protocol_version = 1
@@ -1239,6 +1265,7 @@ size = 7
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "0.7.1"
 protocol_version = 1
@@ -1252,6 +1279,46 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
         let err = parse_manifest(text).unwrap_err();
         assert!(err.to_string().contains("host_command"));
+    }
+
+    #[test]
+    fn rejects_invalid_package_target() {
+        for target in [
+            "",
+            "x86_64-unknown-linux-gnu",
+            "linux-x64",
+            "freebsd-x86_64",
+        ] {
+            let text = valid_manifest_text(
+                r#"
+host_command = ["bin/notes"]
+"#,
+            )
+            .replace(
+                r#"target = "linux-x86_64""#,
+                &format!(r#"target = "{target}""#),
+            );
+
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(err.to_string().contains("target"));
+        }
+    }
+
+    #[test]
+    fn rejects_missing_package_target() {
+        let text = valid_manifest_text(
+            r#"
+host_command = ["bin/notes"]
+"#,
+        )
+        .replace(
+            r#"target = "linux-x86_64"
+"#,
+            "",
+        );
+
+        let err = parse_manifest(&text).unwrap_err();
+        assert!(err.to_string().contains("target"));
     }
 
     #[test]
@@ -1373,7 +1440,7 @@ host_command = ["bin/notes"]
             app_id: "com.example.notes".to_string(),
             app_name: None,
             app_version: "0.1.0".to_string(),
-            target: None,
+            target: Some("linux-x86_64".to_string()),
             host_sdk: "python".to_string(),
             host_sdk_version: None,
             plushie_rust_version: "0.7.1".to_string(),
@@ -1429,6 +1496,7 @@ host_command = ["bin/notes"]
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "0.7.1"
 protocol_version = 1
@@ -1464,6 +1532,7 @@ hash = "{hash}"
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{}"
 protocol_version = {}
@@ -1565,6 +1634,7 @@ hash = "{hash}"
 schema_version = 1
 app_id = ".."
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{}"
 protocol_version = {}
@@ -1621,6 +1691,7 @@ hash = "sha256:{hash}"
 schema_version = {MANIFEST_SCHEMA_VERSION}
 app_id = "com.example.notes"
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
@@ -1643,6 +1714,7 @@ hash = "{payload_hash}"
 schema_version = {MANIFEST_SCHEMA_VERSION}
 app_id = "com.example.notes"
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
@@ -1668,6 +1740,7 @@ working_dir = "{value}"
 schema_version = {MANIFEST_SCHEMA_VERSION}
 app_id = "com.example.notes"
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
@@ -1690,7 +1763,7 @@ hash = "{payload_hash}"
             app_id: "com.example.notes".to_string(),
             app_name: None,
             app_version: "0.1.0".to_string(),
-            target: None,
+            target: Some("linux-x86_64".to_string()),
             host_sdk: "python".to_string(),
             host_sdk_version: None,
             plushie_rust_version: EXPECTED_PLUSHIE_RUST_VERSION.to_string(),

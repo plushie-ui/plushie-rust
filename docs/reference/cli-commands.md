@@ -194,6 +194,7 @@ The manifest stores structured argv:
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
+target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "0.7.1"
 protocol_version = 1
@@ -220,14 +221,16 @@ the packaged renderer with:
 plushie-renderer --listen --exec-bin <program> --exec-arg <arg> ...
 ```
 
-`payload.archive` is manifest-relative. `renderer_path`, `working_dir`,
-and `host_command[0]` are payload-relative paths. Absolute paths and
-parent traversal are rejected so a standalone package cannot silently
-point at a global binary. The launcher resolves `host_command[0]` to an
-absolute path inside the extracted payload before passing it to the
-renderer. It sets the renderer's working directory to manifest
-`working_dir`, or the payload root by default, and passes `--exec-env`
-from the manifest when extra runtime variables are needed.
+`target` is a normalized package target such as `linux-x86_64`,
+`darwin-aarch64`, or `windows-x86_64`. `payload.archive` is
+manifest-relative. `renderer_path`, `working_dir`, and `host_command[0]`
+are payload-relative paths. Absolute paths and parent traversal are
+rejected so a standalone package cannot silently point at a global
+binary. The launcher resolves `host_command[0]` to an absolute path
+inside the extracted payload before passing it to the renderer. It sets
+the renderer's working directory to manifest `working_dir`, or the
+payload root by default, and passes `--exec-env` from the manifest when
+extra runtime variables are needed.
 
 The optional `[renderer]` table records provenance for diagnostics and
 SDK validation. `kind` is `stock` or `custom`; `source` is an SDK-defined

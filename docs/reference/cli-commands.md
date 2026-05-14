@@ -183,6 +183,11 @@ and so on. `cargo plushie package` consumes the resulting payload archive
 and manifest, embeds both into a generated Rust launcher crate, and
 builds one executable.
 
+`host_sdk` is descriptive metadata. `cargo plushie package` does not
+branch on it to build Mix releases, Gleam shipments, PyInstaller apps,
+Node SEA executables, Ruby runtimes, Burrito payloads, or Rust app
+binaries.
+
 The manifest stores structured argv:
 
 ```toml

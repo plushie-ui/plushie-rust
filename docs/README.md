@@ -33,7 +33,7 @@ Lookup material organized by topic. Each page is self-contained.
 - [Built-in Widgets](reference/built-in-widgets.md) - every widget with props, events, and examples
 - [Canvas](reference/canvas.md) - shapes, layers, groups, transforms, interactive regions
 - [CLI Flags](reference/cli.md) - reserved `--plushie-*` flags layered on `plushie::run`
-- [CLI Commands](reference/cli-commands.md) - `cargo plushie` subcommands: build, download, run, init, new-widget, doctor
+- [CLI Commands](reference/cli-commands.md) - `cargo plushie` subcommands: build, download, run, package, default-icons, init, new-widget, doctor
 - [Commands and Effects](reference/commands.md) - async, focus, scroll, window ops, platform effects
 - [Composition Patterns](reference/composition-patterns.md) - helper components, memoisation, multi-window
 - [Configuration](reference/configuration.md) - `Settings`, `WindowConfig`, environment variables, feature flags

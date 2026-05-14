@@ -6,7 +6,9 @@
 //! through the same clap parser below.
 
 use anyhow::{Context, Result};
-use cargo_plushie::{discover, doctor, download, generator, package, platform, scaffold};
+use cargo_plushie::{
+    default_icons, discover, doctor, download, generator, package, platform, scaffold,
+};
 use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -58,6 +60,8 @@ enum PlushieSubcommand {
     /// widgets, version skew). Exits non-zero if any critical issue
     /// is detected.
     Doctor(DoctorArgs),
+    /// Write Plushie's bundled default app icons to a directory.
+    DefaultIcons(DefaultIconsArgs),
 }
 
 #[derive(Args, Debug)]
@@ -163,6 +167,13 @@ struct PackageArgs {
     verbose: bool,
 }
 
+#[derive(Args, Debug)]
+struct DefaultIconsArgs {
+    /// Output directory for the bundled icon files.
+    #[arg(long)]
+    out: PathBuf,
+}
+
 fn main() -> Result<()> {
     // The first argv element after the binary name is the subcommand
     // shape Cargo hands us (`plushie`). Accept both shapes: when run
@@ -182,7 +193,16 @@ fn main() -> Result<()> {
         PlushieSubcommand::NewWidget(n) => cmd_new_widget(&n),
         PlushieSubcommand::Init(i) => cmd_init(&i),
         PlushieSubcommand::Doctor(d) => cmd_doctor(&d),
+        PlushieSubcommand::DefaultIcons(i) => cmd_default_icons(&i),
     }
+}
+
+fn cmd_default_icons(args: &DefaultIconsArgs) -> Result<()> {
+    let written = default_icons::write_default_icons(&args.out)?;
+    for path in written {
+        println!("plushie: wrote default icon {}", path.display());
+    }
+    Ok(())
 }
 
 fn cmd_package(args: &PackageArgs) -> Result<()> {

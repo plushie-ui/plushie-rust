@@ -109,6 +109,7 @@ pub enum Error {
 /// Convenience `Result` alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub mod default_icons;
 pub mod discover;
 pub mod doctor;
 pub mod download;

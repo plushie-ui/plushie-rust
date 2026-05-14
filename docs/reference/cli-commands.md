@@ -12,6 +12,7 @@ too: the binary normalises both argv shapes before parsing.
 | [`cargo plushie download`](#cargo-plushie-download) | Download a precompiled stock renderer |
 | [`cargo plushie run`](#cargo-plushie-run) | Build the custom renderer, then run the app |
 | [`cargo plushie package`](#cargo-plushie-package) | Build a standalone launcher from a package manifest |
+| [`cargo plushie default-icons`](#cargo-plushie-default-icons) | Write bundled default app icons |
 | [`cargo plushie new-widget`](#cargo-plushie-new-widget) | Scaffold a native widget crate |
 | [`cargo plushie init`](#cargo-plushie-init) | Scaffold a plushie app crate |
 | [`cargo plushie doctor`](#cargo-plushie-doctor) | Print a diagnostic report |
@@ -337,6 +338,23 @@ generated launcher normally under an artifact smoke harness for that.
 cargo plushie package --manifest dist/plushie-package.toml --validate
 cargo plushie package --manifest dist/plushie-package.toml --smoke
 ```
+
+## cargo plushie default-icons
+
+Write Plushie's bundled default app icon PNGs to a directory.
+
+```bash
+cargo plushie default-icons --out dist/payload/assets
+```
+
+| Flag | Type | Description |
+|---|---|---|
+| `--out <DIR>` | path | Directory to receive the bundled icon files |
+
+SDK package commands can call this before payload archiving when an
+app does not provide its own icon. The generated files are ordinary
+payload assets, so package manifests should reference them with a
+payload-relative `[platform].icon` path.
 
 ## cargo plushie new-widget
 

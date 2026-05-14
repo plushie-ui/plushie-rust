@@ -36,6 +36,8 @@ cargo plushie --help
   source path, native libs)
 - `cargo plushie download` - download a prebuilt renderer binary for
   the target triple
+- `cargo plushie default-icons --out DIR` - write Plushie's bundled
+  default app icon PNGs to a directory
 - `cargo plushie package` - build a standalone Rust launcher from a
   Plushie package manifest and payload archive
 

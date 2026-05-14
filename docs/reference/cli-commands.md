@@ -238,6 +238,22 @@ string such as `download` or `local-build`. Native-widget package
 commands should write `kind = "custom"` and fail before packaging if
 they would ship a stock renderer.
 
+Generated launcher crates are retained under
+`target/plushie-package/<package-name>/`, or under
+`$CARGO_TARGET_DIR/plushie-package/<package-name>/` when
+`CARGO_TARGET_DIR` is set. Relative `CARGO_TARGET_DIR` values are
+resolved from the `cargo plushie package` invocation directory. The
+generated Cargo build uses the shared target directory
+`<target-root>/plushie-package/target` so repeated package builds reuse
+compiled launcher dependencies. `cargo plushie package` also writes
+generated crate files only when their contents change and stores a
+shared `launcher-Cargo.lock` next to those crates. Generated crates use
+a stable Cargo package name with an app-specific binary name so that
+lockfile can be reused across packages. When the generated launcher
+Cargo template has not changed, later package builds copy that lockfile
+into the generated crate and build with `cargo build --locked`. If the
+template changes, the next package build refreshes the shared lockfile.
+
 After a successful launcher run, cache pruning keeps the active payload
 and the most recent previous payload for the same app ID. Older payload
 directories are removed. Failed launches do not prune cache entries.

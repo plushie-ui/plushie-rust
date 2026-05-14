@@ -14,6 +14,10 @@ use std::time::{Duration, Instant};
 
 const GENERATED_MANIFEST: &str = "plushie-package.toml";
 const GENERATED_PAYLOAD: &str = "payload.tar.zst";
+const GENERATED_LOCKFILE: &str = "Cargo.lock";
+const SHARED_LOCKFILE: &str = "launcher-Cargo.lock";
+const SHARED_LOCKFILE_FINGERPRINT: &str = "launcher-Cargo.lock.sha256";
+const LAUNCHER_CRATE_NAME: &str = "plushie-package-launcher";
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
@@ -114,8 +118,11 @@ struct PayloadManifest {
 
 struct PreparedLauncher {
     crate_dir: PathBuf,
+    build_target_dir: PathBuf,
     package_name: String,
     output_path: PathBuf,
+    shared_lockfile: PathBuf,
+    lockfile_reused: bool,
 }
 
 struct LoadedPackage {
@@ -152,13 +159,22 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut cmd = std::process::Command::new(cargo);
     cmd.current_dir(&prepared.crate_dir).arg("build");
-    cmd.env_remove("CARGO_TARGET_DIR");
+    cmd.env("CARGO_TARGET_DIR", &prepared.build_target_dir);
+    if prepared.lockfile_reused {
+        cmd.arg("--locked");
+    }
     if opts.release {
         cmd.arg("--release");
     }
     if opts.verbose {
+        let locked = if prepared.lockfile_reused {
+            " --locked"
+        } else {
+            ""
+        };
         eprintln!(
-            "running: cargo build{}",
+            "running: CARGO_TARGET_DIR={} cargo build{locked}{}",
+            prepared.build_target_dir.display(),
             if opts.release { " --release" } else { "" }
         );
     }
@@ -171,8 +187,7 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
 
     let profile = if opts.release { "release" } else { "debug" };
     let built = prepared
-        .crate_dir
-        .join("target")
+        .build_target_dir
         .join(profile)
         .join(executable_name(&prepared.package_name));
     if !built.is_file() {
@@ -187,6 +202,7 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
     }
     std::fs::copy(&built, &prepared.output_path)?;
     make_executable(&prepared.output_path)?;
+    update_shared_launcher_lockfile(&prepared)?;
 
     Ok(PackageResult {
         launcher_crate_dir: prepared.crate_dir,
@@ -315,11 +331,13 @@ fn smoke_cache_dir() -> Result<PathBuf> {
 fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
     let loaded = load_package(opts.manifest_path)?;
 
-    let target_root = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| loaded.manifest_dir.join("target"));
+    let target_root = package_target_root(&loaded.manifest_dir);
     let package_name = package_name(&loaded.manifest.app_id);
-    let crate_dir = target_root.join("plushie-package").join(&package_name);
+    let package_root = target_root.join("plushie-package");
+    let crate_dir = package_root.join(&package_name);
+    let build_target_dir = package_root.join("target");
+    let shared_lockfile = package_root.join(SHARED_LOCKFILE);
+    let shared_lockfile_fingerprint = package_root.join(SHARED_LOCKFILE_FINGERPRINT);
     let output_path = opts.out_path.map(Path::to_path_buf).unwrap_or_else(|| {
         target_root
             .join("plushie/package")
@@ -333,13 +351,102 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
     )?;
     generator::write_if_changed(&crate_dir.join("src/main.rs"), &launcher_main_rs())?;
     generator::write_if_changed(&crate_dir.join(GENERATED_MANIFEST), &loaded.manifest_text)?;
-    std::fs::write(crate_dir.join(GENERATED_PAYLOAD), loaded.payload)?;
+    write_bytes_if_changed(&crate_dir.join(GENERATED_PAYLOAD), &loaded.payload)?;
+    let lockfile_reused =
+        reuse_shared_launcher_lockfile(&shared_lockfile, &shared_lockfile_fingerprint, &crate_dir)?;
 
     Ok(PreparedLauncher {
         crate_dir,
+        build_target_dir,
         package_name,
         output_path,
+        shared_lockfile,
+        lockfile_reused,
     })
+}
+
+fn reuse_shared_launcher_lockfile(
+    shared_lockfile: &Path,
+    shared_lockfile_fingerprint: &Path,
+    crate_dir: &Path,
+) -> Result<bool> {
+    let lockfile = crate_dir.join(GENERATED_LOCKFILE);
+    let expected_fingerprint = launcher_lockfile_fingerprint();
+    let fingerprint = std::fs::read_to_string(shared_lockfile_fingerprint).unwrap_or_default();
+
+    if shared_lockfile.is_file() && fingerprint.trim() == expected_fingerprint {
+        let contents = std::fs::read_to_string(shared_lockfile).with_context(|| {
+            format!(
+                "failed to read shared launcher lockfile `{}`",
+                shared_lockfile.display()
+            )
+        })?;
+        generator::write_if_changed(&lockfile, &contents)?;
+        return Ok(true);
+    }
+
+    match std::fs::remove_file(&lockfile) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            return Err(Error::Other(anyhow::anyhow!(
+                "failed to remove stale launcher lockfile `{}`: {err}",
+                lockfile.display()
+            )));
+        }
+    }
+    Ok(false)
+}
+
+fn update_shared_launcher_lockfile(prepared: &PreparedLauncher) -> Result<()> {
+    let crate_lockfile = prepared.crate_dir.join(GENERATED_LOCKFILE);
+    let contents = std::fs::read_to_string(&crate_lockfile).with_context(|| {
+        format!(
+            "failed to read generated launcher lockfile `{}`",
+            crate_lockfile.display()
+        )
+    })?;
+    generator::write_if_changed(&prepared.shared_lockfile, &contents)?;
+    generator::write_if_changed(
+        &prepared
+            .shared_lockfile
+            .with_file_name(SHARED_LOCKFILE_FINGERPRINT),
+        &(launcher_lockfile_fingerprint() + "\n"),
+    )?;
+    Ok(())
+}
+
+fn write_bytes_if_changed(path: &Path, content: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if let Ok(existing) = std::fs::read(path)
+        && existing == content
+    {
+        return Ok(());
+    }
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+fn package_target_root(manifest_dir: &Path) -> PathBuf {
+    package_target_root_from(
+        std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from),
+        &std::env::current_dir().unwrap_or_else(|_| manifest_dir.to_path_buf()),
+        manifest_dir,
+    )
+}
+
+fn package_target_root_from(
+    cargo_target_dir: Option<PathBuf>,
+    invocation_dir: &Path,
+    manifest_dir: &Path,
+) -> PathBuf {
+    match cargo_target_dir {
+        Some(path) if path.is_absolute() => path,
+        Some(path) => invocation_dir.join(path),
+        None => manifest_dir.join("target"),
+    }
 }
 
 fn load_package(manifest_path: &Path) -> Result<LoadedPackage> {
@@ -693,23 +800,43 @@ fn executable_name(name: &str) -> String {
     }
 }
 
+const LAUNCHER_DEPENDENCIES: &str = r#"[dependencies]
+anyhow = "=1.0.102"
+serde = { version = "=1.0.228", features = ["derive"] }
+sha2 = "=0.10.9"
+tar = "=0.4.45"
+toml = "=0.8.23"
+zstd = "=0.13.3"
+"#;
+
 fn launcher_cargo_toml(package_name: &str) -> String {
     format!(
-        r#"[package]
+        r#"{}
+
+[[bin]]
 name = "{package_name}"
+path = "src/main.rs"
+
+{LAUNCHER_DEPENDENCIES}"#,
+        launcher_package_toml()
+    )
+}
+
+fn launcher_package_toml() -> String {
+    format!(
+        r#"[package]
+name = "{LAUNCHER_CRATE_NAME}"
 version = "0.0.0"
 edition = "2024"
 publish = false
 
-[dependencies]
-anyhow = "1"
-serde = {{ version = "1", features = ["derive"] }}
-sha2 = "0.10"
-tar = "0.4"
-toml = "0.8"
-zstd = "0.13"
-"#
+[workspace]"#
     )
+}
+
+fn launcher_lockfile_fingerprint() -> String {
+    let input = format!("{}\n{LAUNCHER_DEPENDENCIES}", launcher_package_toml());
+    format!("{:x}", Sha256::digest(input))
 }
 
 fn make_executable(path: &Path) -> Result<()> {
@@ -1484,32 +1611,7 @@ host_command = ["bin/notes"]
     #[test]
     fn prepares_generated_launcher_crate() {
         let dir = tempdir().unwrap();
-        let payload = sample_payload_archive();
-        let archive = dir.path().join("payload.tar.zst");
-        std::fs::write(&archive, &payload).unwrap();
-        let hash = format!("sha256:{:x}", Sha256::digest(&payload));
-        let manifest = dir.path().join("plushie-package.toml");
-        std::fs::write(
-            &manifest,
-            format!(
-                r#"
-schema_version = 1
-app_id = "com.example.notes"
-app_version = "0.1.0"
-target = "linux-x86_64"
-host_sdk = "python"
-plushie_rust_version = "0.7.1"
-protocol_version = 1
-renderer_path = "bin/plushie-renderer"
-host_command = ["bin/notes"]
-
-[payload]
-archive = "payload.tar.zst"
-hash = "{hash}"
-"#
-            ),
-        )
-        .unwrap();
+        let manifest = write_sample_package(dir.path());
 
         let opts = PackageOpts {
             manifest_path: &manifest,
@@ -1522,6 +1624,123 @@ hash = "{hash}"
         assert!(prepared.crate_dir.join("src/main.rs").is_file());
         assert!(prepared.crate_dir.join(GENERATED_MANIFEST).is_file());
         assert!(prepared.crate_dir.join(GENERATED_PAYLOAD).is_file());
+        assert_eq!(
+            prepared.build_target_dir,
+            dir.path().join("target/plushie-package/target")
+        );
+        assert!(!prepared.lockfile_reused);
+    }
+
+    #[test]
+    fn package_target_root_uses_cargo_target_dir_value() {
+        let dir = tempdir().unwrap();
+        let invocation_dir = tempdir().unwrap();
+        let target_dir = tempdir().unwrap();
+
+        assert_eq!(
+            package_target_root_from(
+                Some(target_dir.path().to_path_buf()),
+                invocation_dir.path(),
+                dir.path()
+            ),
+            target_dir.path()
+        );
+        assert_eq!(
+            package_target_root_from(None, invocation_dir.path(), dir.path()),
+            dir.path().join("target")
+        );
+    }
+
+    #[test]
+    fn package_target_root_normalizes_relative_cargo_target_dir() {
+        let dir = tempdir().unwrap();
+        let invocation_dir = tempdir().unwrap();
+
+        assert_eq!(
+            package_target_root_from(
+                Some(PathBuf::from("rel-target")),
+                invocation_dir.path(),
+                dir.path()
+            ),
+            invocation_dir.path().join("rel-target")
+        );
+    }
+
+    #[test]
+    fn launcher_manifest_uses_stable_crate_name_and_dynamic_binary_name() {
+        let manifest = launcher_cargo_toml("plushie-package-com-example-notes");
+
+        assert!(manifest.contains(r#"name = "plushie-package-launcher""#));
+        assert!(manifest.contains(r#"name = "plushie-package-com-example-notes""#));
+        assert!(manifest.contains(r#"path = "src/main.rs""#));
+        assert!(manifest.contains("[workspace]"));
+    }
+
+    #[test]
+    fn write_bytes_if_changed_preserves_unchanged_files() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("payload.tar.zst");
+        write_bytes_if_changed(&path, b"payload").unwrap();
+        let first_modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        write_bytes_if_changed(&path, b"payload").unwrap();
+
+        let second_modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(first_modified, second_modified);
+    }
+
+    #[test]
+    fn prepares_generated_launcher_crate_with_reused_lockfile() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let package_root = dir.path().join("target/plushie-package");
+        std::fs::create_dir_all(&package_root).unwrap();
+        let lockfile_text = "# locked by previous package build\n";
+        std::fs::write(package_root.join(SHARED_LOCKFILE), lockfile_text).unwrap();
+        std::fs::write(
+            package_root.join(SHARED_LOCKFILE_FINGERPRINT),
+            launcher_lockfile_fingerprint() + "\n",
+        )
+        .unwrap();
+        let opts = PackageOpts {
+            manifest_path: &manifest,
+            out_path: None,
+            release: false,
+            verbose: false,
+        };
+
+        let prepared = prepare_launcher_crate(&opts).unwrap();
+
+        assert!(prepared.lockfile_reused);
+        assert_eq!(
+            std::fs::read_to_string(prepared.crate_dir.join(GENERATED_LOCKFILE)).unwrap(),
+            lockfile_text
+        );
+    }
+
+    #[test]
+    fn prepares_generated_launcher_crate_discards_stale_lockfile() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let crate_dir = dir
+            .path()
+            .join("target/plushie-package/plushie-package-com-example-notes");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join(GENERATED_LOCKFILE), "# stale\n").unwrap();
+        let package_root = dir.path().join("target/plushie-package");
+        std::fs::write(package_root.join(SHARED_LOCKFILE), "# stale shared\n").unwrap();
+        std::fs::write(package_root.join(SHARED_LOCKFILE_FINGERPRINT), "stale\n").unwrap();
+        let opts = PackageOpts {
+            manifest_path: &manifest,
+            out_path: None,
+            release: false,
+            verbose: false,
+        };
+
+        let prepared = prepare_launcher_crate(&opts).unwrap();
+
+        assert!(!prepared.lockfile_reused);
+        assert!(!prepared.crate_dir.join(GENERATED_LOCKFILE).exists());
     }
 
     #[test]
@@ -1682,6 +1901,36 @@ hash = "sha256:{hash}"
             ],
             &[],
         )
+    }
+
+    fn write_sample_package(dir: &Path) -> PathBuf {
+        let payload = sample_payload_archive();
+        let archive = dir.join("payload.tar.zst");
+        std::fs::write(&archive, &payload).unwrap();
+        let hash = format!("sha256:{:x}", Sha256::digest(&payload));
+        let manifest = dir.join("plushie-package.toml");
+        std::fs::write(
+            &manifest,
+            format!(
+                r#"
+schema_version = 1
+app_id = "com.example.notes"
+app_version = "0.1.0"
+target = "linux-x86_64"
+host_sdk = "python"
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
+renderer_path = "bin/plushie-renderer"
+host_command = ["bin/notes"]
+
+[payload]
+archive = "payload.tar.zst"
+hash = "{hash}"
+"#
+            ),
+        )
+        .unwrap();
+        manifest
     }
 
     fn valid_manifest_text(host_section: &str) -> String {

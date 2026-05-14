@@ -172,6 +172,8 @@ cargo plushie package --manifest plushie-package.toml --release
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
 | `--validate` | bool | Validate the manifest and payload without building a launcher |
+| `--smoke` | bool | Build the launcher and run the extraction/cache smoke path |
+| `--smoke-timeout <SECONDS>` | integer | Maximum time for `--smoke` to wait |
 | `--out <PATH>` | path | Final launcher path (default `target/plushie/package/<app-id>`) |
 | `--release` | bool | Build the generated launcher with Cargo's release profile |
 | `--verbose` | bool | Print the underlying cargo command |
@@ -202,6 +204,19 @@ renderer_path = "bin/plushie-renderer"
 host_command = ["bin/notes"]
 working_dir = "."
 exec_env = []
+
+[platform]
+publisher = "Example Inc."
+bundle_id = "com.example.notes"
+icon = "assets/icon.png"
+
+[updates]
+channel = "stable"
+feed_url = "https://example.com/notes/updates.json"
+
+[[signing.hooks]]
+stage = "after-launcher-build"
+command = ["codesign", "--sign", "Developer ID Application: Example Inc.", "{launcher}"]
 
 [renderer]
 kind = "stock"
@@ -243,6 +258,22 @@ SDK validation. `kind` is `stock` or `custom`; `source` is an SDK-defined
 string such as `download` or `local-build`. Native-widget package
 commands should write `kind = "custom"` and fail before packaging if
 they would ship a stock renderer.
+
+The optional `[platform]`, `[updates]`, and `[signing]` tables reserve
+one shared metadata shape for SDK packagers and later platform packaging
+layers. `platform.icon` is payload-relative and must exist in the
+archive when it is set. Update metadata is descriptive; the generated
+launcher does not download updates. Signing hooks are structured argv
+declarations for a packaging layer to run after launcher build. The
+current `cargo plushie package` command validates the shape but does not
+execute those hooks. Payload hash verification, update signing, package
+signing, and platform signing are separate responsibilities owned by
+their respective package or update systems.
+
+Rust direct-mode apps do not need the shared wire launcher when they are
+already a single native executable. They should use normal Cargo and
+platform packaging for that case, while reusing the same metadata names
+when a platform package, update feed, icon, or signing step needs them.
 
 Generated launcher crates are retained under
 `target/plushie-package/<package-name>/`, or under

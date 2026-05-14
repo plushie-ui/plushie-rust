@@ -84,6 +84,7 @@ pub struct PackageValidation {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PackageManifest {
     schema_version: u32,
     app_id: String,
@@ -100,20 +101,54 @@ struct PackageManifest {
     #[serde(default)]
     exec_env: Vec<String>,
     renderer: Option<RendererManifest>,
+    platform: Option<PlatformManifest>,
+    updates: Option<UpdatesManifest>,
+    signing: Option<SigningManifest>,
     payload: PayloadManifest,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RendererManifest {
     kind: String,
     source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PayloadManifest {
     archive: String,
     hash: String,
     size: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlatformManifest {
+    publisher: Option<String>,
+    bundle_id: Option<String>,
+    icon: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdatesManifest {
+    channel: String,
+    feed_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SigningManifest {
+    #[serde(default)]
+    hooks: Vec<SigningHookManifest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SigningHookManifest {
+    stage: String,
+    command: Vec<String>,
 }
 
 struct PreparedLauncher {
@@ -547,6 +582,9 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
             "exec_env must contain only non-empty variable names without `,` or `=`"
         )));
     }
+    validate_platform_metadata(manifest)?;
+    validate_update_metadata(manifest)?;
+    validate_signing_metadata(manifest)?;
     if manifest.protocol_version != EXPECTED_PROTOCOL_VERSION {
         return Err(Error::Other(anyhow::anyhow!(
             "protocol_version mismatch: package expects {}, cargo-plushie supports {}",
@@ -555,6 +593,61 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
         )));
     }
     validate_sha256_field(&manifest.payload.hash)?;
+    Ok(())
+}
+
+fn validate_platform_metadata(manifest: &PackageManifest) -> Result<()> {
+    let Some(platform) = &manifest.platform else {
+        return Ok(());
+    };
+
+    if let Some(publisher) = &platform.publisher {
+        require_nonempty("platform.publisher", publisher)?;
+    }
+    if let Some(bundle_id) = &platform.bundle_id {
+        require_nonempty("platform.bundle_id", bundle_id)?;
+    }
+    if let Some(icon) = &platform.icon {
+        require_nonempty("platform.icon", icon)?;
+        validate_payload_relative_path("platform.icon", icon, false)?;
+    }
+    Ok(())
+}
+
+fn validate_update_metadata(manifest: &PackageManifest) -> Result<()> {
+    let Some(updates) = &manifest.updates else {
+        return Ok(());
+    };
+
+    require_nonempty("updates.channel", &updates.channel)?;
+    if let Some(feed_url) = &updates.feed_url {
+        require_nonempty("updates.feed_url", feed_url)?;
+    }
+    Ok(())
+}
+
+fn validate_signing_metadata(manifest: &PackageManifest) -> Result<()> {
+    let Some(signing) = &manifest.signing else {
+        return Ok(());
+    };
+
+    for hook in &signing.hooks {
+        require_nonempty("signing.hooks.stage", &hook.stage)?;
+        match hook.stage.as_str() {
+            "after-launcher-build" => {}
+            value => {
+                return Err(Error::Other(anyhow::anyhow!(
+                    "signing hook stage must be `after-launcher-build`, got `{value}`"
+                )));
+            }
+        }
+
+        if hook.command.is_empty() || hook.command.iter().any(|arg| arg.is_empty()) {
+            return Err(Error::Other(anyhow::anyhow!(
+                "signing hook command must contain a non-empty argv"
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -697,11 +790,18 @@ fn validate_payload_archive(manifest: &PackageManifest, payload: &[u8]) -> Resul
         .as_deref()
         .map(|path| clean_payload_relative_path("working_dir", path))
         .transpose()?;
+    let platform_icon = manifest
+        .platform
+        .as_ref()
+        .and_then(|platform| platform.icon.as_deref())
+        .map(|path| clean_payload_relative_path("platform.icon", path))
+        .transpose()?;
     let mut found_renderer = false;
     let mut found_host = false;
     let mut found_working_dir = working_dir
         .as_ref()
         .is_none_or(|path| path.as_os_str().is_empty());
+    let mut found_platform_icon = platform_icon.is_none();
 
     let decoder = zstd::stream::read::Decoder::new(payload)
         .with_context(|| "failed to open payload archive as zstd")?;
@@ -721,6 +821,9 @@ fn validate_payload_archive(manifest: &PackageManifest, payload: &[u8]) -> Resul
         if entry_type.is_file() {
             found_renderer |= entry_path == renderer_path;
             found_host |= entry_path == host_path;
+            if let Some(platform_icon) = &platform_icon {
+                found_platform_icon |= entry_path == *platform_icon;
+            }
         }
         if entry_type.is_dir()
             && let Some(working_dir) = &working_dir
@@ -745,6 +848,16 @@ fn validate_payload_archive(manifest: &PackageManifest, payload: &[u8]) -> Resul
         return Err(Error::Other(anyhow::anyhow!(
             "payload archive does not contain working_dir `{}`",
             manifest.working_dir.as_deref().unwrap_or(".")
+        )));
+    }
+    if !found_platform_icon {
+        let icon = manifest
+            .platform
+            .as_ref()
+            .and_then(|platform| platform.icon.as_deref())
+            .expect("platform icon path is present");
+        return Err(Error::Other(anyhow::anyhow!(
+            "payload archive does not contain platform.icon `{icon}`"
         )));
     }
     Ok(())
@@ -1567,6 +1680,205 @@ host_command = ["bin/notes"]
     }
 
     #[test]
+    fn accepts_platform_update_and_signing_metadata() {
+        let text = valid_manifest_text(
+            r#"
+host_command = ["bin/notes"]
+
+[platform]
+publisher = "Example Inc."
+bundle_id = "com.example.notes"
+icon = "assets/icon.png"
+
+[updates]
+channel = "stable"
+feed_url = "https://example.com/notes/updates.json"
+
+[[signing.hooks]]
+stage = "after-launcher-build"
+command = ["codesign", "--sign", "Developer ID Application: Example Inc.", "{launcher}"]
+"#,
+        );
+
+        let manifest = parse_manifest(&text).unwrap();
+        let platform = manifest.platform.unwrap();
+        let updates = manifest.updates.unwrap();
+        let signing = manifest.signing.unwrap();
+        assert_eq!(platform.icon.as_deref(), Some("assets/icon.png"));
+        assert_eq!(updates.channel, "stable");
+        assert_eq!(
+            signing.hooks[0].command,
+            [
+                "codesign",
+                "--sign",
+                "Developer ID Application: Example Inc.",
+                "{launcher}"
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_platform_metadata() {
+        for (metadata, field) in [
+            (
+                r#"
+[platform]
+publisher = ""
+"#,
+                "platform.publisher",
+            ),
+            (
+                r#"
+[platform]
+bundle_id = " "
+"#,
+                "platform.bundle_id",
+            ),
+            (
+                r#"
+[platform]
+icon = "../icon.png"
+"#,
+                "platform.icon",
+            ),
+        ] {
+            let text = valid_manifest_text(&format!(
+                r#"
+host_command = ["bin/notes"]
+{metadata}
+"#
+            ));
+
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(
+                format!("{err:?}").contains(field),
+                "expected `{field}` in `{err}`"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_update_metadata() {
+        for (metadata, field) in [
+            (
+                r#"
+[updates]
+channel = ""
+"#,
+                "updates.channel",
+            ),
+            (
+                r#"
+[updates]
+channel = "stable"
+feed_url = " "
+"#,
+                "updates.feed_url",
+            ),
+        ] {
+            let text = valid_manifest_text(&format!(
+                r#"
+host_command = ["bin/notes"]
+{metadata}
+"#
+            ));
+
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(
+                format!("{err:?}").contains(field),
+                "expected `{field}` in `{err}`"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_signing_metadata() {
+        for metadata in [
+            r#"
+[[signing.hooks]]
+stage = "before-launcher-build"
+command = ["codesign"]
+"#,
+            r#"
+[[signing.hooks]]
+stage = "after-launcher-build"
+command = []
+"#,
+            r#"
+[[signing.hooks]]
+stage = "after-launcher-build"
+command = ["codesign", ""]
+"#,
+        ] {
+            let text = valid_manifest_text(&format!(
+                r#"
+host_command = ["bin/notes"]
+{metadata}
+"#
+            ));
+
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(err.to_string().contains("signing hook"));
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_manifest_metadata_fields() {
+        for (metadata, field) in [
+            (
+                r#"
+unexpected = true
+"#,
+                "unexpected",
+            ),
+            (
+                r#"
+[platform]
+icons = "assets/icon.png"
+"#,
+                "icons",
+            ),
+            (
+                r#"
+[updates]
+channel = "stable"
+feed = "https://example.com/updates.json"
+"#,
+                "feed",
+            ),
+            (
+                r#"
+[signing]
+hook = []
+"#,
+                "hook",
+            ),
+            (
+                r#"
+[[signing.hooks]]
+stage = "after-launcher-build"
+command = ["codesign"]
+shell = true
+"#,
+                "shell",
+            ),
+        ] {
+            let text = valid_manifest_text(&format!(
+                r#"
+host_command = ["bin/notes"]
+{metadata}
+"#
+            ));
+
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(
+                format!("{err:?}").contains(field),
+                "expected `{field}` in `{err:?}`"
+            );
+        }
+    }
+
+    #[test]
     fn verifies_payload_hash_and_size() {
         let payload = b"payload";
         let hash = format!("sha256:{:x}", Sha256::digest(payload));
@@ -1585,6 +1897,9 @@ host_command = ["bin/notes"]
             working_dir: None,
             exec_env: Vec::new(),
             renderer: None,
+            platform: None,
+            updates: None,
+            signing: None,
             payload: PayloadManifest {
                 archive: "payload.tar.zst".to_string(),
                 hash,
@@ -1854,6 +2169,37 @@ hash = "{hash}"
     }
 
     #[test]
+    fn accepts_payload_with_platform_icon() {
+        let payload = payload_archive_with_entries(&[
+            ("bin/plushie-renderer", b"renderer".as_slice()),
+            ("bin/notes", b"host".as_slice()),
+            ("assets/icon.png", b"icon".as_slice()),
+        ]);
+        let mut manifest = package_manifest_for_payload(&payload);
+        manifest.platform = Some(PlatformManifest {
+            publisher: None,
+            bundle_id: None,
+            icon: Some("assets/icon.png".to_string()),
+        });
+
+        validate_payload_archive(&manifest, &payload).unwrap();
+    }
+
+    #[test]
+    fn rejects_payload_missing_platform_icon() {
+        let payload = sample_payload_archive();
+        let mut manifest = package_manifest_for_payload(&payload);
+        manifest.platform = Some(PlatformManifest {
+            publisher: None,
+            bundle_id: None,
+            icon: Some("assets/icon.png".to_string()),
+        });
+
+        let err = validate_payload_archive(&manifest, &payload).unwrap_err();
+        assert!(err.to_string().contains("platform.icon"));
+    }
+
+    #[test]
     fn rejects_path_control_app_ids() {
         let hash = format!("{:x}", Sha256::digest(b"payload"));
         let text = format!(
@@ -2030,6 +2376,9 @@ hash = "{payload_hash}"
             working_dir: None,
             exec_env: Vec::new(),
             renderer: None,
+            platform: None,
+            updates: None,
+            signing: None,
             payload: PayloadManifest {
                 archive: "payload.tar.zst".to_string(),
                 hash: format!("sha256:{:x}", Sha256::digest(payload)),

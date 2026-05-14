@@ -227,6 +227,14 @@ archive = "payload.tar.zst"
 hash = "sha256:..."
 ```
 
+The first supported payload shape is one archive containing the renderer,
+host payload, assets, metadata, and notices. Use conventional paths:
+`bin/` for executable entry points, `host/` or a language-specific
+runtime directory for host files, `assets/` for app assets, and
+`licenses/` for third-party notices. The manifest path values must match
+archive paths exactly. Split renderer and host archives are not part of
+the initial launcher contract.
+
 The generated launcher verifies the embedded archive hash, extracts it
 into a content-addressed cache, rejects archive entries that can escape
 the payload root, sets executable permissions where needed, and starts
@@ -253,11 +261,28 @@ the renderer's working directory to manifest `working_dir`, or the
 payload root by default, and passes `--exec-env` from the manifest when
 extra runtime variables are needed.
 
+Payload archives are intentionally plain files and directories. Archive
+entries must be relative paths under the payload root. Symlinks, hard
+links, device files, sockets, FIFOs, and other special entries are
+rejected by validation and again by the generated launcher before
+extraction. SDK packagers that copy language runtimes should dereference
+or remove runtime symlinks before archiving, and should not rely on tar
+link entries to preserve runtime structure.
+
+The launcher makes `renderer_path` and `host_command[0]` executable
+after extraction on Unix platforms. Additional executable scripts or
+nested launchers should be declared through the host entry point or
+preserved by the SDK packager's archive mode; there is no broad
+manifest-side permission table yet. Windows executability follows file
+extension and loader behavior rather than Unix mode bits.
+
 The optional `[renderer]` table records provenance for diagnostics and
 SDK validation. `kind` is `stock` or `custom`; `source` is an SDK-defined
 string such as `download` or `local-build`. Native-widget package
 commands should write `kind = "custom"` and fail before packaging if
-they would ship a stock renderer.
+they would ship a stock renderer. The manifest can later grow
+SDK-provided native widget metadata, but the current launcher only needs
+renderer provenance and the payload-local renderer path.
 
 The optional `[platform]`, `[updates]`, and `[signing]` tables reserve
 one shared metadata shape for SDK packagers and later platform packaging

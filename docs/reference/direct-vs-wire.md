@@ -229,6 +229,33 @@ listed as dependencies and registered before launch.
 
 Browser target: host SDK + WASM renderer. Not Rust + WASM.
 
+## Standalone packaging
+
+Direct-mode Rust apps already build to a native executable. If the
+app has no external payload, the first supported standalone artifact
+is the release or dist-profile binary itself. This is the path used
+by the direct-mode demo smoke: build the app, run it from a different
+working directory, and verify it starts under the same display setup
+as other SDK artifacts.
+
+Use the shared package launcher when a Rust app needs more than the
+single executable can carry cleanly:
+
+- Payload files such as images, fonts, migrations, or generated data.
+- Shared platform metadata such as app identity, icon, publisher, or
+  update channel.
+- Signing, notarization, installer, or update hooks that should use
+  the same manifest shape as wire SDKs.
+- A cache-managed payload lifecycle where a replaced binary must
+  extract and run the matching embedded payload.
+
+Wire-mode Rust apps follow the same shape as other wire SDKs: prepare
+a payload containing the host executable and a payload-local
+`plushie-renderer`, then hand a manifest to `cargo plushie package`.
+Socket-mode flags (`--plushie-socket`, `--plushie-token`) are the
+Rust CLI spelling of the same renderer-parent contract represented by
+`PLUSHIE_SOCKET` and `PLUSHIE_TOKEN` in other SDK payloads.
+
 ## See also
 
 - [Wire protocol](wire-protocol.md)

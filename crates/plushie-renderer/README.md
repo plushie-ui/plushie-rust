@@ -34,6 +34,9 @@ Renderer-owned host spawning uses structured exec args:
 
 - `--exec-bin <program>` with repeated `--exec-arg <value>` launches
   the program directly with `Command::new(program).args(args)`.
+- `--ready-marker` writes `plushie renderer-parent: ready` to stderr
+  after listen-mode connection and Settings validation succeed. It is
+  intended for packaging smoke tests; stdout remains wire-only.
 
 Listen-mode Settings must send the connection credential as
 `token_sha256`, the lowercase SHA-256 hex digest of the listen token.

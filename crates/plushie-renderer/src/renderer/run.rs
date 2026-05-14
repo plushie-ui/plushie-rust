@@ -114,6 +114,7 @@ fn run_inner(
             writer,
             expected_token.as_deref(),
             session_factory,
+            options.emit_ready_marker,
         );
         return Ok(());
     }
@@ -133,6 +134,7 @@ fn run_inner(
             writer,
             expected_token.as_deref(),
             session_factory,
+            options.emit_ready_marker,
         );
         return Ok(());
     }
@@ -183,6 +185,9 @@ fn run_inner(
     ) {
         crate::startup::emit_startup_error(&codec, &e);
         return Ok(());
+    }
+    if options.emit_ready_marker {
+        crate::startup::emit_ready_marker("windowed", transport_name, &initial.session);
     }
     let iced_settings = plushie_renderer_lib::settings::parse_iced_settings(&initial.settings);
     plushie_renderer_lib::settings::apply_validate_props(&initial.settings);
@@ -291,6 +296,7 @@ struct CliOptions {
     listen_arg: Option<Option<String>>,
     mock_mode: bool,
     headless_mode: bool,
+    emit_ready_marker: bool,
 }
 
 fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
@@ -302,6 +308,7 @@ fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
     let mut listen_arg = None;
     let mut mock_mode = false;
     let mut headless_mode = false;
+    let mut emit_ready_marker = false;
 
     let mut idx = 1;
     while idx < args.len() {
@@ -320,6 +327,10 @@ fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
             }
             "--headless" => {
                 headless_mode = true;
+                idx += 1;
+            }
+            "--ready-marker" => {
+                emit_ready_marker = true;
                 idx += 1;
             }
             "--max-sessions" => {
@@ -382,6 +393,7 @@ fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
         listen_arg,
         mock_mode,
         headless_mode,
+        emit_ready_marker,
     })
 }
 
@@ -466,6 +478,7 @@ mod tests {
             })
         );
         assert_eq!(parsed.listen_arg, None);
+        assert!(!parsed.emit_ready_marker);
     }
 
     #[test]
@@ -482,6 +495,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(parsed.listen_arg, Some(Some(":0".to_string())));
+        assert!(!parsed.emit_ready_marker);
         assert_eq!(
             parsed.exec_command,
             Some(crate::transport::ExecCommand::Argv {
@@ -508,6 +522,20 @@ mod tests {
         let err = parse_cli(&args(&["plushie-renderer", "--exec-arg", "connect"])).unwrap_err();
 
         assert!(err.contains("--exec-arg requires --exec-bin"));
+    }
+
+    #[test]
+    fn parses_ready_marker_flag() {
+        let parsed = parse_cli(&args(&[
+            "plushie-renderer",
+            "--listen",
+            "--exec-bin",
+            "host",
+            "--ready-marker",
+        ]))
+        .unwrap();
+
+        assert!(parsed.emit_ready_marker);
     }
 }
 

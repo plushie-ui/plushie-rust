@@ -218,8 +218,14 @@ the payload root, sets executable permissions where needed, and starts
 the packaged renderer with:
 
 ```bash
-plushie-renderer --listen --exec-bin <program> --exec-arg <arg> ...
+plushie-renderer --listen --ready-marker --exec-bin <program> --exec-arg <arg> ...
 ```
+
+`--ready-marker` makes the renderer write
+`plushie renderer-parent: ready` to stderr after it has accepted the
+host connection and validated the first Settings message. Artifact
+smoke tests can use that marker to prove renderer-parent startup without
+touching stdout, which remains reserved for the wire protocol.
 
 `target` is a normalized package target such as `linux-x86_64`,
 `darwin-aarch64`, or `windows-x86_64`. `payload.archive` is
@@ -263,10 +269,12 @@ and renderer exit status.
 
 Use `--validate` to check the manifest, payload hash, and archive safety
 without building a launcher. Use `--smoke` to build the launcher and run
-its extraction path with an isolated `PLUSHIE_CACHE_DIR`. Smoke mode
-sets `PLUSHIE_PACKAGE_SMOKE=1`, scrubs development renderer overrides,
-asserts first-extraction and cache-reuse diagnostics, and exits before
-starting the GUI app:
+its extraction path with an isolated `PLUSHIE_CACHE_DIR`. The
+`cargo plushie package --smoke` path sets `PLUSHIE_PACKAGE_SMOKE=1`,
+scrubs development renderer overrides, asserts first-extraction and
+cache-reuse diagnostics, and exits before starting the renderer or GUI
+app. It does not prove the renderer-parent ready marker; run the
+generated launcher normally under an artifact smoke harness for that.
 
 ```bash
 cargo plushie package --manifest dist/plushie-package.toml --validate

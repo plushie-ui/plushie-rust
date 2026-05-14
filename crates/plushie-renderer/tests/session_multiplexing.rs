@@ -164,6 +164,19 @@ impl StderrCapture {
         let guard = self.buffer.lock().unwrap();
         String::from_utf8_lossy(&guard).into_owned()
     }
+
+    fn wait_for(&self, needle: &str, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if self.snapshot().contains(needle) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
 }
 
 impl Drop for StderrCapture {
@@ -339,6 +352,56 @@ fn hello_message_fields() {
 
     drop(stdin);
     child.wait().unwrap();
+}
+
+#[test]
+fn ready_marker_emits_after_valid_settings() {
+    let (mut child, stderr) = spawn_renderer(&["--mock", "--json", "--ready-marker"]);
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = LineReceiver::new(child.stdout.take().unwrap());
+
+    send(
+        &mut stdin,
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 1}}),
+    );
+
+    let hello = stdout.recv();
+    assert_eq!(hello["type"], "hello");
+    assert!(
+        stderr.wait_for("plushie renderer-parent: ready", RECV_TIMEOUT),
+        "ready marker missing from stderr: {}",
+        stderr.snapshot()
+    );
+
+    drop(stdin);
+    child.wait().unwrap();
+}
+
+#[test]
+fn ready_marker_is_not_emitted_for_invalid_settings() {
+    let (mut child, stderr) = spawn_renderer(&["--mock", "--json", "--ready-marker"]);
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = LineReceiver::new(child.stdout.take().unwrap());
+
+    send(
+        &mut stdin,
+        &serde_json::json!({"session": "s1", "type": "settings", "settings": {"protocol_version": 999_999}}),
+    );
+
+    let hello = stdout.recv();
+    assert_eq!(hello["type"], "hello");
+    let error = stdout.recv();
+    assert_eq!(error["type"], "error");
+
+    drop(stdin);
+    child.wait().unwrap();
+    assert!(
+        !stderr.snapshot().contains("plushie renderer-parent: ready"),
+        "ready marker should not be emitted after invalid settings: {}",
+        stderr.snapshot()
+    );
 }
 
 #[test]

@@ -969,6 +969,7 @@ fn run() -> Result<u8> {
     command
         .current_dir(&working_dir)
         .arg("--listen")
+        .arg("--ready-marker")
         .arg("--exec-bin")
         .arg(host_program)
         .env("PLUSHIE_PACKAGE_DIR", &root);
@@ -1509,6 +1510,13 @@ host_command = ["bin/notes"]
         assert!(
             launcher.contains("command.arg(\"--exec-env\").arg(manifest.exec_env.join(\",\"));")
         );
+    }
+
+    #[test]
+    fn generated_launcher_requests_renderer_ready_marker() {
+        let launcher = launcher_main_rs();
+
+        assert!(launcher.contains("arg(\"--ready-marker\")"));
     }
 
     #[test]

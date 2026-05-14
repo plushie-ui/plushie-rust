@@ -67,6 +67,14 @@ pub(crate) fn emit_startup_error(codec: &Codec, err: &StartupError) {
     }
 }
 
+/// Emit the stable renderer-parent readiness marker used by packaging
+/// smoke tests.
+pub(crate) fn emit_ready_marker(mode: &str, transport: &str, session: &str) {
+    eprintln!(
+        "plushie renderer-parent: ready mode={mode} transport={transport} session={session:?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Codec detection
 // ---------------------------------------------------------------------------

@@ -1109,6 +1109,7 @@ pub(crate) fn run(
     writer: Box<dyn std::io::Write + Send>,
     expected_token: Option<&str>,
     session_factory: Option<plushie_widget_sdk::app::SessionRegistryFactory<iced::Renderer>>,
+    emit_ready_marker: bool,
 ) {
     // Detect codec BEFORE initializing the sink so the WriterSink
     // encodes with the correct codec from the first message.
@@ -1157,6 +1158,9 @@ pub(crate) fn run(
     {
         crate::startup::emit_startup_error(&codec, &e);
         return;
+    }
+    if emit_ready_marker {
+        crate::startup::emit_ready_marker(mode_str, transport_name, &initial.session);
     }
     plushie_renderer_lib::settings::apply_validate_props(&initial.settings);
 

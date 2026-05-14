@@ -40,6 +40,8 @@ cargo plushie --help
   default app icon PNGs to a directory
 - `cargo plushie package` - build a standalone Rust launcher from a
   Plushie package manifest and payload archive
+- `cargo plushie package-rust` - build a wire-mode Rust app payload
+  and standalone launcher
 
 ## Configuration
 
@@ -53,7 +55,7 @@ Key environment variables:
   `plushie-renderer` binary, used by host SDKs that prefer to supply
   their own.
 
-See [docs/build-tool.md](https://github.com/plushie-ui/plushie-rust/blob/main/docs/build-tool.md)
+See [docs/reference/cli-commands.md](https://github.com/plushie-ui/plushie-rust/blob/main/docs/reference/cli-commands.md)
 for the full command reference.
 
 ## Versioning

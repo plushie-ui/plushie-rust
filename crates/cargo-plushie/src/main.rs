@@ -6,8 +6,9 @@
 //! through the same clap parser below.
 
 use anyhow::{Context, Result};
+use cargo_metadata::CargoOpt;
 use cargo_plushie::{
-    default_icons, discover, doctor, download, generator, package, platform, scaffold,
+    default_icons, discover, doctor, download, generator, package, package_rust, platform, scaffold,
 };
 use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
@@ -50,6 +51,8 @@ enum PlushieSubcommand {
     Run(RunArgs),
     /// Build a standalone launcher from a Plushie package manifest.
     Package(PackageArgs),
+    /// Build a wire-mode Rust app payload and standalone launcher.
+    PackageRust(PackageRustArgs),
     /// Scaffold a new native widget crate with the conventional
     /// `[package.metadata.plushie.widget]` layout.
     NewWidget(NewWidgetArgs),
@@ -83,6 +86,15 @@ struct BuildArgs {
     /// `target/plushie/pkg/`.
     #[arg(long)]
     wasm_dir: Option<PathBuf>,
+    /// Cargo features to enable while resolving the app graph.
+    #[arg(long = "features")]
+    features: Vec<String>,
+    /// Disable default features while resolving the app graph.
+    #[arg(long)]
+    no_default_features: bool,
+    /// Enable all features while resolving the app graph.
+    #[arg(long)]
+    all_features: bool,
 }
 
 #[derive(Args, Debug)]
@@ -168,6 +180,49 @@ struct PackageArgs {
 }
 
 #[derive(Args, Debug)]
+struct PackageRustArgs {
+    /// Path to the Rust app crate manifest (defaults to `./Cargo.toml`).
+    #[arg(long)]
+    manifest_path: Option<PathBuf>,
+    /// Cargo binary target to build when the package has multiple bins.
+    #[arg(long)]
+    bin: Option<String>,
+    /// Package application ID. Defaults to package metadata or package name.
+    #[arg(long)]
+    app_id: Option<String>,
+    /// Human-readable app name written as optional package metadata.
+    #[arg(long)]
+    app_name: Option<String>,
+    /// App icon to copy into the payload. Defaults to bundled Plushie icons.
+    #[arg(long)]
+    icon: Option<PathBuf>,
+    /// Output directory for generated manifest and payload archive.
+    #[arg(long)]
+    out_dir: Option<PathBuf>,
+    /// Final launcher output path. Defaults under target/plushie/package/.
+    #[arg(long)]
+    launcher_out: Option<PathBuf>,
+    /// Build host, renderer, and launcher with Cargo's release profile.
+    #[arg(long)]
+    release: bool,
+    /// Print underlying cargo commands.
+    #[arg(long)]
+    verbose: bool,
+    /// Additional Cargo features for the host build.
+    #[arg(long = "features")]
+    features: Vec<String>,
+    /// Disable default features for the host build.
+    #[arg(long)]
+    no_default_features: bool,
+    /// Enable all features for the host build.
+    #[arg(long)]
+    all_features: bool,
+    /// Stop after writing plushie-package.toml and payload.tar.zst.
+    #[arg(long)]
+    no_launcher: bool,
+}
+
+#[derive(Args, Debug)]
 struct DefaultIconsArgs {
     /// Output directory for the bundled icon files.
     #[arg(long)]
@@ -190,11 +245,131 @@ fn main() -> Result<()> {
         PlushieSubcommand::Download(d) => cmd_download(&d),
         PlushieSubcommand::Run(r) => cmd_run(&r),
         PlushieSubcommand::Package(p) => cmd_package(&p),
+        PlushieSubcommand::PackageRust(p) => cmd_package_rust(&p),
         PlushieSubcommand::NewWidget(n) => cmd_new_widget(&n),
         PlushieSubcommand::Init(i) => cmd_init(&i),
         PlushieSubcommand::Doctor(d) => cmd_doctor(&d),
         PlushieSubcommand::DefaultIcons(i) => cmd_default_icons(&i),
     }
+}
+
+fn cmd_package_rust(args: &PackageRustArgs) -> Result<()> {
+    let manifest_path = args
+        .manifest_path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("Cargo.toml"));
+    let manifest_path = std::fs::canonicalize(&manifest_path)
+        .with_context(|| format!("manifest path `{}` not found", manifest_path.display()))?;
+    let manifest_dir = manifest_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("manifest path has no parent directory"))?
+        .to_path_buf();
+
+    let build = BuildArgs {
+        release: args.release,
+        verbose: args.verbose,
+        manifest_path: Some(manifest_path.clone()),
+        wasm: false,
+        wasm_dir: None,
+        features: package_rust_features(args),
+        no_default_features: args.no_default_features,
+        all_features: args.all_features,
+    };
+    cmd_build(&build)?;
+    let app_pkg = load_app_package_no_deps(&manifest_dir)?;
+    let source_path = resolve_source_path(&manifest_dir, &app_pkg)?;
+    let renderer_path = resolve_built_binary(
+        &manifest_dir,
+        &RunArgs {
+            watch: false,
+            release: args.release,
+            verbose: args.verbose,
+            manifest_path: Some(manifest_path.clone()),
+        },
+    )?;
+    if !renderer_path.is_file() {
+        return Err(anyhow::anyhow!(
+            "expected renderer at `{}` but it was not found",
+            renderer_path.display()
+        ));
+    }
+
+    let out_dir = args
+        .out_dir
+        .clone()
+        .unwrap_or_else(|| target_dir(&manifest_dir).join("plushie/rust-package"));
+    let staged = package_rust::stage_rust_package(&package_rust::RustPackageOpts {
+        manifest_path: &manifest_path,
+        renderer_path: &renderer_path,
+        source_path: source_path.as_deref(),
+        out_dir: &out_dir,
+        bin: args.bin.as_deref(),
+        app_id: args.app_id.as_deref(),
+        app_name: args.app_name.as_deref(),
+        icon: args.icon.as_deref(),
+        features: &args.features,
+        no_default_features: args.no_default_features,
+        all_features: args.all_features,
+        release: args.release,
+        verbose: args.verbose,
+    })?;
+
+    println!(
+        "plushie: staged Rust package manifest at {}",
+        staged.manifest_path.display()
+    );
+    println!(
+        "plushie: staged Rust payload at {}",
+        staged.payload_archive_path.display()
+    );
+    println!(
+        "plushie: staged Rust package icon at {}",
+        staged.icon_payload_path.display()
+    );
+    println!(
+        "plushie: staged Rust package host at {}",
+        staged.host_payload_path.display()
+    );
+    println!(
+        "plushie: staged Rust package renderer at {}",
+        staged.renderer_payload_path.display()
+    );
+    println!(
+        "plushie: staged Rust package payload root at {}",
+        staged.payload_dir.display()
+    );
+
+    if args.no_launcher {
+        println!(
+            "plushie: hand off with `cargo plushie package --manifest {}`",
+            staged.manifest_path.display()
+        );
+        return Ok(());
+    }
+
+    let result = package::build_launcher(&package::PackageOpts {
+        manifest_path: &staged.manifest_path,
+        out_path: args.launcher_out.as_deref(),
+        release: args.release,
+        verbose: args.verbose,
+    })?;
+    println!(
+        "plushie: generated standalone launcher at {}",
+        result.binary_path.display()
+    );
+    println!(
+        "plushie: launcher crate retained at {}",
+        result.launcher_crate_dir.display()
+    );
+    Ok(())
+}
+
+fn package_rust_features(args: &PackageRustArgs) -> Vec<String> {
+    let mut features = args.features.clone();
+    if !features.iter().any(|feature| feature == "plushie/wire") {
+        features.push("plushie/wire".to_string());
+    }
+    features
 }
 
 fn cmd_default_icons(args: &DefaultIconsArgs) -> Result<()> {
@@ -411,21 +586,20 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     // unpublished plushie-rust versions; the full-graph discovery call
     // below fails on those until we drop a `.cargo/config.toml` with
     // patch overrides alongside the spec manifest.
-    let metadata = cargo_metadata::MetadataCommand::new()
+    let mut metadata_cmd = cargo_metadata::MetadataCommand::new();
+    metadata_cmd
         .manifest_path(manifest_dir.join("Cargo.toml"))
-        .no_deps()
+        .no_deps();
+    apply_feature_args(
+        &mut metadata_cmd,
+        &args.features,
+        args.no_default_features,
+        args.all_features,
+    );
+    let metadata = metadata_cmd
         .exec()
         .with_context(|| "cargo metadata (no-deps) failed")?;
-    let root_id = metadata
-        .resolve
-        .as_ref()
-        .and_then(|r| r.root.as_ref())
-        .cloned();
-    let app_pkg = match root_id {
-        Some(id) => metadata.packages.iter().find(|p| p.id == id).cloned(),
-        None => metadata.packages.first().cloned(),
-    };
-    let app_pkg = app_pkg.ok_or_else(|| anyhow::anyhow!("no root package in cargo metadata"))?;
+    let app_pkg = app_package_from_metadata(&metadata, &manifest_dir.join("Cargo.toml"))?;
 
     let binary_name_override = app_pkg
         .metadata
@@ -464,7 +638,14 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
         cargo_plushie::patch_config::write_scratch_cargo_config(&manifest_dir, source)?;
     }
 
-    let discovered = discover::discover_widgets(&manifest_dir)?;
+    let discovered = discover::discover_widgets_with_options(
+        &manifest_dir,
+        &discover::DiscoverOpts {
+            features: &args.features,
+            no_default_features: args.no_default_features,
+            all_features: args.all_features,
+        },
+    )?;
     let widgets = if native_widgets_override.is_empty() {
         discovered
     } else {
@@ -607,12 +788,7 @@ fn resolve_wasm_crate_dir(manifest_dir: &Path) -> Result<PathBuf> {
         .no_deps()
         .exec()
         .with_context(|| "cargo metadata (no-deps) failed")?;
-    let app_pkg = metadata
-        .resolve
-        .as_ref()
-        .and_then(|r| r.root.as_ref())
-        .and_then(|id| metadata.packages.iter().find(|p| &p.id == id))
-        .or_else(|| metadata.packages.first());
+    let app_pkg = app_package_from_metadata(&metadata, &manifest_dir.join("Cargo.toml")).ok();
     if let Some(pkg) = app_pkg
         && let Some(meta_path) = pkg
             .metadata
@@ -759,16 +935,46 @@ fn load_app_package_no_deps(manifest_dir: &Path) -> Result<cargo_metadata::Packa
         .no_deps()
         .exec()
         .with_context(|| "cargo metadata (no-deps) failed")?;
-    let root_id = metadata
-        .resolve
-        .as_ref()
-        .and_then(|r| r.root.as_ref())
-        .cloned();
-    let app_pkg = match root_id {
-        Some(id) => metadata.packages.iter().find(|p| p.id == id).cloned(),
-        None => metadata.packages.first().cloned(),
-    };
-    app_pkg.ok_or_else(|| anyhow::anyhow!("no root package in cargo metadata"))
+    app_package_from_metadata(&metadata, &manifest_dir.join("Cargo.toml"))
+}
+
+fn app_package_from_metadata(
+    metadata: &cargo_metadata::Metadata,
+    manifest_path: &Path,
+) -> Result<cargo_metadata::Package> {
+    let expected = std::fs::canonicalize(manifest_path)
+        .with_context(|| format!("manifest path `{}` not found", manifest_path.display()))?;
+    for package in &metadata.packages {
+        let candidate = package.manifest_path.as_std_path();
+        if std::fs::canonicalize(candidate)
+            .map(|path| path == expected)
+            .unwrap_or(false)
+        {
+            return Ok(package.clone());
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "`{}` is not a package manifest; pass the Cargo.toml for the Rust app package",
+        manifest_path.display()
+    ))
+}
+
+fn apply_feature_args(
+    cmd: &mut cargo_metadata::MetadataCommand,
+    features: &[String],
+    no_default_features: bool,
+    all_features: bool,
+) {
+    if !features.is_empty() {
+        cmd.features(CargoOpt::SomeFeatures(features.to_vec()));
+    }
+    if no_default_features {
+        cmd.features(CargoOpt::NoDefaultFeatures);
+    }
+    if all_features {
+        cmd.features(CargoOpt::AllFeatures);
+    }
 }
 
 fn resolve_source_path(
@@ -802,6 +1008,9 @@ fn cmd_run(args: &RunArgs) -> Result<()> {
         manifest_path: args.manifest_path.clone(),
         wasm: false,
         wasm_dir: None,
+        features: Vec::new(),
+        no_default_features: false,
+        all_features: false,
     };
     cmd_build(&build)?;
 
@@ -846,16 +1055,7 @@ fn resolve_built_binary(manifest_dir: &Path, args: &RunArgs) -> Result<PathBuf> 
         .no_deps()
         .exec()
         .with_context(|| "cargo metadata (no-deps) failed")?;
-    let root_id = metadata
-        .resolve
-        .as_ref()
-        .and_then(|r| r.root.as_ref())
-        .cloned();
-    let app_pkg = match root_id {
-        Some(id) => metadata.packages.iter().find(|p| p.id == id).cloned(),
-        None => metadata.packages.first().cloned(),
-    };
-    let app_pkg = app_pkg.ok_or_else(|| anyhow::anyhow!("no root package in cargo metadata"))?;
+    let app_pkg = app_package_from_metadata(&metadata, &manifest_dir.join("Cargo.toml"))?;
 
     let binary_name_override = app_pkg
         .metadata

@@ -6,9 +6,8 @@
 //! 1. The generated renderer workspace under
 //!    `target/plushie-renderer/Cargo.toml`: it pulls `plushie-widget-sdk`
 //!    and `plushie-renderer` in as path deps and needs the transitive
-//!    internal crates (`plushie-core`, `plushie-core-macros`,
-//!    `plushie-renderer-lib`) patched too so `cargo build` resolves
-//!    against the local checkout instead of crates.io.
+//!    internal crates patched too so `cargo build` resolves against the
+//!    local checkout instead of crates.io.
 //!
 //! 2. The host-SDK "spec" manifest sitting in a scratch directory
 //!    (e.g. `_build/plushie-renderer-spec/Cargo.toml`). Host SDKs
@@ -105,12 +104,12 @@ pub fn forwarded_patches(source_path: &Path) -> Vec<(String, PathBuf)> {
 /// in a `[patch.crates-io]` block redirecting plushie-rust crates to
 /// the local checkout.
 ///
-/// The returned vec starts with the five published plushie-rust
-/// crates (resolved to `<source_path>/crates/<crate>`) and appends any
+/// The returned vec starts with the published plushie-rust crates
+/// (resolved to `<source_path>/crates/<crate>`) and appends any
 /// additional non-plushie forwarded patches declared at the source
 /// workspace root. This keeps the renderer-workspace `Cargo.toml` and
-/// the scratch `.cargo/config.toml` aligned on exactly the same set
-/// of overrides.
+/// the scratch `.cargo/config.toml` aligned on exactly the same set of
+/// overrides.
 pub fn all_patches(source_path: &Path) -> Vec<(String, PathBuf)> {
     let mut out: Vec<(String, PathBuf)> = PLUSHIE_RUST_CRATES
         .iter()
@@ -180,8 +179,8 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    /// Populate a fake plushie-rust checkout with the five published
-    /// crate directories so [`all_patches`] can resolve them.
+    /// Populate a fake plushie-rust checkout with the published crate
+    /// directories so [`all_patches`] can resolve them.
     fn populate_source_checkout(source_root: &Path) {
         for name in PLUSHIE_RUST_CRATES {
             std::fs::create_dir_all(source_root.join("crates").join(name)).unwrap();

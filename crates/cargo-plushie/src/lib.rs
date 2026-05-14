@@ -13,6 +13,8 @@
 //!   from GitHub releases and place it under `target/plushie/bin/`.
 //! - `cargo plushie package` - build a standalone launcher from a
 //!   Plushie package manifest and payload archive.
+//! - `cargo plushie package-rust` - build a wire-mode Rust app payload
+//!   and hand it to the shared package launcher.
 
 #![deny(missing_docs)]
 
@@ -115,6 +117,7 @@ pub mod doctor;
 pub mod download;
 pub mod generator;
 pub mod package;
+pub mod package_rust;
 pub mod patch_config;
 pub mod platform;
 pub mod scaffold;

@@ -12,6 +12,7 @@ too: the binary normalises both argv shapes before parsing.
 | [`cargo plushie download`](#cargo-plushie-download) | Download a precompiled stock renderer |
 | [`cargo plushie run`](#cargo-plushie-run) | Build the custom renderer, then run the app |
 | [`cargo plushie package`](#cargo-plushie-package) | Build a standalone launcher from a package manifest |
+| [`cargo plushie package-rust`](#cargo-plushie-package-rust) | Build a wire-mode Rust app payload and launcher |
 | [`cargo plushie default-icons`](#cargo-plushie-default-icons) | Write bundled default app icons |
 | [`cargo plushie new-widget`](#cargo-plushie-new-widget) | Scaffold a native widget crate |
 | [`cargo plushie init`](#cargo-plushie-init) | Scaffold a plushie app crate |
@@ -55,14 +56,19 @@ cargo plushie build [FLAGS]
 | `--manifest-path <PATH>` | path | App crate manifest (default `./Cargo.toml`) |
 | `--wasm` | bool | Build the `plushie-renderer-wasm` bundle via `wasm-pack` |
 | `--wasm-dir <PATH>` | path | Output directory for the wasm bundle (default `target/plushie/pkg/`) |
+| `--features <LIST>` | string | Cargo features to enable while resolving the app graph |
+| `--no-default-features` | bool | Disable default features while resolving the app graph |
+| `--all-features` | bool | Enable all features while resolving the app graph |
 
 ```bash
 cargo plushie build --release
 ```
 
-Native-widget discovery runs off `cargo metadata`. Every dep whose
-`Cargo.toml` carries a `[package.metadata.plushie.widget]` table
-is registered automatically. An explicit allowlist under
+Native-widget discovery runs off `cargo metadata`. Feature flags are
+passed through to that metadata call so feature-gated widget
+dependencies match the app graph being packaged. Every dep whose
+`Cargo.toml` carries a `[package.metadata.plushie.widget]` table is
+registered automatically. An explicit allowlist under
 `[package.metadata.plushie].native_widgets` in the app manifest
 narrows the set; listed crates must be direct deps of the app and
 must carry the widget metadata table, otherwise the build fails
@@ -339,6 +345,73 @@ cargo plushie package --manifest dist/plushie-package.toml --validate
 cargo plushie package --manifest dist/plushie-package.toml --smoke
 ```
 
+## cargo plushie package-rust
+
+Build a Rust SDK app as a wire-mode host payload, stage it with a
+payload-local renderer, write `plushie-package.toml`, and build the
+shared standalone launcher.
+
+```bash
+cargo plushie package-rust --release
+```
+
+| Flag | Type | Description |
+|---|---|---|
+| `--manifest-path <PATH>` | path | Rust app crate manifest (default `./Cargo.toml`) |
+| `--bin <NAME>` | string | Cargo binary target when the package has multiple bins |
+| `--app-id <ID>` | string | Package app ID. Defaults to metadata or package name |
+| `--app-name <NAME>` | string | Optional human-readable app name |
+| `--icon <PATH>` | path | App icon copied into the payload |
+| `--out-dir <DIR>` | path | Directory for generated manifest and archive |
+| `--launcher-out <PATH>` | path | Final launcher path |
+| `--release` | bool | Build host, renderer, and launcher with release profile |
+| `--features <LIST>` | string | Additional host Cargo features |
+| `--no-default-features` | bool | Disable default features for the host build |
+| `--all-features` | bool | Enable all features for the host build |
+| `--no-launcher` | bool | Stop after writing manifest and payload |
+| `--verbose` | bool | Print underlying cargo commands |
+
+The command is the Rust SDK-owned preparation step for the shared
+launcher. It first reuses `cargo plushie build` with the same feature
+selection to produce a renderer binary, then builds the selected Rust
+app binary with `plushie/wire` enabled. Pass a package `Cargo.toml`;
+virtual workspace manifests are rejected until `package-rust` grows an
+explicit package selector. The payload uses conventional paths:
+
+```text
+bin/<host>
+bin/plushie-renderer
+assets/<icon>
+```
+
+The generated manifest writes `host_sdk = "rust"`, the app version
+from Cargo metadata, the local platform target, `protocol_version`,
+`host_sdk_version`, `plushie_rust_version`, `[platform].icon`, and a
+`[renderer]` table with `kind = "custom"` and `source = "local-build"`.
+If `--icon` is omitted, the command writes Plushie's bundled default
+icons into `assets/` before archiving and points `[platform].icon` at
+the large PNG.
+
+By default `package-rust` immediately calls the shared
+`cargo plushie package` launcher builder using the generated manifest.
+Because the generated manifest lives in `--out-dir`, the delegated
+launcher builder stores its generated crate, shared lockfile, and
+default launcher output under that directory unless `--launcher-out` or
+`CARGO_TARGET_DIR` is set.
+Pass `--no-launcher` to stop at the SDK handoff point and inspect or
+validate the generated files:
+
+```bash
+cargo plushie package-rust --release --no-launcher
+cargo plushie package --manifest target/plushie/rust-package/plushie-package.toml --validate
+```
+
+Direct-mode Rust apps do not need this launcher path when the app is a
+single native executable. Build them with Cargo's release or dist
+profile and hand that native binary to the platform package manager.
+Use `package-rust` when the app uses wire/connect mode or needs the
+shared payload lifecycle.
+
 ## cargo plushie default-icons
 
 Write Plushie's bundled default app icon PNGs to a directory.
@@ -471,13 +544,13 @@ a non-zero exit from `cargo plushie build`.
 
 | Variable | Read by | Description |
 |---|---|---|
-| `PLUSHIE_RUST_SOURCE_PATH` | `build`, `init`, `new-widget`, `doctor` | Absolute path to a local plushie-rust checkout. Enables `[patch.crates-io]` redirects and wasm source resolution |
+| `PLUSHIE_RUST_SOURCE_PATH` | `build`, `package-rust`, `init`, `new-widget`, `doctor` | Absolute path to a local plushie-rust checkout. Enables `[patch.crates-io]` redirects and wasm source resolution |
 | `PLUSHIE_BINARY_PATH` | `run`, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, reported by `doctor` |
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |
 | `PLUSHIE_SOCKET` | `doctor` | Reported in the diagnostic report; consumed by the SDK for socket-mode rendering |
 | `PLUSHIE_CACHE_DIR` | generated package launcher | Overrides the extraction cache root |
-| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package` | Overrides the `target/` directory used for renderer output, discovery, and generated launcher crates |
-| `CARGO` | `build`, `run`, `package` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
+| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package-rust` | Overrides the `target/` directory used for renderer output, discovery, generated launcher crates, and Rust package staging |
+| `CARGO` | `build`, `run`, `package`, `package-rust` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
 
 ## See also
 

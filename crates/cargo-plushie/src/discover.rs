@@ -9,8 +9,30 @@
 //! See the crate-level rustdoc for the metadata schema.
 
 use crate::{Error, Result, WidgetMetadata};
+use cargo_metadata::CargoOpt;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+/// Cargo feature selection used while walking the app dependency graph.
+#[derive(Debug)]
+pub struct DiscoverOpts<'a> {
+    /// Cargo features to enable.
+    pub features: &'a [String],
+    /// Disable default features for metadata resolution.
+    pub no_default_features: bool,
+    /// Enable all features for metadata resolution.
+    pub all_features: bool,
+}
+
+impl Default for DiscoverOpts<'_> {
+    fn default() -> Self {
+        Self {
+            features: &[],
+            no_default_features: false,
+            all_features: false,
+        }
+    }
+}
 
 /// Walk the cargo metadata dep graph and return every package that
 /// carries a `[package.metadata.plushie.widget]` table.
@@ -25,6 +47,21 @@ use std::path::{Path, PathBuf};
 /// [`Error::InvalidWidgetMetadata`] when a declared table is missing
 /// required keys (`type_name`, `constructor`).
 pub fn discover_widgets(manifest_dir: &Path) -> Result<Vec<WidgetMetadata>> {
+    discover_widgets_with_options(manifest_dir, &DiscoverOpts::default())
+}
+
+/// Walk the cargo metadata dep graph with explicit Cargo feature
+/// selection and return every package that carries a widget table.
+///
+/// # Errors
+///
+/// Returns [`Error::CargoMetadata`] when `cargo metadata` fails, and
+/// [`Error::InvalidWidgetMetadata`] when a declared table is missing
+/// required keys (`type_name`, `constructor`).
+pub fn discover_widgets_with_options(
+    manifest_dir: &Path,
+    opts: &DiscoverOpts<'_>,
+) -> Result<Vec<WidgetMetadata>> {
     // CWD must be the manifest directory so cargo's config walk picks
     // up any `<manifest_dir>/.cargo/config.toml` [patch.crates-io]
     // overrides that `cargo plushie build` dropped for host-SDK spec
@@ -32,9 +69,11 @@ pub fn discover_widgets(manifest_dir: &Path) -> Result<Vec<WidgetMetadata>> {
     // cargo-plushie binary's CWD (the app crate) and misses the
     // scratch config entirely, which breaks `cargo metadata`
     // resolution of unpublished workspace deps.
-    let metadata = cargo_metadata::MetadataCommand::new()
-        .manifest_path(manifest_dir.join("Cargo.toml"))
-        .current_dir(manifest_dir)
+    let mut cmd = cargo_metadata::MetadataCommand::new();
+    cmd.manifest_path(manifest_dir.join("Cargo.toml"))
+        .current_dir(manifest_dir);
+    apply_feature_opts(&mut cmd, opts);
+    let metadata = cmd
         .exec()
         .map_err(|e| Error::CargoMetadata(e.to_string()))?;
 
@@ -81,6 +120,18 @@ pub fn discover_widgets(manifest_dir: &Path) -> Result<Vec<WidgetMetadata>> {
     // Deterministic order for reproducible output.
     widgets.sort_by(|a, b| a.crate_name.cmp(&b.crate_name));
     Ok(widgets)
+}
+
+fn apply_feature_opts(cmd: &mut cargo_metadata::MetadataCommand, opts: &DiscoverOpts<'_>) {
+    if !opts.features.is_empty() {
+        cmd.features(CargoOpt::SomeFeatures(opts.features.to_vec()));
+    }
+    if opts.no_default_features {
+        cmd.features(CargoOpt::NoDefaultFeatures);
+    }
+    if opts.all_features {
+        cmd.features(CargoOpt::AllFeatures);
+    }
 }
 
 /// Fail if any two widgets share a `type_name`.
@@ -172,6 +223,7 @@ pub fn check_all_collisions(widgets: &[WidgetMetadata], builtins: &[&str]) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     fn wm(crate_name: &str, type_name: &str, path: &str) -> WidgetMetadata {
         WidgetMetadata {
@@ -216,5 +268,63 @@ mod tests {
         ];
         let err = check_crate_basename_collisions(&widgets).unwrap_err();
         assert!(matches!(err, Error::DuplicateCrateBasename { .. }));
+    }
+
+    #[test]
+    fn feature_flags_control_widget_discovery() {
+        let dir = tempdir().unwrap();
+        let app = dir.path().join("app");
+        let widget = dir.path().join("demo-widget");
+        std::fs::create_dir_all(app.join("src")).unwrap();
+        std::fs::create_dir_all(widget.join("src")).unwrap();
+        std::fs::write(
+            app.join("Cargo.toml"),
+            format!(
+                r#"[package]
+name = "demo-app"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+with-widget = ["dep:demo-widget"]
+
+[dependencies]
+demo-widget = {{ path = {:?}, optional = true }}
+"#,
+                widget
+            ),
+        )
+        .unwrap();
+        std::fs::write(app.join("src/lib.rs"), "").unwrap();
+        std::fs::write(
+            widget.join("Cargo.toml"),
+            r#"[package]
+name = "demo-widget"
+version = "0.1.0"
+edition = "2024"
+
+[package.metadata.plushie.widget]
+type_name = "demo_widget"
+constructor = "demo_widget::new()"
+"#,
+        )
+        .unwrap();
+        std::fs::write(widget.join("src/lib.rs"), "pub fn new() {}\n").unwrap();
+
+        let without_feature =
+            discover_widgets_with_options(&app, &DiscoverOpts::default()).unwrap();
+        let with_feature = discover_widgets_with_options(
+            &app,
+            &DiscoverOpts {
+                features: &[String::from("with-widget")],
+                no_default_features: false,
+                all_features: false,
+            },
+        )
+        .unwrap();
+
+        assert!(without_feature.is_empty());
+        assert_eq!(with_feature.len(), 1);
+        assert_eq!(with_feature[0].crate_name, "demo-widget");
     }
 }

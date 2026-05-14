@@ -249,12 +249,14 @@ single executable can carry cleanly:
 - A cache-managed payload lifecycle where a replaced binary must
   extract and run the matching embedded payload.
 
-Wire-mode Rust apps follow the same shape as other wire SDKs: prepare
-a payload containing the host executable and a payload-local
-`plushie-renderer`, then hand a manifest to `cargo plushie package`.
-Socket-mode flags (`--plushie-socket`, `--plushie-token`) are the
-Rust CLI spelling of the same renderer-parent contract represented by
-`PLUSHIE_SOCKET` and `PLUSHIE_TOKEN` in other SDK payloads.
+Wire-mode Rust apps follow the same shape as other wire SDKs. Use
+`cargo plushie package-rust` to build the host with wire support,
+stage a payload containing the host executable and a payload-local
+`plushie-renderer`, write `plushie-package.toml`, and hand it to
+`cargo plushie package`. Socket-mode flags (`--plushie-socket`,
+`--plushie-token`) are the Rust CLI spelling of the same
+renderer-parent contract represented by `PLUSHIE_SOCKET` and
+`PLUSHIE_TOKEN` in other SDK payloads.
 
 ## See also
 

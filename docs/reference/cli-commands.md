@@ -289,11 +289,12 @@ one shared metadata shape for SDK packagers and later platform packaging
 layers. `platform.icon` is payload-relative and must exist in the
 archive when it is set. Update metadata is descriptive; the generated
 launcher does not download updates. Signing hooks are structured argv
-declarations for a packaging layer to run after launcher build. The
-current `cargo plushie package` command validates the shape but does not
-execute those hooks. Payload hash verification, update signing, package
-signing, and platform signing are separate responsibilities owned by
-their respective package or update systems.
+declarations that `cargo plushie package` runs after it copies the final
+launcher into place. Hooks run from the package manifest directory
+without shell wrapping, and `{launcher}` expands to the final launcher
+path. Payload hash verification, update signing, feed publishing, and
+platform signing remain separate responsibilities owned by their
+respective package or update systems.
 
 Rust direct-mode apps do not need the shared wire launcher when they are
 already a single native executable. They should use normal Cargo and

@@ -144,7 +144,7 @@ struct SigningManifest {
     hooks: Vec<SigningHookManifest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SigningHookManifest {
     stage: String,
@@ -154,10 +154,12 @@ struct SigningHookManifest {
 struct PreparedLauncher {
     crate_dir: PathBuf,
     build_target_dir: PathBuf,
+    manifest_dir: PathBuf,
     package_name: String,
     output_path: PathBuf,
     shared_lockfile: PathBuf,
     lockfile_reused: bool,
+    signing_hooks: Vec<SigningHookManifest>,
 }
 
 struct LoadedPackage {
@@ -237,6 +239,7 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
     }
     std::fs::copy(&built, &prepared.output_path)?;
     make_executable(&prepared.output_path)?;
+    run_signing_hooks(&prepared)?;
     update_shared_launcher_lockfile(&prepared)?;
 
     Ok(PackageResult {
@@ -393,11 +396,51 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
     Ok(PreparedLauncher {
         crate_dir,
         build_target_dir,
+        manifest_dir: loaded.manifest_dir,
         package_name,
         output_path,
         shared_lockfile,
         lockfile_reused,
+        signing_hooks: loaded
+            .manifest
+            .signing
+            .map(|signing| signing.hooks)
+            .unwrap_or_default(),
     })
+}
+
+fn run_signing_hooks(prepared: &PreparedLauncher) -> Result<()> {
+    for hook in &prepared.signing_hooks {
+        let argv: Vec<String> = hook
+            .command
+            .iter()
+            .map(|arg| expand_signing_hook_arg(arg, &prepared.output_path))
+            .collect();
+        let program = argv.first().expect("validated signing hook argv");
+        let status = std::process::Command::new(program)
+            .args(&argv[1..])
+            .current_dir(&prepared.manifest_dir)
+            .status()
+            .with_context(|| {
+                format!(
+                    "failed to run signing hook `{}` for stage `{}`",
+                    program, hook.stage
+                )
+            })?;
+        if !status.success() {
+            return Err(Error::Other(anyhow::anyhow!(
+                "signing hook `{}` for stage `{}` failed with status {}",
+                program,
+                hook.stage,
+                status
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn expand_signing_hook_arg(arg: &str, launcher_path: &Path) -> String {
+    arg.replace("{launcher}", &launcher_path.display().to_string())
 }
 
 fn reuse_shared_launcher_lockfile(
@@ -1952,6 +1995,78 @@ host_command = ["bin/notes"]
             dir.path().join("target/plushie-package/target")
         );
         assert!(!prepared.lockfile_reused);
+    }
+
+    #[test]
+    fn expands_signing_hook_launcher_placeholder() {
+        let launcher = Path::new("/tmp/plushie launcher");
+
+        assert_eq!(
+            expand_signing_hook_arg("sign:{launcher}", launcher),
+            format!("sign:{}", launcher.display())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runs_after_launcher_build_signing_hooks_from_manifest_dir() {
+        let dir = tempdir().unwrap();
+        let marker = dir.path().join("hook.txt");
+        let launcher = dir.path().join("dist/notes");
+        let prepared = PreparedLauncher {
+            crate_dir: dir.path().join("crate"),
+            build_target_dir: dir.path().join("target"),
+            manifest_dir: dir.path().to_path_buf(),
+            package_name: "plushie-package-com-example-notes".to_string(),
+            output_path: launcher.clone(),
+            shared_lockfile: dir.path().join(SHARED_LOCKFILE),
+            lockfile_reused: false,
+            signing_hooks: vec![SigningHookManifest {
+                stage: "after-launcher-build".to_string(),
+                command: vec![
+                    "sh".to_string(),
+                    "-c".to_string(),
+                    "printf '%s\n%s\n' \"$1\" \"$PWD\" > \"$2\"".to_string(),
+                    "signing-test".to_string(),
+                    "{launcher}".to_string(),
+                    marker.display().to_string(),
+                ],
+            }],
+        };
+
+        run_signing_hooks(&prepared).unwrap();
+
+        let output = std::fs::read_to_string(marker).unwrap();
+        let mut lines = output.lines();
+        let expected_launcher = launcher.display().to_string();
+        let expected_manifest_dir = dir.path().display().to_string();
+        assert_eq!(lines.next(), Some(expected_launcher.as_str()));
+        assert_eq!(lines.next(), Some(expected_manifest_dir.as_str()));
+        assert_eq!(lines.next(), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reports_failed_signing_hooks() {
+        let dir = tempdir().unwrap();
+        let prepared = PreparedLauncher {
+            crate_dir: dir.path().join("crate"),
+            build_target_dir: dir.path().join("target"),
+            manifest_dir: dir.path().to_path_buf(),
+            package_name: "plushie-package-com-example-notes".to_string(),
+            output_path: dir.path().join("dist/notes"),
+            shared_lockfile: dir.path().join(SHARED_LOCKFILE),
+            lockfile_reused: false,
+            signing_hooks: vec![SigningHookManifest {
+                stage: "after-launcher-build".to_string(),
+                command: vec!["sh".to_string(), "-c".to_string(), "exit 9".to_string()],
+            }],
+        };
+
+        let err = run_signing_hooks(&prepared).unwrap_err();
+
+        assert!(err.to_string().contains("signing hook"));
+        assert!(err.to_string().contains("failed with status"));
     }
 
     #[test]

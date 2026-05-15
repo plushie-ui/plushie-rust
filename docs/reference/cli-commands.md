@@ -443,6 +443,31 @@ cargo plushie package check --manifest plushie-package.toml --postcheck
 | `--release` | bool | Build the generated launcher with Cargo's release profile during `--postcheck` |
 | `--verbose` | bool | Print the underlying cargo command |
 
+## plushie-launcher
+
+Run a package manifest and sibling payload archive through the reusable
+launcher runtime. This binary is shipped as a release asset for SDKs
+that need package execution without compiling Rust code.
+
+```bash
+bin/plushie-launcher --manifest dist/package/plushie-package.toml
+bin/plushie-launcher --manifest dist/package/plushie-package.toml --postcheck
+```
+
+| Flag | Type | Description |
+|---|---|---|
+| `--manifest <PATH>` | path | Plushie package manifest. The payload archive path is resolved relative to this manifest |
+| `--postcheck` | bool | Validate extraction and diagnostics without starting the host |
+| `--version` | bool | Print human-readable launcher identity |
+| `--json` | bool | Emit machine-readable identity when used with `--version` |
+
+The reusable launcher consumes the same `plushie-package.toml` shape as
+`cargo plushie package portable`. The current portable command still
+builds a self-contained generated launcher that embeds the manifest and
+payload. The reusable launcher is the non-Cargo runtime path for SDKs
+that assemble a payload directory and want to execute it from an
+already-downloaded native tool set.
+
 ## cargo plushie package assemble
 
 Build a Rust SDK app as a wire-mode host payload, assemble it with a

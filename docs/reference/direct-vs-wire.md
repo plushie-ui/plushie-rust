@@ -84,10 +84,8 @@ wins), mirroring `runner/wire_discovery.rs`:
    `target/plushie-renderer/target/{release,debug}/`, populated
    by `cargo plushie build`. Release profile is preferred.
 3. Downloaded stock binary at
-   `target/plushie/bin/plushie-renderer-<os>-<arch>[.exe]`,
+   `bin/plushie-renderer(.exe)`,
    populated by `cargo plushie download`.
-4. `plushie-renderer` on `PATH`.
-
 If nothing resolves, `plushie::run` returns `Error::BinaryNotFound`
 with guidance naming every install path. On Unix the discovered
 binary is passed to `file(1)` and an architecture mismatch is
@@ -250,7 +248,7 @@ single executable can carry cleanly:
   extract and run the matching embedded payload.
 
 Wire-mode Rust apps follow the same shape as other wire SDKs. Use
-`cargo plushie package-rust` to build the host with wire support,
+`cargo plushie package assemble` to build the host with wire support,
 stage a payload containing the host executable and a payload-local
 `plushie-renderer`, write `plushie-package.toml`, and hand it to
 `cargo plushie package`. Socket-mode flags (`--plushie-socket`,

@@ -55,7 +55,7 @@ fires depends on the feature flags enabled at build time:
 - **Built-in widgets only**: any mode. The default (`direct`) runs
   in-process with no setup. `--features wire --no-default-features`
   auto-discovers the stock `plushie-renderer` binary via
-  `PLUSHIE_BINARY_PATH` then `PATH`.
+  `PLUSHIE_BINARY_PATH` or project-local `bin/plushie-renderer`.
 - **Custom `PlushieWidget` impls**: build a custom renderer crate that
   registers your widgets, install that binary instead, and point the
   SDK at it with `PLUSHIE_BINARY_PATH=/path/to/my-renderer` or call

@@ -465,27 +465,10 @@ fn discover_renderer(manifest_dir: &Path) -> Option<PathBuf> {
         }
     }
 
-    // Downloaded stock binary.
-    let download = target_dir
-        .join("plushie/bin")
-        .join(platform::download_name());
+    // Project-local installed renderer.
+    let download = manifest_dir.join("bin").join(platform::renderer_name());
     if is_executable_file(&download) {
         return Some(download);
-    }
-
-    // PATH.
-    let name = if cfg!(target_os = "windows") {
-        "plushie-renderer.exe"
-    } else {
-        "plushie-renderer"
-    };
-    if let Some(path_var) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&path_var) {
-            let candidate = dir.join(name);
-            if is_executable_file(&candidate) {
-                return Some(candidate);
-            }
-        }
     }
     None
 }
@@ -523,7 +506,6 @@ fn renderer_not_found_hint() -> String {
     "not found. Try one of:\n  \
      cargo plushie build      (widget-aware custom build)\n  \
      cargo plushie download   (precompiled stock binary)\n  \
-     cargo install plushie-renderer   (build stock from source)\n\
      or set PLUSHIE_BINARY_PATH to an existing binary."
         .to_string()
 }

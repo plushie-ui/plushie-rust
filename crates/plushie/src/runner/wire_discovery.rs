@@ -11,10 +11,9 @@
 //!    <bin-name>` where `cargo plushie build` deposits a widget-aware
 //!    binary. Both `release` and `debug` profiles are checked, in that
 //!    order.
-//! 3. Downloaded stock binary: `target/plushie/bin/<download-name>`
-//!    where `cargo plushie download` places a precompiled binary.
-//! 4. `plushie-renderer` on `PATH` (catch-all for users who ran
-//!    `cargo install plushie-renderer`).
+//! 3. Project-local renderer: `bin/plushie-renderer`, where
+//!    `cargo plushie build` and `cargo plushie download` install the
+//!    usable renderer binary.
 //!
 //! Apps that ship a custom renderer build (for example, one with
 //! additional `PlushieWidget` implementations registered) can bypass
@@ -44,34 +43,7 @@ fn target_dir() -> PathBuf {
         })
 }
 
-/// Platform download file name used by `cargo plushie download`
-/// (`plushie-renderer-{os}-{arch}[.exe]`).
-fn download_name() -> String {
-    let ext = if cfg!(target_os = "windows") {
-        ".exe"
-    } else {
-        ""
-    };
-    let os = if cfg!(target_os = "linux") {
-        "linux"
-    } else if cfg!(target_os = "macos") {
-        "darwin"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else {
-        "unknown"
-    };
-    let arch = if cfg!(target_arch = "x86_64") {
-        "x86_64"
-    } else if cfg!(target_arch = "aarch64") {
-        "aarch64"
-    } else {
-        "unknown"
-    };
-    format!("plushie-renderer-{os}-{arch}{ext}")
-}
-
-/// Find a renderer binary using the four-step discovery chain.
+/// Find a renderer binary using the discovery chain.
 ///
 /// # Errors
 ///
@@ -109,15 +81,14 @@ fn resolve_candidate() -> Result<String, Error> {
         }
     }
 
-    // Step 3: downloaded stock binary from `cargo plushie download`.
-    let download_path = target.join("plushie/bin").join(download_name());
+    // Step 3: project-local binary from `cargo plushie build` or
+    // `cargo plushie download`.
+    let download_path = std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("bin")
+        .join(RENDERER_BIN);
     if is_executable(&download_path) {
         return Ok(download_path.to_string_lossy().into_owned());
-    }
-
-    // Step 4: plushie-renderer on PATH.
-    if let Some(path) = find_on_path(RENDERER_BIN) {
-        return Ok(path);
     }
 
     Err(Error::BinaryNotFound {
@@ -231,19 +202,6 @@ fn find_custom_build_binary(target: &Path, profile: &str) -> Option<String> {
     None
 }
 
-/// Search the `PATH` environment for `name`, returning the first
-/// executable match (absolute path).
-fn find_on_path(name: &str) -> Option<String> {
-    let path_var = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path_var) {
-        let candidate = dir.join(name);
-        if is_executable(&candidate) {
-            return Some(candidate.to_string_lossy().into_owned());
-        }
-    }
-    None
-}
-
 #[cfg(unix)]
 fn is_executable(path: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
@@ -260,20 +218,15 @@ fn is_executable(path: &std::path::Path) -> bool {
 
 /// Guidance text shown when every discovery step fails.
 ///
-/// Points at all three install paths the SDK supports: the
-/// crates.io-hosted stock binary (`cargo install plushie-renderer`),
-/// the prebuilt download flow (`cargo plushie download`), and the
-/// custom build flow (`cargo plushie build`).
+/// Points at the project-local renderer install flows.
 pub(crate) fn not_found_message() -> String {
     format!(
         "renderer binary not found. Try one of:\n  \
          cargo plushie build      (widget-aware custom build)\n  \
          cargo plushie download   (precompiled stock binary)\n  \
-         cargo install plushie-renderer   (build stock from source)\n\
          or set PLUSHIE_BINARY_PATH to an existing binary. Searched \
          PLUSHIE_BINARY_PATH, target/plushie-renderer/target/{{release,debug}}/, \
-         target/plushie/bin/{download_name}, and PATH for `{RENDERER_BIN}`.",
-        download_name = download_name()
+         and bin/{RENDERER_BIN}.",
     )
 }
 
@@ -289,24 +242,12 @@ mod tests {
     }
 
     #[test]
-    fn find_on_path_returns_none_for_missing_binary() {
-        let needle = "plushie-renderer-definitely-not-installed-xyz-12345";
-        assert!(find_on_path(needle).is_none());
-    }
-
-    #[test]
     fn not_found_message_mentions_all_install_paths() {
         let msg = not_found_message();
         assert!(msg.contains("cargo plushie build"));
         assert!(msg.contains("cargo plushie download"));
-        assert!(msg.contains("cargo install plushie-renderer"));
         assert!(msg.contains("PLUSHIE_BINARY_PATH"));
-    }
-
-    #[test]
-    fn download_name_is_well_formed() {
-        let name = download_name();
-        assert!(name.starts_with("plushie-renderer-"));
+        assert!(msg.contains("bin/plushie-renderer"));
     }
 
     #[test]

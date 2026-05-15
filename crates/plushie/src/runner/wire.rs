@@ -430,13 +430,13 @@ fn run_wire_inner<A: App>(
         // CARGO_PKG_VERSION skew is advisory: wire-protocol compatibility
         // is PROTOCOL_VERSION, not CARGO_PKG_VERSION. Divergence often
         // signals a stale installed renderer binary though, so the hint
-        // names the exact install command.
+        // points at the project-local install commands.
         if let Some(remote) = hello.get("version").and_then(|v| v.as_str())
             && remote != crate::RENDERER_VERSION
         {
             log::warn!(
                 "renderer version skew: SDK built against {expected}, \
-                 renderer reports {got}; run `cargo install plushie-renderer --version {expected}` \
+                 renderer reports {got}; run `cargo plushie download` or `cargo plushie build` \
                  if this is unexpected",
                 expected = crate::RENDERER_VERSION,
                 got = remote,

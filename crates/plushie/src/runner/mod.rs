@@ -6,9 +6,9 @@
 //!   iced. No subprocess, no serialization.
 //! - **Wire** (`wire` feature): Spawns a renderer binary and
 //!   communicates over stdin/stdout. The binary path is discovered via
-//!   the four-step chain: `PLUSHIE_BINARY_PATH`, custom build output
-//!   (`target/plushie-renderer/`), downloaded stock binary
-//!   (`target/plushie/bin/`), then `PATH`. Use `crate::run_with_renderer`
+//!   `PLUSHIE_BINARY_PATH`, custom build output
+//!   (`target/plushie-renderer/`), then the project-local stock binary
+//!   (`bin/plushie-renderer`). Use `crate::run_with_renderer`
 //!   (wire feature only) to supply an explicit path.
 
 #[cfg(feature = "direct")]

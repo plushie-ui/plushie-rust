@@ -5,11 +5,11 @@
 //! <sub>`) or `cargo-plushie <sub>` directly. Both shapes dispatch
 //! through the same clap parser below.
 
-use anyhow::{Context, Result};
-use cargo_metadata::CargoOpt;
-use cargo_plushie::{
+use crate::{
     default_icons, discover, doctor, download, generator, package, package_rust, platform, scaffold,
 };
+use anyhow::{Context, Result};
+use cargo_metadata::CargoOpt;
 use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -20,19 +20,11 @@ const BUILTIN_TYPE_NAMES: &[&str] = plushie_core::BUILTIN_TYPE_NAMES;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "cargo-plushie",
-    bin_name = "cargo",
+    name = "plushie",
     about = "Cargo subcommand for Plushie renderer build + download",
     version
 )]
-enum Cli {
-    /// The `plushie` subcommand wrapper (matches the argv shape that
-    /// Cargo passes when the user runs `cargo plushie <sub>`).
-    Plushie(PlushieArgs),
-}
-
-#[derive(Args, Debug)]
-struct PlushieArgs {
+struct Cli {
     /// Nested plushie subcommand.
     #[command(subcommand)]
     command: PlushieSubcommand,
@@ -49,10 +41,8 @@ enum PlushieSubcommand {
     /// SDK's wire discovery picks the freshly built renderer up from
     /// `target/plushie-renderer/` without any extra wiring.
     Run(RunArgs),
-    /// Build a standalone launcher from a Plushie package manifest.
+    /// Assemble, bundle, check, or build portable Plushie packages.
     Package(PackageArgs),
-    /// Build a wire-mode Rust app payload and standalone launcher.
-    PackageRust(PackageRustArgs),
     /// Scaffold a new native widget crate with the conventional
     /// `[package.metadata.plushie.widget]` layout.
     NewWidget(NewWidgetArgs),
@@ -156,18 +146,28 @@ struct RunArgs {
 
 #[derive(Args, Debug)]
 struct PackageArgs {
+    /// Package workflow command.
+    #[command(subcommand)]
+    command: PackageSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum PackageSubcommand {
+    /// Build a wire-mode Rust app payload directory and manifest.
+    Assemble(PackageRustArgs),
+    /// Build a self-extracting portable launcher from a package manifest.
+    Portable(PackagePortableArgs),
+    /// Check a package manifest, payload, or generated portable launcher.
+    Check(PackageCheckArgs),
+    /// Create a platform bundle through cargo-packager.
+    Bundle(PackageBundleArgs),
+}
+
+#[derive(Args, Debug)]
+struct PackagePortableArgs {
     /// Path to the Plushie package manifest.
     #[arg(long)]
     manifest: PathBuf,
-    /// Precheck the manifest and payload without building a launcher.
-    #[arg(long)]
-    precheck: bool,
-    /// Build the launcher and run its postcheck path with an isolated cache.
-    #[arg(long)]
-    postcheck: bool,
-    /// Postcheck timeout in seconds.
-    #[arg(long, default_value_t = 10)]
-    postcheck_timeout: u64,
     /// Final launcher output path. Defaults under target/plushie/package/.
     #[arg(long)]
     out: Option<PathBuf>,
@@ -180,6 +180,38 @@ struct PackageArgs {
     /// Print the underlying cargo command.
     #[arg(long)]
     verbose: bool,
+}
+
+#[derive(Args, Debug)]
+struct PackageCheckArgs {
+    /// Path to the Plushie package manifest.
+    #[arg(long)]
+    manifest: PathBuf,
+    /// Also build the portable launcher and run its extraction/cache check.
+    #[arg(long)]
+    postcheck: bool,
+    /// Postcheck timeout in seconds.
+    #[arg(long, default_value_t = 10)]
+    postcheck_timeout: u64,
+    /// Final launcher output path for --postcheck.
+    #[arg(long)]
+    out: Option<PathBuf>,
+    /// Build the generated launcher with the release Cargo profile.
+    #[arg(long)]
+    release: bool,
+    /// Run signing hooks declared by the package manifest.
+    #[arg(long)]
+    run_signing_hooks: bool,
+    /// Print the underlying cargo command.
+    #[arg(long)]
+    verbose: bool,
+}
+
+#[derive(Args, Debug)]
+struct PackageBundleArgs {
+    /// Assembled app directory to bundle.
+    #[arg(long)]
+    app: PathBuf,
 }
 
 #[derive(Args, Debug)]
@@ -242,23 +274,24 @@ struct DefaultIconsArgs {
     out: PathBuf,
 }
 
-fn main() -> Result<()> {
-    // The first argv element after the binary name is the subcommand
-    // shape Cargo hands us (`plushie`). Accept both shapes: when run
-    // directly as `cargo-plushie build` we don't have the extra
-    // `plushie` word; rewrite argv to make clap's parsing uniform.
+/// Parse CLI arguments and dispatch the selected Plushie command.
+pub fn run() -> Result<()> {
+    // Cargo invokes subcommands as `cargo-plushie plushie <sub>`.
+    // Drop the extra word so the standalone `plushie` binary and the
+    // Cargo entry point share one parser.
     let mut argv: Vec<String> = std::env::args().collect();
-    if argv.len() >= 2 && argv[1] != "plushie" {
-        argv.insert(1, "plushie".to_string());
+    if argv.len() >= 2 && argv[1] == "plushie" {
+        argv.remove(1);
+        argv[0] = "cargo plushie".to_string();
+    } else {
+        argv[0] = "plushie".to_string();
     }
     let cli = Cli::parse_from(argv);
-    let Cli::Plushie(args) = cli;
-    match args.command {
+    match cli.command {
         PlushieSubcommand::Build(b) => cmd_build(&b),
         PlushieSubcommand::Download(d) => cmd_download(&d),
         PlushieSubcommand::Run(r) => cmd_run(&r),
         PlushieSubcommand::Package(p) => cmd_package(&p),
-        PlushieSubcommand::PackageRust(p) => cmd_package_rust(&p),
         PlushieSubcommand::NewWidget(n) => cmd_new_widget(&n),
         PlushieSubcommand::Init(i) => cmd_init(&i),
         PlushieSubcommand::Doctor(d) => cmd_doctor(&d),
@@ -266,7 +299,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_package_rust(args: &PackageRustArgs) -> Result<()> {
+fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> {
     let manifest_path = args
         .manifest_path
         .clone()
@@ -381,9 +414,9 @@ fn cmd_package_rust(args: &PackageRustArgs) -> Result<()> {
         staged.payload_dir.display()
     );
 
-    if args.no_launcher {
+    if args.no_launcher || !build_portable {
         println!(
-            "plushie: hand off with `cargo plushie package --manifest {}`",
+            "plushie: hand off with `cargo plushie package portable --manifest {}`",
             staged.manifest_path.display()
         );
         return Ok(());
@@ -424,43 +457,56 @@ fn cmd_default_icons(args: &DefaultIconsArgs) -> Result<()> {
 }
 
 fn cmd_package(args: &PackageArgs) -> Result<()> {
-    if args.precheck && args.postcheck {
-        anyhow::bail!("--precheck and --postcheck cannot be used together");
+    match &args.command {
+        PackageSubcommand::Assemble(a) => cmd_package_rust(a, false),
+        PackageSubcommand::Portable(p) => cmd_package_portable(p),
+        PackageSubcommand::Check(c) => cmd_package_check(c),
+        PackageSubcommand::Bundle(b) => {
+            anyhow::bail!(
+                "package bundle is reserved for cargo-packager integration; app directory was `{}`",
+                b.app.display()
+            )
+        }
     }
+}
+
+fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
 
-    if args.precheck {
+    if !args.postcheck {
         println!(
-            "plushie: prechecked standalone package {} {} ({})",
+            "plushie: checked package {} {} ({})",
             precheck.app_id, precheck.app_version, precheck.payload_hash
         );
         return Ok(());
     }
 
-    if args.postcheck {
-        let result = package::postcheck_package(&package::PackagePostcheckOpts {
-            package: package::PackageOpts {
-                manifest_path: &args.manifest,
-                out_path: args.out.as_deref(),
-                release: args.release,
-                run_signing_hooks: args.run_signing_hooks,
-                verbose: args.verbose,
-            },
-            timeout: Duration::from_secs(args.postcheck_timeout),
-        })?;
-        println!(
-            "plushie: postchecked standalone launcher at {}",
-            result.binary_path.display()
-        );
-        println!("plushie: postcheck cache at {}", result.cache_dir.display());
-        println!(
-            "plushie: launcher crate retained at {}",
-            result.launcher_crate_dir.display()
-        );
-        return Ok(());
-    }
+    let result = package::postcheck_package(&package::PackagePostcheckOpts {
+        package: package::PackageOpts {
+            manifest_path: &args.manifest,
+            out_path: args.out.as_deref(),
+            release: args.release,
+            run_signing_hooks: args.run_signing_hooks,
+            verbose: args.verbose,
+        },
+        timeout: Duration::from_secs(args.postcheck_timeout),
+    })?;
+    println!(
+        "plushie: postchecked portable launcher at {}",
+        result.binary_path.display()
+    );
+    println!("plushie: postcheck cache at {}", result.cache_dir.display());
+    println!(
+        "plushie: launcher crate retained at {}",
+        result.launcher_crate_dir.display()
+    );
+    Ok(())
+}
 
+fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
+    let precheck = package::precheck_package(&args.manifest)?;
+    print_package_warnings(&precheck);
     let result = package::build_launcher(&package::PackageOpts {
         manifest_path: &args.manifest,
         out_path: args.out.as_deref(),
@@ -594,9 +640,9 @@ fn target_dir_from(
 /// friendlier than silently omitting the widget from the build.
 fn filter_native_widgets(
     app_pkg: &cargo_metadata::Package,
-    discovered: &[cargo_plushie::WidgetMetadata],
+    discovered: &[crate::WidgetMetadata],
     allowlist: &[String],
-) -> Result<Vec<cargo_plushie::WidgetMetadata>> {
+) -> Result<Vec<crate::WidgetMetadata>> {
     use std::collections::HashSet;
 
     let direct_deps: HashSet<&str> = app_pkg
@@ -604,11 +650,10 @@ fn filter_native_widgets(
         .iter()
         .map(|d| d.name.as_str())
         .collect();
-    let discovered_by_name: std::collections::HashMap<&str, &cargo_plushie::WidgetMetadata> =
-        discovered
-            .iter()
-            .map(|w| (w.crate_name.as_str(), w))
-            .collect();
+    let discovered_by_name: std::collections::HashMap<&str, &crate::WidgetMetadata> = discovered
+        .iter()
+        .map(|w| (w.crate_name.as_str(), w))
+        .collect();
 
     let mut out = Vec::with_capacity(allowlist.len());
     for name in allowlist {
@@ -704,7 +749,7 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     // so `discover_widgets` runs `cargo metadata` with
     // `current_dir(manifest_dir)` to pick this file up.
     if let Some(source) = &source_path {
-        cargo_plushie::patch_config::write_scratch_cargo_config(&manifest_dir, source)?;
+        crate::patch_config::write_scratch_cargo_config(&manifest_dir, source)?;
     }
 
     let discovered = discover::discover_widgets_with_options(
@@ -756,14 +801,54 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     }
     let status = cmd.status().with_context(|| "failed to run cargo build")?;
     if !status.success() {
-        return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
+        return Err(crate::Error::CargoBuildFailed(status).into());
     }
     println!(
         "plushie: generated renderer workspace at {} ({} widgets registered)",
         output_dir.display(),
         widgets.len()
     );
+    let installed = install_built_renderer(&manifest_dir, args)?;
+    println!("plushie: installed renderer at {}", installed.display());
     Ok(())
+}
+
+fn install_built_renderer(manifest_dir: &Path, args: &BuildArgs) -> Result<PathBuf> {
+    let cwd = std::env::current_dir().with_context(|| "resolve current directory")?;
+    let built = resolve_built_binary(
+        manifest_dir,
+        &RunArgs {
+            watch: false,
+            release: args.release,
+            verbose: args.verbose,
+            manifest_path: Some(manifest_dir.join("Cargo.toml")),
+        },
+    )?;
+    if !built.is_file() {
+        return Err(anyhow::anyhow!(
+            "cargo build succeeded but renderer binary is missing at `{}`",
+            built.display()
+        ));
+    }
+    let dest = cwd.join("bin").join(platform::renderer_name());
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(&built, &dest).with_context(|| {
+        format!(
+            "copy built renderer `{}` to `{}`",
+            built.display(),
+            dest.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&dest)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&dest, perms)?;
+    }
+    Ok(dest)
 }
 
 /// WASM build path: delegate to `wasm-pack` against the
@@ -824,7 +909,7 @@ fn cmd_build_wasm(manifest_dir: &Path, args: &BuildArgs) -> Result<()> {
 
     let status = cmd.status().with_context(|| "failed to run wasm-pack")?;
     if !status.success() {
-        return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
+        return Err(crate::Error::CargoBuildFailed(status).into());
     }
     println!("plushie: wasm bundle generated at {}", output_dir.display());
     Ok(())
@@ -929,11 +1014,10 @@ fn fetch_wasm_crate_from_registry(scratch_dir: &Path, version: &str) -> Result<P
 
 fn cmd_download(args: &DownloadArgs) -> Result<()> {
     let manifest_dir = resolve_manifest_dir(args.manifest_path.as_ref())?;
-    let target = target_dir(&manifest_dir);
     let app_pkg = load_app_package_no_deps(&manifest_dir)?;
     let source_path = resolve_source_path(&manifest_dir, &app_pkg)?;
     if let Some(source) = &source_path {
-        cargo_plushie::patch_config::write_scratch_cargo_config(&manifest_dir, source)?;
+        crate::patch_config::write_scratch_cargo_config(&manifest_dir, source)?;
     }
 
     // Correctness gate: refuse if custom widgets are present.
@@ -945,7 +1029,8 @@ fn cmd_download(args: &DownloadArgs) -> Result<()> {
     // version the SDK negotiates against at handshake time.
     let version = resolve_renderer_version(&manifest_dir)?;
 
-    let dl_target = download::DownloadTarget::new(&target, &version);
+    let project_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
+    let dl_target = download::DownloadTarget::new(&project_dir, &version);
     println!(
         "plushie: resolved download platform as {}-{}",
         platform::os_name(),
@@ -1183,7 +1268,7 @@ fn run_cargo_run(manifest_dir: &std::path::Path, args: &RunArgs, pinned: &Path) 
     cmd.env("PLUSHIE_BINARY_PATH", pinned);
     let status = cmd.status().with_context(|| "failed to run cargo run")?;
     if !status.success() {
-        return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
+        return Err(crate::Error::CargoBuildFailed(status).into());
     }
     Ok(())
 }
@@ -1216,7 +1301,7 @@ fn run_with_cargo_watch(
     cmd.env("PLUSHIE_BINARY_PATH", pinned);
     let status = cmd.status().with_context(|| "failed to run cargo watch")?;
     if !status.success() {
-        return Err(cargo_plushie::Error::CargoBuildFailed(status).into());
+        return Err(crate::Error::CargoBuildFailed(status).into());
     }
     Ok(())
 }

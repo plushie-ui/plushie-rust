@@ -2,7 +2,7 @@
 //!
 //! Ported shape from Elixir's `mix plushie.download` with the URL
 //! scheme adapted to the plushie-rust repository. The binary lives
-//! under `target/plushie/bin/` alongside its `.sha256` sidecar so
+//! under `bin/` alongside its `.sha256` sidecar so
 //! `wire_discovery` can pick it up.
 
 use crate::{Error, Result, platform};
@@ -30,15 +30,15 @@ pub struct DownloadTarget {
 impl DownloadTarget {
     /// Compute the target paths + URLs without doing any I/O.
     ///
-    /// `target_dir` is the app's Cargo target directory (usually
-    /// `{manifest_dir}/target/`). Binary name follows the
-    /// `{os}-{arch}` convention.
+    /// `project_dir` is the app directory. The release artifact name
+    /// follows the `{os}-{arch}` convention, while the local installed
+    /// filename is stable.
     #[must_use]
-    pub fn new(target_dir: &Path, version: &str) -> Self {
+    pub fn new(project_dir: &Path, version: &str) -> Self {
         let download_name = platform::download_name();
-        let bin_dir = target_dir.join("plushie/bin");
-        let binary_path = bin_dir.join(&download_name);
-        let sha256_path = bin_dir.join(format!("{download_name}.sha256"));
+        let bin_dir = project_dir.join("bin");
+        let binary_path = bin_dir.join(platform::renderer_name());
+        let sha256_path = bin_dir.join(format!("{}.sha256", platform::renderer_name()));
         let binary_url = format!("{RELEASE_BASE_URL}/v{version}/{download_name}");
         let sha256_url = format!("{binary_url}.sha256");
         Self {
@@ -153,14 +153,10 @@ mod tests {
 
     #[test]
     fn target_resolves_paths_and_urls() {
-        let target = DownloadTarget::new(Path::new("/project/target"), "0.6.1");
+        let target = DownloadTarget::new(Path::new("/project"), "0.6.1");
         assert!(target.binary_url.contains("v0.6.1"));
         assert!(target.sha256_url.ends_with(".sha256"));
-        assert!(
-            target
-                .binary_path
-                .starts_with("/project/target/plushie/bin")
-        );
+        assert!(target.binary_path.starts_with("/project/bin"));
     }
 
     #[test]

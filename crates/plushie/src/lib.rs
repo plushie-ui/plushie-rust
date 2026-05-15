@@ -56,8 +56,8 @@
 //! - **Wire mode** (`wire` feature): Spawns a renderer binary and
 //!   communicates over stdin/stdout. Auto-discovers the binary via
 //!   `PLUSHIE_BINARY_PATH`, then a custom build output under
-//!   `target/plushie-renderer/`, then a downloaded stock binary under
-//!   `target/plushie/bin/`, then `PATH`.
+//!   `target/plushie-renderer/`, then a project-local stock binary at
+//!   `bin/plushie-renderer`.
 //!
 //! When both features are enabled, direct wins. Pass an explicit
 //! renderer path via `run_with_renderer` (wire feature only) to
@@ -492,10 +492,8 @@ pub type Result = std::result::Result<(), Error>;
 /// 2. Custom build output at
 ///    `target/plushie-renderer/target/{release,debug}/<bin>`, where
 ///    `cargo plushie build` deposits widget-aware binaries.
-/// 3. Downloaded stock binary at
-///    `target/plushie/bin/plushie-renderer-<os>-<arch>[.exe]` from
+/// 3. Project-local stock binary at `bin/plushie-renderer` from
 ///    `cargo plushie download`.
-/// 4. `plushie-renderer` on `PATH` (on Windows, `plushie-renderer.exe`).
 ///
 /// If none resolve to an executable, returns
 /// [`Error::BinaryNotFound`] with guidance naming each install path.
@@ -690,7 +688,7 @@ pub fn run_wire_with_runtime<A: App>(binary_path: &str, runtime: tokio::runtime:
 }
 
 /// Run the app in wire mode by spawning a renderer binary discovered
-/// via the four-step chain (env, custom build, downloaded, PATH).
+/// via the standard wire-mode discovery chain.
 ///
 /// This is the explicit building block behind the feature-default
 /// branch of [`run`]. Use it when the auto-dispatch layers in [`run`]

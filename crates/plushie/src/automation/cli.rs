@@ -40,7 +40,7 @@ pub fn script<A: App>(path: &str) -> Result {
 /// the header's `backend:` field, so the caller can visually inspect
 /// the replay. The runner locates the renderer binary via the normal
 /// wire-mode discovery chain (`PLUSHIE_BINARY_PATH`, custom build,
-/// downloaded stock binary, `PATH`), spawns it, and sends each
+/// downloaded stock binary), spawns it, and sends each
 /// script step's resulting tree so the user sees the app execute the
 /// script live on screen.
 ///

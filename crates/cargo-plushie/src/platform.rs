@@ -56,7 +56,13 @@ pub const fn exe_suffix() -> &'static str {
     }
 }
 
-/// Returns the download file name for the stock renderer on this
+/// Returns the local file name for the renderer on this platform.
+#[must_use]
+pub fn renderer_name() -> String {
+    format!("plushie-renderer{}", exe_suffix())
+}
+
+/// Returns the release artifact file name for the stock renderer on this
 /// platform. Format: `plushie-renderer-{os}-{arch}[.exe]`.
 #[must_use]
 pub fn download_name() -> String {
@@ -76,5 +82,11 @@ mod tests {
     fn download_name_well_formed() {
         let name = download_name();
         assert!(name.starts_with("plushie-renderer-"));
+    }
+
+    #[test]
+    fn renderer_name_is_stable() {
+        let name = renderer_name();
+        assert!(name == "plushie-renderer" || name == "plushie-renderer.exe");
     }
 }

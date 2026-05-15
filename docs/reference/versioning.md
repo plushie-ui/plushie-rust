@@ -115,7 +115,7 @@ resolved from the app's dep graph: `cargo-plushie` runs `cargo
 metadata`, finds the `plushie-renderer-lib` package (falling back
 to `plushie`), and reads its version. The download URL is
 `https://github.com/plushie-ui/plushie-rust/releases/download/v{version}/...`
-and the binary lands at `target/plushie/bin/`. There is no
+and the binary lands at `bin/`. There is no
 `--version` flag: changing the version means changing the
 `Cargo.toml` pin.
 

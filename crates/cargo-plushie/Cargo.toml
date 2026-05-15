@@ -10,10 +10,15 @@ authors.workspace = true
 keywords = ["cargo-plushie", "cargo-subcommand", "cli", "plushie"]
 categories.workspace = true
 readme = "README.md"
+default-run = "cargo-plushie"
 
 [[bin]]
 name = "cargo-plushie"
-path = "src/main.rs"
+path = "src/bin/cargo-plushie.rs"
+
+[[bin]]
+name = "plushie"
+path = "src/bin/plushie.rs"
 
 [package.metadata.docs.rs]
 all-features = true

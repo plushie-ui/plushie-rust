@@ -1,8 +1,8 @@
 //! Shared types and utilities for `cargo plushie`.
 //!
-//! The crate is split between `src/main.rs` (CLI entry point + clap
-//! parsing) and this library module. Keeping the logic in a library
-//! makes integration testing possible without spawning the binary.
+//! The crate is split between thin binary wrappers, CLI parsing, and
+//! this library module. Keeping the logic in a library makes
+//! integration testing possible without spawning the binary.
 //!
 //! Commands:
 //!
@@ -10,10 +10,10 @@
 //!   under `target/plushie-renderer/` with every native widget in the
 //!   dep graph registered, then run `cargo build`.
 //! - `cargo plushie download` - fetch a precompiled stock renderer
-//!   from GitHub releases and place it under `target/plushie/bin/`.
-//! - `cargo plushie package` - build a standalone launcher from a
+//!   from GitHub releases and place it under `bin/`.
+//! - `cargo plushie package portable` - build a standalone launcher from a
 //!   Plushie package manifest and payload archive.
-//! - `cargo plushie package-rust` - build a wire-mode Rust app payload
+//! - `cargo plushie package assemble` - build a wire-mode Rust app payload
 //!   and hand it to the shared package launcher.
 
 #![deny(missing_docs)]
@@ -111,6 +111,7 @@ pub enum Error {
 /// Convenience `Result` alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub mod cli;
 pub mod default_icons;
 pub mod discover;
 pub mod doctor;

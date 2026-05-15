@@ -106,10 +106,11 @@ The practical options are:
    the resulting binary from
    `target/plushie-renderer/target/release/`. The stock renderer
    has no code for custom widgets.
-3. **Rely on a PATH install.** Viable for developer tooling,
-   unreliable for end-user distribution. `cargo plushie download`
-   fetches a stock binary, but the path it installs to
-   (`target/plushie/bin/`) is not on an end user's `PATH`.
+3. **Use a project-local stock renderer.** Viable for developer
+   tooling, but incomplete for end-user distribution by itself.
+   `cargo plushie download` fetches a stock binary to
+   `bin/plushie-renderer`; an installer still needs to copy that
+   binary with the app.
 
 An installer for a wire-mode app copies the renderer into the
 same platform-native location as the app binary (`/usr/bin/`,

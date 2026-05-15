@@ -176,7 +176,7 @@ only built-in widgets:
 cargo plushie download
 ```
 
-The binary lands under `target/plushie/bin/` and the SDK's
+The binary lands under `bin/` and the SDK's
 discovery chain picks it up automatically. For apps that bundle
 [custom widgets](../reference/custom-widgets.md), build a custom
 renderer instead:
@@ -192,9 +192,9 @@ cargo run
 ```
 
 `plushie::run` walks the discovery chain (`PLUSHIE_BINARY_PATH`,
-custom build output, downloaded stock binary, `plushie-renderer`
-on `PATH`) and spawns the first hit. To point at an explicit
-binary instead, set `PLUSHIE_BINARY_PATH` or call
+custom build output, downloaded stock binary) and spawns the first
+hit. To point at an explicit binary instead, set `PLUSHIE_BINARY_PATH`
+or call
 `plushie::run_with_renderer(path)` from `main`.
 
 `cargo plushie run` is a shortcut that builds the custom renderer

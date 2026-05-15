@@ -81,6 +81,7 @@ jobs:
             asset: plushie-renderer-linux-x86_64
             tool_binary: plushie
             tool_asset: plushie-linux-x86_64
+            can_run: true
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             binary: plushie-renderer
@@ -106,6 +107,7 @@ jobs:
             asset: plushie-renderer-windows-x86_64.exe
             tool_binary: plushie.exe
             tool_asset: plushie-windows-x86_64.exe
+            can_run: true
           - target: aarch64-pc-windows-msvc
             os: windows-11-arm
             binary: plushie-renderer.exe
@@ -156,6 +158,41 @@ jobs:
           tool_src="target/${{ matrix.target }}/dist/${{ matrix.tool_binary }}"
           cp "$renderer_src" "${{ matrix.asset }}"
           cp "$tool_src" "${{ matrix.tool_asset }}"
+
+      - name: Check release identities
+        if: matrix.can_run == true
+        shell: bash
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+
+          require_json_field() {
+            json="$1"
+            expected_field="$2"
+            case "$json" in
+              *"$expected_field"*) ;;
+              *)
+                echo "missing expected identity field: $expected_field"
+                echo "$json"
+                exit 1
+                ;;
+            esac
+          }
+
+          check_identity() {
+            binary="$1"
+            tool="$2"
+            json="$("./$binary" --version --json)"
+            echo "$json"
+            require_json_field "$json" "\"tool\": \"$tool\""
+            require_json_field "$json" "\"plushie_rust_version\": \"$expected\""
+            require_json_field "$json" "\"target\": \"${{ matrix.target }}\""
+            require_json_field "$json" "\"kind\": \"release\""
+            require_json_field "$json" "\"git_dirty\": false"
+            require_json_field "$json" "\"profile\": \"dist\""
+          }
+
+          check_identity "${{ matrix.asset }}" "plushie-renderer"
+          check_identity "${{ matrix.tool_asset }}" "plushie"
 
       - name: Generate checksum
         shell: bash

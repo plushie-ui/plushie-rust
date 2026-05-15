@@ -75,6 +75,30 @@ pub struct PackagePrecheckResult {
     pub app_version: String,
     /// Payload SHA-256 field from the manifest.
     pub payload_hash: String,
+    /// Non-fatal package issues found during precheck.
+    pub warnings: Vec<PackageWarning>,
+}
+
+/// Non-fatal package issue found during precheck.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PackageWarning {
+    /// The package has no payload-local platform icon.
+    MissingPlatformIcon,
+}
+
+impl PackageWarning {
+    /// Human-readable warning text for CLI output.
+    #[must_use]
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::MissingPlatformIcon => {
+                "package manifest has no platform.icon; the launcher can still be built, \
+                 but platform bundles and update metadata may have no app icon. Add an icon \
+                 to the payload and set [platform].icon, or run `cargo plushie default-icons \
+                 --out <payload>/assets` while staging."
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,11 +196,26 @@ struct LoadedPackage {
 /// unsafe entry.
 pub fn precheck_package(manifest_path: &Path) -> Result<PackagePrecheckResult> {
     let loaded = load_package(manifest_path)?;
+    let warnings = package_warnings(&loaded.manifest);
     Ok(PackagePrecheckResult {
         app_id: loaded.manifest.app_id,
         app_version: loaded.manifest.app_version,
         payload_hash: loaded.manifest.payload.hash,
+        warnings,
     })
+}
+
+fn package_warnings(manifest: &PackageManifest) -> Vec<PackageWarning> {
+    let mut warnings = Vec::new();
+    if manifest
+        .platform
+        .as_ref()
+        .and_then(|platform| platform.icon.as_ref())
+        .is_none()
+    {
+        warnings.push(PackageWarning::MissingPlatformIcon);
+    }
+    warnings
 }
 
 /// Build the generated launcher and copy it to the requested output.
@@ -2287,6 +2326,30 @@ hash = "{hash}"
         });
 
         validate_payload_archive(&manifest, &payload).unwrap();
+    }
+
+    #[test]
+    fn warns_when_platform_icon_is_missing() {
+        let payload = sample_payload_archive();
+        let manifest = package_manifest_for_payload(&payload);
+
+        assert_eq!(
+            package_warnings(&manifest),
+            vec![PackageWarning::MissingPlatformIcon]
+        );
+    }
+
+    #[test]
+    fn does_not_warn_when_platform_icon_is_present() {
+        let payload = sample_payload_archive();
+        let mut manifest = package_manifest_for_payload(&payload);
+        manifest.platform = Some(PlatformManifest {
+            publisher: None,
+            bundle_id: None,
+            icon: Some("assets/icon.png".to_string()),
+        });
+
+        assert_eq!(package_warnings(&manifest), Vec::new());
     }
 
     #[test]

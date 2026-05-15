@@ -384,8 +384,10 @@ fn cmd_package(args: &PackageArgs) -> Result<()> {
     if args.precheck && args.postcheck {
         anyhow::bail!("--precheck and --postcheck cannot be used together");
     }
+    let precheck = package::precheck_package(&args.manifest)?;
+    print_package_warnings(&precheck);
+
     if args.precheck {
-        let precheck = package::precheck_package(&args.manifest)?;
         println!(
             "plushie: prechecked standalone package {} {} ({})",
             precheck.app_id, precheck.app_version, precheck.payload_hash
@@ -430,6 +432,12 @@ fn cmd_package(args: &PackageArgs) -> Result<()> {
         result.launcher_crate_dir.display()
     );
     Ok(())
+}
+
+fn print_package_warnings(precheck: &package::PackagePrecheckResult) {
+    for warning in &precheck.warnings {
+        eprintln!("warning: {}", warning.message());
+    }
 }
 
 fn cmd_doctor(args: &DoctorArgs) -> Result<()> {

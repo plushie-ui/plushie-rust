@@ -124,7 +124,7 @@ struct PayloadManifest {
 ///
 /// Returns an error when Cargo metadata fails, the host build fails,
 /// files cannot be copied, the payload cannot be archived, or the
-/// generated shared package manifest does not validate.
+/// generated shared package manifest does not pass precheck.
 pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResult> {
     if let Some(source_path) = opts.source_path {
         write_host_cargo_config(opts.manifest_path, source_path)?;
@@ -188,7 +188,7 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
         toml::to_string_pretty(&manifest).with_context(|| "serialize package manifest")?;
     let manifest_path = out_dir.join(PACKAGE_MANIFEST);
     generator::write_if_changed(&manifest_path, &manifest_text)?;
-    package::validate_package(&manifest_path)?;
+    package::precheck_package(&manifest_path)?;
 
     Ok(RustPackageResult {
         manifest_path,
@@ -699,9 +699,9 @@ mod tests {
         let manifest_path = dir.path().join(PACKAGE_MANIFEST);
         std::fs::write(&manifest_path, toml::to_string_pretty(&manifest).unwrap()).unwrap();
 
-        let validation = package::validate_package(&manifest_path).unwrap();
+        let precheck = package::precheck_package(&manifest_path).unwrap();
 
-        assert_eq!(validation.app_id, "com.example.demo");
+        assert_eq!(precheck.app_id, "com.example.demo");
         let text = std::fs::read_to_string(&manifest_path).unwrap();
         assert!(text.contains("host_sdk = \"rust\""));
         assert!(text.contains("app_name = \"Demo\""));

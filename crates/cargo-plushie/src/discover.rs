@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Cargo feature selection used while walking the app dependency graph.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DiscoverOpts<'a> {
     /// Cargo features to enable.
     pub features: &'a [String],
@@ -22,16 +22,6 @@ pub struct DiscoverOpts<'a> {
     pub no_default_features: bool,
     /// Enable all features for metadata resolution.
     pub all_features: bool,
-}
-
-impl Default for DiscoverOpts<'_> {
-    fn default() -> Self {
-        Self {
-            features: &[],
-            no_default_features: false,
-            all_features: false,
-        }
-    }
 }
 
 /// Walk the cargo metadata dep graph and return every package that

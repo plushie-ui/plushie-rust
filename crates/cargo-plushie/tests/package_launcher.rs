@@ -7,7 +7,7 @@ use tempfile::tempdir;
 #[cfg(unix)]
 #[test]
 #[ignore = "builds generated launchers with Cargo"]
-fn real_payload_launcher_smoke_and_replacement_use_embedded_payload() {
+fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     let dir = tempdir().unwrap();
     let package_dir = dir.path().join("package");
     std::fs::create_dir_all(&package_dir).unwrap();
@@ -22,16 +22,20 @@ fn real_payload_launcher_smoke_and_replacement_use_embedded_payload() {
     })
     .unwrap();
 
-    let smoke_cache = dir.path().join("smoke-cache");
-    let smoke_first = run_launcher(&built_a.binary_path, &smoke_cache, None);
-    assert_success(&smoke_first);
-    assert!(smoke_first.stdout.trim().is_empty());
-    assert!(smoke_first.stderr.contains("cache_status=extracted"));
-    assert!(smoke_first.stderr.contains("plushie launcher: smoke ok"));
+    let postcheck_cache = dir.path().join("postcheck-cache");
+    let postcheck_first = run_launcher(&built_a.binary_path, &postcheck_cache, None);
+    assert_success(&postcheck_first);
+    assert!(postcheck_first.stdout.trim().is_empty());
+    assert!(postcheck_first.stderr.contains("cache_status=extracted"));
+    assert!(
+        postcheck_first
+            .stderr
+            .contains("plushie launcher: postcheck ok")
+    );
 
-    let smoke_second = run_launcher(&built_a.binary_path, &smoke_cache, None);
-    assert_success(&smoke_second);
-    assert!(smoke_second.stderr.contains("cache_status=reused"));
+    let postcheck_second = run_launcher(&built_a.binary_path, &postcheck_cache, None);
+    assert_success(&postcheck_second);
+    assert!(postcheck_second.stderr.contains("cache_status=reused"));
 
     let launch_cache = dir.path().join("launch-cache");
     let marker = dir.path().join("marker.txt");
@@ -126,7 +130,7 @@ fn run_launcher(binary: &Path, cache: &Path, probe: Option<RuntimeProbe<'_>>) ->
             .env("PLUSHIE_TEST_ARGS", probe.args_file)
             .env("PLUSHIE_TEST_CWD", probe.cwd_file);
     } else {
-        command.env("PLUSHIE_PACKAGE_SMOKE", "1");
+        command.env("PLUSHIE_PACKAGE_POSTCHECK", "1");
     }
 
     let output = command.output().unwrap();

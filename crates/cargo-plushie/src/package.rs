@@ -35,18 +35,12 @@ pub struct PackageOpts<'a> {
     pub verbose: bool,
 }
 
-/// Options for smoking a generated standalone launcher.
+/// Options for postchecking a generated standalone launcher.
 #[derive(Debug)]
-pub struct PackageSmokeOpts<'a> {
-    /// Path to the Plushie package manifest.
-    pub manifest_path: &'a Path,
-    /// Optional final launcher output path.
-    pub out_path: Option<&'a Path>,
-    /// Build the generated launcher with Cargo's release profile.
-    pub release: bool,
-    /// Print the generated Cargo command.
-    pub verbose: bool,
-    /// Maximum time to wait for the smoke run to exit.
+pub struct PackagePostcheckOpts<'a> {
+    /// Package build options.
+    pub package: PackageOpts<'a>,
+    /// Maximum time to wait for the postcheck run to exit.
     pub timeout: Duration,
 }
 
@@ -59,22 +53,22 @@ pub struct PackageResult {
     pub binary_path: PathBuf,
 }
 
-/// Result of running the generated launcher's smoke path.
+/// Result of running the generated launcher's postcheck path.
 #[derive(Debug)]
-pub struct PackageSmokeResult {
+pub struct PackagePostcheckResult {
     /// Generated launcher crate directory.
     pub launcher_crate_dir: PathBuf,
     /// Final launcher executable path.
     pub binary_path: PathBuf,
-    /// Isolated cache directory used by the smoke run.
+    /// Isolated cache directory used by the postcheck run.
     pub cache_dir: PathBuf,
     /// Captured launcher stderr.
     pub stderr: String,
 }
 
-/// Result of validating a standalone package manifest and payload.
+/// Result of prechecking a standalone package manifest and payload.
 #[derive(Debug)]
-pub struct PackageValidation {
+pub struct PackagePrecheckResult {
     /// Package application ID.
     pub app_id: String,
     /// Package application version.
@@ -169,16 +163,16 @@ struct LoadedPackage {
     payload: Vec<u8>,
 }
 
-/// Validate a package manifest and payload without building a launcher.
+/// Precheck a package manifest and payload without building a launcher.
 ///
 /// # Errors
 ///
 /// Returns an error when the manifest is invalid, the payload is
 /// missing, the payload hash mismatches, or the archive contains an
 /// unsafe entry.
-pub fn validate_package(manifest_path: &Path) -> Result<PackageValidation> {
+pub fn precheck_package(manifest_path: &Path) -> Result<PackagePrecheckResult> {
     let loaded = load_package(manifest_path)?;
-    Ok(PackageValidation {
+    Ok(PackagePrecheckResult {
         app_id: loaded.manifest.app_id,
         app_version: loaded.manifest.app_version,
         payload_hash: loaded.manifest.payload.hash,
@@ -248,27 +242,22 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
     })
 }
 
-/// Build a launcher and run its smoke path with an isolated cache.
+/// Build a launcher and run its postcheck path with an isolated cache.
 ///
 /// # Errors
 ///
-/// Returns an error when launcher build fails, the smoke process fails
+/// Returns an error when launcher build fails, the postcheck process fails
 /// or times out, or expected diagnostics are missing.
-pub fn smoke_package(opts: &PackageSmokeOpts<'_>) -> Result<PackageSmokeResult> {
-    let result = build_launcher(&PackageOpts {
-        manifest_path: opts.manifest_path,
-        out_path: opts.out_path,
-        release: opts.release,
-        verbose: opts.verbose,
-    })?;
-    let cache_dir = smoke_cache_dir()?;
-    let first = run_smoke_launcher(&result.binary_path, &cache_dir, opts.timeout)?;
-    let first_stderr = validate_smoke_output(first, "extracted")?;
-    let second = run_smoke_launcher(&result.binary_path, &cache_dir, opts.timeout)?;
-    let second_stderr = validate_smoke_output(second, "reused")?;
+pub fn postcheck_package(opts: &PackagePostcheckOpts<'_>) -> Result<PackagePostcheckResult> {
+    let result = build_launcher(&opts.package)?;
+    let cache_dir = postcheck_cache_dir()?;
+    let first = run_postcheck_launcher(&result.binary_path, &cache_dir, opts.timeout)?;
+    let first_stderr = validate_postcheck_output(first, "extracted")?;
+    let second = run_postcheck_launcher(&result.binary_path, &cache_dir, opts.timeout)?;
+    let second_stderr = validate_postcheck_output(second, "reused")?;
     let stderr = format!("{first_stderr}{second_stderr}");
 
-    Ok(PackageSmokeResult {
+    Ok(PackagePostcheckResult {
         launcher_crate_dir: result.launcher_crate_dir,
         binary_path: result.binary_path,
         cache_dir,
@@ -276,13 +265,13 @@ pub fn smoke_package(opts: &PackageSmokeOpts<'_>) -> Result<PackageSmokeResult> 
     })
 }
 
-fn validate_smoke_output(output: std::process::Output, cache_status: &str) -> Result<String> {
+fn validate_postcheck_output(output: std::process::Output, cache_status: &str) -> Result<String> {
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
 
     if !output.status.success() {
         return Err(Error::Other(anyhow::anyhow!(
-            "standalone launcher smoke failed with status {}\nstdout:\n{}\nstderr:\n{}",
+            "standalone launcher postcheck failed with status {}\nstdout:\n{}\nstderr:\n{}",
             output.status,
             stdout,
             stderr
@@ -290,7 +279,7 @@ fn validate_smoke_output(output: std::process::Output, cache_status: &str) -> Re
     }
     if !stdout.trim().is_empty() {
         return Err(Error::Other(anyhow::anyhow!(
-            "standalone launcher smoke wrote to stdout:\n{}",
+            "standalone launcher postcheck wrote to stdout:\n{}",
             stdout
         )));
     }
@@ -300,11 +289,11 @@ fn validate_smoke_output(output: std::process::Output, cache_status: &str) -> Re
         cache_status.as_str(),
         "renderer=",
         "host=",
-        "plushie launcher: smoke ok",
+        "plushie launcher: postcheck ok",
     ] {
         if !stderr.contains(expected) {
             return Err(Error::Other(anyhow::anyhow!(
-                "standalone launcher smoke missing diagnostic `{expected}`\nstderr:\n{stderr}"
+                "standalone launcher postcheck missing diagnostic `{expected}`\nstderr:\n{stderr}"
             )));
         }
     }
@@ -312,37 +301,37 @@ fn validate_smoke_output(output: std::process::Output, cache_status: &str) -> Re
     Ok(stderr)
 }
 
-fn run_smoke_launcher(
+fn run_postcheck_launcher(
     binary_path: &Path,
     cache_dir: &Path,
     timeout: Duration,
 ) -> Result<std::process::Output> {
     let mut child = std::process::Command::new(binary_path)
         .env("PLUSHIE_CACHE_DIR", cache_dir)
-        .env("PLUSHIE_PACKAGE_SMOKE", "1")
+        .env("PLUSHIE_PACKAGE_POSTCHECK", "1")
         .env_remove("PLUSHIE_BINARY_PATH")
         .env_remove("PLUSHIE_RUST_SOURCE_PATH")
         .env_remove("PLUSHIE_RENDERER_BINARY")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .with_context(|| format!("start smoke launcher `{}`", binary_path.display()))?;
+        .with_context(|| format!("start postcheck launcher `{}`", binary_path.display()))?;
 
     let start = Instant::now();
     loop {
         if child.try_wait()?.is_some() {
             let output = child
                 .wait_with_output()
-                .with_context(|| "read smoke launcher output")?;
+                .with_context(|| "read postcheck launcher output")?;
             return Ok(output);
         }
         if start.elapsed() >= timeout {
             let _ = child.kill();
             let output = child
                 .wait_with_output()
-                .with_context(|| "read timed-out smoke launcher output")?;
+                .with_context(|| "read timed-out postcheck launcher output")?;
             return Err(Error::Other(anyhow::anyhow!(
-                "standalone launcher smoke timed out after {:?}\nstdout:\n{}\nstderr:\n{}",
+                "standalone launcher postcheck timed out after {:?}\nstdout:\n{}\nstderr:\n{}",
                 timeout,
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
@@ -352,13 +341,13 @@ fn run_smoke_launcher(
     }
 }
 
-fn smoke_cache_dir() -> Result<PathBuf> {
+fn postcheck_cache_dir() -> Result<PathBuf> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
     let dir = std::env::temp_dir().join(format!(
-        "plushie-package-smoke-{}-{}",
+        "plushie-package-postcheck-{}-{}",
         std::process::id(),
         nanos
     ));
@@ -1116,8 +1105,8 @@ fn run() -> Result<u8> {
         host_program.display()
     );
 
-    if std::env::var_os("PLUSHIE_PACKAGE_SMOKE").is_some() {
-        eprintln!("plushie launcher: smoke ok");
+    if std::env::var_os("PLUSHIE_PACKAGE_POSTCHECK").is_some() {
+        eprintln!("plushie launcher: postcheck ok");
         return Ok(0);
     }
 

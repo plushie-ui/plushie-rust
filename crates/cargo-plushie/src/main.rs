@@ -159,15 +159,15 @@ struct PackageArgs {
     /// Path to the Plushie package manifest.
     #[arg(long)]
     manifest: PathBuf,
-    /// Validate the manifest and payload without building a launcher.
+    /// Precheck the manifest and payload without building a launcher.
     #[arg(long)]
-    validate: bool,
-    /// Build the launcher and run its smoke path with an isolated cache.
+    precheck: bool,
+    /// Build the launcher and run its postcheck path with an isolated cache.
     #[arg(long)]
-    smoke: bool,
-    /// Smoke timeout in seconds.
+    postcheck: bool,
+    /// Postcheck timeout in seconds.
     #[arg(long, default_value_t = 10)]
-    smoke_timeout: u64,
+    postcheck_timeout: u64,
     /// Final launcher output path. Defaults under target/plushie/package/.
     #[arg(long)]
     out: Option<PathBuf>,
@@ -381,31 +381,33 @@ fn cmd_default_icons(args: &DefaultIconsArgs) -> Result<()> {
 }
 
 fn cmd_package(args: &PackageArgs) -> Result<()> {
-    if args.validate && args.smoke {
-        anyhow::bail!("--validate and --smoke cannot be used together");
+    if args.precheck && args.postcheck {
+        anyhow::bail!("--precheck and --postcheck cannot be used together");
     }
-    if args.validate {
-        let validation = package::validate_package(&args.manifest)?;
+    if args.precheck {
+        let precheck = package::precheck_package(&args.manifest)?;
         println!(
-            "plushie: validated standalone package {} {} ({})",
-            validation.app_id, validation.app_version, validation.payload_hash
+            "plushie: prechecked standalone package {} {} ({})",
+            precheck.app_id, precheck.app_version, precheck.payload_hash
         );
         return Ok(());
     }
 
-    if args.smoke {
-        let result = package::smoke_package(&package::PackageSmokeOpts {
-            manifest_path: &args.manifest,
-            out_path: args.out.as_deref(),
-            release: args.release,
-            verbose: args.verbose,
-            timeout: Duration::from_secs(args.smoke_timeout),
+    if args.postcheck {
+        let result = package::postcheck_package(&package::PackagePostcheckOpts {
+            package: package::PackageOpts {
+                manifest_path: &args.manifest,
+                out_path: args.out.as_deref(),
+                release: args.release,
+                verbose: args.verbose,
+            },
+            timeout: Duration::from_secs(args.postcheck_timeout),
         })?;
         println!(
-            "plushie: smoked standalone launcher at {}",
+            "plushie: postchecked standalone launcher at {}",
             result.binary_path.display()
         );
-        println!("plushie: smoke cache at {}", result.cache_dir.display());
+        println!("plushie: postcheck cache at {}", result.cache_dir.display());
         println!(
             "plushie: launcher crate retained at {}",
             result.launcher_crate_dir.display()

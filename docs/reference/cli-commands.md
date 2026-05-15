@@ -178,9 +178,9 @@ cargo plushie package --manifest plushie-package.toml --release
 | Flag | Type | Description |
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
-| `--validate` | bool | Validate the manifest and payload without building a launcher |
-| `--smoke` | bool | Build the launcher and run the extraction/cache smoke path |
-| `--smoke-timeout <SECONDS>` | integer | Maximum time for `--smoke` to wait |
+| `--precheck` | bool | Precheck the manifest and payload without building a launcher |
+| `--postcheck` | bool | Build the launcher and run the extraction/cache postcheck path |
+| `--postcheck-timeout <SECONDS>` | integer | Maximum time for `--postcheck` to wait |
 | `--out <PATH>` | path | Final launcher path (default `target/plushie/package/<app-id>`) |
 | `--release` | bool | Build the generated launcher with Cargo's release profile |
 | `--verbose` | bool | Print the underlying cargo command |
@@ -254,7 +254,7 @@ plushie-renderer --listen --ready-marker --exec-bin <program> --exec-arg <arg> .
 `--ready-marker` makes the renderer write
 `plushie renderer-parent: ready` to stderr after it has accepted the
 host connection and validated the first Settings message. Artifact
-smoke tests can use that marker to prove renderer-parent startup without
+postchecks can use that marker to prove renderer-parent startup without
 touching stdout, which remains reserved for the wire protocol.
 
 `target` is a normalized package target such as `linux-x86_64`,
@@ -331,18 +331,18 @@ The launcher writes diagnostics to stderr with the app ID, app version,
 payload hash, cache path, cache reuse status, renderer path, host path,
 and renderer exit status.
 
-Use `--validate` to check the manifest, payload hash, and archive safety
-without building a launcher. Use `--smoke` to build the launcher and run
-its extraction path with an isolated `PLUSHIE_CACHE_DIR`. The
-`cargo plushie package --smoke` path sets `PLUSHIE_PACKAGE_SMOKE=1`,
+Use `--precheck` to check the manifest, payload hash, and archive safety
+without building a launcher. Use `--postcheck` to build the launcher and
+run its extraction path with an isolated `PLUSHIE_CACHE_DIR`. The
+`cargo plushie package --postcheck` path sets `PLUSHIE_PACKAGE_POSTCHECK=1`,
 scrubs development renderer overrides, asserts first-extraction and
 cache-reuse diagnostics, and exits before starting the renderer or GUI
 app. It does not prove the renderer-parent ready marker; run the
-generated launcher normally under an artifact smoke harness for that.
+generated launcher normally under an artifact postcheck harness for that.
 
 ```bash
-cargo plushie package --manifest dist/plushie-package.toml --validate
-cargo plushie package --manifest dist/plushie-package.toml --smoke
+cargo plushie package --manifest dist/plushie-package.toml --precheck
+cargo plushie package --manifest dist/plushie-package.toml --postcheck
 ```
 
 ## cargo plushie package-rust
@@ -399,11 +399,11 @@ launcher builder stores its generated crate, shared lockfile, and
 default launcher output under that directory unless `--launcher-out` or
 `CARGO_TARGET_DIR` is set.
 Pass `--no-launcher` to stop at the SDK handoff point and inspect or
-validate the generated files:
+precheck the generated files:
 
 ```bash
 cargo plushie package-rust --release --no-launcher
-cargo plushie package --manifest target/plushie/rust-package/plushie-package.toml --validate
+cargo plushie package --manifest target/plushie/rust-package/plushie-package.toml --precheck
 ```
 
 Direct-mode Rust apps do not need this launcher path when the app is a

@@ -227,7 +227,7 @@ delegating platform bundles to `cargo-packager`.
 
 ```bash
 cargo plushie package assemble --release
-cargo plushie package portable --manifest plushie-package.toml --release
+cargo plushie package portable --manifest plushie-package.toml
 cargo plushie package check --manifest plushie-package.toml --postcheck
 ```
 
@@ -237,24 +237,24 @@ Build a portable Rust launcher from a Plushie package manifest and
 payload archive.
 
 ```bash
-cargo plushie package portable --manifest plushie-package.toml --release
+cargo plushie package portable --manifest plushie-package.toml
 ```
 
 | Flag | Type | Description |
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
 | `--out <PATH>` | path | Final launcher path (default `target/plushie/package/<app-id>`) |
-| `--release` | bool | Build the generated launcher with Cargo's release profile |
+| `--launcher <PATH>` | path | Reusable `plushie-launcher` binary to embed package data into |
 | `--run-signing-hooks` | bool | Run signing hooks declared in the manifest |
-| `--verbose` | bool | Print the underlying cargo command |
+| `--verbose` | bool | Print launcher template resolution |
 
 This command is the shared portable wrapper step for standalone
 binaries. SDKs
 still own host-language packaging: an Elixir SDK packages a release, a
 Gleam SDK packages a shipment, Python can package a PyInstaller payload,
 and so on. `cargo plushie package portable` consumes the resulting payload archive
-and manifest, embeds both into a generated Rust launcher crate, and
-builds one executable.
+and manifest, appends both to a reusable `plushie-launcher` binary, and
+writes one executable.
 
 `host_sdk` is descriptive metadata. `cargo plushie package portable` does not
 branch on it to build Mix releases, Gleam shipments, PyInstaller apps,
@@ -308,7 +308,7 @@ runtime directory for host files, `assets/` for app assets, and
 archive paths exactly. Split renderer and host archives are not part of
 the initial launcher contract.
 
-The generated launcher verifies the embedded archive hash, extracts it
+The portable launcher verifies the embedded archive hash, extracts it
 into a content-addressed cache, rejects archive entries that can escape
 the app package, sets executable permissions where needed, and starts
 the packaged app command. Before launching the app command it clears the
@@ -342,7 +342,7 @@ directory to `start.working_dir`.
 Payload archives are intentionally plain files and directories. Archive
 entries must be relative paths under the payload root. Symlinks, hard
 links, device files, sockets, FIFOs, and other special entries are
-rejected by validation and again by the generated launcher before
+rejected by validation and again by the portable launcher before
 extraction. SDK packagers that copy language runtimes should dereference
 or remove runtime symlinks before archiving, and should not rely on tar
 link entries to preserve runtime structure.
@@ -369,7 +369,7 @@ archive when it is set. If `platform.icon` is missing,
 `cargo plushie package portable` prints a warning and continues. SDK package
 commands should add a real app icon or include Plushie's bundled defaults
 before archiving the payload. Update metadata is descriptive; the
-generated launcher does not download updates. Signing hooks are
+portable launcher does not download updates. Signing hooks are
 structured argv declarations that `cargo plushie package portable` can run after
 it copies the final launcher into place, but only when
 `--run-signing-hooks` is passed. Hooks run from the package manifest
@@ -383,21 +383,10 @@ already a single native executable. They should use normal Cargo and
 platform packaging for that case, while reusing the same metadata names
 when a platform package, update feed, icon, or signing step needs them.
 
-Generated launcher crates are retained under
-`target/plushie-package/<package-name>/`, or under
-`$CARGO_TARGET_DIR/plushie-package/<package-name>/` when
-`CARGO_TARGET_DIR` is set. Relative `CARGO_TARGET_DIR` values are
-resolved from the `cargo plushie package portable` invocation directory. Package
-and renderer builds set nested Cargo target directories explicitly, so a
-relative caller target directory is not reused inside generated
-workspaces. The generated Cargo build uses the shared target directory
-`<target-root>/plushie-package/target` so repeated package builds reuse
-compiled launcher dependencies. `cargo plushie package portable` also writes
-generated crate files only when their contents change. Generated crates
-use a bundled launcher lockfile and build with `cargo build --locked`,
-which keeps clean CI builds reproducible. If the launcher dependency
-template changes, cargo-plushie's bundled lockfile must be regenerated
-with the template change.
+The reusable launcher template is resolved from `--launcher`,
+`PLUSHIE_LAUNCHER_PATH`, `bin/plushie-launcher`, or a sibling of the
+running `plushie` executable. This lets SDKs package stock-renderer apps
+from a downloaded native tool set without compiling Rust.
 
 After a successful launcher run, cache pruning keeps the active payload
 and the most recent previous payload for the same app ID. Older payload
@@ -413,13 +402,12 @@ and host exit status.
 Use `cargo plushie package check` to check the manifest, payload hash,
 and archive safety without building a launcher. Use `--postcheck` to
 build the launcher and run its extraction path with an isolated
-`PLUSHIE_CACHE_DIR`. The
-`cargo plushie package check --postcheck` path sets `PLUSHIE_PACKAGE_POSTCHECK=1`,
-scrubs development renderer overrides, asserts first-extraction and
-cache-reuse diagnostics, and exits before starting the renderer or GUI
-app. It does not prove host-renderer readiness. Run the generated
-launcher normally under an artifact postcheck harness when that stronger
-signal is needed.
+`PLUSHIE_CACHE_DIR`. The `cargo plushie package check --postcheck` path
+runs the portable artifact with `--postcheck`, scrubs development
+renderer overrides, asserts first-extraction and cache-reuse
+diagnostics, and exits before starting the renderer or GUI app. It does
+not prove host-renderer readiness. Run the portable artifact normally
+under an artifact postcheck harness when that stronger signal is needed.
 
 ```bash
 cargo plushie package check --manifest dist/plushie-package.toml
@@ -428,7 +416,7 @@ cargo plushie package check --manifest dist/plushie-package.toml --postcheck
 
 ## cargo plushie package check
 
-Check a package manifest, payload, or generated portable launcher.
+Check a package manifest, payload, or portable launcher.
 
 ```bash
 cargo plushie package check --manifest plushie-package.toml
@@ -438,10 +426,10 @@ cargo plushie package check --manifest plushie-package.toml --postcheck
 | Flag | Type | Description |
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
-| `--postcheck` | bool | Build the launcher and run the extraction/cache postcheck path |
+| `--postcheck` | bool | Build the portable launcher and run the extraction/cache postcheck path |
 | `--postcheck-timeout <SECONDS>` | integer | Maximum time for `--postcheck` to wait |
-| `--release` | bool | Build the generated launcher with Cargo's release profile during `--postcheck` |
-| `--verbose` | bool | Print the underlying cargo command |
+| `--launcher <PATH>` | path | Reusable `plushie-launcher` binary to use during `--postcheck` |
+| `--verbose` | bool | Print launcher template resolution |
 
 ## plushie-launcher
 
@@ -452,6 +440,8 @@ that need package execution without compiling Rust code.
 ```bash
 bin/plushie-launcher --manifest dist/package/plushie-package.toml
 bin/plushie-launcher --manifest dist/package/plushie-package.toml --postcheck
+./dist/notes
+./dist/notes --postcheck
 ```
 
 | Flag | Type | Description |
@@ -462,11 +452,11 @@ bin/plushie-launcher --manifest dist/package/plushie-package.toml --postcheck
 | `--json` | bool | Emit machine-readable identity when used with `--version` |
 
 The reusable launcher consumes the same `plushie-package.toml` shape as
-`cargo plushie package portable`. The current portable command still
-builds a self-contained generated launcher that embeds the manifest and
-payload. The reusable launcher is the non-Cargo runtime path for SDKs
-that assemble a payload directory and want to execute it from an
-already-downloaded native tool set.
+`cargo plushie package portable`. `package portable` copies the reusable
+launcher, appends the package manifest and payload archive, and writes a
+single executable. The same runtime also supports `--manifest PATH` for
+debugging an assembled package directory without first writing the
+portable artifact.
 
 ## cargo plushie package assemble
 
@@ -545,9 +535,8 @@ cargo plushie package assemble --write-package-config
 By default `package assemble` immediately calls the shared
 `cargo plushie package portable` launcher builder using the generated manifest.
 Because the generated manifest lives in `--out-dir`, the delegated
-launcher builder stores its generated crate and default launcher output
-under that directory unless `--launcher-out` or `CARGO_TARGET_DIR` is
-set.
+launcher builder stores its default portable output under that directory
+unless `--launcher-out` or `CARGO_TARGET_DIR` is set.
 Pass `--no-launcher` to stop at the SDK handoff point and inspect or
 precheck the generated files:
 
@@ -696,12 +685,12 @@ a non-zero exit from `cargo plushie build`.
 |---|---|---|
 | `PLUSHIE_RUST_SOURCE_PATH` | `build`, `package assemble`, `init`, `new-widget`, `doctor` | Absolute path to a local plushie-rust checkout. Enables `[patch.crates-io]` redirects and wasm source resolution |
 | `PLUSHIE_RELEASE_BASE_URL` | `download`, `tools sync` | Override release asset base URL for mirrored release verification. Remote mirrors must use HTTPS. `file://` and loopback HTTP are for local checks |
-| `PLUSHIE_BINARY_PATH` | `run`, generated package launcher, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, set by generated package launchers for the packaged app command, reported by `doctor` |
-| `PLUSHIE_PACKAGE_DIR` | generated package launcher | Set for the packaged app command to the extracted app package directory |
+| `PLUSHIE_BINARY_PATH` | `run`, package launcher, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, set by package launchers for the packaged app command, reported by `doctor` |
+| `PLUSHIE_PACKAGE_DIR` | package launcher | Set for the packaged app command to the extracted app package directory |
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |
 | `PLUSHIE_SOCKET` | `doctor` | Reported in the diagnostic report; consumed by the SDK for socket-mode rendering |
-| `PLUSHIE_CACHE_DIR` | generated package launcher | Overrides the extraction cache root. Relative values are made absolute from the launcher's current working directory |
-| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package assemble` | Overrides the `target/` directory used for renderer output, discovery, generated launcher crates, and Rust package assembly. Relative values are resolved from the cargo-plushie invocation directory |
+| `PLUSHIE_CACHE_DIR` | package launcher | Overrides the extraction cache root. Relative values are made absolute from the launcher's current working directory |
+| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package assemble` | Overrides the `target/` directory used for renderer output, discovery, portable launcher output, and Rust package assembly. Relative values are resolved from the cargo-plushie invocation directory |
 | `CARGO` | `build`, `run`, `package`, `package assemble` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
 
 ## See also

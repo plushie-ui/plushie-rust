@@ -209,7 +209,7 @@ enum PackageSubcommand {
     Assemble(PackageRustArgs),
     /// Build a self-extracting portable launcher from a package manifest.
     Portable(PackagePortableArgs),
-    /// Check a package manifest, payload, or generated portable launcher.
+    /// Check a package manifest, payload, or portable launcher.
     Check(PackageCheckArgs),
     /// Create a platform bundle through cargo-packager.
     Bundle(PackageBundleArgs),
@@ -223,13 +223,13 @@ struct PackagePortableArgs {
     /// Final launcher output path. Defaults under target/plushie/package/.
     #[arg(long)]
     out: Option<PathBuf>,
-    /// Build the generated launcher with the release Cargo profile.
+    /// Reusable plushie-launcher binary to use for the portable artifact.
     #[arg(long)]
-    release: bool,
+    launcher: Option<PathBuf>,
     /// Run signing hooks declared by the package manifest.
     #[arg(long)]
     run_signing_hooks: bool,
-    /// Print the underlying cargo command.
+    /// Print launcher template resolution.
     #[arg(long)]
     verbose: bool,
 }
@@ -248,13 +248,13 @@ struct PackageCheckArgs {
     /// Final launcher output path for --postcheck.
     #[arg(long)]
     out: Option<PathBuf>,
-    /// Build the generated launcher with the release Cargo profile.
+    /// Reusable plushie-launcher binary to use for --postcheck.
     #[arg(long)]
-    release: bool,
+    launcher: Option<PathBuf>,
     /// Run signing hooks declared by the package manifest.
     #[arg(long)]
     run_signing_hooks: bool,
-    /// Print the underlying cargo command.
+    /// Print launcher template resolution.
     #[arg(long)]
     verbose: bool,
 }
@@ -317,6 +317,9 @@ struct PackageRustArgs {
     /// Run signing hooks declared by the generated package manifest.
     #[arg(long)]
     run_signing_hooks: bool,
+    /// Reusable plushie-launcher binary to use for the portable artifact.
+    #[arg(long)]
+    launcher: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -488,17 +491,17 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
     let result = package::build_launcher(&package::PackageOpts {
         manifest_path: &assembled.manifest_path,
         out_path: args.launcher_out.as_deref(),
-        release: args.release,
+        launcher_path: args.launcher.as_deref(),
         run_signing_hooks: args.run_signing_hooks,
         verbose: args.verbose,
     })?;
     println!(
-        "plushie: generated standalone launcher at {}",
+        "plushie: wrote portable launcher at {}",
         result.binary_path.display()
     );
     println!(
-        "plushie: launcher crate retained at {}",
-        result.launcher_crate_dir.display()
+        "plushie: used launcher template {}",
+        result.launcher_template_path.display()
     );
     Ok(())
 }
@@ -972,7 +975,7 @@ fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
         package: package::PackageOpts {
             manifest_path: &args.manifest,
             out_path: args.out.as_deref(),
-            release: args.release,
+            launcher_path: args.launcher.as_deref(),
             run_signing_hooks: args.run_signing_hooks,
             verbose: args.verbose,
         },
@@ -983,10 +986,6 @@ fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
         result.binary_path.display()
     );
     println!("plushie: postcheck cache at {}", result.cache_dir.display());
-    println!(
-        "plushie: launcher crate retained at {}",
-        result.launcher_crate_dir.display()
-    );
     Ok(())
 }
 
@@ -996,17 +995,17 @@ fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
     let result = package::build_launcher(&package::PackageOpts {
         manifest_path: &args.manifest,
         out_path: args.out.as_deref(),
-        release: args.release,
+        launcher_path: args.launcher.as_deref(),
         run_signing_hooks: args.run_signing_hooks,
         verbose: args.verbose,
     })?;
     println!(
-        "plushie: generated standalone launcher at {}",
+        "plushie: wrote portable launcher at {}",
         result.binary_path.display()
     );
     println!(
-        "plushie: launcher crate retained at {}",
-        result.launcher_crate_dir.display()
+        "plushie: used launcher template {}",
+        result.launcher_template_path.display()
     );
     Ok(())
 }

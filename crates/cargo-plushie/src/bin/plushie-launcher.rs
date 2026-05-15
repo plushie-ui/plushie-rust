@@ -36,21 +36,35 @@ fn main() -> anyhow::Result<()> {
         index += 1;
     }
 
-    let manifest_path = manifest_path
-        .ok_or_else(|| anyhow::anyhow!("--manifest is required; run with --help for usage"))?;
-    let code = if postcheck {
-        cargo_plushie::package_runtime::postcheck_external_package(&manifest_path)?
+    let postcheck = postcheck || std::env::var_os("PLUSHIE_PACKAGE_POSTCHECK").is_some();
+    let code = if let Some(manifest_path) = manifest_path {
+        if postcheck {
+            cargo_plushie::package_runtime::postcheck_external_package(&manifest_path)?
+        } else {
+            cargo_plushie::package_runtime::run_external_package(&manifest_path)?
+        }
     } else {
-        cargo_plushie::package_runtime::run_external_package(&manifest_path)?
+        let executable = std::env::current_exe()?;
+        let code = if postcheck {
+            cargo_plushie::package_runtime::postcheck_embedded_package(&executable)?
+        } else {
+            cargo_plushie::package_runtime::run_embedded_package(&executable)?
+        };
+        code.ok_or_else(|| {
+            anyhow::anyhow!(
+                "no embedded Plushie package found; run with --manifest PATH or package with `plushie package portable`"
+            )
+        })?
     };
     std::process::exit(i32::from(code));
 }
 
 fn print_help() {
     println!(
-        "Usage: plushie-launcher --manifest PATH [--postcheck]\n\n\
+        "Usage: plushie-launcher [--manifest PATH] [--postcheck]\n\n\
          Options:\n\
            --manifest PATH  Run a Plushie package manifest and sibling payload archive\n\
+                            When omitted, run package data embedded in this executable\n\
            --postcheck      Validate extraction and diagnostics without starting the host\n\
            --version        Print human-readable identity\n\
            --version --json Print machine-readable identity"

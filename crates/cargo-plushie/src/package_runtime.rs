@@ -9,20 +9,134 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 const COMPLETE_MARKER: &str = ".plushie-complete";
+const EMBEDDED_PACKAGE_MAGIC: &[u8] = b"\nPLUSHIE_EMBEDDED_PACKAGE_V1\n";
 const EXPECTED_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
 const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
 
+/// Append package data to a reusable `plushie-launcher` binary.
+///
+/// # Errors
+///
+/// Returns an error when the package data length cannot be represented
+/// in the embedded trailer or writing fails.
+pub fn append_embedded_package(
+    mut writer: impl Write,
+    manifest_text: &str,
+    payload_bytes: &[u8],
+) -> Result<()> {
+    let manifest_len = u64::try_from(manifest_text.len()).context("manifest is too large")?;
+    let payload_len = u64::try_from(payload_bytes.len()).context("payload is too large")?;
+    writer.write_all(manifest_text.as_bytes())?;
+    writer.write_all(payload_bytes)?;
+    writer.write_all(&manifest_len.to_le_bytes())?;
+    writer.write_all(&payload_len.to_le_bytes())?;
+    writer.write_all(EMBEDDED_PACKAGE_MAGIC)?;
+    Ok(())
+}
+
+/// Run embedded package data from an executable.
+///
+/// Returns `Ok(None)` when the executable has no embedded Plushie
+/// package data.
+///
+/// # Errors
+///
+/// Returns an error when embedded package data is malformed or the host
+/// process cannot be started.
+pub fn run_embedded_package(executable_path: &Path) -> Result<Option<u8>> {
+    run_embedded_package_with_mode(executable_path, false)
+}
+
+/// Validate and extract embedded package data from an executable.
+///
+/// Returns `Ok(None)` when the executable has no embedded Plushie
+/// package data.
+///
+/// # Errors
+///
+/// Returns an error when embedded package data is malformed or cannot be
+/// extracted.
+pub fn postcheck_embedded_package(executable_path: &Path) -> Result<Option<u8>> {
+    run_embedded_package_with_mode(executable_path, true)
+}
+
+fn run_embedded_package_with_mode(executable_path: &Path, postcheck: bool) -> Result<Option<u8>> {
+    let Some(package) = read_embedded_package(executable_path)? else {
+        return Ok(None);
+    };
+    let manifest: Manifest =
+        toml::from_str(&package.manifest_text).context("parse embedded package manifest")?;
+    validate_manifest(&manifest)?;
+    let code = run_package(PackageInput {
+        manifest_text: &package.manifest_text,
+        manifest: &manifest,
+        payload_bytes: &package.payload_bytes,
+        postcheck,
+        cache_root: None,
+    })?;
+    Ok(Some(code))
+}
+
+struct EmbeddedPackage {
+    manifest_text: String,
+    payload_bytes: Vec<u8>,
+}
+
+fn read_embedded_package(executable_path: &Path) -> Result<Option<EmbeddedPackage>> {
+    let bytes = std::fs::read(executable_path)
+        .with_context(|| format!("read executable `{}`", executable_path.display()))?;
+    let trailer_len = EMBEDDED_PACKAGE_MAGIC.len() + 16;
+    if bytes.len() < trailer_len || !bytes.ends_with(EMBEDDED_PACKAGE_MAGIC) {
+        return Ok(None);
+    }
+
+    let lengths_end = bytes.len() - EMBEDDED_PACKAGE_MAGIC.len();
+    let lengths_start = lengths_end - 16;
+    let manifest_len = u64::from_le_bytes(
+        bytes[lengths_start..lengths_start + 8]
+            .try_into()
+            .expect("slice length is fixed"),
+    );
+    let payload_len = u64::from_le_bytes(
+        bytes[lengths_start + 8..lengths_end]
+            .try_into()
+            .expect("slice length is fixed"),
+    );
+    let manifest_len = usize::try_from(manifest_len).context("embedded manifest is too large")?;
+    let payload_len = usize::try_from(payload_len).context("embedded payload is too large")?;
+    let data_len = manifest_len
+        .checked_add(payload_len)
+        .context("embedded package length overflow")?;
+    let data_start = lengths_start
+        .checked_sub(data_len)
+        .context("embedded package trailer points before executable start")?;
+    let payload_start = data_start + manifest_len;
+    let manifest_text = std::str::from_utf8(&bytes[data_start..payload_start])
+        .context("embedded manifest is not UTF-8")?
+        .to_string();
+    let payload_bytes = bytes[payload_start..lengths_start].to_vec();
+    anyhow::ensure!(
+        payload_bytes.len() == payload_len,
+        "embedded payload length mismatch"
+    );
+    Ok(Some(EmbeddedPackage {
+        manifest_text,
+        payload_bytes,
+    }))
+}
+
 /// Run an on-disk package manifest and payload archive.
 ///
 /// Returns the host process exit code. A missing process exit code maps
-/// to `1`, matching the generated portable launcher.
+/// to `1`, matching the portable launcher.
 ///
 /// # Errors
 ///

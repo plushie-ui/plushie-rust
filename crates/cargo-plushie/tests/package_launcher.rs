@@ -16,7 +16,7 @@ fn real_payload_launcher_starts_host_first() {
     let built = build_launcher(&PackageOpts {
         manifest_path: &manifest,
         out_path: Some(&launcher),
-        release: false,
+        launcher_path: Some(launcher_template()),
         run_signing_hooks: false,
         verbose: false,
     })
@@ -85,7 +85,6 @@ fn real_payload_launcher_starts_host_first() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "builds generated launchers with Cargo"]
 fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     let dir = tempdir().unwrap();
     let package_dir = dir.path().join("package");
@@ -96,7 +95,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     let built_a = build_launcher(&PackageOpts {
         manifest_path: &manifest,
         out_path: Some(&launcher_a),
-        release: false,
+        launcher_path: Some(launcher_template()),
         run_signing_hooks: false,
         verbose: false,
     })
@@ -146,7 +145,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     let built_b = build_launcher(&PackageOpts {
         manifest_path: &manifest,
         out_path: Some(&launcher_b),
-        release: false,
+        launcher_path: Some(launcher_template()),
         run_signing_hooks: false,
         verbose: false,
     })
@@ -190,6 +189,10 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     assert_success(&actual_b_reused);
     assert!(actual_b_reused.stderr.contains("cache_status=reused"));
     assert_eq!(std::fs::read_to_string(&marker).unwrap(), "B\n");
+}
+
+fn launcher_template() -> &'static Path {
+    Path::new(env!("CARGO_BIN_EXE_plushie-launcher"))
 }
 
 struct RuntimeProbe<'a> {

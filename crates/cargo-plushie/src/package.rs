@@ -2,27 +2,23 @@
 //!
 //! The SDKs own host-language packaging. This module owns the shared
 //! Plushie wrapper step: validate a package manifest, embed its payload
-//! archive in a generated Rust launcher, and build that launcher.
+//! archive in the reusable launcher, and write the portable artifact.
 
-use crate::{Error, Result, generator, platform};
+use crate::{Error, Result, package_runtime, platform};
 use anyhow::Context;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-const GENERATED_MANIFEST: &str = "plushie-package.toml";
 /// Conventional developer-owned source package config filename.
 pub const SOURCE_CONFIG: &str = "plushie-package.config.toml";
-const GENERATED_PAYLOAD: &str = "payload.tar.zst";
-const GENERATED_LOCKFILE: &str = "Cargo.lock";
-const LAUNCHER_CRATE_NAME: &str = "plushie-package-launcher";
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
 const SOURCE_CONFIG_VERSION: u32 = 1;
-const LAUNCHER_LOCKFILE: &str = include_str!("../templates/launcher-Cargo.lock");
 const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
 
 /// Options for building a standalone launcher from a package manifest.
@@ -32,15 +28,15 @@ pub struct PackageOpts<'a> {
     pub manifest_path: &'a Path,
     /// Optional final launcher output path.
     pub out_path: Option<&'a Path>,
-    /// Build the generated launcher with Cargo's release profile.
-    pub release: bool,
+    /// Optional reusable launcher binary to embed package data into.
+    pub launcher_path: Option<&'a Path>,
     /// Run signing hooks declared in the package manifest.
     pub run_signing_hooks: bool,
-    /// Print the generated Cargo command.
+    /// Print the launcher template resolution.
     pub verbose: bool,
 }
 
-/// Options for postchecking a generated standalone launcher.
+/// Options for postchecking a portable launcher.
 #[derive(Debug)]
 pub struct PackagePostcheckOpts<'a> {
     /// Package build options.
@@ -52,17 +48,15 @@ pub struct PackagePostcheckOpts<'a> {
 /// Result of building a standalone launcher.
 #[derive(Debug)]
 pub struct PackageResult {
-    /// Generated launcher crate directory.
-    pub launcher_crate_dir: PathBuf,
     /// Final launcher executable path.
     pub binary_path: PathBuf,
+    /// Reusable launcher binary used as the artifact runtime.
+    pub launcher_template_path: PathBuf,
 }
 
-/// Result of running the generated launcher's postcheck path.
+/// Result of running the portable launcher's postcheck path.
 #[derive(Debug)]
 pub struct PackagePostcheckResult {
-    /// Generated launcher crate directory.
-    pub launcher_crate_dir: PathBuf,
     /// Final launcher executable path.
     pub binary_path: PathBuf,
     /// Isolated cache directory used by the postcheck run.
@@ -225,13 +219,13 @@ struct SigningHookManifest {
     command: Vec<String>,
 }
 
-struct PreparedLauncher {
-    crate_dir: PathBuf,
-    build_target_dir: PathBuf,
+struct PreparedPortableLauncher {
     manifest_dir: PathBuf,
-    package_name: String,
+    launcher_template_path: PathBuf,
     output_path: PathBuf,
     signing_hooks: Vec<SigningHookManifest>,
+    manifest_text: String,
+    payload: Vec<u8>,
 }
 
 struct LoadedPackage {
@@ -389,60 +383,57 @@ fn package_warnings(manifest: &PackageManifest) -> Vec<PackageWarning> {
     warnings
 }
 
-/// Build the generated launcher and copy it to the requested output.
+/// Build the portable launcher and copy it to the requested output.
 ///
 /// # Errors
 ///
-/// Returns an error when manifest validation fails, Cargo fails, or
-/// the final binary cannot be copied.
+/// Returns an error when manifest validation fails, the reusable
+/// launcher cannot be found, or the final binary cannot be written.
 pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
-    let prepared = prepare_launcher_crate(opts)?;
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let mut cmd = std::process::Command::new(cargo);
-    cmd.current_dir(&prepared.crate_dir).arg("build");
-    cmd.env("CARGO_TARGET_DIR", &prepared.build_target_dir);
-    cmd.arg("--locked");
-    if opts.release {
-        cmd.arg("--release");
-    }
+    let prepared = prepare_portable_launcher(opts)?;
     if opts.verbose {
         eprintln!(
-            "running: CARGO_TARGET_DIR={} cargo build --locked{}",
-            prepared.build_target_dir.display(),
-            if opts.release { " --release" } else { "" }
+            "plushie: embedding package data into launcher template {}",
+            prepared.launcher_template_path.display()
         );
     }
-    let status = cmd
-        .status()
-        .with_context(|| "failed to run cargo build for generated launcher")?;
-    if !status.success() {
-        return Err(Error::CargoBuildFailed(status));
-    }
-
-    let profile = if opts.release { "release" } else { "debug" };
-    let built = prepared
-        .build_target_dir
-        .join(profile)
-        .join(executable_name(&prepared.package_name));
-    if !built.is_file() {
-        return Err(Error::Other(anyhow::anyhow!(
-            "generated launcher did not produce `{}`",
-            built.display()
-        )));
-    }
-
     if let Some(parent) = prepared.output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::copy(&built, &prepared.output_path)?;
+    let mut output = std::fs::File::create(&prepared.output_path)
+        .with_context(|| format!("create launcher `{}`", prepared.output_path.display()))?;
+    let mut template =
+        std::fs::File::open(&prepared.launcher_template_path).with_context(|| {
+            format!(
+                "open launcher template `{}`",
+                prepared.launcher_template_path.display()
+            )
+        })?;
+    std::io::copy(&mut template, &mut output).with_context(|| {
+        format!(
+            "copy launcher template `{}` to `{}`",
+            prepared.launcher_template_path.display(),
+            prepared.output_path.display()
+        )
+    })?;
+    package_runtime::append_embedded_package(
+        &mut output,
+        &prepared.manifest_text,
+        &prepared.payload,
+    )?;
+    output.flush()?;
     make_executable(&prepared.output_path)?;
     if opts.run_signing_hooks {
-        run_signing_hooks(&prepared)?;
+        run_signing_hooks(
+            &prepared.manifest_dir,
+            &prepared.output_path,
+            &prepared.signing_hooks,
+        )?;
     }
 
     Ok(PackageResult {
-        launcher_crate_dir: prepared.crate_dir,
         binary_path: prepared.output_path,
+        launcher_template_path: prepared.launcher_template_path,
     })
 }
 
@@ -462,7 +453,6 @@ pub fn postcheck_package(opts: &PackagePostcheckOpts<'_>) -> Result<PackagePostc
     let stderr = format!("{first_stderr}{second_stderr}");
 
     Ok(PackagePostcheckResult {
-        launcher_crate_dir: result.launcher_crate_dir,
         binary_path: result.binary_path,
         cache_dir,
         stderr,
@@ -512,7 +502,7 @@ fn run_postcheck_launcher(
 ) -> Result<std::process::Output> {
     let mut child = std::process::Command::new(binary_path)
         .env("PLUSHIE_CACHE_DIR", cache_dir)
-        .env("PLUSHIE_PACKAGE_POSTCHECK", "1")
+        .arg("--postcheck")
         .env_remove("PLUSHIE_BINARY_PATH")
         .env_remove("PLUSHIE_RUST_SOURCE_PATH")
         .env_remove("PLUSHIE_RENDERER_BINARY")
@@ -559,14 +549,10 @@ fn postcheck_cache_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
-fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
+fn prepare_portable_launcher(opts: &PackageOpts<'_>) -> Result<PreparedPortableLauncher> {
     let loaded = load_package(opts.manifest_path)?;
 
     let target_root = package_target_root(&loaded.manifest_dir);
-    let package_name = package_name(&loaded.manifest.app_id);
-    let package_root = target_root.join("plushie-package");
-    let crate_dir = package_root.join(&package_name);
-    let build_target_dir = package_root.join("target");
     let output_path =
         absolute_from_invocation(opts.out_path.map(Path::to_path_buf).unwrap_or_else(|| {
             target_root
@@ -574,28 +560,75 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
                 .join(executable_name(&app_cache_name(&loaded.manifest.app_id)))
         }))?;
 
-    std::fs::create_dir_all(crate_dir.join("src"))?;
-    generator::write_if_changed(
-        &crate_dir.join("Cargo.toml"),
-        &launcher_cargo_toml(&package_name),
-    )?;
-    generator::write_if_changed(&crate_dir.join("src/main.rs"), &launcher_main_rs())?;
-    generator::write_if_changed(&crate_dir.join(GENERATED_LOCKFILE), LAUNCHER_LOCKFILE)?;
-    generator::write_if_changed(&crate_dir.join(GENERATED_MANIFEST), &loaded.manifest_text)?;
-    write_bytes_if_changed(&crate_dir.join(GENERATED_PAYLOAD), &loaded.payload)?;
+    let launcher_template_path = resolve_launcher_template(opts.launcher_path)?;
+    validate_distinct_launcher_output(&launcher_template_path, &output_path)?;
 
-    Ok(PreparedLauncher {
-        crate_dir,
-        build_target_dir,
+    Ok(PreparedPortableLauncher {
         manifest_dir: loaded.manifest_dir,
-        package_name,
+        launcher_template_path,
         output_path,
         signing_hooks: loaded
             .manifest
             .signing
             .map(|signing| signing.hooks)
             .unwrap_or_default(),
+        manifest_text: loaded.manifest_text,
+        payload: loaded.payload,
     })
+}
+
+fn resolve_launcher_template(explicit: Option<&Path>) -> Result<PathBuf> {
+    if let Some(path) = explicit {
+        return canonical_launcher_template(path);
+    }
+    if let Some(path) = std::env::var_os("PLUSHIE_LAUNCHER_PATH") {
+        return canonical_launcher_template(&PathBuf::from(path));
+    }
+
+    let name = platform::launcher_name();
+    let mut candidates = vec![std::env::current_dir()?.join("bin").join(&name)];
+    if let Ok(current_exe) = std::env::current_exe()
+        && let Some(parent) = current_exe.parent()
+    {
+        candidates.push(parent.join(&name));
+    }
+    for candidate in candidates {
+        if candidate.is_file() {
+            return canonical_launcher_template(&candidate);
+        }
+    }
+
+    Err(Error::Other(anyhow::anyhow!(
+        "could not find reusable `{}`. Run `bin/plushie tools sync --required-version {}` or pass --launcher PATH.",
+        name,
+        EXPECTED_PLUSHIE_RUST_VERSION
+    )))
+}
+
+fn canonical_launcher_template(path: &Path) -> Result<PathBuf> {
+    let path = std::fs::canonicalize(path)
+        .with_context(|| format!("launcher template `{}` not found", path.display()))?;
+    if !path.is_file() {
+        return Err(Error::Other(anyhow::anyhow!(
+            "launcher template `{}` is not a file",
+            path.display()
+        )));
+    }
+    Ok(path)
+}
+
+fn validate_distinct_launcher_output(template_path: &Path, output_path: &Path) -> Result<()> {
+    let same_path = template_path == output_path
+        || std::fs::canonicalize(output_path)
+            .map(|existing| existing == template_path)
+            .unwrap_or(false);
+    if same_path {
+        return Err(Error::Other(anyhow::anyhow!(
+            "portable launcher output must not overwrite reusable launcher template `{}`",
+            template_path.display()
+        )));
+    }
+    Ok(())
 }
 
 fn absolute_from_invocation(path: PathBuf) -> Result<PathBuf> {
@@ -606,17 +639,21 @@ fn absolute_from_invocation(path: PathBuf) -> Result<PathBuf> {
     }
 }
 
-fn run_signing_hooks(prepared: &PreparedLauncher) -> Result<()> {
-    for hook in &prepared.signing_hooks {
+fn run_signing_hooks(
+    manifest_dir: &Path,
+    output_path: &Path,
+    signing_hooks: &[SigningHookManifest],
+) -> Result<()> {
+    for hook in signing_hooks {
         let argv: Vec<String> = hook
             .command
             .iter()
-            .map(|arg| expand_signing_hook_arg(arg, &prepared.output_path))
+            .map(|arg| expand_signing_hook_arg(arg, output_path))
             .collect();
         let program = argv.first().expect("validated signing hook argv");
         let status = std::process::Command::new(program)
             .args(&argv[1..])
-            .current_dir(&prepared.manifest_dir)
+            .current_dir(manifest_dir)
             .status()
             .with_context(|| {
                 format!(
@@ -638,19 +675,6 @@ fn run_signing_hooks(prepared: &PreparedLauncher) -> Result<()> {
 
 fn expand_signing_hook_arg(arg: &str, launcher_path: &Path) -> String {
     arg.replace("{launcher}", &launcher_path.display().to_string())
-}
-
-fn write_bytes_if_changed(path: &Path, content: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    if let Ok(existing) = std::fs::read(path)
-        && existing == content
-    {
-        return Ok(());
-    }
-    std::fs::write(path, content)?;
-    Ok(())
 }
 
 fn package_target_root(manifest_dir: &Path) -> PathBuf {
@@ -1123,53 +1147,12 @@ fn app_cache_name(app_id: &str) -> String {
     )
 }
 
-fn package_name(app_id: &str) -> String {
-    format!(
-        "plushie-package-{}",
-        app_cache_name(app_id).replace('.', "-")
-    )
-}
-
 fn executable_name(name: &str) -> String {
     if cfg!(windows) {
         format!("{name}.exe")
     } else {
         name.to_string()
     }
-}
-
-const LAUNCHER_DEPENDENCIES: &str = r#"[dependencies]
-anyhow = "=1.0.102"
-serde = { version = "=1.0.228", features = ["derive"] }
-sha2 = "=0.10.9"
-tar = "=0.4.45"
-toml = "=0.8.23"
-zstd = "=0.13.3"
-"#;
-
-fn launcher_cargo_toml(package_name: &str) -> String {
-    format!(
-        r#"{}
-
-[[bin]]
-name = "{package_name}"
-path = "src/main.rs"
-
-{LAUNCHER_DEPENDENCIES}"#,
-        launcher_package_toml()
-    )
-}
-
-fn launcher_package_toml() -> String {
-    format!(
-        r#"[package]
-name = "{LAUNCHER_CRATE_NAME}"
-version = "0.0.0"
-edition = "2024"
-publish = false
-
-[workspace]"#
-    )
 }
 
 fn make_executable(path: &Path) -> Result<()> {
@@ -1186,537 +1169,6 @@ fn make_executable(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-
-fn launcher_main_rs() -> String {
-    LAUNCHER_MAIN_TEMPLATE
-        .replace(
-            "__MANIFEST_SCHEMA_VERSION__",
-            &MANIFEST_SCHEMA_VERSION.to_string(),
-        )
-        .replace(
-            "__EXPECTED_PROTOCOL_VERSION__",
-            &EXPECTED_PROTOCOL_VERSION.to_string(),
-        )
-        .replace(
-            "__EXPECTED_PLUSHIE_RUST_VERSION__",
-            EXPECTED_PLUSHIE_RUST_VERSION,
-        )
-}
-
-const LAUNCHER_MAIN_TEMPLATE: &str = r###"use anyhow::{Context, Result};
-use serde::Deserialize;
-use sha2::{Digest, Sha256};
-use std::path::{Component, Path, PathBuf};
-use std::process::{Command, ExitCode};
-use std::time::{Duration, Instant};
-
-const MANIFEST_TEXT: &str = include_str!("../plushie-package.toml");
-const PAYLOAD_BYTES: &[u8] = include_bytes!("../payload.tar.zst");
-const COMPLETE_MARKER: &str = ".plushie-complete";
-const EXPECTED_SCHEMA_VERSION: u32 = __MANIFEST_SCHEMA_VERSION__;
-const EXPECTED_PROTOCOL_VERSION: u32 = __EXPECTED_PROTOCOL_VERSION__;
-const EXPECTED_PLUSHIE_RUST_VERSION: &str = "__EXPECTED_PLUSHIE_RUST_VERSION__";
-const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
-
-#[derive(Debug, Deserialize)]
-struct Manifest {
-    schema_version: u32,
-    app_id: String,
-    app_version: String,
-    plushie_rust_version: String,
-    protocol_version: u32,
-    start: Start,
-    renderer: Renderer,
-    payload: Payload,
-}
-
-#[derive(Debug, Deserialize)]
-struct Start {
-    working_dir: String,
-    command: Vec<String>,
-    forward_env: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Renderer {
-    path: String,
-    kind: String,
-    source: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Payload {
-    hash: String,
-    size: Option<u64>,
-}
-
-struct PayloadRoot {
-    path: PathBuf,
-    reused: bool,
-}
-
-struct ExtractionLock {
-    path: PathBuf,
-}
-
-fn main() -> ExitCode {
-    match run() {
-        Ok(code) => ExitCode::from(code),
-        Err(err) => {
-            eprintln!("plushie launcher: {err:#}");
-            ExitCode::from(1)
-        }
-    }
-}
-
-fn run() -> Result<u8> {
-    let manifest: Manifest = toml::from_str(MANIFEST_TEXT).context("parse embedded manifest")?;
-    validate_manifest(&manifest)?;
-    let hash = payload_hash(&manifest.payload)?;
-    let payload_root = ensure_payload(&manifest)?;
-    let root = payload_root.path;
-    let renderer = absolute_payload_path(&root, &manifest.renderer.path);
-    let working_dir = absolute_payload_path(&root, &manifest.start.working_dir);
-    let host_program = manifest.start.command.first().context("start.command is empty")?;
-    let host_program = absolute_payload_path(&root, host_program);
-
-    eprintln!(
-        "plushie launcher: app={} version={} payload=sha256:{} cache={} cache_status={} renderer={} host={}",
-        manifest.app_id,
-        manifest.app_version,
-        hash,
-        root.display(),
-        if payload_root.reused { "reused" } else { "extracted" },
-        renderer.display(),
-        host_program.display()
-    );
-
-    if std::env::var_os("PLUSHIE_PACKAGE_POSTCHECK").is_some() {
-        eprintln!("plushie launcher: postcheck ok");
-        return Ok(0);
-    }
-
-    let mut command = Command::new(&host_program);
-    command.current_dir(&working_dir).env_clear();
-
-    for name in &manifest.start.forward_env {
-        if let Some(value) = std::env::var_os(name) {
-            command.env(name, value);
-        }
-    }
-
-    command
-        .env("PLUSHIE_PACKAGE_DIR", &root)
-        .env("PLUSHIE_BINARY_PATH", &renderer);
-
-    if let Some(value) = std::env::var_os(PACKAGE_READY_FILE_ENV) {
-        command.env(PACKAGE_READY_FILE_ENV, value);
-    }
-
-    for arg in manifest.start.command.iter().skip(1) {
-        command.arg(arg);
-    }
-
-    let status = command
-        .status()
-        .with_context(|| format!("start host `{}`", host_program.display()))?;
-    eprintln!("plushie launcher: host exited with {status}");
-    if status.success() {
-        if let Err(err) = prune_cache(&manifest, hash) {
-            eprintln!("plushie launcher: cache pruning failed: {err:#}");
-        }
-    }
-    Ok(status.code().unwrap_or(1).try_into().unwrap_or(1))
-}
-
-fn ensure_payload(manifest: &Manifest) -> Result<PayloadRoot> {
-    verify_payload(&manifest.payload)?;
-    let hash = payload_hash(&manifest.payload)?;
-    let root = app_cache_root(manifest)?;
-    let dest = root.join(hash);
-
-    if cache_entry_is_complete(&dest) {
-        return Ok(PayloadRoot {
-            path: dest,
-            reused: true,
-        });
-    }
-
-    std::fs::create_dir_all(&root)?;
-    let _lock = acquire_extraction_lock(&root, hash, &dest)?;
-    if cache_entry_is_complete(&dest) {
-        return Ok(PayloadRoot {
-            path: dest,
-            reused: true,
-        });
-    }
-
-    let tmp = root.join(format!(".{hash}.{}.tmp", std::process::id()));
-    if tmp.exists() {
-        std::fs::remove_dir_all(&tmp)?;
-    }
-    std::fs::create_dir_all(&tmp)?;
-
-    if let Err(err) = extract_payload(&tmp, manifest) {
-        let _ = std::fs::remove_dir_all(&tmp);
-        return Err(err);
-    }
-
-    make_executable(&absolute_payload_path(&tmp, &manifest.renderer.path))?;
-    if let Some(program) = manifest.start.command.first() {
-        let path = absolute_payload_path(&tmp, program);
-        if path.is_file() {
-            make_executable(&path)?;
-        }
-    }
-
-    if dest.exists() {
-        std::fs::remove_dir_all(&dest).context("remove incomplete payload cache")?;
-    }
-    std::fs::rename(&tmp, &dest).context("install extracted payload")?;
-    Ok(PayloadRoot {
-        path: dest,
-        reused: false,
-    })
-}
-
-fn payload_hash(payload: &Payload) -> Result<&str> {
-    payload
-        .hash
-        .strip_prefix("sha256:")
-        .context("payload hash missing sha256 prefix")
-}
-
-fn validate_manifest(manifest: &Manifest) -> Result<()> {
-    anyhow::ensure!(
-        manifest.schema_version == EXPECTED_SCHEMA_VERSION,
-        "unsupported package manifest schema_version {}",
-        manifest.schema_version
-    );
-    anyhow::ensure!(
-        manifest.protocol_version == EXPECTED_PROTOCOL_VERSION,
-        "protocol_version mismatch: package expects {}, launcher supports {}",
-        manifest.protocol_version,
-        EXPECTED_PROTOCOL_VERSION
-    );
-    anyhow::ensure!(
-        manifest.plushie_rust_version == EXPECTED_PLUSHIE_RUST_VERSION,
-        "plushie_rust_version mismatch: package expects {}, launcher is {}",
-        manifest.plushie_rust_version,
-        EXPECTED_PLUSHIE_RUST_VERSION
-    );
-    validate_app_id(&manifest.app_id)?;
-    validate_payload_relative_path("renderer.path", &manifest.renderer.path, false)?;
-    let host_program = manifest
-        .start
-        .command
-        .first()
-        .context("start.command is empty")?;
-    validate_payload_relative_path("start.command[0]", host_program, false)?;
-    validate_payload_relative_path("start.working_dir", &manifest.start.working_dir, true)?;
-    anyhow::ensure!(
-        manifest.renderer.kind == "stock" || manifest.renderer.kind == "custom",
-        "renderer.kind must be `stock` or `custom`, got `{}`",
-        manifest.renderer.kind
-    );
-    if let Some(source) = &manifest.renderer.source {
-        anyhow::ensure!(
-            !source.trim().is_empty(),
-            "renderer.source must not be empty"
-        );
-    }
-    if manifest
-        .start
-        .forward_env
-        .iter()
-        .any(|name| name.trim().is_empty() || name.contains(|ch| ch == ',' || ch == '='))
-    {
-        anyhow::bail!(
-            "start.forward_env must contain only non-empty variable names without `,` or `=`"
-        );
-    }
-    if manifest.start.forward_env.iter().any(|name| {
-        name == "PLUSHIE_BINARY_PATH"
-            || name == "PLUSHIE_PACKAGE_DIR"
-            || name == PACKAGE_READY_FILE_ENV
-    }) {
-        anyhow::bail!("start.forward_env must not include launcher-owned package variables");
-    }
-    Ok(())
-}
-
-fn verify_payload(payload: &Payload) -> Result<()> {
-    if let Some(size) = payload.size {
-        anyhow::ensure!(
-            PAYLOAD_BYTES.len() as u64 == size,
-            "embedded payload size mismatch: manifest expected {size} bytes, archive has {} bytes",
-            PAYLOAD_BYTES.len()
-        );
-    }
-    let expected = payload
-        .hash
-        .strip_prefix("sha256:")
-        .context("payload hash missing sha256 prefix")?;
-    let actual = format!("{:x}", Sha256::digest(PAYLOAD_BYTES));
-    anyhow::ensure!(
-        actual == expected,
-        "embedded payload sha256 mismatch: expected {expected}, got {actual}"
-    );
-    Ok(())
-}
-
-fn extract_payload(tmp: &Path, manifest: &Manifest) -> Result<()> {
-    let decoder = zstd::stream::read::Decoder::new(PAYLOAD_BYTES)
-        .context("open embedded zstd payload")?;
-    let mut archive = tar::Archive::new(decoder);
-    for entry in archive.entries().context("read embedded payload entries")? {
-        let mut entry = entry.context("read embedded payload entry")?;
-        let path = entry.path().context("read embedded payload entry path")?;
-        validate_payload_relative_path("payload archive entry", &path.to_string_lossy(), true)?;
-
-        let entry_type = entry.header().entry_type();
-        anyhow::ensure!(
-            !entry_type.is_symlink() && !entry_type.is_hard_link(),
-            "payload archive entry `{}` must not be a link",
-            path.display()
-        );
-        anyhow::ensure!(
-            entry_type.is_file() || entry_type.is_dir(),
-            "payload archive entry `{}` has unsupported type",
-            path.display()
-        );
-
-        let dest = tmp.join(&path);
-        if entry_type.is_dir() {
-            std::fs::create_dir_all(&dest)
-                .with_context(|| format!("create directory `{}`", dest.display()))?;
-        } else {
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)
-                    .with_context(|| format!("create directory `{}`", parent.display()))?;
-            }
-            entry
-                .unpack(&dest)
-                .with_context(|| format!("extract `{}`", dest.display()))?;
-        }
-    }
-
-    std::fs::write(tmp.join("plushie-package.toml"), MANIFEST_TEXT)?;
-    std::fs::write(
-        tmp.join(COMPLETE_MARKER),
-        format!(
-            "app_id={}\napp_version={}\npayload_hash={}\nrenderer.path={}\nstart.command={}\n",
-            manifest.app_id,
-            manifest.app_version,
-            manifest.payload.hash,
-            manifest.renderer.path,
-            manifest.start.command[0]
-        ),
-    )?;
-    Ok(())
-}
-
-fn acquire_extraction_lock(root: &Path, hash: &str, dest: &Path) -> Result<ExtractionLock> {
-    let lock = root.join(format!(".{hash}.lock"));
-    let start = Instant::now();
-    loop {
-        match std::fs::create_dir(&lock) {
-            Ok(()) => return Ok(ExtractionLock { path: lock }),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                if cache_entry_is_complete(dest) {
-                    return Ok(ExtractionLock { path: PathBuf::new() });
-                }
-                anyhow::ensure!(
-                    start.elapsed() < Duration::from_secs(60),
-                    "timed out waiting for payload extraction lock `{}`",
-                    lock.display()
-                );
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(err) => return Err(err).with_context(|| format!("create extraction lock `{}`", lock.display())),
-        }
-    }
-}
-
-impl Drop for ExtractionLock {
-    fn drop(&mut self) {
-        if !self.path.as_os_str().is_empty() {
-            let _ = std::fs::remove_dir(&self.path);
-        }
-    }
-}
-
-fn cache_entry_is_complete(dest: &Path) -> bool {
-    let manifest_path = dest.join("plushie-package.toml");
-    let marker_path = dest.join(COMPLETE_MARKER);
-    if !manifest_path.is_file() || !marker_path.is_file() {
-        return false;
-    }
-    match std::fs::read_to_string(&manifest_path) {
-        Ok(text) if text == MANIFEST_TEXT => {}
-        _ => return false,
-    }
-    let Ok(manifest) = toml::from_str::<Manifest>(MANIFEST_TEXT) else {
-        return false;
-    };
-    absolute_payload_path(dest, &manifest.renderer.path).is_file()
-        && manifest
-            .start
-            .command
-            .first()
-            .map(|program| absolute_payload_path(dest, program).is_file())
-            .unwrap_or(false)
-}
-
-fn prune_cache(manifest: &Manifest, current_hash: &str) -> Result<()> {
-    let root = app_cache_root(manifest)?;
-    let Ok(entries) = std::fs::read_dir(&root) else {
-        return Ok(());
-    };
-
-    let mut old_payloads = Vec::new();
-    for entry in entries {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        if !file_type.is_dir() {
-            continue;
-        }
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name == current_hash || name.starts_with('.') {
-            continue;
-        }
-        let modified = entry
-            .metadata()
-            .and_then(|metadata| metadata.modified())
-            .unwrap_or(std::time::UNIX_EPOCH);
-        old_payloads.push((modified, entry.path()));
-    }
-
-    old_payloads.sort_by(|left, right| right.0.cmp(&left.0));
-    for (_, path) in old_payloads.into_iter().skip(1) {
-        std::fs::remove_dir_all(&path)
-            .with_context(|| format!("remove old payload cache `{}`", path.display()))?;
-    }
-
-    Ok(())
-}
-
-fn app_cache_root(manifest: &Manifest) -> Result<PathBuf> {
-    Ok(cache_root()?.join("plushie/apps").join(app_cache_name(&manifest.app_id)))
-}
-
-fn cache_root() -> Result<PathBuf> {
-    if let Some(path) = std::env::var_os("PLUSHIE_CACHE_DIR") {
-        return absolutize(PathBuf::from(path));
-    }
-    if cfg!(windows) {
-        if let Some(path) = std::env::var_os("LOCALAPPDATA")
-            .or_else(|| std::env::var_os("APPDATA"))
-            .or_else(|| std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join("AppData/Local").into_os_string()))
-        {
-            return absolutize(PathBuf::from(path));
-        }
-    } else if let Some(path) = std::env::var_os("XDG_CACHE_HOME") {
-        return absolutize(PathBuf::from(path));
-    } else if let Some(home) = std::env::var_os("HOME") {
-        return absolutize(PathBuf::from(home).join(".cache"));
-    }
-    absolutize(std::env::temp_dir())
-}
-
-fn absolutize(path: PathBuf) -> Result<PathBuf> {
-    if path.is_absolute() {
-        Ok(path)
-    } else {
-        Ok(std::env::current_dir()?.join(path))
-    }
-}
-
-fn absolute_payload_path(root: &Path, value: &str) -> PathBuf {
-    let path = Path::new(value);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        root.join(path)
-    }
-}
-
-fn validate_payload_relative_path(name: &str, value: &str, allow_dot: bool) -> Result<()> {
-    let path = Path::new(value);
-    anyhow::ensure!(
-        !path.is_absolute(),
-        "{name} must be payload-relative, got absolute path `{value}`"
-    );
-
-    let mut has_normal_component = false;
-    for component in path.components() {
-        match component {
-            Component::Normal(_) => has_normal_component = true,
-            Component::CurDir => {}
-            Component::ParentDir => {
-                anyhow::bail!("{name} must not contain parent traversal: `{value}`");
-            }
-            Component::RootDir | Component::Prefix(_) => {
-                anyhow::bail!("{name} must be payload-relative: `{value}`");
-            }
-        }
-    }
-
-    anyhow::ensure!(
-        has_normal_component || allow_dot,
-        "{name} must name a payload file path"
-    );
-    Ok(())
-}
-
-fn validate_app_id(value: &str) -> Result<()> {
-    let safe = safe_name(value);
-    anyhow::ensure!(
-        safe != "." && safe != "..",
-        "app_id must not map to a path-control component"
-    );
-    Ok(())
-}
-
-fn safe_name(value: &str) -> String {
-    let mut out = String::new();
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
-            out.push(ch);
-        } else {
-            out.push('_');
-        }
-    }
-    if out.is_empty() { "app".to_string() } else { out }
-}
-
-fn app_cache_name(app_id: &str) -> String {
-    let hash = Sha256::digest(app_id.as_bytes());
-    format!(
-        "{}-{:016x}",
-        safe_name(app_id),
-        u64::from_be_bytes(hash[..8].try_into().expect("sha256 digest is long enough"))
-    )
-}
-
-fn make_executable(path: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if path.is_file() {
-            let mut permissions = std::fs::metadata(path)?.permissions();
-            permissions.set_mode(0o755);
-            std::fs::set_permissions(path, permissions)?;
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-    }
-    Ok(())
-}
-"###;
 
 #[cfg(test)]
 mod tests {
@@ -1851,10 +1303,6 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
                 "folder/with space/file.txt"
             ]
         );
-
-        let launcher = launcher_main_rs();
-        assert!(launcher.contains("for arg in manifest.start.command.iter().skip(1)"));
-        assert!(launcher.contains("command.arg(arg);"));
     }
 
     #[test]
@@ -1967,26 +1415,6 @@ forward_env = ["PLUSHIE_PACKAGE_READY_FILE"]
         ] {
             assert!(parse_source_config(text).is_err());
         }
-    }
-
-    #[test]
-    fn generated_launcher_forwards_selected_env() {
-        let launcher = launcher_main_rs();
-
-        assert!(launcher.contains("for name in &manifest.start.forward_env"));
-        assert!(launcher.contains("command.env(name, value);"));
-        assert!(launcher.contains(".env(\"PLUSHIE_BINARY_PATH\", &renderer);"));
-        assert!(launcher.contains("std::env::var_os(PACKAGE_READY_FILE_ENV)"));
-        assert!(launcher.contains("command.env(PACKAGE_READY_FILE_ENV, value);"));
-    }
-
-    #[test]
-    fn generated_launcher_starts_host_first() {
-        let launcher = launcher_main_rs();
-
-        assert!(launcher.contains("let mut command = Command::new(&host_program);"));
-        assert!(launcher.contains(".env(\"PLUSHIE_BINARY_PATH\", &renderer);"));
-        assert!(!launcher.contains("arg(\"--listen\")"));
     }
 
     #[test]
@@ -2272,48 +1700,65 @@ shell = true
     }
 
     #[test]
-    fn prepares_generated_launcher_crate() {
+    fn prepares_portable_launcher_from_template() {
         let dir = tempdir().unwrap();
         let manifest = write_sample_package(dir.path());
+        let launcher_template = write_launcher_template(dir.path());
 
         let opts = PackageOpts {
             manifest_path: &manifest,
             out_path: None,
-            release: false,
+            launcher_path: Some(&launcher_template),
             run_signing_hooks: false,
             verbose: false,
         };
-        let prepared = prepare_launcher_crate(&opts).unwrap();
-        assert!(prepared.crate_dir.join("Cargo.toml").is_file());
-        assert!(prepared.crate_dir.join("src/main.rs").is_file());
-        assert!(prepared.crate_dir.join(GENERATED_MANIFEST).is_file());
-        assert!(prepared.crate_dir.join(GENERATED_PAYLOAD).is_file());
+        let prepared = prepare_portable_launcher(&opts).unwrap();
+        assert_eq!(prepared.launcher_template_path, launcher_template);
         assert_eq!(
-            prepared.build_target_dir,
-            dir.path().join("target/plushie-package/target")
+            prepared.manifest_text,
+            std::fs::read_to_string(&manifest).unwrap()
         );
-        assert_eq!(
-            std::fs::read_to_string(prepared.crate_dir.join(GENERATED_LOCKFILE)).unwrap(),
-            LAUNCHER_LOCKFILE
-        );
+        assert!(!prepared.payload.is_empty());
     }
 
     #[test]
     fn prepares_relative_launcher_output_as_absolute_path() {
         let dir = tempdir().unwrap();
         let manifest = write_sample_package(dir.path());
+        let launcher_template = write_launcher_template(dir.path());
 
         let opts = PackageOpts {
             manifest_path: &manifest,
             out_path: Some(Path::new("dist/notes")),
-            release: false,
+            launcher_path: Some(&launcher_template),
             run_signing_hooks: false,
             verbose: false,
         };
-        let prepared = prepare_launcher_crate(&opts).unwrap();
+        let prepared = prepare_portable_launcher(&opts).unwrap();
 
         assert!(prepared.output_path.is_absolute());
         assert!(prepared.output_path.ends_with("dist/notes"));
+    }
+
+    #[test]
+    fn rejects_portable_output_that_overwrites_launcher_template() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let launcher_template = write_launcher_template(dir.path());
+
+        let opts = PackageOpts {
+            manifest_path: &manifest,
+            out_path: Some(&launcher_template),
+            launcher_path: Some(&launcher_template),
+            run_signing_hooks: false,
+            verbose: false,
+        };
+
+        let err = match prepare_portable_launcher(&opts) {
+            Ok(_) => panic!("expected launcher overwrite rejection"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("must not overwrite"));
     }
 
     #[test]
@@ -2332,26 +1777,19 @@ shell = true
         let dir = tempdir().unwrap();
         let marker = dir.path().join("hook.txt");
         let launcher = dir.path().join("dist/notes");
-        let prepared = PreparedLauncher {
-            crate_dir: dir.path().join("crate"),
-            build_target_dir: dir.path().join("target"),
-            manifest_dir: dir.path().to_path_buf(),
-            package_name: "plushie-package-com-example-notes".to_string(),
-            output_path: launcher.clone(),
-            signing_hooks: vec![SigningHookManifest {
-                phase: "after-launcher-build".to_string(),
-                command: vec![
-                    "sh".to_string(),
-                    "-c".to_string(),
-                    "printf '%s\n%s\n' \"$1\" \"$PWD\" > \"$2\"".to_string(),
-                    "signing-test".to_string(),
-                    "{launcher}".to_string(),
-                    marker.display().to_string(),
-                ],
-            }],
-        };
+        let signing_hooks = vec![SigningHookManifest {
+            phase: "after-launcher-build".to_string(),
+            command: vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "printf '%s\n%s\n' \"$1\" \"$PWD\" > \"$2\"".to_string(),
+                "signing-test".to_string(),
+                "{launcher}".to_string(),
+                marker.display().to_string(),
+            ],
+        }];
 
-        run_signing_hooks(&prepared).unwrap();
+        run_signing_hooks(dir.path(), &launcher, &signing_hooks).unwrap();
 
         let output = std::fs::read_to_string(marker).unwrap();
         let mut lines = output.lines();
@@ -2366,19 +1804,13 @@ shell = true
     #[test]
     fn reports_failed_signing_hooks() {
         let dir = tempdir().unwrap();
-        let prepared = PreparedLauncher {
-            crate_dir: dir.path().join("crate"),
-            build_target_dir: dir.path().join("target"),
-            manifest_dir: dir.path().to_path_buf(),
-            package_name: "plushie-package-com-example-notes".to_string(),
-            output_path: dir.path().join("dist/notes"),
-            signing_hooks: vec![SigningHookManifest {
-                phase: "after-launcher-build".to_string(),
-                command: vec!["sh".to_string(), "-c".to_string(), "exit 9".to_string()],
-            }],
-        };
+        let output_path = dir.path().join("dist/notes");
+        let signing_hooks = vec![SigningHookManifest {
+            phase: "after-launcher-build".to_string(),
+            command: vec!["sh".to_string(), "-c".to_string(), "exit 9".to_string()],
+        }];
 
-        let err = run_signing_hooks(&prepared).unwrap_err();
+        let err = run_signing_hooks(dir.path(), &output_path, &signing_hooks).unwrap_err();
 
         assert!(err.to_string().contains("signing hook"));
         assert!(err.to_string().contains("failed with status"));
@@ -2428,55 +1860,6 @@ shell = true
         assert_eq!(
             app_cache_name("com.example/a"),
             app_cache_name("com.example/a")
-        );
-    }
-
-    #[test]
-    fn launcher_manifest_uses_stable_crate_name_and_dynamic_binary_name() {
-        let manifest = launcher_cargo_toml("plushie-package-com-example-notes");
-
-        assert!(manifest.contains(r#"name = "plushie-package-launcher""#));
-        assert!(manifest.contains(r#"name = "plushie-package-com-example-notes""#));
-        assert!(manifest.contains(r#"path = "src/main.rs""#));
-        assert!(manifest.contains("[workspace]"));
-    }
-
-    #[test]
-    fn write_bytes_if_changed_preserves_unchanged_files() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("payload.tar.zst");
-        write_bytes_if_changed(&path, b"payload").unwrap();
-        let first_modified = std::fs::metadata(&path).unwrap().modified().unwrap();
-
-        write_bytes_if_changed(&path, b"payload").unwrap();
-
-        let second_modified = std::fs::metadata(&path).unwrap().modified().unwrap();
-        assert_eq!(first_modified, second_modified);
-    }
-
-    #[test]
-    fn prepares_generated_launcher_crate_replaces_stale_lockfile() {
-        let dir = tempdir().unwrap();
-        let manifest = write_sample_package(dir.path());
-        let crate_dir = dir.path().join(format!(
-            "target/plushie-package/{}",
-            package_name("com.example.notes")
-        ));
-        std::fs::create_dir_all(&crate_dir).unwrap();
-        std::fs::write(crate_dir.join(GENERATED_LOCKFILE), "# stale\n").unwrap();
-        let opts = PackageOpts {
-            manifest_path: &manifest,
-            out_path: None,
-            release: false,
-            run_signing_hooks: false,
-            verbose: false,
-        };
-
-        let prepared = prepare_launcher_crate(&opts).unwrap();
-
-        assert_eq!(
-            std::fs::read_to_string(prepared.crate_dir.join(GENERATED_LOCKFILE)).unwrap(),
-            LAUNCHER_LOCKFILE
         );
     }
 
@@ -2681,28 +2064,6 @@ hash = "sha256:{hash}"
         assert!(err.to_string().contains("app_id"));
     }
 
-    #[test]
-    fn generated_launcher_reports_and_checks_cache_metadata() {
-        let launcher = launcher_main_rs();
-
-        for expected in [
-            "cache_status={}",
-            "if payload_root.reused { \"reused\" } else { \"extracted\" }",
-            "fn cache_entry_is_complete(dest: &Path) -> bool",
-            "Ok(text) if text == MANIFEST_TEXT",
-            "app_id={}",
-            "app_version={}",
-            "payload_hash={}",
-            "renderer.path={}",
-            "start.command={}",
-        ] {
-            assert!(
-                launcher.contains(expected),
-                "missing generated launcher text `{expected}`"
-            );
-        }
-    }
-
     fn sample_payload_archive() -> Vec<u8> {
         payload_archive_with_dirs(
             &[
@@ -2751,6 +2112,13 @@ hash = "{hash}"
         manifest
     }
 
+    fn write_launcher_template(dir: &Path) -> PathBuf {
+        let path = dir.join("bin").join(platform::launcher_name());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"launcher").unwrap();
+        std::fs::canonicalize(path).unwrap()
+    }
+
     fn valid_manifest_text(extra: &str) -> String {
         let payload_hash = format!("sha256:{:x}", Sha256::digest(b"payload"));
         format!(
@@ -2779,6 +2147,38 @@ hash = "{payload_hash}"
 "#,
             current_package_target()
         )
+    }
+
+    fn package_manifest_for_payload(payload: &[u8]) -> PackageManifest {
+        PackageManifest {
+            schema_version: MANIFEST_SCHEMA_VERSION,
+            app_id: "com.example.notes".to_string(),
+            app_name: None,
+            app_version: "0.1.0".to_string(),
+            target: Some(current_package_target()),
+            host_sdk: "python".to_string(),
+            host_sdk_version: None,
+            plushie_rust_version: EXPECTED_PLUSHIE_RUST_VERSION.to_string(),
+            protocol_version: EXPECTED_PROTOCOL_VERSION,
+            start: StartManifest {
+                working_dir: ".".to_string(),
+                command: vec!["bin/notes".to_string()],
+                forward_env: Vec::new(),
+            },
+            renderer: RendererManifest {
+                path: "bin/plushie-renderer".to_string(),
+                kind: "stock".to_string(),
+                source: None,
+            },
+            platform: None,
+            updates: None,
+            signing: None,
+            payload: PayloadManifest {
+                archive: "payload.tar.zst".to_string(),
+                hash: format!("sha256:{:x}", Sha256::digest(payload)),
+                size: Some(payload.len() as u64),
+            },
+        }
     }
 
     fn manifest_with_path(field: &str, value: &str) -> String {
@@ -2820,38 +2220,6 @@ hash = "{payload_hash}"
                 )
             }
             _ => unreachable!("unknown path field"),
-        }
-    }
-
-    fn package_manifest_for_payload(payload: &[u8]) -> PackageManifest {
-        PackageManifest {
-            schema_version: MANIFEST_SCHEMA_VERSION,
-            app_id: "com.example.notes".to_string(),
-            app_name: None,
-            app_version: "0.1.0".to_string(),
-            target: Some(current_package_target()),
-            host_sdk: "python".to_string(),
-            host_sdk_version: None,
-            plushie_rust_version: EXPECTED_PLUSHIE_RUST_VERSION.to_string(),
-            protocol_version: EXPECTED_PROTOCOL_VERSION,
-            start: StartManifest {
-                working_dir: ".".to_string(),
-                command: vec!["bin/notes".to_string()],
-                forward_env: Vec::new(),
-            },
-            renderer: RendererManifest {
-                path: "bin/plushie-renderer".to_string(),
-                kind: "stock".to_string(),
-                source: None,
-            },
-            platform: None,
-            updates: None,
-            signing: None,
-            payload: PayloadManifest {
-                archive: "payload.tar.zst".to_string(),
-                hash: format!("sha256:{:x}", Sha256::digest(payload)),
-                size: Some(payload.len() as u64),
-            },
         }
     }
 

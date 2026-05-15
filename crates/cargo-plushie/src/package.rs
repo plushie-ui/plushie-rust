@@ -90,8 +90,11 @@ pub struct PackageBundleOpts<'a> {
 pub struct PackageBundleResult {
     /// Portable executable consumed by cargo-packager.
     pub portable_path: PathBuf,
-    /// Generated or user-supplied cargo-packager config path.
+    /// Source cargo-packager config path. Generated when the user does not
+    /// supply one.
     pub config_path: PathBuf,
+    /// Fully merged cargo-packager config written for debugging.
+    pub effective_config_path: PathBuf,
     /// Directory where cargo-packager writes outputs.
     pub out_dir: PathBuf,
     /// Platform package artifacts written by cargo-packager.
@@ -340,14 +343,17 @@ pub fn bundle_package(opts: &PackageBundleOpts<'_>) -> Result<PackageBundleResul
     Ok(PackageBundleResult {
         portable_path,
         config_path: prepared.config_path,
+        effective_config_path: prepared.effective_config_path,
         out_dir: prepared.out_dir,
         outputs,
     })
 }
 
+#[derive(Debug)]
 struct PreparedPackagerConfig {
     config: CargoPackagerConfig,
     config_path: PathBuf,
+    effective_config_path: PathBuf,
     out_dir: PathBuf,
     working_dir: PathBuf,
 }
@@ -381,6 +387,9 @@ fn prepare_packager_config(
             !formats.is_empty(),
             out_dir_explicit,
         );
+        validate_packager_config(&config)?;
+        let effective_config_path = work_dir.join("Packager.effective.toml");
+        write_packager_config(&effective_config_path, &config)?;
         let working_dir = config_path
             .parent()
             .map(Path::to_path_buf)
@@ -389,6 +398,7 @@ fn prepare_packager_config(
         Ok(PreparedPackagerConfig {
             config,
             config_path,
+            effective_config_path,
             out_dir: resolved_out_dir,
             working_dir,
         })
@@ -405,15 +415,14 @@ fn prepare_packager_config(
             false,
             true,
         );
+        validate_packager_config(&config)?;
         let config_path = work_dir.join("Packager.toml");
-        let config_text = toml::to_string_pretty(&config)
-            .with_context(|| "serialize cargo-packager configuration")?;
-        std::fs::write(&config_path, config_text)
-            .with_context(|| format!("write cargo-packager config `{}`", config_path.display()))?;
+        write_packager_config(&config_path, &config)?;
         let resolved_out_dir = resolve_packager_out_dir(&config, work_dir);
         Ok(PreparedPackagerConfig {
             config,
-            config_path,
+            config_path: config_path.clone(),
+            effective_config_path: config_path,
             out_dir: resolved_out_dir,
             working_dir: work_dir.to_path_buf(),
         })
@@ -787,6 +796,21 @@ fn read_packager_config(path: &Path) -> Result<CargoPackagerConfig> {
     .map_err(Error::Other)
 }
 
+fn write_packager_config(path: &Path, config: &CargoPackagerConfig) -> Result<()> {
+    let config_text =
+        toml::to_string_pretty(config).with_context(|| "serialize cargo-packager configuration")?;
+    std::fs::write(path, config_text)
+        .with_context(|| format!("write cargo-packager config `{}`", path.display()))?;
+    Ok(())
+}
+
+fn validate_packager_config(config: &CargoPackagerConfig) -> Result<()> {
+    let formats = resolved_packager_formats(config);
+    validate_packager_formats(&formats)?;
+    validate_bundle_environment(&formats)?;
+    Ok(())
+}
+
 fn apply_packager_defaults(
     config: &mut CargoPackagerConfig,
     loaded: &LoadedPackage,
@@ -869,6 +893,92 @@ fn parse_packager_formats(formats: &[String]) -> Result<Option<Vec<PackageFormat
     parsed.sort_by_key(|format| format.short_name());
     parsed.dedup();
     Ok(Some(parsed))
+}
+
+fn validate_packager_formats(formats: &[PackageFormat]) -> Result<()> {
+    let unsupported: Vec<&str> = formats
+        .iter()
+        .filter(|format| !is_supported_packager_format(format))
+        .map(PackageFormat::short_name)
+        .collect();
+    if unsupported.is_empty() {
+        return Ok(());
+    }
+    Err(Error::Other(anyhow::anyhow!(
+        "package formats not supported on this platform ({}): {}",
+        std::env::consts::OS,
+        unsupported.join(", ")
+    )))
+}
+
+fn validate_bundle_environment(formats: &[PackageFormat]) -> Result<()> {
+    if formats.contains(&PackageFormat::AppImage) {
+        ensure_commands_available(&[
+            "desktop-file-validate",
+            "file",
+            "mksquashfs",
+            "objdump",
+            "patchelf",
+            "strip",
+        ])?;
+    }
+    Ok(())
+}
+
+fn resolved_packager_formats(config: &CargoPackagerConfig) -> Vec<PackageFormat> {
+    config
+        .formats
+        .clone()
+        .unwrap_or_else(|| PackageFormat::platform_default().to_vec())
+}
+
+fn ensure_commands_available(commands: &[&str]) -> Result<()> {
+    let missing: Vec<&str> = commands
+        .iter()
+        .copied()
+        .filter(|command| !command_available(command))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(Error::Other(anyhow::anyhow!(
+        "missing system commands required for packaging: {}",
+        missing.join(", ")
+    )))
+}
+
+fn command_available(command: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| {
+            std::env::split_paths(&paths).any(|dir| {
+                let candidate = dir.join(command);
+                candidate.is_file()
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn is_supported_packager_format(format: &PackageFormat) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        matches!(
+            format,
+            PackageFormat::AppImage | PackageFormat::Deb | PackageFormat::Pacman
+        )
+    }
+    #[cfg(target_os = "macos")]
+    {
+        matches!(format, PackageFormat::App | PackageFormat::Dmg)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        matches!(format, PackageFormat::Nsis | PackageFormat::Wix)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        let _ = format;
+        false
+    }
 }
 
 fn materialize_packager_icon(loaded: &LoadedPackage, work_dir: &Path) -> Result<Option<PathBuf>> {
@@ -1459,6 +1569,9 @@ fn validate_payload_archive(manifest: &PackageManifest, payload: &[u8]) -> Resul
         if entry_type.is_file() {
             found_renderer |= entry_path == renderer_path;
             found_host |= entry_path == host_path;
+            if !working_dir.as_os_str().is_empty() {
+                found_working_dir |= entry_path.starts_with(&working_dir);
+            }
             if let Some(platform_icon) = &platform_icon {
                 found_platform_icon |= entry_path == *platform_icon;
             }
@@ -1632,7 +1745,7 @@ size = 7
             &portable,
             &dir.path().join("packager"),
             &dir.path().join("bundles"),
-            &["appimage".to_string()],
+            &["deb".to_string()],
             None,
             true,
         )
@@ -1642,15 +1755,55 @@ size = 7
         assert!(config.contains("productName = \"com.example.notes\""));
         assert!(config.contains("version = \"0.1.0\""));
         assert!(config.contains("identifier = \"com.example.notes\""));
-        assert!(config.contains("formats = [\"appimage\"]"));
+        assert!(config.contains("formats = [\"deb\"]"));
         assert_eq!(prepared.config.product_name, "com.example.notes");
         assert_eq!(
             prepared.config.binaries[0].path,
             PathBuf::from("com.example.notes")
         );
         assert!(prepared.config.binaries[0].main);
-        assert_eq!(prepared.config.formats, Some(vec![PackageFormat::AppImage]));
+        assert_eq!(prepared.config.formats, Some(vec![PackageFormat::Deb]));
         assert!(prepared.out_dir.ends_with("bundles"));
+        assert_eq!(prepared.config_path, prepared.effective_config_path);
+    }
+
+    #[test]
+    fn prepare_packager_config_writes_effective_config_for_custom_input() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let loaded = load_package(&manifest).unwrap();
+        let portable = dir.path().join("portable-app");
+        let config_path = dir.path().join("Packager.toml");
+        std::fs::write(&portable, b"portable").unwrap();
+        std::fs::write(
+            &config_path,
+            r#"
+productName = "Notes"
+outDir = "release"
+"#,
+        )
+        .unwrap();
+
+        let prepared = prepare_packager_config(
+            &loaded,
+            &portable,
+            &dir.path().join("packager"),
+            &dir.path().join("bundles"),
+            &["deb".to_string()],
+            Some(&config_path),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(prepared.config_path, config_path);
+        assert!(
+            prepared
+                .effective_config_path
+                .ends_with("packager/Packager.effective.toml")
+        );
+        let effective = std::fs::read_to_string(&prepared.effective_config_path).unwrap();
+        assert!(effective.contains("productName = \"Notes\""));
+        assert!(effective.contains("formats = [\"deb\"]"));
     }
 
     #[test]
@@ -1674,6 +1827,60 @@ size = 7
         assert!(formats.contains(&PackageFormat::Nsis));
         assert!(formats.contains(&PackageFormat::Pacman));
         assert!(formats.contains(&PackageFormat::Wix));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn prepare_packager_config_rejects_non_linux_bundle_formats() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let loaded = load_package(&manifest).unwrap();
+        let portable = dir.path().join("portable-app");
+        std::fs::write(&portable, b"portable").unwrap();
+
+        let err = prepare_packager_config(
+            &loaded,
+            &portable,
+            &dir.path().join("packager"),
+            &dir.path().join("bundles"),
+            &["dmg".to_string()],
+            None,
+            true,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("not supported on this platform"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn prepare_packager_config_rejects_non_linux_formats_from_custom_config() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let loaded = load_package(&manifest).unwrap();
+        let portable = dir.path().join("portable-app");
+        let config_path = dir.path().join("Packager.toml");
+        std::fs::write(&portable, b"portable").unwrap();
+        std::fs::write(
+            &config_path,
+            r#"
+formats = ["dmg"]
+"#,
+        )
+        .unwrap();
+
+        let err = prepare_packager_config(
+            &loaded,
+            &portable,
+            &dir.path().join("packager"),
+            &dir.path().join("bundles"),
+            &[],
+            Some(&config_path),
+            true,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("not supported on this platform"));
     }
 
     #[cfg(target_os = "linux")]
@@ -2482,7 +2689,7 @@ hash = "{hash}"
     }
 
     #[test]
-    fn rejects_payload_missing_non_root_working_dir() {
+    fn accepts_payload_without_explicit_non_root_working_dir_entry() {
         let payload = payload_archive_with_entries(&[
             ("bin/plushie-renderer", b"renderer".as_slice()),
             ("app/bin/notes", b"host".as_slice()),
@@ -2491,8 +2698,7 @@ hash = "{hash}"
         manifest.start.command = vec!["app/bin/notes".to_string()];
         manifest.start.working_dir = "app".to_string();
 
-        let err = validate_payload_archive(&manifest, &payload).unwrap_err();
-        assert!(err.to_string().contains("start.working_dir"));
+        validate_payload_archive(&manifest, &payload).unwrap();
     }
 
     #[test]

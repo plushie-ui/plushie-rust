@@ -267,6 +267,7 @@ fn run_package(input: PackageInput<'_>) -> Result<u8> {
         .first()
         .context("start.command is empty")?;
     let host_program = absolute_payload_path(&root, host_program);
+    validate_extracted_paths(&renderer, &host_program, &working_dir)?;
 
     eprintln!(
         "plushie launcher: app={} version={} payload=sha256:{} cache={} cache_status={} renderer={} host={}",
@@ -319,6 +320,29 @@ fn run_package(input: PackageInput<'_>) -> Result<u8> {
         eprintln!("plushie launcher: cache pruning failed: {err:#}");
     }
     Ok(status.code().unwrap_or(1).try_into().unwrap_or(1))
+}
+
+fn validate_extracted_paths(
+    renderer: &Path,
+    host_program: &Path,
+    working_dir: &Path,
+) -> Result<()> {
+    anyhow::ensure!(
+        renderer.is_file(),
+        "renderer.path does not exist after extraction: `{}`",
+        renderer.display()
+    );
+    anyhow::ensure!(
+        host_program.is_file(),
+        "start.command[0] does not exist after extraction: `{}`",
+        host_program.display()
+    );
+    anyhow::ensure!(
+        working_dir.is_dir(),
+        "start.working_dir does not exist after extraction: `{}`",
+        working_dir.display()
+    );
+    Ok(())
 }
 
 fn ensure_payload(input: &PackageInput<'_>) -> Result<PayloadRoot> {
@@ -784,6 +808,66 @@ size = {}
             run_external_package_with_options(&manifest_path, true, Some(cache.path())).unwrap();
         assert_eq!(result, 0);
         assert!(cache.path().join("plushie/apps").exists());
+    }
+
+    #[test]
+    fn postcheck_rejects_missing_extracted_host() {
+        let dir = tempdir().unwrap();
+        let payload_root = dir.path().join("payload");
+        std::fs::create_dir_all(payload_root.join("bin")).unwrap();
+        std::fs::write(payload_root.join("bin/plushie-renderer"), "renderer").unwrap();
+
+        let archive = dir.path().join("payload.tar.zst");
+        let file = std::fs::File::create(&archive).unwrap();
+        let encoder = zstd::stream::write::Encoder::new(file, 0).unwrap();
+        let mut builder = tar::Builder::new(encoder);
+        builder
+            .append_path_with_name(
+                payload_root.join("bin/plushie-renderer"),
+                "bin/plushie-renderer",
+            )
+            .unwrap();
+        let encoder = builder.into_inner().unwrap();
+        encoder.finish().unwrap();
+        let bytes = std::fs::read(&archive).unwrap();
+        let hash = format!("sha256:{:x}", Sha256::digest(&bytes));
+
+        let manifest = format!(
+            r#"
+schema_version = 1
+app_id = "com.example.launcher"
+app_version = "0.1.0"
+target = "linux-x86_64"
+host_sdk = "test"
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
+
+[start]
+working_dir = "."
+command = ["bin/host"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
+
+[payload]
+archive = "payload.tar.zst"
+hash = "{hash}"
+size = {}
+"#,
+            bytes.len()
+        );
+        let manifest_path = dir.path().join("plushie-package.toml");
+        std::fs::write(&manifest_path, manifest).unwrap();
+
+        let cache = tempdir().unwrap();
+        let err = run_external_package_with_options(&manifest_path, true, Some(cache.path()))
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("start.command[0] does not exist after extraction")
+        );
     }
 
     fn write_archive(payload_root: &Path, archive: &Path) {

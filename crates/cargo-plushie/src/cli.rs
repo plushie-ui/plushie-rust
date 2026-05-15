@@ -1069,6 +1069,12 @@ fn cmd_package_bundle(args: &PackageBundleArgs) -> Result<()> {
         "plushie: used cargo-packager config {}",
         result.config_path.display()
     );
+    if result.effective_config_path != result.config_path {
+        println!(
+            "plushie: wrote effective cargo-packager config {}",
+            result.effective_config_path.display()
+        );
+    }
     println!(
         "plushie: cargo-packager output directory {}",
         result.out_dir.display()
@@ -1080,7 +1086,7 @@ fn cmd_package_bundle(args: &PackageBundleArgs) -> Result<()> {
 }
 
 fn ensure_strict_package_tools(required_version: &str) -> Result<()> {
-    let project_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
+    let project_dir = strict_tool_project_dir()?;
     let report = check_native_tools(&project_dir, required_version, true);
     if report.ok {
         return Ok(());
@@ -1088,6 +1094,37 @@ fn ensure_strict_package_tools(required_version: &str) -> Result<()> {
 
     print_tool_check_report(&report);
     anyhow::bail!("Plushie native tool check failed")
+}
+
+fn strict_tool_project_dir() -> Result<PathBuf> {
+    let current_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
+    let current_exe = std::env::current_exe().ok();
+    Ok(strict_tool_project_dir_from(
+        &current_dir,
+        current_exe.as_deref(),
+    ))
+}
+
+fn strict_tool_project_dir_from(current_dir: &Path, current_exe: Option<&Path>) -> PathBuf {
+    let Some(current_exe) = current_exe else {
+        return current_dir.to_path_buf();
+    };
+    let Some(exe_name) = current_exe.file_name().and_then(|name| name.to_str()) else {
+        return current_dir.to_path_buf();
+    };
+    if exe_name != platform::plushie_name() {
+        return current_dir.to_path_buf();
+    }
+    let Some(bin_dir) = current_exe.parent() else {
+        return current_dir.to_path_buf();
+    };
+    if bin_dir.file_name().and_then(|name| name.to_str()) != Some("bin") {
+        return current_dir.to_path_buf();
+    }
+    bin_dir
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| current_dir.to_path_buf())
 }
 
 fn print_package_warnings(precheck: &package::PackagePrecheckResult) {
@@ -2039,7 +2076,7 @@ mod tests {
     use super::{
         BUILTIN_TYPE_NAMES, check_native_tools, download_launcher_with_base_url,
         download_plushie_with_base_url, download_renderer_with_base_url, resolve_required_version,
-        target_dir_from,
+        strict_tool_project_dir_from, target_dir_from,
     };
     use crate::platform;
     use sha2::{Digest, Sha256};
@@ -2187,5 +2224,24 @@ mod tests {
         assert!(report.issues.iter().any(|issue| {
             issue.contains("launcher is missing") && issue.contains("bin/plushie tools sync")
         }));
+    }
+
+    #[test]
+    fn strict_tool_project_dir_uses_wrapped_plushie_location() {
+        let project_dir = strict_tool_project_dir_from(
+            Path::new("/tmp/caller"),
+            Some(Path::new("/work/demo/bin/plushie")),
+        );
+        assert_eq!(project_dir, Path::new("/work/demo"));
+    }
+
+    #[test]
+    fn strict_tool_project_dir_falls_back_for_cargo_subcommand() {
+        let current_dir = Path::new("/tmp/caller");
+        let project_dir = strict_tool_project_dir_from(
+            current_dir,
+            Some(Path::new("/home/devuser/.cargo/bin/cargo-plushie")),
+        );
+        assert_eq!(project_dir, current_dir);
     }
 }

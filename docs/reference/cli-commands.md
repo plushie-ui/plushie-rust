@@ -243,6 +243,7 @@ cargo plushie package portable --manifest plushie-package.toml
 | Flag | Type | Description |
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
+| `--strict-tools` | bool | Require managed native tools to match the manifest version and strict provenance rules before writing the portable artifact |
 | `--out <PATH>` | path | Final launcher path (default `target/plushie/package/<app-id>`) |
 | `--launcher <PATH>` | path | Reusable `plushie-launcher` binary to embed package data into |
 | `--run-signing-hooks` | bool | Run signing hooks declared in the manifest |
@@ -426,6 +427,7 @@ cargo plushie package check --manifest plushie-package.toml --postcheck
 | Flag | Type | Description |
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
+| `--strict-tools` | bool | Require managed native tools to match the manifest version and strict provenance rules before checking or postchecking |
 | `--postcheck` | bool | Build the portable launcher and run the extraction/cache postcheck path |
 | `--postcheck-timeout <SECONDS>` | integer | Maximum time for `--postcheck` to wait |
 | `--launcher <PATH>` | path | Reusable `plushie-launcher` binary to use during `--postcheck` |

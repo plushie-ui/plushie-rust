@@ -220,6 +220,9 @@ struct PackagePortableArgs {
     /// Path to the Plushie package manifest.
     #[arg(long)]
     manifest: PathBuf,
+    /// Fail when managed native tools are missing, dirty, mixed, or version-mismatched.
+    #[arg(long)]
+    strict_tools: bool,
     /// Final launcher output path. Defaults under target/plushie/package/.
     #[arg(long)]
     out: Option<PathBuf>,
@@ -239,6 +242,9 @@ struct PackageCheckArgs {
     /// Path to the Plushie package manifest.
     #[arg(long)]
     manifest: PathBuf,
+    /// Fail when managed native tools are missing, dirty, mixed, or version-mismatched.
+    #[arg(long)]
+    strict_tools: bool,
     /// Also build the portable launcher and run its extraction/cache check.
     #[arg(long)]
     postcheck: bool,
@@ -962,6 +968,9 @@ fn print_tool_check_report(report: &ToolCheckReport) {
 fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
+    if args.strict_tools {
+        ensure_strict_package_tools(&precheck.plushie_rust_version)?;
+    }
 
     if !args.postcheck {
         println!(
@@ -992,6 +1001,9 @@ fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
 fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
+    if args.strict_tools {
+        ensure_strict_package_tools(&precheck.plushie_rust_version)?;
+    }
     let result = package::build_launcher(&package::PackageOpts {
         manifest_path: &args.manifest,
         out_path: args.out.as_deref(),
@@ -1008,6 +1020,17 @@ fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
         result.launcher_template_path.display()
     );
     Ok(())
+}
+
+fn ensure_strict_package_tools(required_version: &str) -> Result<()> {
+    let project_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
+    let report = check_native_tools(&project_dir, required_version, true);
+    if report.ok {
+        return Ok(());
+    }
+
+    print_tool_check_report(&report);
+    anyhow::bail!("Plushie native tool check failed")
 }
 
 fn print_package_warnings(precheck: &package::PackagePrecheckResult) {

@@ -72,6 +72,8 @@ pub struct PackagePrecheckResult {
     pub app_id: String,
     /// Package application version.
     pub app_version: String,
+    /// plushie-rust version recorded in the package manifest.
+    pub plushie_rust_version: String,
     /// Payload SHA-256 field from the manifest.
     pub payload_hash: String,
     /// Non-fatal package issues found during precheck.
@@ -248,6 +250,7 @@ pub fn precheck_package(manifest_path: &Path) -> Result<PackagePrecheckResult> {
     Ok(PackagePrecheckResult {
         app_id: loaded.manifest.app_id,
         app_version: loaded.manifest.app_version,
+        plushie_rust_version: loaded.manifest.plushie_rust_version,
         payload_hash: loaded.manifest.payload.hash,
         warnings,
     })
@@ -1252,6 +1255,15 @@ size = 7
         let manifest = parse_manifest(&text).unwrap();
         assert_eq!(manifest.app_id, "com.example.notes");
         assert_eq!(manifest.start.command, ["bin/notes"]);
+    }
+
+    #[test]
+    fn precheck_reports_manifest_plushie_rust_version() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let result = precheck_package(&manifest).unwrap();
+
+        assert_eq!(result.plushie_rust_version, EXPECTED_PLUSHIE_RUST_VERSION);
     }
 
     #[test]

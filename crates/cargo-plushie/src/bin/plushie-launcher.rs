@@ -7,10 +7,9 @@ fn main() -> anyhow::Result<()> {
         return cargo_plushie::print_tool_version("plushie-launcher", json);
     }
 
-    eprintln!(
+    anyhow::bail!(
         "plushie-launcher is a reusable package-launcher runtime. \
          Package assembly support is not wired to this binary yet. \
          Run with --version or --version --json to inspect its identity."
-    );
-    Ok(())
+    )
 }

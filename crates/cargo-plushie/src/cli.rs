@@ -521,7 +521,7 @@ fn cmd_default_icons(args: &DefaultIconsArgs) -> Result<()> {
 
 fn cmd_package(args: &PackageArgs) -> Result<()> {
     match &args.command {
-        PackageSubcommand::Assemble(a) => cmd_package_rust(a, false),
+        PackageSubcommand::Assemble(a) => cmd_package_rust(a, true),
         PackageSubcommand::Portable(p) => cmd_package_portable(p),
         PackageSubcommand::Check(c) => cmd_package_check(c),
         PackageSubcommand::Bundle(b) => {
@@ -593,6 +593,9 @@ fn cmd_tools_sync(args: &ToolsSyncArgs) -> Result<()> {
     }
 
     let project_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
+    if let Some(manifest_path) = &args.manifest_path {
+        check_native_tool_manifest(manifest_path)?;
+    }
     if self_identity.source.kind == "source" {
         return sync_source_native_tools(&project_dir);
     }
@@ -645,10 +648,17 @@ fn sync_source_native_tools(project_dir: &Path) -> Result<()> {
             "-p",
             "cargo-plushie",
             "--bin",
+            "plushie",
+            "--bin",
             "plushie-launcher",
         ],
     )?;
 
+    install_source_tool(
+        &target_dir.join("release").join(platform::plushie_name()),
+        &project_dir.join("bin").join(platform::plushie_name()),
+        "plushie",
+    )?;
     install_source_tool(
         &target_dir.join("release").join(platform::renderer_name()),
         &project_dir.join("bin").join(platform::renderer_name()),
@@ -731,6 +741,13 @@ fn plushie_rust_workspace_root() -> Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("unable to resolve plushie-rust workspace root"))
 }
 
+fn check_native_tool_manifest(manifest_path: &PathBuf) -> Result<()> {
+    let manifest_dir = resolve_manifest_dir(Some(manifest_path))?;
+    let widgets = discover::discover_widgets(&manifest_dir)?;
+    download::refuse_if_native_widgets(&widgets)?;
+    Ok(())
+}
+
 fn resolve_required_version(
     explicit: Option<&str>,
     manifest_path: Option<&PathBuf>,
@@ -767,12 +784,23 @@ fn check_native_tools(project_dir: &Path, required_version: &str, strict: bool) 
         &mut warnings,
     );
     tools.push(ToolCheckEntry {
-        tool: "plushie".to_string(),
+        tool: "plushie-current".to_string(),
         path: None,
         identity: Some(self_identity.clone()),
         status: "present".to_string(),
     });
 
+    check_managed_tool(
+        project_dir,
+        "plushie",
+        &platform::plushie_name(),
+        required_version,
+        strict,
+        &self_identity,
+        &mut tools,
+        &mut issues,
+        &mut warnings,
+    );
     check_managed_tool(
         project_dir,
         "plushie-renderer",
@@ -1998,6 +2026,9 @@ mod tests {
         let report = check_native_tools(dir.path(), env!("CARGO_PKG_VERSION"), false);
 
         assert!(!report.ok);
+        assert!(report.issues.iter().any(|issue| {
+            issue.contains("plushie is missing") && issue.contains("bin/plushie tools sync")
+        }));
         assert!(report.issues.iter().any(|issue| {
             issue.contains("renderer is missing") && issue.contains("bin/plushie tools sync")
         }));

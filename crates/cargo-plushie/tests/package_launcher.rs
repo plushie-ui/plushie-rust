@@ -40,8 +40,9 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     let launch_cache = dir.path().join("launch-cache");
     let marker = dir.path().join("marker.txt");
     let package_root = dir.path().join("package-root.txt");
-    let args_file = dir.path().join("renderer-args.txt");
-    let cwd_file = dir.path().join("renderer-cwd.txt");
+    let args_file = dir.path().join("host-args.txt");
+    let cwd_file = dir.path().join("host-cwd.txt");
+    let renderer_path = dir.path().join("renderer-path.txt");
     let actual_a = run_launcher(
         &built_a.binary_path,
         &launch_cache,
@@ -50,6 +51,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
             package_root: &package_root,
             args_file: &args_file,
             cwd_file: &cwd_file,
+            renderer_path: &renderer_path,
         }),
     );
     assert_success(&actual_a);
@@ -57,7 +59,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     assert_eq!(std::fs::read_to_string(&marker).unwrap(), "A\n");
     let package_root_a = std::fs::read_to_string(&package_root).unwrap();
     assert!(Path::new(package_root_a.trim()).starts_with(&launch_cache));
-    assert_renderer_args(&args_file, &package_root_a, "A");
+    assert_host_launch(&args_file, &renderer_path, &package_root_a, "A");
 
     let manifest = write_package(&package_dir, "B");
     let launcher_b = dir.path().join("bin").join("launcher-b");
@@ -77,6 +79,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
             package_root: &package_root,
             args_file: &args_file,
             cwd_file: &cwd_file,
+            renderer_path: &renderer_path,
         }),
     );
     assert_success(&actual_b);
@@ -90,7 +93,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
             .unwrap()
             .starts_with(&package_root_b)
     );
-    assert_renderer_args(&args_file, &package_root_b, "B");
+    assert_host_launch(&args_file, &renderer_path, &package_root_b, "B");
 
     let actual_b_reused = run_launcher(
         &built_b.binary_path,
@@ -100,6 +103,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
             package_root: &package_root,
             args_file: &args_file,
             cwd_file: &cwd_file,
+            renderer_path: &renderer_path,
         }),
     );
     assert_success(&actual_b_reused);
@@ -112,6 +116,7 @@ struct RuntimeProbe<'a> {
     package_root: &'a Path,
     args_file: &'a Path,
     cwd_file: &'a Path,
+    renderer_path: &'a Path,
 }
 
 struct LauncherOutput {
@@ -128,7 +133,8 @@ fn run_launcher(binary: &Path, cache: &Path, probe: Option<RuntimeProbe<'_>>) ->
             .env("PLUSHIE_TEST_MARKER", probe.marker)
             .env("PLUSHIE_TEST_PACKAGE_DIR", probe.package_root)
             .env("PLUSHIE_TEST_ARGS", probe.args_file)
-            .env("PLUSHIE_TEST_CWD", probe.cwd_file);
+            .env("PLUSHIE_TEST_CWD", probe.cwd_file)
+            .env("PLUSHIE_TEST_RENDERER_PATH", probe.renderer_path);
     } else {
         command.env("PLUSHIE_PACKAGE_POSTCHECK", "1");
     }
@@ -151,17 +157,19 @@ fn assert_success(output: &LauncherOutput) {
     );
 }
 
-fn assert_renderer_args(args_file: &Path, package_root: &str, payload_label: &str) {
+fn assert_host_launch(
+    args_file: &Path,
+    renderer_path: &Path,
+    package_root: &str,
+    payload_label: &str,
+) {
     let args = std::fs::read_to_string(args_file).unwrap();
+    let renderer = std::fs::read_to_string(renderer_path).unwrap();
     let root = package_root.trim();
-    let host = Path::new(root).join("bin/host");
+    let expected_renderer = Path::new(root).join("bin/plushie-renderer");
 
-    assert!(args.contains("--listen"));
-    assert!(args.contains("--ready-marker"));
-    assert!(args.contains("--exec-bin"));
-    assert!(args.contains(&host.display().to_string()));
-    assert!(args.contains("--exec-arg --payload"));
-    assert!(args.contains(&format!("--exec-arg {payload_label}")));
+    assert_eq!(args.trim(), format!("--payload {payload_label}"));
+    assert_eq!(renderer.trim(), expected_renderer.display().to_string());
 }
 
 fn write_package(dir: &Path, payload_label: &str) -> PathBuf {
@@ -181,8 +189,21 @@ target = "{}"
 host_sdk = "test"
 plushie_rust_version = "{}"
 protocol_version = {}
-renderer_path = "bin/plushie-renderer"
-host_command = ["bin/host", "--payload", "{payload_label}"]
+
+[start]
+working_dir = "."
+command = ["bin/host", "--payload", "{payload_label}"]
+forward_env = [
+  "PLUSHIE_TEST_MARKER",
+  "PLUSHIE_TEST_PACKAGE_DIR",
+  "PLUSHIE_TEST_ARGS",
+  "PLUSHIE_TEST_CWD",
+  "PLUSHIE_TEST_RENDERER_PATH",
+]
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
 
 [payload]
 archive = "payload.tar.zst"
@@ -200,19 +221,18 @@ size = {}
 }
 
 fn payload_archive(payload_label: &str) -> Vec<u8> {
-    let renderer = format!(
+    let renderer = r#"#!/bin/sh
+printf 'renderer should not start\n' >&2
+exit 9
+"#;
+    let host = format!(
         r#"#!/bin/sh
 set -eu
 printf '{}\n' > "$PLUSHIE_TEST_MARKER"
 printf '%s\n' "$PLUSHIE_PACKAGE_DIR" > "$PLUSHIE_TEST_PACKAGE_DIR"
 printf '%s\n' "$*" > "$PLUSHIE_TEST_ARGS"
 printf '%s\n' "$PWD" > "$PLUSHIE_TEST_CWD"
-"#,
-        payload_label
-    );
-    let host = format!(
-        r#"#!/bin/sh
-printf '{}\n'
+printf '%s\n' "$PLUSHIE_BINARY_PATH" > "$PLUSHIE_TEST_RENDERER_PATH"
 "#,
         payload_label
     );

@@ -113,12 +113,8 @@ struct PackageManifest {
     host_sdk_version: Option<String>,
     plushie_rust_version: String,
     protocol_version: u32,
-    renderer_path: String,
-    host_command: Vec<String>,
-    working_dir: Option<String>,
-    #[serde(default)]
-    exec_env: Vec<String>,
-    renderer: Option<RendererManifest>,
+    start: StartManifest,
+    renderer: RendererManifest,
     platform: Option<PlatformManifest>,
     updates: Option<UpdatesManifest>,
     signing: Option<SigningManifest>,
@@ -127,7 +123,16 @@ struct PackageManifest {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct StartManifest {
+    working_dir: String,
+    command: Vec<String>,
+    forward_env: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RendererManifest {
+    path: String,
     kind: String,
     source: Option<String>,
 }
@@ -616,43 +621,51 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
             EXPECTED_PLUSHIE_RUST_VERSION
         )));
     }
-    require_nonempty("renderer_path", &manifest.renderer_path)?;
-    validate_payload_relative_path("renderer_path", &manifest.renderer_path, false)?;
-    if let Some(working_dir) = &manifest.working_dir {
-        require_nonempty("working_dir", working_dir)?;
-        validate_payload_relative_path("working_dir", working_dir, true)?;
-    }
-    if let Some(renderer) = &manifest.renderer {
-        require_nonempty("renderer.kind", &renderer.kind)?;
-        match renderer.kind.as_str() {
-            "stock" | "custom" => {}
-            value => {
-                return Err(Error::Other(anyhow::anyhow!(
-                    "renderer.kind must be `stock` or `custom`, got `{value}`"
-                )));
-            }
-        }
-        if let Some(source) = &renderer.source {
-            require_nonempty("renderer.source", source)?;
-        }
-    }
-    require_nonempty("payload.archive", &manifest.payload.archive)?;
-    validate_manifest_relative_path("payload.archive", &manifest.payload.archive, false)?;
-    if manifest.host_command.is_empty() || manifest.host_command.iter().any(|arg| arg.is_empty()) {
+    require_nonempty("start.working_dir", &manifest.start.working_dir)?;
+    validate_payload_relative_path("start.working_dir", &manifest.start.working_dir, true)?;
+    if manifest.start.command.is_empty() || manifest.start.command.iter().any(|arg| arg.is_empty())
+    {
         return Err(Error::Other(anyhow::anyhow!(
-            "host_command must contain a non-empty argv"
+            "start.command must contain a non-empty argv"
         )));
     }
-    validate_payload_relative_path("host_command[0]", &manifest.host_command[0], false)?;
+    validate_payload_relative_path("start.command[0]", &manifest.start.command[0], false)?;
     if manifest
-        .exec_env
+        .start
+        .forward_env
         .iter()
         .any(|name| name.trim().is_empty() || name.contains([',', '=']))
     {
         return Err(Error::Other(anyhow::anyhow!(
-            "exec_env must contain only non-empty variable names without `,` or `=`"
+            "start.forward_env must contain only non-empty variable names without `,` or `=`"
         )));
     }
+    if manifest
+        .start
+        .forward_env
+        .iter()
+        .any(|name| name == "PLUSHIE_BINARY_PATH" || name == "PLUSHIE_PACKAGE_DIR")
+    {
+        return Err(Error::Other(anyhow::anyhow!(
+            "start.forward_env must not include launcher-owned package variables"
+        )));
+    }
+    require_nonempty("renderer.path", &manifest.renderer.path)?;
+    validate_payload_relative_path("renderer.path", &manifest.renderer.path, false)?;
+    require_nonempty("renderer.kind", &manifest.renderer.kind)?;
+    match manifest.renderer.kind.as_str() {
+        "stock" | "custom" => {}
+        value => {
+            return Err(Error::Other(anyhow::anyhow!(
+                "renderer.kind must be `stock` or `custom`, got `{value}`"
+            )));
+        }
+    }
+    if let Some(source) = &manifest.renderer.source {
+        require_nonempty("renderer.source", source)?;
+    }
+    require_nonempty("payload.archive", &manifest.payload.archive)?;
+    validate_manifest_relative_path("payload.archive", &manifest.payload.archive, false)?;
     validate_platform_metadata(manifest)?;
     validate_update_metadata(manifest)?;
     validate_signing_metadata(manifest)?;
@@ -854,13 +867,10 @@ fn clean_relative_path(name: &str, value: &str, relation: &str) -> Result<PathBu
 }
 
 fn validate_payload_archive(manifest: &PackageManifest, payload: &[u8]) -> Result<()> {
-    let renderer_path = clean_payload_relative_path("renderer_path", &manifest.renderer_path)?;
-    let host_path = clean_payload_relative_path("host_command[0]", &manifest.host_command[0])?;
-    let working_dir = manifest
-        .working_dir
-        .as_deref()
-        .map(|path| clean_payload_relative_path("working_dir", path))
-        .transpose()?;
+    let renderer_path = clean_payload_relative_path("renderer.path", &manifest.renderer.path)?;
+    let host_path = clean_payload_relative_path("start.command[0]", &manifest.start.command[0])?;
+    let working_dir =
+        clean_payload_relative_path("start.working_dir", &manifest.start.working_dir)?;
     let platform_icon = manifest
         .platform
         .as_ref()
@@ -869,9 +879,7 @@ fn validate_payload_archive(manifest: &PackageManifest, payload: &[u8]) -> Resul
         .transpose()?;
     let mut found_renderer = false;
     let mut found_host = false;
-    let mut found_working_dir = working_dir
-        .as_ref()
-        .is_none_or(|path| path.as_os_str().is_empty());
+    let mut found_working_dir = working_dir.as_os_str().is_empty();
     let mut found_platform_icon = platform_icon.is_none();
 
     let decoder = zstd::stream::read::Decoder::new(payload)
@@ -896,29 +904,27 @@ fn validate_payload_archive(manifest: &PackageManifest, payload: &[u8]) -> Resul
                 found_platform_icon |= entry_path == *platform_icon;
             }
         }
-        if entry_type.is_dir()
-            && let Some(working_dir) = &working_dir
-        {
-            found_working_dir |= entry_path == *working_dir;
+        if entry_type.is_dir() && !working_dir.as_os_str().is_empty() {
+            found_working_dir |= entry_path == working_dir;
         }
     }
 
     if !found_renderer {
         return Err(Error::Other(anyhow::anyhow!(
-            "payload archive does not contain renderer_path `{}`",
-            manifest.renderer_path
+            "payload archive does not contain renderer.path `{}`",
+            manifest.renderer.path
         )));
     }
     if !found_host {
         return Err(Error::Other(anyhow::anyhow!(
-            "payload archive does not contain host_command[0] `{}`",
-            manifest.host_command[0]
+            "payload archive does not contain start.command[0] `{}`",
+            manifest.start.command[0]
         )));
     }
     if !found_working_dir {
         return Err(Error::Other(anyhow::anyhow!(
-            "payload archive does not contain working_dir `{}`",
-            manifest.working_dir.as_deref().unwrap_or(".")
+            "payload archive does not contain start.working_dir `{}`",
+            manifest.start.working_dir
         )));
     }
     if !found_platform_icon {
@@ -1075,17 +1081,21 @@ struct Manifest {
     app_version: String,
     plushie_rust_version: String,
     protocol_version: u32,
-    renderer_path: String,
-    host_command: Vec<String>,
-    working_dir: Option<String>,
-    #[serde(default)]
-    exec_env: Vec<String>,
-    renderer: Option<Renderer>,
+    start: Start,
+    renderer: Renderer,
     payload: Payload,
 }
 
 #[derive(Debug, Deserialize)]
+struct Start {
+    working_dir: String,
+    command: Vec<String>,
+    forward_env: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct Renderer {
+    path: String,
     kind: String,
     source: Option<String>,
 }
@@ -1121,16 +1131,9 @@ fn run() -> Result<u8> {
     let hash = payload_hash(&manifest.payload)?;
     let payload_root = ensure_payload(&manifest)?;
     let root = payload_root.path;
-    let renderer = absolute_payload_path(&root, &manifest.renderer_path);
-    let working_dir = manifest
-        .working_dir
-        .as_deref()
-        .map(|path| absolute_payload_path(&root, path))
-        .unwrap_or_else(|| root.clone());
-    let host_program = manifest
-        .host_command
-        .first()
-        .context("host_command is empty")?;
+    let renderer = absolute_payload_path(&root, &manifest.renderer.path);
+    let working_dir = absolute_payload_path(&root, &manifest.start.working_dir);
+    let host_program = manifest.start.command.first().context("start.command is empty")?;
     let host_program = absolute_payload_path(&root, host_program);
 
     eprintln!(
@@ -1149,27 +1152,27 @@ fn run() -> Result<u8> {
         return Ok(0);
     }
 
-    let mut command = Command::new(&renderer);
-    command
-        .current_dir(&working_dir)
-        .arg("--listen")
-        .arg("--ready-marker")
-        .arg("--exec-bin")
-        .arg(host_program)
-        .env("PLUSHIE_PACKAGE_DIR", &root);
+    let mut command = Command::new(&host_program);
+    command.current_dir(&working_dir).env_clear();
 
-    if !manifest.exec_env.is_empty() {
-        command.arg("--exec-env").arg(manifest.exec_env.join(","));
+    for name in &manifest.start.forward_env {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
     }
 
-    for arg in manifest.host_command.iter().skip(1) {
-        command.arg("--exec-arg").arg(arg);
+    command
+        .env("PLUSHIE_PACKAGE_DIR", &root)
+        .env("PLUSHIE_BINARY_PATH", &renderer);
+
+    for arg in manifest.start.command.iter().skip(1) {
+        command.arg(arg);
     }
 
     let status = command
         .status()
-        .with_context(|| format!("start renderer `{}`", renderer.display()))?;
-    eprintln!("plushie launcher: renderer exited with {status}");
+        .with_context(|| format!("start host `{}`", host_program.display()))?;
+    eprintln!("plushie launcher: host exited with {status}");
     if status.success() {
         if let Err(err) = prune_cache(&manifest, hash) {
             eprintln!("plushie launcher: cache pruning failed: {err:#}");
@@ -1211,8 +1214,8 @@ fn ensure_payload(manifest: &Manifest) -> Result<PayloadRoot> {
         return Err(err);
     }
 
-    make_executable(&absolute_payload_path(&tmp, &manifest.renderer_path))?;
-    if let Some(program) = manifest.host_command.first() {
+    make_executable(&absolute_payload_path(&tmp, &manifest.renderer.path))?;
+    if let Some(program) = manifest.start.command.first() {
         let path = absolute_payload_path(&tmp, program);
         if path.is_file() {
             make_executable(&path)?;
@@ -1255,30 +1258,42 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
         EXPECTED_PLUSHIE_RUST_VERSION
     );
     validate_app_id(&manifest.app_id)?;
-    validate_payload_relative_path("renderer_path", &manifest.renderer_path, false)?;
+    validate_payload_relative_path("renderer.path", &manifest.renderer.path, false)?;
     let host_program = manifest
-        .host_command
+        .start
+        .command
         .first()
-        .context("host_command is empty")?;
-    validate_payload_relative_path("host_command[0]", host_program, false)?;
-    if let Some(working_dir) = &manifest.working_dir {
-        validate_payload_relative_path("working_dir", working_dir, true)?;
-    }
-    if let Some(renderer) = &manifest.renderer {
+        .context("start.command is empty")?;
+    validate_payload_relative_path("start.command[0]", host_program, false)?;
+    validate_payload_relative_path("start.working_dir", &manifest.start.working_dir, true)?;
+    anyhow::ensure!(
+        manifest.renderer.kind == "stock" || manifest.renderer.kind == "custom",
+        "renderer.kind must be `stock` or `custom`, got `{}`",
+        manifest.renderer.kind
+    );
+    if let Some(source) = &manifest.renderer.source {
         anyhow::ensure!(
-            renderer.kind == "stock" || renderer.kind == "custom",
-            "renderer.kind must be `stock` or `custom`, got `{}`",
-            renderer.kind
+            !source.trim().is_empty(),
+            "renderer.source must not be empty"
         );
-        if let Some(source) = &renderer.source {
-            anyhow::ensure!(
-                !source.trim().is_empty(),
-                "renderer.source must not be empty"
-            );
-        }
     }
-    if manifest.exec_env.iter().any(|name| name.trim().is_empty() || name.contains(|ch| ch == ',' || ch == '=')) {
-        anyhow::bail!("exec_env must contain only non-empty variable names without `,` or `=`");
+    if manifest
+        .start
+        .forward_env
+        .iter()
+        .any(|name| name.trim().is_empty() || name.contains(|ch| ch == ',' || ch == '='))
+    {
+        anyhow::bail!(
+            "start.forward_env must contain only non-empty variable names without `,` or `=`"
+        );
+    }
+    if manifest
+        .start
+        .forward_env
+        .iter()
+        .any(|name| name == "PLUSHIE_BINARY_PATH" || name == "PLUSHIE_PACKAGE_DIR")
+    {
+        anyhow::bail!("start.forward_env must not include launcher-owned package variables");
     }
     Ok(())
 }
@@ -1343,12 +1358,12 @@ fn extract_payload(tmp: &Path, manifest: &Manifest) -> Result<()> {
     std::fs::write(
         tmp.join(COMPLETE_MARKER),
         format!(
-            "app_id={}\napp_version={}\npayload_hash={}\nrenderer_path={}\nhost_command={}\n",
+            "app_id={}\napp_version={}\npayload_hash={}\nrenderer.path={}\nstart.command={}\n",
             manifest.app_id,
             manifest.app_version,
             manifest.payload.hash,
-            manifest.renderer_path,
-            manifest.host_command[0]
+            manifest.renderer.path,
+            manifest.start.command[0]
         ),
     )?;
     Ok(())
@@ -1397,9 +1412,10 @@ fn cache_entry_is_complete(dest: &Path) -> bool {
     let Ok(manifest) = toml::from_str::<Manifest>(MANIFEST_TEXT) else {
         return false;
     };
-    absolute_payload_path(dest, &manifest.renderer_path).is_file()
+    absolute_payload_path(dest, &manifest.renderer.path).is_file()
         && manifest
-            .host_command
+            .start
+            .command
             .first()
             .map(|program| absolute_payload_path(dest, program).is_file())
             .unwrap_or(false)
@@ -1556,8 +1572,15 @@ target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "0.7.1"
 protocol_version = 1
-renderer_path = "bin/plushie-renderer"
-host_command = ["bin/notes"]
+
+[start]
+working_dir = "."
+command = ["bin/notes"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
 
 [payload]
 archive = "payload.tar.zst"
@@ -1568,11 +1591,11 @@ size = 7
 
         let manifest = parse_manifest(&text).unwrap();
         assert_eq!(manifest.app_id, "com.example.notes");
-        assert_eq!(manifest.host_command, ["bin/notes"]);
+        assert_eq!(manifest.start.command, ["bin/notes"]);
     }
 
     #[test]
-    fn rejects_empty_host_command() {
+    fn rejects_empty_start_command() {
         let text = r#"
 schema_version = 1
 app_id = "com.example.notes"
@@ -1581,8 +1604,15 @@ target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "0.7.1"
 protocol_version = 1
-renderer_path = "bin/plushie-renderer"
-host_command = []
+
+[start]
+working_dir = "."
+command = []
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
 
 [payload]
 archive = "payload.tar.zst"
@@ -1590,7 +1620,7 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 "#;
 
         let err = parse_manifest(text).unwrap_err();
-        assert!(err.to_string().contains("host_command"));
+        assert!(err.to_string().contains("start.command"));
     }
 
     #[test]
@@ -1601,12 +1631,7 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
             "linux-x64",
             "freebsd-x86_64",
         ] {
-            let text = valid_manifest_text(
-                r#"
-host_command = ["bin/notes"]
-"#,
-            )
-            .replace(
+            let text = valid_manifest_text("").replace(
                 r#"target = "linux-x86_64""#,
                 &format!(r#"target = "{target}""#),
             );
@@ -1618,12 +1643,7 @@ host_command = ["bin/notes"]
 
     #[test]
     fn rejects_missing_package_target() {
-        let text = valid_manifest_text(
-            r#"
-host_command = ["bin/notes"]
-"#,
-        )
-        .replace(
+        let text = valid_manifest_text("").replace(
             r#"target = "linux-x86_64"
 "#,
             "",
@@ -1635,15 +1655,14 @@ host_command = ["bin/notes"]
 
     #[test]
     fn preserves_host_argv_arguments_with_spaces() {
-        let text = valid_manifest_text(
-            r#"
-host_command = ["bin/notes", "--project", "Daily Notes", "folder/with space/file.txt"]
-"#,
+        let text = valid_manifest_text("").replace(
+            r#"command = ["bin/notes"]"#,
+            r#"command = ["bin/notes", "--project", "Daily Notes", "folder/with space/file.txt"]"#,
         );
 
         let manifest = parse_manifest(&text).unwrap();
         assert_eq!(
-            manifest.host_command,
+            manifest.start.command,
             [
                 "bin/notes",
                 "--project",
@@ -1653,70 +1672,62 @@ host_command = ["bin/notes", "--project", "Daily Notes", "folder/with space/file
         );
 
         let launcher = launcher_main_rs();
-        assert!(launcher.contains("for arg in manifest.host_command.iter().skip(1)"));
-        assert!(launcher.contains("command.arg(\"--exec-arg\").arg(arg);"));
+        assert!(launcher.contains("for arg in manifest.start.command.iter().skip(1)"));
+        assert!(launcher.contains("command.arg(arg);"));
     }
 
     #[test]
-    fn validates_exec_env_names() {
-        let valid = valid_manifest_text(
-            r#"
-host_command = ["bin/notes"]
-exec_env = ["PATH", "PLUSHIE_TOKEN"]
-"#,
+    fn validates_forward_env_names() {
+        let valid = valid_manifest_text("").replace(
+            r#"forward_env = []"#,
+            r#"forward_env = ["PATH", "PLUSHIE_TOKEN"]"#,
         );
         let manifest = parse_manifest(&valid).unwrap();
-        assert_eq!(manifest.exec_env, ["PATH", "PLUSHIE_TOKEN"]);
+        assert_eq!(manifest.start.forward_env, ["PATH", "PLUSHIE_TOKEN"]);
 
-        for exec_env in [
-            r#"exec_env = [""]"#,
-            r#"exec_env = [" "]"#,
-            r#"exec_env = ["NAME=VALUE"]"#,
-            r#"exec_env = ["ONE,TWO"]"#,
+        for forward_env in [
+            r#"forward_env = [""]"#,
+            r#"forward_env = [" "]"#,
+            r#"forward_env = ["NAME=VALUE"]"#,
+            r#"forward_env = ["ONE,TWO"]"#,
+            r#"forward_env = ["PLUSHIE_BINARY_PATH"]"#,
+            r#"forward_env = ["PLUSHIE_PACKAGE_DIR"]"#,
         ] {
-            let text = valid_manifest_text(&format!(
-                r#"
-host_command = ["bin/notes"]
-{exec_env}
-"#
-            ));
+            let text = valid_manifest_text("").replace(r#"forward_env = []"#, forward_env);
 
             let err = parse_manifest(&text).unwrap_err();
-            assert!(err.to_string().contains("exec_env"));
+            assert!(err.to_string().contains("start.forward_env"));
         }
     }
 
     #[test]
-    fn generated_launcher_propagates_exec_env() {
+    fn generated_launcher_forwards_selected_env() {
         let launcher = launcher_main_rs();
 
-        assert!(launcher.contains("if !manifest.exec_env.is_empty()"));
-        assert!(
-            launcher.contains("command.arg(\"--exec-env\").arg(manifest.exec_env.join(\",\"));")
-        );
+        assert!(launcher.contains("for name in &manifest.start.forward_env"));
+        assert!(launcher.contains("command.env(name, value);"));
+        assert!(launcher.contains(".env(\"PLUSHIE_BINARY_PATH\", &renderer);"));
     }
 
     #[test]
-    fn generated_launcher_requests_renderer_ready_marker() {
+    fn generated_launcher_starts_host_first() {
         let launcher = launcher_main_rs();
 
-        assert!(launcher.contains("arg(\"--ready-marker\")"));
+        assert!(launcher.contains("let mut command = Command::new(&host_program);"));
+        assert!(launcher.contains(".env(\"PLUSHIE_BINARY_PATH\", &renderer);"));
+        assert!(!launcher.contains("arg(\"--listen\")"));
     }
 
     #[test]
     fn accepts_renderer_provenance_metadata() {
-        let text = valid_manifest_text(
-            r#"
-host_command = ["bin/notes"]
-
-[renderer]
-kind = "custom"
-source = "local-build"
-"#,
+        let text = valid_manifest_text("").replace(
+            r#"kind = "stock""#,
+            r#"kind = "custom"
+source = "local-build""#,
         );
 
         let manifest = parse_manifest(&text).unwrap();
-        let renderer = manifest.renderer.unwrap();
+        let renderer = manifest.renderer;
         assert_eq!(renderer.kind, "custom");
         assert_eq!(renderer.source.as_deref(), Some("local-build"));
     }
@@ -1726,24 +1737,28 @@ source = "local-build"
         for renderer_section in [
             r#"
 [renderer]
+path = "bin/plushie-renderer"
 kind = ""
 "#,
             r#"
 [renderer]
+path = "bin/plushie-renderer"
 kind = "downloaded"
 "#,
             r#"
 [renderer]
+path = "bin/plushie-renderer"
 kind = "stock"
 source = " "
 "#,
         ] {
-            let text = valid_manifest_text(&format!(
-                r#"
-host_command = ["bin/notes"]
-{renderer_section}
-"#
-            ));
+            let text = valid_manifest_text("").replace(
+                r#"[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
+"#,
+                renderer_section,
+            );
 
             let err = parse_manifest(&text).unwrap_err();
             assert!(err.to_string().contains("renderer."));
@@ -1754,8 +1769,6 @@ host_command = ["bin/notes"]
     fn accepts_platform_update_and_signing_metadata() {
         let text = valid_manifest_text(
             r#"
-host_command = ["bin/notes"]
-
 [platform]
 publisher = "Example Inc."
 bundle_id = "com.example.notes"
@@ -1813,12 +1826,7 @@ icon = "../icon.png"
                 "platform.icon",
             ),
         ] {
-            let text = valid_manifest_text(&format!(
-                r#"
-host_command = ["bin/notes"]
-{metadata}
-"#
-            ));
+            let text = valid_manifest_text(metadata);
 
             let err = parse_manifest(&text).unwrap_err();
             assert!(
@@ -1847,12 +1855,7 @@ feed_url = " "
                 "updates.feed_url",
             ),
         ] {
-            let text = valid_manifest_text(&format!(
-                r#"
-host_command = ["bin/notes"]
-{metadata}
-"#
-            ));
+            let text = valid_manifest_text(metadata);
 
             let err = parse_manifest(&text).unwrap_err();
             assert!(
@@ -1881,12 +1884,7 @@ stage = "after-launcher-build"
 command = ["codesign", ""]
 "#,
         ] {
-            let text = valid_manifest_text(&format!(
-                r#"
-host_command = ["bin/notes"]
-{metadata}
-"#
-            ));
+            let text = valid_manifest_text(metadata);
 
             let err = parse_manifest(&text).unwrap_err();
             assert!(err.to_string().contains("signing hook"));
@@ -1934,12 +1932,7 @@ shell = true
                 "shell",
             ),
         ] {
-            let text = valid_manifest_text(&format!(
-                r#"
-host_command = ["bin/notes"]
-{metadata}
-"#
-            ));
+            let text = valid_manifest_text(metadata);
 
             let err = parse_manifest(&text).unwrap_err();
             assert!(
@@ -1963,11 +1956,16 @@ host_command = ["bin/notes"]
             host_sdk_version: None,
             plushie_rust_version: "0.7.1".to_string(),
             protocol_version: 1,
-            renderer_path: "bin/plushie-renderer".to_string(),
-            host_command: vec!["bin/notes".to_string()],
-            working_dir: None,
-            exec_env: Vec::new(),
-            renderer: None,
+            start: StartManifest {
+                working_dir: ".".to_string(),
+                command: vec!["bin/notes".to_string()],
+                forward_env: Vec::new(),
+            },
+            renderer: RendererManifest {
+                path: "bin/plushie-renderer".to_string(),
+                kind: "stock".to_string(),
+                source: None,
+            },
             platform: None,
             updates: None,
             signing: None,
@@ -2221,8 +2219,15 @@ target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{}"
 protocol_version = {}
-renderer_path = "bin/plushie-renderer"
-host_command = ["/usr/bin/python"]
+
+[start]
+working_dir = "."
+command = ["/usr/bin/python"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
 
 [payload]
 archive = "payload.tar.zst"
@@ -2232,16 +2237,16 @@ hash = "{hash}"
         );
 
         let err = parse_manifest(&text).unwrap_err();
-        assert!(err.to_string().contains("host_command[0]"));
+        assert!(err.to_string().contains("start.command[0]"));
     }
 
     #[test]
     fn rejects_manifest_paths_that_escape_roots() {
         for (field, value) in [
-            ("renderer_path", "/tmp/plushie-renderer"),
-            ("renderer_path", "../bin/plushie-renderer"),
-            ("working_dir", "/tmp/app"),
-            ("working_dir", "../app"),
+            ("renderer.path", "/tmp/plushie-renderer"),
+            ("renderer.path", "../bin/plushie-renderer"),
+            ("start.working_dir", "/tmp/app"),
+            ("start.working_dir", "../app"),
             ("payload.archive", "/tmp/payload.tar.zst"),
             ("payload.archive", "../payload.tar.zst"),
         ] {
@@ -2268,7 +2273,7 @@ hash = "{hash}"
         let manifest = package_manifest_for_payload(&payload);
 
         let err = validate_payload_archive(&manifest, &payload).unwrap_err();
-        assert!(err.to_string().contains("renderer_path"));
+        assert!(err.to_string().contains("renderer.path"));
     }
 
     #[test]
@@ -2278,7 +2283,7 @@ hash = "{hash}"
         let manifest = package_manifest_for_payload(&payload);
 
         let err = validate_payload_archive(&manifest, &payload).unwrap_err();
-        assert!(err.to_string().contains("host_command[0]"));
+        assert!(err.to_string().contains("start.command[0]"));
     }
 
     #[test]
@@ -2291,8 +2296,8 @@ hash = "{hash}"
             &["app"],
         );
         let mut manifest = package_manifest_for_payload(&payload);
-        manifest.host_command = vec!["app/bin/notes".to_string()];
-        manifest.working_dir = Some("app".to_string());
+        manifest.start.command = vec!["app/bin/notes".to_string()];
+        manifest.start.working_dir = "app".to_string();
 
         validate_payload_archive(&manifest, &payload).unwrap();
     }
@@ -2304,11 +2309,11 @@ hash = "{hash}"
             ("app/bin/notes", b"host".as_slice()),
         ]);
         let mut manifest = package_manifest_for_payload(&payload);
-        manifest.host_command = vec!["app/bin/notes".to_string()];
-        manifest.working_dir = Some("app".to_string());
+        manifest.start.command = vec!["app/bin/notes".to_string()];
+        manifest.start.working_dir = "app".to_string();
 
         let err = validate_payload_archive(&manifest, &payload).unwrap_err();
-        assert!(err.to_string().contains("working_dir"));
+        assert!(err.to_string().contains("start.working_dir"));
     }
 
     #[test]
@@ -2378,8 +2383,15 @@ target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{}"
 protocol_version = {}
-renderer_path = "bin/plushie-renderer"
-host_command = ["bin/notes"]
+
+[start]
+working_dir = "."
+command = ["bin/notes"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
 
 [payload]
 archive = "payload.tar.zst"
@@ -2404,8 +2416,8 @@ hash = "sha256:{hash}"
             "app_id={}",
             "app_version={}",
             "payload_hash={}",
-            "renderer_path={}",
-            "host_command={}",
+            "renderer.path={}",
+            "start.command={}",
         ] {
             assert!(
                 launcher.contains(expected),
@@ -2441,8 +2453,15 @@ target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
-renderer_path = "bin/plushie-renderer"
-host_command = ["bin/notes"]
+
+[start]
+working_dir = "."
+command = ["bin/notes"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
 
 [payload]
 archive = "payload.tar.zst"
@@ -2454,7 +2473,7 @@ hash = "{hash}"
         manifest
     }
 
-    fn valid_manifest_text(host_section: &str) -> String {
+    fn valid_manifest_text(extra: &str) -> String {
         let payload_hash = format!("sha256:{:x}", Sha256::digest(b"payload"));
         format!(
             r#"
@@ -2465,8 +2484,16 @@ target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
-renderer_path = "bin/plushie-renderer"
-{host_section}
+
+[start]
+working_dir = "."
+command = ["bin/notes"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
+{extra}
 
 [payload]
 archive = "payload.tar.zst"
@@ -2477,32 +2504,14 @@ hash = "{payload_hash}"
 
     fn manifest_with_path(field: &str, value: &str) -> String {
         match field {
-            "renderer_path" => {
-                let payload_hash = format!("sha256:{:x}", Sha256::digest(b"payload"));
-                format!(
-                    r#"
-schema_version = {MANIFEST_SCHEMA_VERSION}
-app_id = "com.example.notes"
-app_version = "0.1.0"
-target = "linux-x86_64"
-host_sdk = "python"
-plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
-protocol_version = {EXPECTED_PROTOCOL_VERSION}
-renderer_path = "{value}"
-host_command = ["bin/notes"]
-
-[payload]
-archive = "payload.tar.zst"
-hash = "{payload_hash}"
-"#
-                )
-            }
-            "working_dir" => valid_manifest_text(&format!(
-                r#"
-host_command = ["bin/notes"]
-working_dir = "{value}"
-"#
-            )),
+            "renderer.path" => valid_manifest_text("").replace(
+                r#"path = "bin/plushie-renderer""#,
+                &format!(r#"path = "{value}""#),
+            ),
+            "start.working_dir" => valid_manifest_text("").replace(
+                r#"working_dir = ".""#,
+                &format!(r#"working_dir = "{value}""#),
+            ),
             "payload.archive" => {
                 let payload_hash = format!("sha256:{:x}", Sha256::digest(b"payload"));
                 format!(
@@ -2514,8 +2523,15 @@ target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
-renderer_path = "bin/plushie-renderer"
-host_command = ["bin/notes"]
+
+[start]
+working_dir = "."
+command = ["bin/notes"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
 
 [payload]
 archive = "{value}"
@@ -2538,11 +2554,16 @@ hash = "{payload_hash}"
             host_sdk_version: None,
             plushie_rust_version: EXPECTED_PLUSHIE_RUST_VERSION.to_string(),
             protocol_version: EXPECTED_PROTOCOL_VERSION,
-            renderer_path: "bin/plushie-renderer".to_string(),
-            host_command: vec!["bin/notes".to_string()],
-            working_dir: None,
-            exec_env: Vec::new(),
-            renderer: None,
+            start: StartManifest {
+                working_dir: ".".to_string(),
+                command: vec!["bin/notes".to_string()],
+                forward_env: Vec::new(),
+            },
+            renderer: RendererManifest {
+                path: "bin/plushie-renderer".to_string(),
+                kind: "stock".to_string(),
+                source: None,
+            },
             platform: None,
             updates: None,
             signing: None,

@@ -207,10 +207,16 @@ target = "linux-x86_64"
 host_sdk = "python"
 plushie_rust_version = "0.7.1"
 protocol_version = 1
-renderer_path = "bin/plushie-renderer"
-host_command = ["bin/notes"]
+
+[start]
 working_dir = "."
-exec_env = []
+command = ["bin/notes"]
+forward_env = ["PATH", "HOME", "LANG", "LC_ALL", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "DISPLAY"]
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
+source = "download"
 
 [platform]
 publisher = "Example Inc."
@@ -224,10 +230,6 @@ feed_url = "https://example.com/notes/updates.json"
 [[signing.hooks]]
 stage = "after-launcher-build"
 command = ["codesign", "--sign", "Developer ID Application: Example Inc.", "{launcher}"]
-
-[renderer]
-kind = "stock"
-source = "download"
 
 [payload]
 archive = "payload.tar.zst"
@@ -244,29 +246,32 @@ the initial launcher contract.
 
 The generated launcher verifies the embedded archive hash, extracts it
 into a content-addressed cache, rejects archive entries that can escape
-the payload root, sets executable permissions where needed, and starts
-the packaged renderer with:
+the app package, sets executable permissions where needed, and starts
+the packaged app command. Before launching the app command it clears the
+ambient environment, sets `PLUSHIE_PACKAGE_DIR` to the extracted app
+package directory, sets `PLUSHIE_BINARY_PATH` to the packaged renderer,
+and forwards only names listed in `start.forward_env`.
 
 ```bash
-plushie-renderer --listen --ready-marker --exec-bin <program> --exec-arg <arg> ...
+bin/notes
 ```
 
-`--ready-marker` makes the renderer write
-`plushie renderer-parent: ready` to stderr after it has accepted the
-host connection and validated the first Settings message. Artifact
-postchecks can use that marker to prove renderer-parent startup without
-touching stdout, which remains reserved for the wire protocol.
+The app command is responsible for starting or connecting to the
+renderer through its SDK's normal entry point. This keeps the package
+launcher language-neutral while still giving every SDK a deterministic
+renderer path through `PLUSHIE_BINARY_PATH`.
+`start.forward_env` cannot include launcher-owned package variables such
+as `PLUSHIE_BINARY_PATH` or `PLUSHIE_PACKAGE_DIR`; those are always set
+by the launcher.
 
 `target` is a normalized package target such as `linux-x86_64`,
 `darwin-aarch64`, or `windows-x86_64`. `payload.archive` is
-manifest-relative. `renderer_path`, `working_dir`, and `host_command[0]`
-are payload-relative paths. Absolute paths and parent traversal are
-rejected so a standalone package cannot silently point at a global
-binary. The launcher resolves `host_command[0]` to an absolute path
-inside the extracted payload before passing it to the renderer. It sets
-the renderer's working directory to manifest `working_dir`, or the
-payload root by default, and passes `--exec-env` from the manifest when
-extra runtime variables are needed.
+manifest-relative. `renderer.path`, `start.working_dir`, and
+`start.command[0]` are app-package-relative paths. Absolute paths and
+parent traversal are rejected so a standalone package cannot silently
+point at a global binary. The launcher resolves `start.command[0]` to an
+absolute path inside the extracted app package and sets the command's
+working directory to `start.working_dir`.
 
 Payload archives are intentionally plain files and directories. Archive
 entries must be relative paths under the payload root. Symlinks, hard
@@ -276,7 +281,7 @@ extraction. SDK packagers that copy language runtimes should dereference
 or remove runtime symlinks before archiving, and should not rely on tar
 link entries to preserve runtime structure.
 
-The launcher makes `renderer_path` and `host_command[0]` executable
+The launcher makes `renderer.path` and `start.command[0]` executable
 after extraction on Unix platforms. Additional executable scripts or
 nested launchers should be declared through the host entry point or
 preserved by the SDK packager's archive mode; there is no broad
@@ -548,7 +553,8 @@ a non-zero exit from `cargo plushie build`.
 | Variable | Read by | Description |
 |---|---|---|
 | `PLUSHIE_RUST_SOURCE_PATH` | `build`, `package-rust`, `init`, `new-widget`, `doctor` | Absolute path to a local plushie-rust checkout. Enables `[patch.crates-io]` redirects and wasm source resolution |
-| `PLUSHIE_BINARY_PATH` | `run`, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, reported by `doctor` |
+| `PLUSHIE_BINARY_PATH` | `run`, generated package launcher, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, set by generated package launchers for the packaged app command, reported by `doctor` |
+| `PLUSHIE_PACKAGE_DIR` | generated package launcher | Set for the packaged app command to the extracted app package directory |
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |
 | `PLUSHIE_SOCKET` | `doctor` | Reported in the diagnostic report; consumed by the SDK for socket-mode rendering |
 | `PLUSHIE_CACHE_DIR` | generated package launcher | Overrides the extraction cache root |

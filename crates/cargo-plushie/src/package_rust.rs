@@ -91,17 +91,22 @@ struct PackageManifest {
     host_sdk_version: String,
     plushie_rust_version: String,
     protocol_version: u32,
-    renderer_path: String,
-    host_command: Vec<String>,
-    working_dir: String,
-    exec_env: Vec<String>,
+    start: StartManifest,
     renderer: RendererManifest,
     platform: PlatformManifest,
     payload: PayloadManifest,
 }
 
 #[derive(Serialize)]
+struct StartManifest {
+    working_dir: String,
+    command: Vec<String>,
+    forward_env: Vec<String>,
+}
+
+#[derive(Serialize)]
 struct RendererManifest {
+    path: String,
     kind: String,
     source: String,
 }
@@ -166,11 +171,13 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
         host_sdk_version: app_info.plushie_version.clone(),
         plushie_rust_version: app_info.plushie_version,
         protocol_version: plushie_core::protocol::PROTOCOL_VERSION,
-        renderer_path: payload_relative_string(&payload_dir, &renderer_payload_path)?,
-        host_command: vec![payload_relative_string(&payload_dir, &host_payload_path)?],
-        working_dir: ".".to_string(),
-        exec_env: Vec::new(),
+        start: StartManifest {
+            working_dir: ".".to_string(),
+            command: vec![payload_relative_string(&payload_dir, &host_payload_path)?],
+            forward_env: default_forward_env(),
+        },
         renderer: RendererManifest {
+            path: payload_relative_string(&payload_dir, &renderer_payload_path)?,
             kind: "custom".to_string(),
             source: RENDERER_SOURCE.to_string(),
         },
@@ -198,6 +205,21 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
         renderer_payload_path,
         icon_payload_path,
     })
+}
+
+fn default_forward_env() -> Vec<String> {
+    [
+        "PATH",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "XDG_RUNTIME_DIR",
+        "WAYLAND_DISPLAY",
+        "DISPLAY",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 
 fn write_host_cargo_config(manifest_path: &Path, source_path: &Path) -> Result<()> {
@@ -679,11 +701,13 @@ mod tests {
             host_sdk_version: env!("CARGO_PKG_VERSION").to_string(),
             plushie_rust_version: env!("CARGO_PKG_VERSION").to_string(),
             protocol_version: plushie_core::protocol::PROTOCOL_VERSION,
-            renderer_path: "bin/plushie-renderer".to_string(),
-            host_command: vec!["bin/app".to_string()],
-            working_dir: ".".to_string(),
-            exec_env: Vec::new(),
+            start: StartManifest {
+                working_dir: ".".to_string(),
+                command: vec!["bin/app".to_string()],
+                forward_env: Vec::new(),
+            },
             renderer: RendererManifest {
+                path: "bin/plushie-renderer".to_string(),
                 kind: "custom".to_string(),
                 source: RENDERER_SOURCE.to_string(),
             },

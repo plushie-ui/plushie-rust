@@ -129,6 +129,17 @@ the same release. A mismatch deletes the file and aborts. There
 is no flag to skip verification: the binary runs as a child of the
 app, so silent corruption would be a supply-chain risk.
 
+### Release mirrors
+
+By default downloads come from GitHub releases. Set
+`PLUSHIE_RELEASE_BASE_URL` to verify the same flow against another
+release mirror. The mirror must expose assets as
+`BASE/vVERSION/ARTIFACT` with checksum sidecars at
+`BASE/vVERSION/ARTIFACT.sha256`.
+
+Remote mirrors must use HTTPS. `file://` mirrors and loopback HTTP are
+for local release verification before assets are uploaded.
+
 The command refuses to run when native widgets are present in the
 dep graph. The stock binary has no code for them, so a successful
 download would hand back a renderer that rejects every widget
@@ -620,6 +631,7 @@ a non-zero exit from `cargo plushie build`.
 | Variable | Read by | Description |
 |---|---|---|
 | `PLUSHIE_RUST_SOURCE_PATH` | `build`, `package assemble`, `init`, `new-widget`, `doctor` | Absolute path to a local plushie-rust checkout. Enables `[patch.crates-io]` redirects and wasm source resolution |
+| `PLUSHIE_RELEASE_BASE_URL` | `download` | Override release asset base URL for mirrored release verification. Remote mirrors must use HTTPS. `file://` and loopback HTTP are for local checks |
 | `PLUSHIE_BINARY_PATH` | `run`, generated package launcher, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, set by generated package launchers for the packaged app command, reported by `doctor` |
 | `PLUSHIE_PACKAGE_DIR` | generated package launcher | Set for the packaged app command to the extracted app package directory |
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |

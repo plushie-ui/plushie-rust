@@ -23,6 +23,7 @@ const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
 const SOURCE_CONFIG_VERSION: u32 = 1;
 const LAUNCHER_LOCKFILE: &str = include_str!("../templates/launcher-Cargo.lock");
+const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
 
 /// Options for building a standalone launcher from a package manifest.
 #[derive(Debug)]
@@ -789,11 +790,11 @@ pub fn validate_start_config(start: &PackageStartConfig) -> Result<()> {
             "start.forward_env must contain only non-empty variable names without `,` or `=`"
         )));
     }
-    if start
-        .forward_env
-        .iter()
-        .any(|name| name == "PLUSHIE_BINARY_PATH" || name == "PLUSHIE_PACKAGE_DIR")
-    {
+    if start.forward_env.iter().any(|name| {
+        name == "PLUSHIE_BINARY_PATH"
+            || name == "PLUSHIE_PACKAGE_DIR"
+            || name == PACKAGE_READY_FILE_ENV
+    }) {
         return Err(Error::Other(anyhow::anyhow!(
             "start.forward_env must not include launcher-owned package variables"
         )));
@@ -1215,6 +1216,7 @@ const COMPLETE_MARKER: &str = ".plushie-complete";
 const EXPECTED_SCHEMA_VERSION: u32 = __MANIFEST_SCHEMA_VERSION__;
 const EXPECTED_PROTOCOL_VERSION: u32 = __EXPECTED_PROTOCOL_VERSION__;
 const EXPECTED_PLUSHIE_RUST_VERSION: &str = "__EXPECTED_PLUSHIE_RUST_VERSION__";
+const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
 
 #[derive(Debug, Deserialize)]
 struct Manifest {
@@ -1306,6 +1308,10 @@ fn run() -> Result<u8> {
     command
         .env("PLUSHIE_PACKAGE_DIR", &root)
         .env("PLUSHIE_BINARY_PATH", &renderer);
+
+    if let Some(value) = std::env::var_os(PACKAGE_READY_FILE_ENV) {
+        command.env(PACKAGE_READY_FILE_ENV, value);
+    }
 
     for arg in manifest.start.command.iter().skip(1) {
         command.arg(arg);
@@ -1429,12 +1435,11 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
             "start.forward_env must contain only non-empty variable names without `,` or `=`"
         );
     }
-    if manifest
-        .start
-        .forward_env
-        .iter()
-        .any(|name| name == "PLUSHIE_BINARY_PATH" || name == "PLUSHIE_PACKAGE_DIR")
-    {
+    if manifest.start.forward_env.iter().any(|name| {
+        name == "PLUSHIE_BINARY_PATH"
+            || name == "PLUSHIE_PACKAGE_DIR"
+            || name == PACKAGE_READY_FILE_ENV
+    }) {
         anyhow::bail!("start.forward_env must not include launcher-owned package variables");
     }
     Ok(())
@@ -1868,6 +1873,7 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
             r#"forward_env = ["ONE,TWO"]"#,
             r#"forward_env = ["PLUSHIE_BINARY_PATH"]"#,
             r#"forward_env = ["PLUSHIE_PACKAGE_DIR"]"#,
+            r#"forward_env = ["PLUSHIE_PACKAGE_READY_FILE"]"#,
         ] {
             let text = valid_manifest_text("").replace(r#"forward_env = []"#, forward_env);
 
@@ -1950,6 +1956,14 @@ working_dir = "."
 command = ["bin/notes"]
 forward_env = ["PLUSHIE_BINARY_PATH"]
 "#,
+            r#"
+config_version = 1
+
+[start]
+working_dir = "."
+command = ["bin/notes"]
+forward_env = ["PLUSHIE_PACKAGE_READY_FILE"]
+"#,
         ] {
             assert!(parse_source_config(text).is_err());
         }
@@ -1962,6 +1976,8 @@ forward_env = ["PLUSHIE_BINARY_PATH"]
         assert!(launcher.contains("for name in &manifest.start.forward_env"));
         assert!(launcher.contains("command.env(name, value);"));
         assert!(launcher.contains(".env(\"PLUSHIE_BINARY_PATH\", &renderer);"));
+        assert!(launcher.contains("std::env::var_os(PACKAGE_READY_FILE_ENV)"));
+        assert!(launcher.contains("command.env(PACKAGE_READY_FILE_ENV, value);"));
     }
 
     #[test]

@@ -17,7 +17,11 @@ use serde_json::Value;
 #[cfg(feature = "wire")]
 use std::collections::HashMap;
 #[cfg(feature = "wire")]
+use std::fs;
+#[cfg(feature = "wire")]
 use std::io;
+#[cfg(feature = "wire")]
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "wire")]
 use super::bridge::Bridge;
@@ -35,6 +39,9 @@ use crate::event::{EffectEvent, EffectResult, Event};
 use crate::runtime::tree_diff;
 #[cfg(feature = "wire")]
 use crate::settings::ExitReason;
+
+#[cfg(feature = "wire")]
+const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
 
 #[cfg(feature = "wire")]
 fn hello_protocol_version(hello: &Value) -> Option<u32> {
@@ -80,6 +87,57 @@ fn renderer_hello_log_message(hello: &Value) -> String {
 #[cfg(feature = "wire")]
 fn log_renderer_hello(hello: &Value) {
     log::info!("{}", renderer_hello_log_message(hello));
+}
+
+#[cfg(feature = "wire")]
+fn mark_package_ready_from_env() -> io::Result<()> {
+    if let Some(path) = std::env::var_os(PACKAGE_READY_FILE_ENV) {
+        let path = PathBuf::from(path);
+        write_package_ready_file(&path)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "wire")]
+fn write_package_ready_file(path: &Path) -> io::Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
+    }
+
+    let filename = path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_else(|| "ready".into());
+    let temp = path.with_file_name(format!(
+        "{}.tmp.{}",
+        filename,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+
+    fs::write(&temp, b"ready\n")?;
+    match fs::rename(&temp, path) {
+        Ok(()) => Ok(()),
+        Err(_) if path.exists() => {
+            fs::remove_file(path)?;
+            match fs::rename(&temp, path) {
+                Ok(()) => Ok(()),
+                Err(err) => {
+                    let _ = fs::remove_file(&temp);
+                    Err(err)
+                }
+            }
+        }
+        Err(err) => {
+            let _ = fs::remove_file(&temp);
+            Err(err)
+        }
+    }
 }
 
 /// Run the app in wire mode.
@@ -291,6 +349,8 @@ fn run_session_single<A: App>(
         bridge.set_codec(codec);
     }
 
+    mark_package_ready_from_env()?;
+
     bridge.start_reader()?;
 
     let snapshot_value = serde_json::to_value(&current_tree)
@@ -456,6 +516,8 @@ fn run_wire_inner<A: App>(
             };
             bridge.set_codec(codec);
         }
+
+        mark_package_ready_from_env()?;
 
         bridge.start_reader()?;
 
@@ -2112,6 +2174,28 @@ mod hello_protocol_tests {
 #[cfg(all(test, feature = "wire"))]
 mod wire_contract_tests {
     use super::*;
+
+    #[test]
+    fn write_package_ready_file_creates_parent_and_replaces_existing_file() {
+        let root = std::env::temp_dir().join(format!(
+            "plushie-ready-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let ready_file = root.join("nested").join("ready");
+
+        write_package_ready_file(&ready_file).unwrap();
+        assert_eq!(std::fs::read_to_string(&ready_file).unwrap(), "ready\n");
+
+        std::fs::write(&ready_file, "old\n").unwrap();
+        write_package_ready_file(&ready_file).unwrap();
+        assert_eq!(std::fs::read_to_string(&ready_file).unwrap(), "ready\n");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn decode_incoming_recognizes_interact_step() {

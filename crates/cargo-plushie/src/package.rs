@@ -13,6 +13,8 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 const GENERATED_MANIFEST: &str = "plushie-package.toml";
+/// Conventional developer-owned source package config filename.
+pub const SOURCE_CONFIG: &str = "plushie-package.config.toml";
 const GENERATED_PAYLOAD: &str = "payload.tar.zst";
 const GENERATED_LOCKFILE: &str = "Cargo.lock";
 const SHARED_LOCKFILE: &str = "launcher-Cargo.lock";
@@ -21,6 +23,7 @@ const LAUNCHER_CRATE_NAME: &str = "plushie-package-launcher";
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
+const SOURCE_CONFIG_VERSION: u32 = 1;
 
 /// Options for building a standalone launcher from a package manifest.
 #[derive(Debug)]
@@ -79,6 +82,25 @@ pub struct PackagePrecheckResult {
     pub warnings: Vec<PackageWarning>,
 }
 
+/// Developer-owned package configuration read from source control.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageSourceConfig {
+    /// Startup configuration for the host process.
+    pub start: PackageStartConfig,
+}
+
+/// Host startup configuration shared by generated manifests and source config.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageStartConfig {
+    /// Payload-relative working directory for the host process.
+    pub working_dir: String,
+    /// Structured argv for the host process. The first value is
+    /// payload-relative, remaining values are literal arguments.
+    pub command: Vec<String>,
+    /// Parent environment variable names forwarded into the host process.
+    pub forward_env: Vec<String>,
+}
+
 /// Non-fatal package issue found during precheck.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageWarning {
@@ -127,6 +149,33 @@ struct StartManifest {
     working_dir: String,
     command: Vec<String>,
     forward_env: Vec<String>,
+}
+
+impl StartManifest {
+    fn to_start_config(&self) -> PackageStartConfig {
+        PackageStartConfig {
+            working_dir: self.working_dir.clone(),
+            command: self.command.clone(),
+            forward_env: self.forward_env.clone(),
+        }
+    }
+}
+
+impl From<PackageStartConfig> for StartManifest {
+    fn from(config: PackageStartConfig) -> Self {
+        Self {
+            working_dir: config.working_dir,
+            command: config.command,
+            forward_env: config.forward_env,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceConfigDocument {
+    config_version: u32,
+    start: StartManifest,
 }
 
 #[derive(Debug, Deserialize)]
@@ -208,6 +257,123 @@ pub fn precheck_package(manifest_path: &Path) -> Result<PackagePrecheckResult> {
         payload_hash: loaded.manifest.payload.hash,
         warnings,
     })
+}
+
+/// Return the default source config path for an app source directory.
+#[must_use]
+pub fn default_source_config_path(source_dir: &Path) -> PathBuf {
+    source_dir.join(SOURCE_CONFIG)
+}
+
+/// Return the conventional environment passthrough list for packaged apps.
+#[must_use]
+pub fn default_forward_env() -> Vec<String> {
+    [
+        "PATH",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "XDG_RUNTIME_DIR",
+        "WAYLAND_DISPLAY",
+        "DISPLAY",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+/// Read and validate a developer-owned package config file.
+///
+/// # Errors
+///
+/// Returns an error when the file is missing, invalid TOML, has an
+/// unsupported config version, or contains unsafe startup config.
+pub fn load_source_config(path: &Path) -> Result<PackageSourceConfig> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read package config `{}`", path.display()))?;
+    parse_source_config(&text)
+}
+
+/// Read the default package config if it exists.
+///
+/// # Errors
+///
+/// Returns an error when the conventional config file exists but cannot
+/// be read or validated.
+pub fn load_default_source_config(source_dir: &Path) -> Result<Option<PackageSourceConfig>> {
+    let path = default_source_config_path(source_dir);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    load_source_config(&path).map(Some)
+}
+
+/// Write a readable developer-owned package config template.
+///
+/// # Errors
+///
+/// Returns an error when the supplied config is invalid or the file
+/// cannot be written.
+pub fn write_source_config_template(path: &Path, config: &PackageSourceConfig) -> Result<()> {
+    validate_start_config(&config.start)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    crate::generator::write_if_changed(path, &render_source_config_template(config))
+}
+
+/// Render a readable developer-owned package config template.
+#[must_use]
+pub fn render_source_config_template(config: &PackageSourceConfig) -> String {
+    let mut text = String::new();
+    text.push_str("# Plushie standalone package config.\n");
+    text.push_str("# Commit this file and edit it when the packaged app needs a\n");
+    text.push_str("# different entry point, working directory, or forwarded environment.\n\n");
+    text.push_str(&format!("config_version = {SOURCE_CONFIG_VERSION}\n\n"));
+    text.push_str("[start]\n");
+    text.push_str("# Relative to the extracted app package.\n");
+    text.push_str(&format!(
+        "working_dir = {}\n",
+        toml_string_literal(&config.start.working_dir)
+    ));
+    text.push_str("# Structured argv. The first item is the packaged host executable.\n");
+    text.push_str(&format!(
+        "command = {}\n",
+        toml_array(&config.start.command)
+    ));
+    text.push_str("# Environment variable names copied from the parent process.\n");
+    text.push_str("forward_env = [\n");
+    for name in &config.start.forward_env {
+        text.push_str(&format!("  {},\n", toml_string_literal(name)));
+    }
+    text.push_str("]\n");
+    text
+}
+
+fn toml_string_literal(value: &str) -> String {
+    toml_edit::value(value).to_string()
+}
+
+fn toml_array(values: &[String]) -> String {
+    let mut array = toml_edit::Array::new();
+    for value in values {
+        array.push(value.as_str());
+    }
+    array.to_string()
+}
+
+fn parse_source_config(text: &str) -> Result<PackageSourceConfig> {
+    let config: SourceConfigDocument =
+        toml::from_str(text).with_context(|| "failed to parse package config")?;
+    if config.config_version != SOURCE_CONFIG_VERSION {
+        return Err(Error::Other(anyhow::anyhow!(
+            "unsupported package config config_version {}",
+            config.config_version
+        )));
+    }
+    let start = config.start.to_start_config();
+    validate_start_config(&start)?;
+    Ok(PackageSourceConfig { start })
 }
 
 fn package_warnings(manifest: &PackageManifest) -> Vec<PackageWarning> {
@@ -621,35 +787,7 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
             EXPECTED_PLUSHIE_RUST_VERSION
         )));
     }
-    require_nonempty("start.working_dir", &manifest.start.working_dir)?;
-    validate_payload_relative_path("start.working_dir", &manifest.start.working_dir, true)?;
-    if manifest.start.command.is_empty() || manifest.start.command.iter().any(|arg| arg.is_empty())
-    {
-        return Err(Error::Other(anyhow::anyhow!(
-            "start.command must contain a non-empty argv"
-        )));
-    }
-    validate_payload_relative_path("start.command[0]", &manifest.start.command[0], false)?;
-    if manifest
-        .start
-        .forward_env
-        .iter()
-        .any(|name| name.trim().is_empty() || name.contains([',', '=']))
-    {
-        return Err(Error::Other(anyhow::anyhow!(
-            "start.forward_env must contain only non-empty variable names without `,` or `=`"
-        )));
-    }
-    if manifest
-        .start
-        .forward_env
-        .iter()
-        .any(|name| name == "PLUSHIE_BINARY_PATH" || name == "PLUSHIE_PACKAGE_DIR")
-    {
-        return Err(Error::Other(anyhow::anyhow!(
-            "start.forward_env must not include launcher-owned package variables"
-        )));
-    }
+    validate_start_config(&manifest.start.to_start_config())?;
     require_nonempty("renderer.path", &manifest.renderer.path)?;
     validate_payload_relative_path("renderer.path", &manifest.renderer.path, false)?;
     require_nonempty("renderer.kind", &manifest.renderer.kind)?;
@@ -677,6 +815,42 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
         )));
     }
     validate_sha256_field(&manifest.payload.hash)?;
+    Ok(())
+}
+
+/// Validate host startup config shared by source config and manifests.
+///
+/// # Errors
+///
+/// Returns an error when paths are unsafe or argv/env values are empty
+/// or reserved.
+pub fn validate_start_config(start: &PackageStartConfig) -> Result<()> {
+    require_nonempty("start.working_dir", &start.working_dir)?;
+    validate_payload_relative_path("start.working_dir", &start.working_dir, true)?;
+    if start.command.is_empty() || start.command.iter().any(|arg| arg.is_empty()) {
+        return Err(Error::Other(anyhow::anyhow!(
+            "start.command must contain a non-empty argv"
+        )));
+    }
+    validate_payload_relative_path("start.command[0]", &start.command[0], false)?;
+    if start
+        .forward_env
+        .iter()
+        .any(|name| name.trim().is_empty() || name.contains([',', '=']))
+    {
+        return Err(Error::Other(anyhow::anyhow!(
+            "start.forward_env must contain only non-empty variable names without `,` or `=`"
+        )));
+    }
+    if start
+        .forward_env
+        .iter()
+        .any(|name| name == "PLUSHIE_BINARY_PATH" || name == "PLUSHIE_PACKAGE_DIR")
+    {
+        return Err(Error::Other(anyhow::anyhow!(
+            "start.forward_env must not include launcher-owned package variables"
+        )));
+    }
     Ok(())
 }
 
@@ -1697,6 +1871,85 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
             let err = parse_manifest(&text).unwrap_err();
             assert!(err.to_string().contains("start.forward_env"));
+        }
+    }
+
+    #[test]
+    fn parses_source_package_config() {
+        let config = parse_source_config(
+            r#"
+config_version = 1
+
+[start]
+working_dir = "app"
+command = ["bin/notes", "--project", "Daily Notes"]
+forward_env = ["PATH", "HOME"]
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.start.working_dir, "app");
+        assert_eq!(
+            config.start.command,
+            ["bin/notes", "--project", "Daily Notes"]
+        );
+        assert_eq!(config.start.forward_env, ["PATH", "HOME"]);
+    }
+
+    #[test]
+    fn renders_source_package_config_template_with_real_values() {
+        let text = render_source_config_template(&PackageSourceConfig {
+            start: PackageStartConfig {
+                working_dir: ".".to_string(),
+                command: vec!["bin/notes".to_string()],
+                forward_env: default_forward_env(),
+            },
+        });
+
+        assert!(text.contains("config_version = 1"));
+        assert!(text.contains("[start]"));
+        assert!(text.contains(r#"working_dir = ".""#));
+        assert!(text.contains(r#"command = ["bin/notes"]"#));
+        assert!(text.contains(r#""WAYLAND_DISPLAY""#));
+    }
+
+    #[test]
+    fn rejects_invalid_source_package_config_start_values() {
+        for text in [
+            r#"
+config_version = 2
+
+[start]
+working_dir = "."
+command = ["bin/notes"]
+forward_env = []
+"#,
+            r#"
+config_version = 1
+
+[start]
+working_dir = "../app"
+command = ["bin/notes"]
+forward_env = []
+"#,
+            r#"
+config_version = 1
+
+[start]
+working_dir = "."
+command = ["/usr/bin/notes"]
+forward_env = []
+"#,
+            r#"
+config_version = 1
+
+[start]
+working_dir = "."
+command = ["bin/notes"]
+forward_env = ["PLUSHIE_BINARY_PATH"]
+"#,
+        ] {
+            assert!(parse_source_config(text).is_err());
         }
     }
 

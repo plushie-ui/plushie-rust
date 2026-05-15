@@ -31,6 +31,8 @@ pub struct RustPackageOpts<'a> {
     pub source_path: Option<&'a Path>,
     /// Directory receiving the payload root, archive, and manifest.
     pub out_dir: &'a Path,
+    /// Optional developer-owned source package config.
+    pub package_config: Option<&'a Path>,
     /// Optional Cargo binary target name for the host app.
     pub bin: Option<&'a str>,
     /// Optional package application ID.
@@ -139,6 +141,8 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
     let app_info = app_info(&metadata, package, opts)?;
     build_host(opts, &app_info)?;
 
+    let start = resolve_start_config(opts, &app_info)?;
+
     let out_dir = absolutize(opts.out_dir)?;
     std::fs::create_dir_all(&out_dir)?;
     let payload_dir = out_dir.join(PAYLOAD_DIR);
@@ -147,13 +151,17 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
     let host_payload_path = copy_payload_binary(
         &app_info.host_binary_path,
         &payload_dir,
-        &format!("bin/{}", executable_name(&app_info.bin_name)),
+        start
+            .command
+            .first()
+            .expect("start config validated with host command"),
     )?;
     let renderer_payload_path = copy_payload_binary(
         opts.renderer_path,
         &payload_dir,
         &format!("bin/plushie-renderer{}", platform::exe_suffix()),
     )?;
+    ensure_payload_dir(&payload_dir, &start.working_dir)?;
     let icon_payload_path = materialize_icon(opts.icon, &payload_dir)?;
 
     let payload_archive_path = out_dir.join(PAYLOAD_ARCHIVE);
@@ -172,9 +180,9 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
         plushie_rust_version: app_info.plushie_version,
         protocol_version: plushie_core::protocol::PROTOCOL_VERSION,
         start: StartManifest {
-            working_dir: ".".to_string(),
-            command: vec![payload_relative_string(&payload_dir, &host_payload_path)?],
-            forward_env: default_forward_env(),
+            working_dir: start.working_dir,
+            command: start.command,
+            forward_env: start.forward_env,
         },
         renderer: RendererManifest {
             path: payload_relative_string(&payload_dir, &renderer_payload_path)?,
@@ -207,19 +215,70 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
     })
 }
 
-fn default_forward_env() -> Vec<String> {
-    [
-        "PATH",
-        "HOME",
-        "LANG",
-        "LC_ALL",
-        "XDG_RUNTIME_DIR",
-        "WAYLAND_DISPLAY",
-        "DISPLAY",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect()
+/// Write a Rust SDK source package config template.
+///
+/// # Errors
+///
+/// Returns an error when Cargo metadata fails or the template cannot be
+/// written.
+pub fn write_rust_package_config(opts: &RustPackageOpts<'_>) -> Result<PathBuf> {
+    let metadata = cargo_metadata(opts)?;
+    let package = package_for_manifest(&metadata, opts.manifest_path)?;
+    let app_info = app_info(&metadata, package, opts)?;
+    let start = default_start_config(&app_info)?;
+    let path = opts
+        .package_config
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| default_package_config_path(opts.manifest_path));
+    package::write_source_config_template(&path, &package::PackageSourceConfig { start })?;
+    Ok(path)
+}
+
+fn default_package_config_path(manifest_path: &Path) -> PathBuf {
+    manifest_path
+        .parent()
+        .map(package::default_source_config_path)
+        .unwrap_or_else(|| PathBuf::from(package::SOURCE_CONFIG))
+}
+
+fn resolve_start_config(
+    opts: &RustPackageOpts<'_>,
+    app_info: &AppInfo,
+) -> Result<package::PackageStartConfig> {
+    let explicit_config = opts.package_config.map(Path::to_path_buf);
+    let config =
+        match explicit_config {
+            Some(path) => Some(package::load_source_config(&path)?),
+            None => package::load_default_source_config(opts.manifest_path.parent().ok_or_else(
+                || Error::Other(anyhow::anyhow!("manifest path has no parent directory")),
+            )?)?,
+        };
+
+    if let Some(config) = config {
+        return Ok(config.start);
+    }
+
+    default_start_config(app_info)
+}
+
+fn default_start_config(app_info: &AppInfo) -> Result<package::PackageStartConfig> {
+    let start = package::PackageStartConfig {
+        working_dir: ".".to_string(),
+        command: vec![format!("bin/{}", executable_name(&app_info.bin_name))],
+        forward_env: package::default_forward_env(),
+    };
+    package::validate_start_config(&start)?;
+    Ok(start)
+}
+
+fn ensure_payload_dir(payload_dir: &Path, relative_dir: &str) -> Result<()> {
+    if relative_dir == "." {
+        return Ok(());
+    }
+    let path = payload_dir.join(relative_dir);
+    std::fs::create_dir_all(&path)
+        .with_context(|| format!("create payload working directory `{}`", path.display()))?;
+    Ok(())
 }
 
 fn write_host_cargo_config(manifest_path: &Path, source_path: &Path) -> Result<()> {
@@ -803,6 +862,7 @@ wire = []
             renderer_path: &renderer_path,
             source_path: None,
             out_dir: &out_dir,
+            package_config: None,
             bin: None,
             app_id: None,
             app_name: None,
@@ -831,6 +891,7 @@ wire = []
             renderer_path: &renderer_path,
             source_path: None,
             out_dir: dir.path(),
+            package_config: None,
             bin: None,
             app_id: None,
             app_name: None,
@@ -843,5 +904,56 @@ wire = []
         };
 
         assert_eq!(host_features(&opts), ["demo/extra", "plushie/wire"]);
+    }
+
+    #[test]
+    fn source_package_config_overrides_rust_start_config() {
+        let dir = tempdir().unwrap();
+        let manifest_path = dir.path().join("Cargo.toml");
+        let renderer_path = dir.path().join("renderer");
+        let package_config = dir.path().join("plushie-package.config.toml");
+        std::fs::write(
+            &package_config,
+            r#"
+config_version = 1
+
+[start]
+working_dir = "app"
+command = ["app/bin/demo", "--profile", "release"]
+forward_env = ["PATH"]
+"#,
+        )
+        .unwrap();
+        let opts = RustPackageOpts {
+            manifest_path: &manifest_path,
+            renderer_path: &renderer_path,
+            source_path: None,
+            out_dir: dir.path(),
+            package_config: Some(&package_config),
+            bin: None,
+            app_id: None,
+            app_name: None,
+            icon: None,
+            features: &[],
+            no_default_features: false,
+            all_features: false,
+            release: false,
+            verbose: false,
+        };
+        let app_info = AppInfo {
+            package_name: "demo".to_string(),
+            package_version: "0.1.0".to_string(),
+            app_id: "demo".to_string(),
+            app_name: None,
+            bin_name: "demo".to_string(),
+            host_binary_path: dir.path().join("target/demo"),
+            plushie_version: "0.1.0".to_string(),
+        };
+
+        let start = resolve_start_config(&opts, &app_info).unwrap();
+
+        assert_eq!(start.working_dir, "app");
+        assert_eq!(start.command, ["app/bin/demo", "--profile", "release"]);
+        assert_eq!(start.forward_env, ["PATH"]);
     }
 }

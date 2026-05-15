@@ -6,6 +6,53 @@ use tempfile::tempdir;
 
 #[cfg(unix)]
 #[test]
+fn real_payload_launcher_starts_host_first() {
+    let dir = tempdir().unwrap();
+    let package_dir = dir.path().join("package");
+    std::fs::create_dir_all(&package_dir).unwrap();
+
+    let manifest = write_package(&package_dir, "A");
+    let launcher = dir.path().join("bin").join("launcher");
+    let built = build_launcher(&PackageOpts {
+        manifest_path: &manifest,
+        out_path: Some(&launcher),
+        release: false,
+        verbose: false,
+    })
+    .unwrap();
+
+    let launch_cache = dir.path().join("launch-cache");
+    let marker = dir.path().join("marker.txt");
+    let package_root = dir.path().join("package-root.txt");
+    let args_file = dir.path().join("host-args.txt");
+    let cwd_file = dir.path().join("host-cwd.txt");
+    let renderer_path = dir.path().join("renderer-path.txt");
+    let actual = run_launcher(
+        &built.binary_path,
+        &launch_cache,
+        Some(RuntimeProbe {
+            marker: &marker,
+            package_root: &package_root,
+            args_file: &args_file,
+            cwd_file: &cwd_file,
+            renderer_path: &renderer_path,
+        }),
+    );
+    assert_success(&actual);
+    assert!(actual.stderr.contains("cache_status=extracted"));
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "A\n");
+    let package_root = std::fs::read_to_string(&package_root).unwrap();
+    assert!(Path::new(package_root.trim()).starts_with(&launch_cache));
+    assert!(
+        std::fs::read_to_string(&cwd_file)
+            .unwrap()
+            .starts_with(&package_root)
+    );
+    assert_host_launch(&args_file, &renderer_path, &package_root, "A");
+}
+
+#[cfg(unix)]
+#[test]
 #[ignore = "builds generated launchers with Cargo"]
 fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     let dir = tempdir().unwrap();
@@ -127,7 +174,10 @@ struct LauncherOutput {
 
 fn run_launcher(binary: &Path, cache: &Path, probe: Option<RuntimeProbe<'_>>) -> LauncherOutput {
     let mut command = Command::new(binary);
-    command.env("PLUSHIE_CACHE_DIR", cache);
+    command
+        .env("PLUSHIE_CACHE_DIR", cache)
+        .env("PLUSHIE_BINARY_PATH", "/tmp/ambient-renderer")
+        .env("PLUSHIE_PACKAGE_DIR", "/tmp/ambient-package");
     if let Some(probe) = probe {
         command
             .env("PLUSHIE_TEST_MARKER", probe.marker)

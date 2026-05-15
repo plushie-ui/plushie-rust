@@ -345,8 +345,9 @@ run its extraction path with an isolated `PLUSHIE_CACHE_DIR`. The
 `cargo plushie package --postcheck` path sets `PLUSHIE_PACKAGE_POSTCHECK=1`,
 scrubs development renderer overrides, asserts first-extraction and
 cache-reuse diagnostics, and exits before starting the renderer or GUI
-app. It does not prove the renderer-parent ready marker; run the
-generated launcher normally under an artifact postcheck harness for that.
+app. It does not prove host-renderer readiness. Run the generated
+launcher normally under an artifact postcheck harness when that stronger
+signal is needed.
 
 ```bash
 cargo plushie package --manifest dist/plushie-package.toml --precheck
@@ -371,6 +372,8 @@ cargo plushie package-rust --release
 | `--app-name <NAME>` | string | Optional human-readable app name |
 | `--icon <PATH>` | path | App icon copied into the payload |
 | `--out-dir <DIR>` | path | Directory for generated manifest and archive |
+| `--package-config <PATH>` | path | Developer-owned source package config. Defaults to `plushie-package.config.toml` next to the app manifest when present |
+| `--write-package-config` | bool | Write a package config template and exit before building |
 | `--launcher-out <PATH>` | path | Final launcher path |
 | `--release` | bool | Build host, renderer, and launcher with release profile |
 | `--features <LIST>` | string | Additional host Cargo features |
@@ -399,6 +402,25 @@ from Cargo metadata, the local platform target, `protocol_version`,
 If `--icon` is omitted, the command writes Plushie's bundled default
 icons into `assets/` before archiving and points `[platform].icon` at
 the large PNG.
+
+`package-rust` reads `plushie-package.config.toml` next to the app
+manifest when present. Pass `--package-config` to use another path. The
+source config only owns host startup settings:
+
+```toml
+config_version = 1
+
+[start]
+working_dir = "."
+command = ["bin/my-app"]
+forward_env = ["PATH", "HOME", "LANG", "LC_ALL", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "DISPLAY"]
+```
+
+The command can write a template with real default values:
+
+```bash
+cargo plushie package-rust --write-package-config
+```
 
 By default `package-rust` immediately calls the shared
 `cargo plushie package` launcher builder using the generated manifest.

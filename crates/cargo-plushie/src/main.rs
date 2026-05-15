@@ -199,6 +199,13 @@ struct PackageRustArgs {
     /// Output directory for generated manifest and payload archive.
     #[arg(long)]
     out_dir: Option<PathBuf>,
+    /// Developer-owned package config. Defaults to plushie-package.config.toml
+    /// next to the app manifest when present.
+    #[arg(long)]
+    package_config: Option<PathBuf>,
+    /// Write a package config template and exit before building.
+    #[arg(long)]
+    write_package_config: bool,
     /// Final launcher output path. Defaults under target/plushie/package/.
     #[arg(long)]
     launcher_out: Option<PathBuf>,
@@ -264,6 +271,33 @@ fn cmd_package_rust(args: &PackageRustArgs) -> Result<()> {
         .parent()
         .ok_or_else(|| anyhow::anyhow!("manifest path has no parent directory"))?
         .to_path_buf();
+    if args.write_package_config {
+        let out_dir = args
+            .out_dir
+            .clone()
+            .unwrap_or_else(|| target_dir(&manifest_dir).join("plushie/rust-package"));
+        let path = package_rust::write_rust_package_config(&package_rust::RustPackageOpts {
+            manifest_path: &manifest_path,
+            renderer_path: Path::new(""),
+            source_path: None,
+            out_dir: &out_dir,
+            package_config: args.package_config.as_deref(),
+            bin: args.bin.as_deref(),
+            app_id: args.app_id.as_deref(),
+            app_name: args.app_name.as_deref(),
+            icon: args.icon.as_deref(),
+            features: &args.features,
+            no_default_features: args.no_default_features,
+            all_features: args.all_features,
+            release: args.release,
+            verbose: args.verbose,
+        })?;
+        println!(
+            "plushie: wrote package config template at {}",
+            path.display()
+        );
+        return Ok(());
+    }
 
     let build = BuildArgs {
         release: args.release,
@@ -303,6 +337,7 @@ fn cmd_package_rust(args: &PackageRustArgs) -> Result<()> {
         renderer_path: &renderer_path,
         source_path: source_path.as_deref(),
         out_dir: &out_dir,
+        package_config: args.package_config.as_deref(),
         bin: args.bin.as_deref(),
         app_id: args.app_id.as_deref(),
         app_name: args.app_name.as_deref(),

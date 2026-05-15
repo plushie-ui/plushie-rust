@@ -593,6 +593,10 @@ fn cmd_tools_sync(args: &ToolsSyncArgs) -> Result<()> {
     }
 
     let project_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
+    if self_identity.source.kind == "source" {
+        return sync_source_native_tools(&project_dir);
+    }
+
     let download_args = DownloadArgs {
         force: args.force,
         required_version: Some(required_version.clone()),
@@ -618,6 +622,113 @@ fn cmd_tools_sync(args: &ToolsSyncArgs) -> Result<()> {
         source_configured,
         &release_base_url,
     )
+}
+
+fn sync_source_native_tools(project_dir: &Path) -> Result<()> {
+    let workspace_root = plushie_rust_workspace_root()?;
+    let target_dir = source_build_target_dir(&workspace_root)?;
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+
+    build_source_tool(
+        &cargo,
+        &workspace_root,
+        &target_dir,
+        &["build", "--release", "-p", "plushie-renderer"],
+    )?;
+    build_source_tool(
+        &cargo,
+        &workspace_root,
+        &target_dir,
+        &[
+            "build",
+            "--release",
+            "-p",
+            "cargo-plushie",
+            "--bin",
+            "plushie-launcher",
+        ],
+    )?;
+
+    install_source_tool(
+        &target_dir.join("release").join(platform::renderer_name()),
+        &project_dir.join("bin").join(platform::renderer_name()),
+        "renderer",
+    )?;
+    install_source_tool(
+        &target_dir.join("release").join(platform::launcher_name()),
+        &project_dir.join("bin").join(platform::launcher_name()),
+        "launcher",
+    )?;
+    Ok(())
+}
+
+fn build_source_tool(
+    cargo: &str,
+    workspace_root: &Path,
+    target_dir: &Path,
+    args: &[&str],
+) -> Result<()> {
+    println!("plushie: running {} {}", cargo, args.join(" "));
+    let mut command = std::process::Command::new(cargo);
+    command.current_dir(workspace_root).args(args);
+    if std::env::var_os("CARGO_TARGET_DIR").is_some() {
+        command.env("CARGO_TARGET_DIR", target_dir);
+    }
+    let status = command
+        .status()
+        .with_context(|| format!("failed to run `{}`", cargo))?;
+    if !status.success() {
+        anyhow::bail!("source native tool build failed with status {status}");
+    }
+    Ok(())
+}
+
+fn install_source_tool(source: &Path, dest: &Path, label: &str) -> Result<()> {
+    if !source.is_file() {
+        anyhow::bail!("source-built {label} was not found at {}", source.display());
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(source, dest)
+        .with_context(|| format!("copy source-built {label} to `{}`", dest.display()))?;
+    make_executable(dest)?;
+    println!(
+        "plushie: installed source-built {label} at {}",
+        dest.display()
+    );
+    Ok(())
+}
+
+fn make_executable(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(path)?.permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions)?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+
+fn source_build_target_dir(workspace_root: &Path) -> Result<PathBuf> {
+    Ok(target_dir_from(
+        std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from),
+        &std::env::current_dir().with_context(|| "resolve current directory")?,
+        workspace_root,
+    ))
+}
+
+fn plushie_rust_workspace_root() -> Result<PathBuf> {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| anyhow::anyhow!("unable to resolve plushie-rust workspace root"))
 }
 
 fn resolve_required_version(

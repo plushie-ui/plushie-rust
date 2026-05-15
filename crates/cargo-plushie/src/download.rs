@@ -17,14 +17,14 @@ pub const RELEASE_BASE_URL: &str = "https://github.com/plushie-ui/plushie-rust/r
 pub const RELEASE_BASE_URL_ENV: &str = "PLUSHIE_RELEASE_BASE_URL";
 const MAX_DOWNLOAD_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Resolved paths for the download target.
+/// Resolved paths for a native tool download target.
 #[derive(Debug)]
 pub struct DownloadTarget {
-    /// Absolute path the renderer binary will live at.
+    /// Absolute path the native tool binary will live at.
     pub binary_path: PathBuf,
     /// Absolute path to the `.sha256` sidecar.
     pub sha256_path: PathBuf,
-    /// GitHub releases URL for the binary.
+    /// GitHub releases URL for the native tool binary.
     pub binary_url: String,
     /// GitHub releases URL for the `.sha256` sidecar.
     pub sha256_url: String,
@@ -52,11 +52,53 @@ impl DownloadTarget {
     ///
     /// Returns [`Error::Other`] when `base_url` is not supported.
     pub fn new_with_base_url(project_dir: &Path, version: &str, base_url: &str) -> Result<Self> {
+        Self::for_tool_with_base_url(
+            project_dir,
+            version,
+            base_url,
+            &platform::renderer_name(),
+            &platform::download_name(),
+        )
+    }
+
+    /// Compute launcher paths + URLs using an explicit release base URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Other`] when `base_url` is not supported.
+    pub fn launcher_with_base_url(
+        project_dir: &Path,
+        version: &str,
+        base_url: &str,
+    ) -> Result<Self> {
+        Self::for_tool_with_base_url(
+            project_dir,
+            version,
+            base_url,
+            &platform::launcher_name(),
+            &platform::launcher_download_name(),
+        )
+    }
+
+    /// Compute paths + URLs for a named native tool.
+    ///
+    /// `local_name` is the stable project-local filename under `bin/`.
+    /// `download_name` is the platform-specific release asset name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Other`] when `base_url` is not supported.
+    pub fn for_tool_with_base_url(
+        project_dir: &Path,
+        version: &str,
+        base_url: &str,
+        local_name: &str,
+        download_name: &str,
+    ) -> Result<Self> {
         let base_url = validate_release_base_url(base_url)?;
-        let download_name = platform::download_name();
         let bin_dir = project_dir.join("bin");
-        let binary_path = bin_dir.join(platform::renderer_name());
-        let sha256_path = bin_dir.join(format!("{}.sha256", platform::renderer_name()));
+        let binary_path = bin_dir.join(local_name);
+        let sha256_path = bin_dir.join(format!("{local_name}.sha256"));
         let binary_url = format!("{base_url}/v{version}/{download_name}");
         let sha256_url = format!("{binary_url}.sha256");
         Ok(Self {
@@ -271,6 +313,22 @@ mod tests {
         .unwrap();
         assert!(target.binary_url.starts_with("file:///tmp/mirror/v0.6.1/"));
         assert!(!target.binary_url.contains("//v0.6.1"));
+    }
+
+    #[test]
+    fn launcher_target_uses_launcher_names() {
+        let target = DownloadTarget::launcher_with_base_url(
+            Path::new("/project"),
+            "0.6.1",
+            RELEASE_BASE_URL,
+        )
+        .unwrap();
+        assert!(target.binary_path.ends_with(platform::launcher_name()));
+        assert!(
+            target
+                .binary_url
+                .contains(&platform::launcher_download_name())
+        );
     }
 
     #[test]

@@ -591,12 +591,32 @@ fn cmd_tools_sync(args: &ToolsSyncArgs) -> Result<()> {
         );
     }
 
+    let project_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
     let download_args = DownloadArgs {
         force: args.force,
-        required_version: Some(required_version),
+        required_version: Some(required_version.clone()),
         manifest_path: args.manifest_path.clone(),
     };
-    cmd_download(&download_args)
+    let source_configured = if args.manifest_path.is_some() {
+        check_download_manifest(&download_args, None)?
+    } else {
+        false
+    };
+    let release_base_url = download::release_base_url()?;
+    download_renderer_with_base_url(
+        &project_dir,
+        &required_version,
+        args.force,
+        source_configured,
+        &release_base_url,
+    )?;
+    download_launcher_with_base_url(
+        &project_dir,
+        &required_version,
+        args.force,
+        source_configured,
+        &release_base_url,
+    )
 }
 
 fn resolve_required_version(
@@ -641,67 +661,28 @@ fn check_native_tools(project_dir: &Path, required_version: &str, strict: bool) 
         status: "present".to_string(),
     });
 
-    let renderer_path = project_dir.join("bin").join(platform::renderer_name());
-    match tool_identity::probe_tool_identity(&renderer_path, Duration::from_secs(2)) {
-        Ok(identity) => {
-            if identity.plushie_rust_version != required_version {
-                issues.push(format!(
-                    "renderer is version {} but project requires {}; run `bin/plushie tools sync --required-version {}`",
-                    identity.plushie_rust_version, required_version, required_version
-                ));
-            }
-            if identity.target != self_identity.target {
-                issues.push(format!(
-                    "renderer target {} does not match plushie target {}; run `bin/plushie tools sync --required-version {}`",
-                    identity.target, self_identity.target, required_version
-                ));
-            }
-            if identity.source.kind != self_identity.source.kind {
-                let message = format!(
-                    "plushie source kind {} does not match renderer source kind {}",
-                    self_identity.source.kind, identity.source.kind
-                );
-                if strict {
-                    issues.push(message);
-                } else {
-                    warnings.push(message);
-                }
-            }
-            collect_identity_warnings(&identity, "renderer", strict, &mut issues, &mut warnings);
-            tools.push(ToolCheckEntry {
-                tool: "plushie-renderer".to_string(),
-                path: Some(renderer_path.display().to_string()),
-                identity: Some(identity),
-                status: "present".to_string(),
-            });
-        }
-        Err(error) if renderer_path.exists() => {
-            issues.push(format!(
-                "renderer at {} did not report Plushie identity ({error}); run `bin/plushie download --required-version {} --force`",
-                renderer_path.display(),
-                required_version
-            ));
-            tools.push(ToolCheckEntry {
-                tool: "plushie-renderer".to_string(),
-                path: Some(renderer_path.display().to_string()),
-                identity: None,
-                status: "unreadable".to_string(),
-            });
-        }
-        Err(_) => {
-            issues.push(format!(
-                "renderer is missing at {}; run `bin/plushie tools sync --required-version {}`",
-                renderer_path.display(),
-                required_version
-            ));
-            tools.push(ToolCheckEntry {
-                tool: "plushie-renderer".to_string(),
-                path: Some(renderer_path.display().to_string()),
-                identity: None,
-                status: "missing".to_string(),
-            });
-        }
-    }
+    check_managed_tool(
+        project_dir,
+        "plushie-renderer",
+        &platform::renderer_name(),
+        required_version,
+        strict,
+        &self_identity,
+        &mut tools,
+        &mut issues,
+        &mut warnings,
+    );
+    check_managed_tool(
+        project_dir,
+        "plushie-launcher",
+        &platform::launcher_name(),
+        required_version,
+        strict,
+        &self_identity,
+        &mut tools,
+        &mut issues,
+        &mut warnings,
+    );
 
     let ok = issues.is_empty();
     ToolCheckReport {
@@ -710,6 +691,82 @@ fn check_native_tools(project_dir: &Path, required_version: &str, strict: bool) 
         tools,
         issues,
         warnings,
+    }
+}
+
+fn check_managed_tool(
+    project_dir: &Path,
+    label: &str,
+    local_name: &str,
+    required_version: &str,
+    strict: bool,
+    self_identity: &ToolIdentity,
+    tools: &mut Vec<ToolCheckEntry>,
+    issues: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) {
+    let path = project_dir.join("bin").join(local_name);
+    match tool_identity::probe_tool_identity(&path, Duration::from_secs(2)) {
+        Ok(identity) => {
+            if identity.plushie_rust_version != required_version {
+                issues.push(format!(
+                    "{} is version {} but project requires {}; run `bin/plushie tools sync --required-version {}`",
+                    label, identity.plushie_rust_version, required_version, required_version
+                ));
+            }
+            if identity.target != self_identity.target {
+                issues.push(format!(
+                    "{} target {} does not match plushie target {}; run `bin/plushie tools sync --required-version {}`",
+                    label, identity.target, self_identity.target, required_version
+                ));
+            }
+            if identity.source.kind != self_identity.source.kind {
+                let message = format!(
+                    "plushie source kind {} does not match {} source kind {}",
+                    self_identity.source.kind, label, identity.source.kind
+                );
+                if strict {
+                    issues.push(message);
+                } else {
+                    warnings.push(message);
+                }
+            }
+            collect_identity_warnings(&identity, label, strict, issues, warnings);
+            tools.push(ToolCheckEntry {
+                tool: label.to_string(),
+                path: Some(path.display().to_string()),
+                identity: Some(identity),
+                status: "present".to_string(),
+            });
+        }
+        Err(error) if path.exists() => {
+            issues.push(format!(
+                "{} at {} did not report Plushie identity ({error}); run `bin/plushie tools sync --required-version {} --force`",
+                label,
+                path.display(),
+                required_version
+            ));
+            tools.push(ToolCheckEntry {
+                tool: label.to_string(),
+                path: Some(path.display().to_string()),
+                identity: None,
+                status: "unreadable".to_string(),
+            });
+        }
+        Err(_) => {
+            issues.push(format!(
+                "{} is missing at {}; run `bin/plushie tools sync --required-version {}`",
+                label,
+                path.display(),
+                required_version
+            ));
+            tools.push(ToolCheckEntry {
+                tool: label.to_string(),
+                path: Some(path.display().to_string()),
+                identity: None,
+                status: "missing".to_string(),
+            });
+        }
     }
 }
 
@@ -1372,6 +1429,28 @@ fn download_renderer_with_base_url(
 ) -> Result<()> {
     let dl_target =
         download::DownloadTarget::new_with_base_url(project_dir, version, release_base_url)?;
+    download_tool_with_base_url(&dl_target, "renderer", version, force, source_configured)
+}
+
+fn download_launcher_with_base_url(
+    project_dir: &Path,
+    version: &str,
+    force: bool,
+    source_configured: bool,
+    release_base_url: &str,
+) -> Result<()> {
+    let dl_target =
+        download::DownloadTarget::launcher_with_base_url(project_dir, version, release_base_url)?;
+    download_tool_with_base_url(&dl_target, "launcher", version, force, source_configured)
+}
+
+fn download_tool_with_base_url(
+    dl_target: &download::DownloadTarget,
+    label: &str,
+    version: &str,
+    force: bool,
+    source_configured: bool,
+) -> Result<()> {
     println!(
         "plushie: resolved download platform as {}-{}",
         platform::os_name(),
@@ -1381,7 +1460,7 @@ fn download_renderer_with_base_url(
     if dl_target.binary_path.exists() {
         if source_configured && !force {
             anyhow::bail!(
-                "refusing to replace a source-configured renderer at {}; \
+                "refusing to replace a source-configured {label} at {}; \
                  unset the source path or pass --force if this project should use release binaries",
                 dl_target.binary_path.display()
             );
@@ -1390,13 +1469,13 @@ fn download_renderer_with_base_url(
             Ok(identity) if tool_identity::is_downloaded_release(&identity) => {
                 if identity.plushie_rust_version == version {
                     println!(
-                        "plushie: replacing existing downloaded renderer {} at {}",
+                        "plushie: replacing existing downloaded {label} {} at {}",
                         identity.plushie_rust_version,
                         dl_target.binary_path.display()
                     );
                 } else {
                     println!(
-                        "plushie: replacing stale downloaded renderer {} with {} at {}",
+                        "plushie: replacing stale downloaded {label} {} with {} at {}",
                         identity.plushie_rust_version,
                         version,
                         dl_target.binary_path.display()
@@ -1405,7 +1484,7 @@ fn download_renderer_with_base_url(
             }
             Ok(identity) if force => {
                 println!(
-                    "plushie: replacing existing {} renderer {} at {}",
+                    "plushie: replacing existing {} {label} {} at {}",
                     identity.source.kind,
                     identity.plushie_rust_version,
                     dl_target.binary_path.display()
@@ -1413,7 +1492,7 @@ fn download_renderer_with_base_url(
             }
             Ok(identity) => {
                 anyhow::bail!(
-                    "refusing to replace existing {} renderer {} at {}; \
+                    "refusing to replace existing {} {label} {} at {}; \
                      pass --force if this project should use release binaries",
                     identity.source.kind,
                     identity.plushie_rust_version,
@@ -1422,13 +1501,13 @@ fn download_renderer_with_base_url(
             }
             Err(error) if force => {
                 println!(
-                    "plushie: replacing existing renderer with unreadable identity at {} ({error})",
+                    "plushie: replacing existing {label} with unreadable identity at {} ({error})",
                     dl_target.binary_path.display()
                 );
             }
             Err(error) => {
                 anyhow::bail!(
-                    "refusing to replace existing renderer at {} because its Plushie identity \
+                    "refusing to replace existing {label} at {} because its Plushie identity \
                      could not be read ({error}); pass --force if this project should use release binaries",
                     dl_target.binary_path.display()
                 );
@@ -1444,7 +1523,7 @@ fn download_renderer_with_base_url(
     download::verify_sha256(&bytes, sidecar_str)?;
     download::install_binary(&dl_target, &bytes, sidecar_str)?;
     println!(
-        "plushie: installed renderer at {}",
+        "plushie: installed {label} at {}",
         dl_target.binary_path.display()
     );
     Ok(())
@@ -1700,8 +1779,8 @@ fn run_with_cargo_watch(
 #[cfg(test)]
 mod tests {
     use super::{
-        BUILTIN_TYPE_NAMES, check_native_tools, download_renderer_with_base_url,
-        resolve_required_version, target_dir_from,
+        BUILTIN_TYPE_NAMES, check_native_tools, download_launcher_with_base_url,
+        download_renderer_with_base_url, resolve_required_version, target_dir_from,
     };
     use crate::platform;
     use sha2::{Digest, Sha256};
@@ -1745,6 +1824,39 @@ mod tests {
     }
 
     #[test]
+    fn download_launcher_installs_from_file_release() {
+        let release = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let version = "0.0.0-test";
+        let version_dir = release.path().join(format!("v{version}"));
+        std::fs::create_dir_all(&version_dir).unwrap();
+
+        let artifact = version_dir.join(platform::launcher_download_name());
+        let bytes = b"fake launcher";
+        std::fs::write(&artifact, bytes).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let sidecar = format!(
+            "{:x}  {}\n",
+            hasher.finalize(),
+            platform::launcher_download_name()
+        );
+        std::fs::write(format!("{}.sha256", artifact.display()), sidecar).unwrap();
+
+        download_launcher_with_base_url(
+            project.path(),
+            version,
+            false,
+            false,
+            &format!("file://{}", release.path().display()),
+        )
+        .unwrap();
+
+        let installed = project.path().join("bin").join(platform::launcher_name());
+        assert_eq!(std::fs::read(installed).unwrap(), bytes);
+    }
+
+    #[test]
     fn target_dir_normalizes_relative_cargo_target_dir_from_invocation_dir() {
         assert_eq!(
             target_dir_from(
@@ -1769,13 +1881,16 @@ mod tests {
     }
 
     #[test]
-    fn tool_check_reports_missing_renderer_with_sync_hint() {
+    fn tool_check_reports_missing_native_tools_with_sync_hint() {
         let dir = tempfile::tempdir().unwrap();
         let report = check_native_tools(dir.path(), env!("CARGO_PKG_VERSION"), false);
 
         assert!(!report.ok);
         assert!(report.issues.iter().any(|issue| {
             issue.contains("renderer is missing") && issue.contains("bin/plushie tools sync")
+        }));
+        assert!(report.issues.iter().any(|issue| {
+            issue.contains("launcher is missing") && issue.contains("bin/plushie tools sync")
         }));
     }
 }

@@ -112,6 +112,14 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod cli;
+
+/// Print the version identity for a native Plushie tool.
+///
+/// Used by thin binary wrappers that are built and uploaded as release
+/// assets alongside the renderer.
+pub fn print_tool_version(tool: &str, json: bool) -> anyhow::Result<()> {
+    tool_identity::print_current_version(tool, json)
+}
 pub mod default_icons;
 pub mod discover;
 pub mod doctor;

@@ -157,6 +157,7 @@ the `cargo-plushie` companion:
     cargo plushie init ...        # scaffold a plushie app crate
     cargo plushie build           # build a custom renderer
     cargo plushie download        # fetch a prebuilt stock renderer
+    cargo plushie tools check     # check local Plushie native tools
     cargo plushie package ...     # build a standalone launcher
     cargo plushie run --watch     # dev-loop runner
 

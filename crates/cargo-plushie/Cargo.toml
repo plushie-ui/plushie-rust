@@ -20,6 +20,10 @@ path = "src/bin/cargo-plushie.rs"
 name = "plushie"
 path = "src/bin/plushie.rs"
 
+[[bin]]
+name = "plushie-launcher"
+path = "src/bin/plushie-launcher.rs"
+
 [package.metadata.docs.rs]
 all-features = true
 

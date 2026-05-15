@@ -81,6 +81,8 @@ jobs:
             asset: plushie-renderer-linux-x86_64
             tool_binary: plushie
             tool_asset: plushie-linux-x86_64
+            launcher_binary: plushie-launcher
+            launcher_asset: plushie-launcher-linux-x86_64
             can_run: true
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
@@ -88,6 +90,8 @@ jobs:
             asset: plushie-renderer-linux-aarch64
             tool_binary: plushie
             tool_asset: plushie-linux-aarch64
+            launcher_binary: plushie-launcher
+            launcher_asset: plushie-launcher-linux-aarch64
             cross: true
           - target: aarch64-apple-darwin
             os: macos-latest
@@ -95,18 +99,24 @@ jobs:
             asset: plushie-renderer-darwin-aarch64
             tool_binary: plushie
             tool_asset: plushie-darwin-aarch64
+            launcher_binary: plushie-launcher
+            launcher_asset: plushie-launcher-darwin-aarch64
           - target: x86_64-apple-darwin
             os: macos-latest
             binary: plushie-renderer
             asset: plushie-renderer-darwin-x86_64
             tool_binary: plushie
             tool_asset: plushie-darwin-x86_64
+            launcher_binary: plushie-launcher
+            launcher_asset: plushie-launcher-darwin-x86_64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             binary: plushie-renderer.exe
             asset: plushie-renderer-windows-x86_64.exe
             tool_binary: plushie.exe
             tool_asset: plushie-windows-x86_64.exe
+            launcher_binary: plushie-launcher.exe
+            launcher_asset: plushie-launcher-windows-x86_64.exe
             can_run: true
           - target: aarch64-pc-windows-msvc
             os: windows-11-arm
@@ -114,6 +124,8 @@ jobs:
             asset: plushie-renderer-windows-aarch64.exe
             tool_binary: plushie.exe
             tool_asset: plushie-windows-aarch64.exe
+            launcher_binary: plushie-launcher.exe
+            launcher_asset: plushie-launcher-windows-aarch64.exe
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -156,8 +168,10 @@ jobs:
         run: |
           renderer_src="target/${{ matrix.target }}/dist/${{ matrix.binary }}"
           tool_src="target/${{ matrix.target }}/dist/${{ matrix.tool_binary }}"
+          launcher_src="target/${{ matrix.target }}/dist/${{ matrix.launcher_binary }}"
           cp "$renderer_src" "${{ matrix.asset }}"
           cp "$tool_src" "${{ matrix.tool_asset }}"
+          cp "$launcher_src" "${{ matrix.launcher_asset }}"
 
       - name: Check release identities
         if: matrix.can_run == true
@@ -193,6 +207,7 @@ jobs:
 
           check_identity "${{ matrix.asset }}" "plushie-renderer"
           check_identity "${{ matrix.tool_asset }}" "plushie"
+          check_identity "${{ matrix.launcher_asset }}" "plushie-launcher"
 
       - name: Generate checksum
         shell: bash
@@ -200,9 +215,11 @@ jobs:
           if command -v sha256sum &>/dev/null; then
             sha256sum "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
             sha256sum "${{ matrix.tool_asset }}" > "${{ matrix.tool_asset }}.sha256"
+            sha256sum "${{ matrix.launcher_asset }}" > "${{ matrix.launcher_asset }}.sha256"
           else
             shasum -a 256 "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
             shasum -a 256 "${{ matrix.tool_asset }}" > "${{ matrix.tool_asset }}.sha256"
+            shasum -a 256 "${{ matrix.launcher_asset }}" > "${{ matrix.launcher_asset }}.sha256"
           fi
 
       - name: Generate Sigstore attestation
@@ -211,6 +228,7 @@ jobs:
           subject-path: |
             ${{ matrix.asset }}
             ${{ matrix.tool_asset }}
+            ${{ matrix.launcher_asset }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -220,6 +238,8 @@ jobs:
             ${{ matrix.asset }}.sha256
             ${{ matrix.tool_asset }}
             ${{ matrix.tool_asset }}.sha256
+            ${{ matrix.launcher_asset }}
+            ${{ matrix.launcher_asset }}.sha256
 
   build-wasm:
     name: Build (wasm32)

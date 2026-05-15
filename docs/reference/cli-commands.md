@@ -10,6 +10,7 @@ too: the binary normalises both argv shapes before parsing.
 |---|---|
 | [`cargo plushie build`](#cargo-plushie-build) | Build a custom renderer with bundled native widgets |
 | [`cargo plushie download`](#cargo-plushie-download) | Download a precompiled stock renderer |
+| [`cargo plushie tools`](#cargo-plushie-tools) | Check or sync project-local native tools |
 | [`cargo plushie run`](#cargo-plushie-run) | Build the custom renderer, then run the app |
 | [`cargo plushie package`](#cargo-plushie-package) | Package command group |
 | [`cargo plushie package portable`](#cargo-plushie-package-portable) | Build a portable launcher from a package manifest |
@@ -111,6 +112,7 @@ cargo plushie download [FLAGS]
 | Flag | Type | Description |
 |---|---|---|
 | `--force` | bool | Overwrite an existing binary |
+| `--required-version <VERSION>` | string | Exact plushie-rust version to download without Cargo metadata |
 | `--manifest-path <PATH>` | path | App crate manifest (default `./Cargo.toml`) |
 
 ```bash
@@ -145,6 +147,39 @@ dep graph. The stock binary has no code for them, so a successful
 download would hand back a renderer that rejects every widget
 message. The error lists the offending crates; `cargo plushie
 build` is the correct path for those projects.
+
+## cargo plushie tools
+
+Check or sync the project-local Plushie native tool set under `bin/`.
+The same implementation is also available from the standalone
+`plushie` binary, which is the intended entry point for non-Rust SDKs
+after they bootstrap `bin/plushie`.
+
+```bash
+cargo plushie tools check [FLAGS]
+cargo plushie tools sync [FLAGS]
+```
+
+| Flag | Command | Type | Description |
+|---|---|---|---|
+| `--required-version <VERSION>` | check, sync | string | Exact plushie-rust version expected by the SDK |
+| `--manifest-path <PATH>` | check, sync | path | App crate manifest when resolving the required version through Cargo metadata |
+| `--strict` | check | bool | Treat dirty or mixed-source tools as failures |
+| `--json` | check | bool | Emit machine-readable output |
+| `--force` | sync | bool | Allow replacing source-built, custom, or identity-less tools |
+
+`tools check` probes `plushie`, `bin/plushie-renderer`, and
+`bin/plushie-launcher` with `--version --json`. It reports missing,
+unreadable, stale, cross-target, dirty, or mixed-provenance tools with
+a fix command. Pre-1.0 checks use exact plushie-rust version equality,
+because SDKs are pinned one-to-one with the Rust side.
+
+`tools sync` verifies that the running `plushie` tool matches the
+required version, then downloads the matching renderer and launcher
+release assets into `bin/` with stable local filenames. Existing
+downloaded release tools are replaced by default because the command is
+the user's explicit sync intent. `--force` is only needed when replacing
+a likely intentional non-download tool, such as a source-built binary.
 
 ## cargo plushie run
 
@@ -631,7 +666,7 @@ a non-zero exit from `cargo plushie build`.
 | Variable | Read by | Description |
 |---|---|---|
 | `PLUSHIE_RUST_SOURCE_PATH` | `build`, `package assemble`, `init`, `new-widget`, `doctor` | Absolute path to a local plushie-rust checkout. Enables `[patch.crates-io]` redirects and wasm source resolution |
-| `PLUSHIE_RELEASE_BASE_URL` | `download` | Override release asset base URL for mirrored release verification. Remote mirrors must use HTTPS. `file://` and loopback HTTP are for local checks |
+| `PLUSHIE_RELEASE_BASE_URL` | `download`, `tools sync` | Override release asset base URL for mirrored release verification. Remote mirrors must use HTTPS. `file://` and loopback HTTP are for local checks |
 | `PLUSHIE_BINARY_PATH` | `run`, generated package launcher, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, set by generated package launchers for the packaged app command, reported by `doctor` |
 | `PLUSHIE_PACKAGE_DIR` | generated package launcher | Set for the packaged app command to the extracted app package directory |
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |

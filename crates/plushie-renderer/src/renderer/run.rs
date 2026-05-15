@@ -4,6 +4,7 @@
 use iced::{Subscription, Task};
 use parking_lot::Mutex;
 
+use plushie_core::tool_identity::{ToolBuildIdentity, ToolIdentity, ToolSourceIdentity};
 use plushie_renderer_engine::Codec;
 use plushie_widget_sdk::protocol::IncomingMessage;
 use plushie_widget_sdk::runtime::{Message, StdinEvent};
@@ -40,6 +41,12 @@ fn run_inner(
             return Ok(());
         }
     };
+    if options.show_version {
+        if let Err(error) = print_version(options.version_json) {
+            log::error!("failed to print renderer version: {error}");
+        }
+        return Ok(());
+    }
 
     // Create transport based on flags.
     let transport = if let Some(addr_arg) = options.listen_arg.as_ref() {
@@ -297,6 +304,8 @@ struct CliOptions {
     mock_mode: bool,
     headless_mode: bool,
     emit_ready_marker: bool,
+    show_version: bool,
+    version_json: bool,
 }
 
 fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
@@ -309,6 +318,8 @@ fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
     let mut mock_mode = false;
     let mut headless_mode = false;
     let mut emit_ready_marker = false;
+    let mut show_version = false;
+    let mut version_json = false;
 
     let mut idx = 1;
     while idx < args.len() {
@@ -319,6 +330,11 @@ fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
             }
             "--json" => {
                 forced_codec = Some(Codec::Json);
+                version_json = true;
+                idx += 1;
+            }
+            "--version" => {
+                show_version = true;
                 idx += 1;
             }
             "--mock" => {
@@ -394,7 +410,33 @@ fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
         mock_mode,
         headless_mode,
         emit_ready_marker,
+        show_version,
+        version_json,
     })
+}
+
+fn current_tool_identity() -> ToolIdentity {
+    ToolIdentity::new(
+        "plushie-renderer",
+        env!("CARGO_PKG_VERSION"),
+        option_env!("PLUSHIE_BUILD_TARGET").unwrap_or("unknown"),
+        ToolSourceIdentity::new(
+            option_env!("PLUSHIE_TOOL_SOURCE_KIND").unwrap_or("unknown"),
+            option_env!("PLUSHIE_GIT_COMMIT"),
+            option_env!("PLUSHIE_GIT_DIRTY"),
+        ),
+        ToolBuildIdentity::new(option_env!("PLUSHIE_BUILD_PROFILE").unwrap_or("unknown")),
+    )
+}
+
+fn print_version(json: bool) -> Result<(), serde_json::Error> {
+    let identity = current_tool_identity();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&identity)?);
+    } else {
+        println!("{}", identity.human_version());
+    }
+    Ok(())
 }
 
 fn required_arg<'a>(args: &'a [String], idx: usize, flag: &str) -> Result<&'a str, String> {
@@ -536,6 +578,22 @@ mod tests {
         .unwrap();
 
         assert!(parsed.emit_ready_marker);
+    }
+
+    #[test]
+    fn parses_plain_version_flag() {
+        let parsed = parse_cli(&args(&["plushie-renderer", "--version"])).unwrap();
+
+        assert!(parsed.show_version);
+        assert!(!parsed.version_json);
+    }
+
+    #[test]
+    fn parses_json_version_flag() {
+        let parsed = parse_cli(&args(&["plushie-renderer", "--version", "--json"])).unwrap();
+
+        assert!(parsed.show_version);
+        assert!(parsed.version_json);
     }
 }
 

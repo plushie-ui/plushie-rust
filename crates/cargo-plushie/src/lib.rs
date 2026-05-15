@@ -122,3 +122,4 @@ pub mod package_rust;
 pub mod patch_config;
 pub mod platform;
 pub mod scaffold;
+mod tool_identity;

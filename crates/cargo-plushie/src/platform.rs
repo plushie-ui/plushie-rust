@@ -74,6 +74,19 @@ pub fn download_name() -> String {
     )
 }
 
+/// Returns the local file name for the standalone Plushie tool.
+#[must_use]
+pub fn plushie_name() -> String {
+    format!("plushie{}", exe_suffix())
+}
+
+/// Returns the release artifact file name for the standalone Plushie
+/// tool on this platform. Format: `plushie-{os}-{arch}[.exe]`.
+#[must_use]
+pub fn plushie_download_name() -> String {
+    format!("plushie-{}-{}{}", os_name(), arch_name(), exe_suffix())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +101,18 @@ mod tests {
     fn renderer_name_is_stable() {
         let name = renderer_name();
         assert!(name == "plushie-renderer" || name == "plushie-renderer.exe");
+    }
+
+    #[test]
+    fn plushie_name_is_stable() {
+        let name = plushie_name();
+        assert!(name == "plushie" || name == "plushie.exe");
+    }
+
+    #[test]
+    fn plushie_download_name_well_formed() {
+        let name = plushie_download_name();
+        assert!(name.starts_with("plushie-"));
+        assert!(!name.starts_with("plushie-renderer-"));
     }
 }

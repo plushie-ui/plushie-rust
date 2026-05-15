@@ -1654,6 +1654,64 @@ size = 7
     }
 
     #[test]
+    fn parse_packager_formats_accepts_platform_names() {
+        let formats = parse_packager_formats(&[
+            "app".to_string(),
+            "appimage".to_string(),
+            "deb".to_string(),
+            "dmg".to_string(),
+            "nsis".to_string(),
+            "pacman".to_string(),
+            "wix".to_string(),
+        ])
+        .unwrap()
+        .unwrap();
+
+        assert!(formats.contains(&PackageFormat::App));
+        assert!(formats.contains(&PackageFormat::AppImage));
+        assert!(formats.contains(&PackageFormat::Deb));
+        assert!(formats.contains(&PackageFormat::Dmg));
+        assert!(formats.contains(&PackageFormat::Nsis));
+        assert!(formats.contains(&PackageFormat::Pacman));
+        assert!(formats.contains(&PackageFormat::Wix));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bundle_package_writes_deb_through_packager_library() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package_with_icon(dir.path());
+        let portable = dir.path().join("portable-app");
+        std::fs::copy("/usr/bin/true", &portable).unwrap();
+        make_executable(&portable).unwrap();
+
+        let result = bundle_package(&PackageBundleOpts {
+            manifest_path: &manifest,
+            portable_path: Some(&portable),
+            out_dir: Some(&dir.path().join("bundles")),
+            formats: &["deb".to_string()],
+            config_path: None,
+            package: PackageOpts {
+                manifest_path: &manifest,
+                out_path: None,
+                launcher_path: None,
+                run_signing_hooks: false,
+                verbose: false,
+            },
+        })
+        .unwrap();
+
+        assert_eq!(result.outputs.len(), 1);
+        assert_eq!(
+            result.outputs[0]
+                .extension()
+                .and_then(|extension| extension.to_str()),
+            Some("deb")
+        );
+        assert!(result.outputs[0].is_file());
+    }
+
+    #[test]
     fn rejects_empty_start_command() {
         let text = format!(
             r#"
@@ -2539,9 +2597,36 @@ hash = "sha256:{hash}"
 
     fn write_sample_package(dir: &Path) -> PathBuf {
         let payload = sample_payload_archive();
+        write_package_for_payload(dir, &payload, "")
+    }
+
+    fn write_sample_package_with_icon(dir: &Path) -> PathBuf {
+        let icon = crate::default_icons::default_icons()
+            .iter()
+            .find(|icon| icon.name == "plushie-checkbox-512x512.png")
+            .expect("default app icon is bundled");
+        let payload = payload_archive_with_dirs(
+            &[
+                ("bin/plushie-renderer", b"renderer".as_slice()),
+                ("bin/notes", b"host".as_slice()),
+                ("assets/plushie-checkbox-512x512.png", icon.bytes),
+            ],
+            &[],
+        );
+        write_package_for_payload(
+            dir,
+            &payload,
+            r#"
+[platform]
+icon = "assets/plushie-checkbox-512x512.png"
+"#,
+        )
+    }
+
+    fn write_package_for_payload(dir: &Path, payload: &[u8], extra: &str) -> PathBuf {
         let archive = dir.join("payload.tar.zst");
-        std::fs::write(&archive, &payload).unwrap();
-        let hash = format!("sha256:{:x}", Sha256::digest(&payload));
+        std::fs::write(&archive, payload).unwrap();
+        let hash = format!("sha256:{:x}", Sha256::digest(payload));
         let manifest = dir.join("plushie-package.toml");
         std::fs::write(
             &manifest,
@@ -2563,6 +2648,7 @@ forward_env = []
 [renderer]
 path = "bin/plushie-renderer"
 kind = "stock"
+{extra}
 
 [payload]
 archive = "payload.tar.zst"

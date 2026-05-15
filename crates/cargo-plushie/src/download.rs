@@ -80,6 +80,26 @@ impl DownloadTarget {
         )
     }
 
+    /// Compute standalone Plushie tool paths + URLs using an explicit
+    /// release base URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Other`] when `base_url` is not supported.
+    pub fn plushie_with_base_url(
+        project_dir: &Path,
+        version: &str,
+        base_url: &str,
+    ) -> Result<Self> {
+        Self::for_tool_with_base_url(
+            project_dir,
+            version,
+            base_url,
+            &platform::plushie_name(),
+            &platform::plushie_download_name(),
+        )
+    }
+
     /// Compute paths + URLs for a named native tool.
     ///
     /// `local_name` is the stable project-local filename under `bin/`.

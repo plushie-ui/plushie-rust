@@ -38,8 +38,9 @@ cargo plushie --help
   the target triple
 - `cargo plushie tools check` - check project-local `plushie`,
   `plushie-renderer`, and `plushie-launcher` binaries
-- `cargo plushie tools sync` - sync project-local renderer and
-  launcher release binaries to the required plushie-rust version
+- `cargo plushie tools sync` - sync project-local `plushie`,
+  renderer, and launcher release binaries to the required plushie-rust
+  version
 - `cargo plushie default-icons --out DIR` - write Plushie's bundled
   default app icon PNGs to a directory
 - `cargo plushie package portable` - build a standalone Rust launcher from a

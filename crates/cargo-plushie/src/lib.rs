@@ -126,6 +126,7 @@ pub mod doctor;
 pub mod download;
 pub mod generator;
 pub mod package;
+pub mod package_runtime;
 pub mod package_rust;
 pub mod patch_config;
 pub mod platform;

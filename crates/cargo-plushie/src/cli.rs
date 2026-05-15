@@ -624,6 +624,13 @@ fn cmd_tools_sync(args: &ToolsSyncArgs) -> Result<()> {
         args.force,
         source_configured,
         &release_base_url,
+    )?;
+    download_plushie_with_base_url(
+        &project_dir,
+        &required_version,
+        args.force,
+        source_configured,
+        &release_base_url,
     )
 }
 
@@ -1584,6 +1591,38 @@ fn download_launcher_with_base_url(
     download_tool_with_base_url(&dl_target, "launcher", version, force, source_configured)
 }
 
+fn download_plushie_with_base_url(
+    project_dir: &Path,
+    version: &str,
+    force: bool,
+    source_configured: bool,
+    release_base_url: &str,
+) -> Result<()> {
+    let dl_target =
+        download::DownloadTarget::plushie_with_base_url(project_dir, version, release_base_url)?;
+    if current_exe_matches_path(&dl_target.binary_path) {
+        println!(
+            "plushie: keeping currently running plushie tool at {}",
+            dl_target.binary_path.display()
+        );
+        return Ok(());
+    }
+    download_tool_with_base_url(&dl_target, "plushie", version, force, source_configured)
+}
+
+fn current_exe_matches_path(path: &Path) -> bool {
+    let Ok(current) = std::env::current_exe() else {
+        return false;
+    };
+    let Ok(current) = current.canonicalize() else {
+        return false;
+    };
+    let Ok(path) = path.canonicalize() else {
+        return false;
+    };
+    current == path
+}
+
 fn download_tool_with_base_url(
     dl_target: &download::DownloadTarget,
     label: &str,
@@ -1920,7 +1959,8 @@ fn run_with_cargo_watch(
 mod tests {
     use super::{
         BUILTIN_TYPE_NAMES, check_native_tools, download_launcher_with_base_url,
-        download_renderer_with_base_url, resolve_required_version, target_dir_from,
+        download_plushie_with_base_url, download_renderer_with_base_url, resolve_required_version,
+        target_dir_from,
     };
     use crate::platform;
     use sha2::{Digest, Sha256};
@@ -1993,6 +2033,39 @@ mod tests {
         .unwrap();
 
         let installed = project.path().join("bin").join(platform::launcher_name());
+        assert_eq!(std::fs::read(installed).unwrap(), bytes);
+    }
+
+    #[test]
+    fn download_plushie_installs_from_file_release() {
+        let release = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let version = "0.0.0-test";
+        let version_dir = release.path().join(format!("v{version}"));
+        std::fs::create_dir_all(&version_dir).unwrap();
+
+        let artifact = version_dir.join(platform::plushie_download_name());
+        let bytes = b"fake plushie";
+        std::fs::write(&artifact, bytes).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let sidecar = format!(
+            "{:x}  {}\n",
+            hasher.finalize(),
+            platform::plushie_download_name()
+        );
+        std::fs::write(format!("{}.sha256", artifact.display()), sidecar).unwrap();
+
+        download_plushie_with_base_url(
+            project.path(),
+            version,
+            false,
+            false,
+            &format!("file://{}", release.path().display()),
+        )
+        .unwrap();
+
+        let installed = project.path().join("bin").join(platform::plushie_name());
         assert_eq!(std::fs::read(installed).unwrap(), bytes);
     }
 

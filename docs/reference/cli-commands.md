@@ -175,14 +175,15 @@ a fix command. Pre-1.0 checks use exact plushie-rust version equality,
 because SDKs are pinned one-to-one with the Rust side.
 
 `tools sync` verifies that the running `plushie` tool matches the
-required version, then installs the matching renderer and launcher into
-`bin/` with stable local filenames. A release-built `plushie` downloads
-release assets and verifies their checksum sidecars. A source-built
-`plushie` builds the renderer and launcher from the same plushie-rust
-checkout and copies those binaries into `bin/`. Existing downloaded
-release tools are replaced by default because the command is the user's
-explicit sync intent. `--force` is only needed when replacing a likely
-intentional non-download tool, such as a source-built binary.
+required version, then installs the matching `plushie`,
+`plushie-renderer`, and `plushie-launcher` into `bin/` with stable
+local filenames. A release-built `plushie` downloads release assets and
+verifies their checksum sidecars. A source-built `plushie` builds the
+same native tool set from the same plushie-rust checkout and copies
+those binaries into `bin/`. Existing downloaded release tools are
+replaced by default because the command is the user's explicit sync
+intent. `--force` is only needed when replacing a likely intentional
+non-download tool, such as a source-built binary.
 
 ## cargo plushie run
 

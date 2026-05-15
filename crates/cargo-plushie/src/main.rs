@@ -315,6 +315,7 @@ fn cmd_package_rust(args: &PackageRustArgs) -> Result<()> {
         no_default_features: args.no_default_features,
         all_features: args.all_features,
     };
+    package_rust::ensure_current_host_target()?;
     cmd_build(&build)?;
     let app_pkg = load_app_package_no_deps(&manifest_dir)?;
     let source_path = resolve_source_path(&manifest_dir, &app_pkg)?;

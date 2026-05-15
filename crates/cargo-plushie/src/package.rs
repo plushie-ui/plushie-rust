@@ -566,11 +566,12 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
     let package_root = target_root.join("plushie-package");
     let crate_dir = package_root.join(&package_name);
     let build_target_dir = package_root.join("target");
-    let output_path = opts.out_path.map(Path::to_path_buf).unwrap_or_else(|| {
-        target_root
-            .join("plushie/package")
-            .join(executable_name(&app_cache_name(&loaded.manifest.app_id)))
-    });
+    let output_path =
+        absolute_from_invocation(opts.out_path.map(Path::to_path_buf).unwrap_or_else(|| {
+            target_root
+                .join("plushie/package")
+                .join(executable_name(&app_cache_name(&loaded.manifest.app_id)))
+        }))?;
 
     std::fs::create_dir_all(crate_dir.join("src"))?;
     generator::write_if_changed(
@@ -594,6 +595,14 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
             .map(|signing| signing.hooks)
             .unwrap_or_default(),
     })
+}
+
+fn absolute_from_invocation(path: PathBuf) -> Result<PathBuf> {
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Ok(std::env::current_dir()?.join(path))
+    }
 }
 
 fn run_signing_hooks(prepared: &PreparedLauncher) -> Result<()> {
@@ -2271,6 +2280,24 @@ shell = true
             std::fs::read_to_string(prepared.crate_dir.join(GENERATED_LOCKFILE)).unwrap(),
             LAUNCHER_LOCKFILE
         );
+    }
+
+    #[test]
+    fn prepares_relative_launcher_output_as_absolute_path() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+
+        let opts = PackageOpts {
+            manifest_path: &manifest,
+            out_path: Some(Path::new("dist/notes")),
+            release: false,
+            run_signing_hooks: false,
+            verbose: false,
+        };
+        let prepared = prepare_launcher_crate(&opts).unwrap();
+
+        assert!(prepared.output_path.is_absolute());
+        assert!(prepared.output_path.ends_with("dist/notes"));
     }
 
     #[test]

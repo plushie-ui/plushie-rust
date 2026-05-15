@@ -133,6 +133,7 @@ struct PayloadManifest {
 /// files cannot be copied, the payload cannot be archived, or the
 /// generated shared package manifest does not pass precheck.
 pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResult> {
+    ensure_current_host_target()?;
     if let Some(source_path) = opts.source_path {
         write_host_cargo_config(opts.manifest_path, source_path)?;
     }
@@ -310,6 +311,9 @@ fn cargo_metadata(opts: &RustPackageOpts<'_>) -> Result<Metadata> {
     let mut cmd = cargo_metadata::MetadataCommand::new();
     cmd.manifest_path(opts.manifest_path)
         .current_dir(manifest_dir);
+    if let Some(target_dir) = normalized_cargo_target_dir_env()? {
+        cmd.env("CARGO_TARGET_DIR", target_dir.into_os_string());
+    }
     apply_feature_opts(&mut cmd, opts);
     cmd.exec()
         .with_context(|| "cargo metadata failed")
@@ -430,12 +434,6 @@ fn plushie_metadata_string(package: &Package, key: &str) -> Option<String> {
 }
 
 fn build_host(opts: &RustPackageOpts<'_>, app_info: &AppInfo) -> Result<()> {
-    if let Some(target) = std::env::var_os("CARGO_BUILD_TARGET") {
-        return Err(Error::Other(anyhow::anyhow!(
-            "package-rust does not support cross-target host builds yet; unset CARGO_BUILD_TARGET (`{}`) and build on the package target host",
-            target.to_string_lossy()
-        )));
-    }
     let manifest_dir = opts
         .manifest_path
         .parent()
@@ -448,6 +446,9 @@ fn build_host(opts: &RustPackageOpts<'_>, app_info: &AppInfo) -> Result<()> {
         .arg(opts.manifest_path)
         .arg("--bin")
         .arg(&app_info.bin_name);
+    if let Some(target_dir) = normalized_cargo_target_dir_env()? {
+        cmd.env("CARGO_TARGET_DIR", target_dir);
+    }
     if opts.release {
         cmd.arg("--release");
     }
@@ -505,6 +506,44 @@ fn build_host(opts: &RustPackageOpts<'_>, app_info: &AppInfo) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+/// Reject host-target overrides until package-rust owns cross-target staging.
+///
+/// # Errors
+///
+/// Returns an error when Cargo is configured through the environment to
+/// build for a non-host target.
+pub fn ensure_current_host_target() -> Result<()> {
+    reject_cross_target_env(std::env::var_os("CARGO_BUILD_TARGET"))
+}
+
+fn reject_cross_target_env(target: Option<OsString>) -> Result<()> {
+    if let Some(target) = target {
+        return Err(Error::Other(anyhow::anyhow!(
+            "package-rust does not support cross-target host builds yet; unset CARGO_BUILD_TARGET (`{}`) and build on the package target host",
+            target.to_string_lossy()
+        )));
+    }
+    Ok(())
+}
+
+fn normalized_cargo_target_dir_env() -> Result<Option<PathBuf>> {
+    normalize_cargo_target_dir(
+        std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from),
+        &std::env::current_dir()?,
+    )
+}
+
+fn normalize_cargo_target_dir(
+    cargo_target_dir: Option<PathBuf>,
+    invocation_dir: &Path,
+) -> Result<Option<PathBuf>> {
+    match cargo_target_dir {
+        Some(target_dir) if target_dir.is_absolute() => Ok(Some(target_dir)),
+        Some(target_dir) => Ok(Some(invocation_dir.join(target_dir))),
+        None => Ok(None),
+    }
 }
 
 fn find_target_specific_host_binary(expected: &Path) -> Option<PathBuf> {
@@ -949,6 +988,28 @@ wire = []
         std::fs::write(&cross, b"host").unwrap();
 
         assert_eq!(find_target_specific_host_binary(&expected), Some(cross));
+    }
+
+    #[test]
+    fn package_rust_target_dir_normalizes_relative_env_from_invocation_dir() {
+        let normalized = normalize_cargo_target_dir(
+            Some(PathBuf::from("shared-target")),
+            Path::new("/tmp/invocation"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            normalized,
+            Some(PathBuf::from("/tmp/invocation/shared-target"))
+        );
+    }
+
+    #[test]
+    fn package_rust_rejects_cross_target_env_before_build_work() {
+        let err =
+            reject_cross_target_env(Some(OsString::from("wasm32-unknown-unknown"))).unwrap_err();
+
+        assert!(err.to_string().contains("does not support cross-target"));
     }
 
     #[test]

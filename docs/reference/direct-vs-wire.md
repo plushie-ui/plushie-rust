@@ -249,11 +249,12 @@ single executable can carry cleanly:
 
 Wire-mode Rust apps follow the same shape as other wire SDKs. Use
 `cargo plushie package assemble` to build the host with wire support,
-stage a payload containing the host executable and a payload-local
+assemble a payload containing the host executable and a payload-local
 `plushie-renderer`, write `plushie-package.toml`, and hand it to
-`cargo plushie package`. Socket-mode flags (`--plushie-socket`,
-`--plushie-token`) are the Rust CLI spelling of the same
-renderer-parent contract represented by `PLUSHIE_SOCKET` and
+`cargo plushie package portable` for a self-extracting artifact or
+`cargo plushie package bundle` for a platform package. Socket-mode flags
+(`--plushie-socket`, `--plushie-token`) are the Rust CLI spelling of the
+same renderer-parent contract represented by `PLUSHIE_SOCKET` and
 `PLUSHIE_TOKEN` in other SDK payloads.
 
 ## See also

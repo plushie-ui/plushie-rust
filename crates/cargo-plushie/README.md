@@ -43,10 +43,10 @@ cargo plushie --help
   version
 - `cargo plushie default-icons --out DIR` - write Plushie's bundled
   default app icon PNGs to a directory
-- `cargo plushie package portable` - build a standalone Rust launcher from a
-  Plushie package manifest and payload archive
+- `cargo plushie package portable` - build a self-extracting launcher from
+  a Plushie package manifest and payload archive
 - `cargo plushie package assemble` - build a wire-mode Rust app payload
-  and standalone launcher
+  and package manifest
 
 ## Configuration
 

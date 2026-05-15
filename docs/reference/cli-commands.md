@@ -15,7 +15,7 @@ too: the binary normalises both argv shapes before parsing.
 | [`cargo plushie package`](#cargo-plushie-package) | Package command group |
 | [`cargo plushie package portable`](#cargo-plushie-package-portable) | Build a portable launcher from a package manifest |
 | [`cargo plushie package check`](#cargo-plushie-package-check) | Check a package manifest or portable launcher |
-| [`cargo plushie package assemble`](#cargo-plushie-package-assemble) | Build a wire-mode Rust app payload and launcher |
+| [`cargo plushie package assemble`](#cargo-plushie-package-assemble) | Build a wire-mode Rust app payload and manifest |
 | [`cargo plushie default-icons`](#cargo-plushie-default-icons) | Write bundled default app icons |
 | [`cargo plushie new-widget`](#cargo-plushie-new-widget) | Scaffold a native widget crate |
 | [`cargo plushie init`](#cargo-plushie-init) | Scaffold a plushie app crate |
@@ -496,8 +496,8 @@ portable artifact.
 ## cargo plushie package assemble
 
 Build a Rust SDK app as a wire-mode host payload, assemble it with a
-payload-local renderer, write `plushie-package.toml`, and build the
-shared standalone launcher.
+payload-local renderer, and write `plushie-package.toml`. Use
+`package portable` or `package bundle` for the final artifact.
 
 ```bash
 cargo plushie package assemble --release

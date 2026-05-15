@@ -222,13 +222,14 @@ the command prints a one-line hint and falls through to a single
 ## cargo plushie package
 
 Package command group for assembling Rust wire-mode payloads, building
-portable launchers, running Plushie-specific checks, and eventually
-delegating platform bundles to `cargo-packager`.
+portable launchers, running Plushie-specific checks, and delegating
+platform bundles to `cargo-packager`.
 
 ```bash
 cargo plushie package assemble --release
 cargo plushie package portable --manifest plushie-package.toml
 cargo plushie package check --manifest plushie-package.toml --postcheck
+cargo plushie package bundle --manifest plushie-package.toml --format appimage
 ```
 
 ## cargo plushie package portable
@@ -376,8 +377,8 @@ it copies the final launcher into place, but only when
 `--run-signing-hooks` is passed. Hooks run from the package manifest
 directory without shell wrapping, and `{launcher}` expands to the final
 launcher path. Payload hash verification, update signing, feed
-publishing, and platform signing remain separate responsibilities owned
-by their respective package or update systems.
+publishing, and platform signing are owned by cargo-packager and updater
+tooling when `package bundle` is used.
 
 Rust direct-mode apps do not need the shared wire launcher when they are
 already a single native executable. They should use normal Cargo and
@@ -399,6 +400,38 @@ launcher's current working directory before payload paths are composed.
 The launcher writes diagnostics to stderr with the app ID, app version,
 payload hash, cache path, cache reuse status, renderer path, host path,
 and host exit status.
+
+## cargo plushie package bundle
+
+Create a platform package through the `cargo-packager` library. The
+command consumes a Plushie package manifest and either an existing
+portable executable or a portable executable it builds first. Plushie
+writes a minimal `Packager.toml` when `--config` is omitted, then calls
+the packager API directly.
+
+```bash
+bin/plushie package bundle --manifest dist/plushie-package.toml --format appimage
+bin/plushie package bundle --manifest dist/plushie-package.toml --portable dist/notes --format appimage
+bin/plushie package bundle --manifest dist/plushie-package.toml --config Packager.toml
+```
+
+| Flag | Type | Description |
+|---|---|---|
+| `--manifest <PATH>` | path | Plushie package manifest |
+| `--portable <PATH>` | path | Existing portable executable to bundle. Builds one when omitted |
+| `--out-dir <PATH>` | path | Output directory for cargo-packager artifacts |
+| `--format <FORMAT>` | string | cargo-packager format. Repeatable. Defaults to cargo-packager's platform default |
+| `--config <PATH>` | path | Custom cargo-packager config. Plushie generates one when omitted |
+| `--strict-tools` | bool | Require managed native tools to match the manifest version and strict provenance rules before bundling |
+| `--launcher <PATH>` | path | Reusable launcher template used when building the portable executable |
+| `--run-signing-hooks` | bool | Run manifest signing hooks when building the portable executable |
+| `--verbose` | bool | Print launcher template resolution |
+
+The generated cargo-packager config uses the manifest app ID, app name,
+version, bundle ID, publisher, and payload icon where available. More
+advanced cargo-packager signing, notarization, installer, and updater
+settings should live in a committed cargo-packager config and be passed
+with `--config`.
 
 Use `cargo plushie package check` to check the manifest, payload hash,
 and archive safety without building a launcher. Use `--postcheck` to

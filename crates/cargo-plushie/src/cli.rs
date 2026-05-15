@@ -267,9 +267,33 @@ struct PackageCheckArgs {
 
 #[derive(Args, Debug)]
 struct PackageBundleArgs {
-    /// Assembled app directory to bundle.
+    /// Path to the Plushie package manifest.
     #[arg(long)]
-    app: PathBuf,
+    manifest: PathBuf,
+    /// Existing portable executable to bundle. Builds one when omitted.
+    #[arg(long)]
+    portable: Option<PathBuf>,
+    /// Final bundle output directory. Defaults under target/plushie/bundles/.
+    #[arg(long)]
+    out_dir: Option<PathBuf>,
+    /// cargo-packager package format. Repeatable. Defaults to cargo-packager's platform default.
+    #[arg(long = "format")]
+    formats: Vec<String>,
+    /// Custom cargo-packager config. When absent, Plushie writes a generated config.
+    #[arg(long)]
+    config: Option<PathBuf>,
+    /// Fail when managed native tools are missing, dirty, mixed, or version-mismatched.
+    #[arg(long)]
+    strict_tools: bool,
+    /// Reusable plushie-launcher binary to use when building a portable artifact.
+    #[arg(long)]
+    launcher: Option<PathBuf>,
+    /// Run signing hooks declared by the package manifest when building the portable artifact.
+    #[arg(long)]
+    run_signing_hooks: bool,
+    /// Print launcher template resolution.
+    #[arg(long)]
+    verbose: bool,
 }
 
 #[derive(Args, Debug)]
@@ -533,12 +557,7 @@ fn cmd_package(args: &PackageArgs) -> Result<()> {
         PackageSubcommand::Assemble(a) => cmd_package_rust(a, true),
         PackageSubcommand::Portable(p) => cmd_package_portable(p),
         PackageSubcommand::Check(c) => cmd_package_check(c),
-        PackageSubcommand::Bundle(b) => {
-            anyhow::bail!(
-                "package bundle is reserved for cargo-packager integration; app directory was `{}`",
-                b.app.display()
-            )
-        }
+        PackageSubcommand::Bundle(b) => cmd_package_bundle(b),
     }
 }
 
@@ -1019,6 +1038,44 @@ fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
         "plushie: used launcher template {}",
         result.launcher_template_path.display()
     );
+    Ok(())
+}
+
+fn cmd_package_bundle(args: &PackageBundleArgs) -> Result<()> {
+    let precheck = package::precheck_package(&args.manifest)?;
+    print_package_warnings(&precheck);
+    if args.strict_tools {
+        ensure_strict_package_tools(&precheck.plushie_rust_version)?;
+    }
+    let result = package::bundle_package(&package::PackageBundleOpts {
+        manifest_path: &args.manifest,
+        portable_path: args.portable.as_deref(),
+        out_dir: args.out_dir.as_deref(),
+        formats: &args.formats,
+        config_path: args.config.as_deref(),
+        package: package::PackageOpts {
+            manifest_path: &args.manifest,
+            out_path: args.portable.as_deref(),
+            launcher_path: args.launcher.as_deref(),
+            run_signing_hooks: args.run_signing_hooks,
+            verbose: args.verbose,
+        },
+    })?;
+    println!(
+        "plushie: bundled portable executable {}",
+        result.portable_path.display()
+    );
+    println!(
+        "plushie: used cargo-packager config {}",
+        result.config_path.display()
+    );
+    println!(
+        "plushie: cargo-packager output directory {}",
+        result.out_dir.display()
+    );
+    for output in &result.outputs {
+        println!("plushie: wrote platform package {}", output.display());
+    }
     Ok(())
 }
 

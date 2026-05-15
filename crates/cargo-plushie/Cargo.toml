@@ -33,6 +33,7 @@ workspace = true
 [dependencies]
 anyhow = "1"
 cargo_metadata = "0.19"
+cargo-packager = { version = "0.11.8", default-features = false, features = ["rustls-tls"] }
 clap = { version = "4", features = ["derive"] }
 plushie-core = { workspace = true }
 # ureq is a blocking HTTP client with rustls by default; keeps the

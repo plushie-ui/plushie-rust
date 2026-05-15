@@ -6,6 +6,9 @@
 
 use crate::{Error, Result, package_runtime, platform, tool_identity};
 use anyhow::Context;
+use cargo_packager::{
+    Config as CargoPackagerConfig, PackageFormat, config::Binary as CargoPackagerBinary,
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::io::Write;
@@ -63,6 +66,36 @@ pub struct PackagePostcheckResult {
     pub cache_dir: PathBuf,
     /// Captured launcher stderr.
     pub stderr: String,
+}
+
+/// Options for creating a platform bundle through cargo-packager.
+#[derive(Debug)]
+pub struct PackageBundleOpts<'a> {
+    /// Path to the Plushie package manifest.
+    pub manifest_path: &'a Path,
+    /// Optional already-built portable executable.
+    pub portable_path: Option<&'a Path>,
+    /// Optional final bundle output directory.
+    pub out_dir: Option<&'a Path>,
+    /// Package formats passed to cargo-packager.
+    pub formats: &'a [String],
+    /// Optional cargo-packager config path. When absent, Plushie writes one.
+    pub config_path: Option<&'a Path>,
+    /// Portable launcher options used when `portable_path` is absent.
+    pub package: PackageOpts<'a>,
+}
+
+/// Result of invoking cargo-packager for a platform bundle.
+#[derive(Debug)]
+pub struct PackageBundleResult {
+    /// Portable executable consumed by cargo-packager.
+    pub portable_path: PathBuf,
+    /// Generated or user-supplied cargo-packager config path.
+    pub config_path: PathBuf,
+    /// Directory where cargo-packager writes outputs.
+    pub out_dir: PathBuf,
+    /// Platform package artifacts written by cargo-packager.
+    pub outputs: Vec<PathBuf>,
 }
 
 /// Result of prechecking a standalone package manifest and payload.
@@ -254,6 +287,137 @@ pub fn precheck_package(manifest_path: &Path) -> Result<PackagePrecheckResult> {
         payload_hash: loaded.manifest.payload.hash,
         warnings,
     })
+}
+
+/// Create a platform bundle by delegating to cargo-packager.
+///
+/// # Errors
+///
+/// Returns an error when the package manifest is invalid, the portable
+/// executable cannot be prepared, or cargo-packager cannot create the
+/// requested artifacts.
+pub fn bundle_package(opts: &PackageBundleOpts<'_>) -> Result<PackageBundleResult> {
+    let loaded = load_package(opts.manifest_path)?;
+    let portable_path = match opts.portable_path {
+        Some(path) => absolute_from_invocation(path.to_path_buf())?,
+        None => build_launcher(&opts.package)?.binary_path,
+    };
+    if !portable_path.is_file() {
+        return Err(Error::Other(anyhow::anyhow!(
+            "portable executable `{}` is not a file",
+            portable_path.display()
+        )));
+    }
+
+    let target_root = package_target_root(&loaded.manifest_dir);
+    let work_dir = target_root
+        .join("plushie/packager")
+        .join(app_cache_name(&loaded.manifest.app_id));
+    let out_dir =
+        absolute_from_invocation(opts.out_dir.map(Path::to_path_buf).unwrap_or_else(|| {
+            target_root
+                .join("plushie/bundles")
+                .join(app_cache_name(&loaded.manifest.app_id))
+        }))?;
+
+    let prepared = prepare_packager_config(
+        &loaded,
+        &portable_path,
+        &work_dir,
+        &out_dir,
+        opts.formats,
+        opts.config_path,
+        opts.out_dir.is_some(),
+    )?;
+    let outputs = with_current_dir(&prepared.working_dir, || {
+        cargo_packager::package(&prepared.config).map_err(|err| Error::Other(anyhow::anyhow!(err)))
+    })
+    .with_context(|| "cargo-packager failed")?
+    .into_iter()
+    .flat_map(|output| output.paths)
+    .collect();
+
+    Ok(PackageBundleResult {
+        portable_path,
+        config_path: prepared.config_path,
+        out_dir: prepared.out_dir,
+        outputs,
+    })
+}
+
+struct PreparedPackagerConfig {
+    config: CargoPackagerConfig,
+    config_path: PathBuf,
+    out_dir: PathBuf,
+    working_dir: PathBuf,
+}
+
+fn prepare_packager_config(
+    loaded: &LoadedPackage,
+    portable_path: &Path,
+    work_dir: &Path,
+    out_dir: &Path,
+    formats: &[String],
+    config_path: Option<&Path>,
+    out_dir_explicit: bool,
+) -> Result<PreparedPackagerConfig> {
+    prepare_packager_input(loaded, portable_path, work_dir, out_dir)?;
+    let bin_dir = work_dir.join("bin");
+    let binary_stem = safe_name(&loaded.manifest.app_id);
+    let icon = materialize_packager_icon(loaded, work_dir)?;
+    let parsed_formats = parse_packager_formats(formats)?;
+
+    if let Some(config_path) = config_path {
+        let config_path = absolute_from_invocation(config_path.to_path_buf())?;
+        let mut config = read_packager_config(&config_path)?;
+        apply_packager_defaults(
+            &mut config,
+            loaded,
+            &binary_stem,
+            &bin_dir,
+            out_dir,
+            icon,
+            parsed_formats,
+            !formats.is_empty(),
+            out_dir_explicit,
+        );
+        let working_dir = config_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let resolved_out_dir = resolve_packager_out_dir(&config, &working_dir);
+        Ok(PreparedPackagerConfig {
+            config,
+            config_path,
+            out_dir: resolved_out_dir,
+            working_dir,
+        })
+    } else {
+        let mut config = CargoPackagerConfig::default();
+        apply_packager_defaults(
+            &mut config,
+            loaded,
+            &binary_stem,
+            &bin_dir,
+            out_dir,
+            icon,
+            parsed_formats,
+            false,
+            true,
+        );
+        let config_path = work_dir.join("Packager.toml");
+        let config_text = toml::to_string_pretty(&config)
+            .with_context(|| "serialize cargo-packager configuration")?;
+        std::fs::write(&config_path, config_text)
+            .with_context(|| format!("write cargo-packager config `{}`", config_path.display()))?;
+        let resolved_out_dir = resolve_packager_out_dir(&config, work_dir);
+        Ok(PreparedPackagerConfig {
+            config,
+            config_path,
+            out_dir: resolved_out_dir,
+            working_dir: work_dir.to_path_buf(),
+        })
+    }
 }
 
 /// Return the default source config path for an app source directory.
@@ -579,6 +743,195 @@ fn prepare_portable_launcher(opts: &PackageOpts<'_>) -> Result<PreparedPortableL
         manifest_text: loaded.manifest_text,
         payload: loaded.payload,
     })
+}
+
+fn prepare_packager_input(
+    loaded: &LoadedPackage,
+    portable_path: &Path,
+    work_dir: &Path,
+    out_dir: &Path,
+) -> Result<()> {
+    if work_dir.exists() {
+        std::fs::remove_dir_all(work_dir)
+            .with_context(|| format!("remove packager work directory `{}`", work_dir.display()))?;
+    }
+    let bin_dir = work_dir.join("bin");
+    std::fs::create_dir_all(&bin_dir)
+        .with_context(|| format!("create packager bin directory `{}`", bin_dir.display()))?;
+    std::fs::create_dir_all(out_dir)
+        .with_context(|| format!("create package bundle output `{}`", out_dir.display()))?;
+
+    let binary_stem = safe_name(&loaded.manifest.app_id);
+    let binary_name = executable_name(&binary_stem);
+    let binary_path = bin_dir.join(&binary_name);
+    std::fs::copy(portable_path, &binary_path).with_context(|| {
+        format!(
+            "copy portable executable `{}` to packager input `{}`",
+            portable_path.display(),
+            binary_path.display()
+        )
+    })?;
+    make_executable(&binary_path)?;
+    Ok(())
+}
+
+fn read_packager_config(path: &Path) -> Result<CargoPackagerConfig> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("read cargo-packager config `{}`", path.display()))?;
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("json") => serde_json::from_str(&text)
+            .with_context(|| format!("parse cargo-packager config `{}`", path.display())),
+        _ => toml::from_str(&text)
+            .with_context(|| format!("parse cargo-packager config `{}`", path.display())),
+    }
+    .map_err(Error::Other)
+}
+
+fn apply_packager_defaults(
+    config: &mut CargoPackagerConfig,
+    loaded: &LoadedPackage,
+    binary_stem: &str,
+    bin_dir: &Path,
+    out_dir: &Path,
+    icon: Option<PathBuf>,
+    formats: Option<Vec<PackageFormat>>,
+    formats_explicit: bool,
+    out_dir_explicit: bool,
+) {
+    if config.product_name.is_empty() {
+        config.product_name = loaded
+            .manifest
+            .app_name
+            .clone()
+            .unwrap_or_else(|| loaded.manifest.app_id.clone());
+    }
+    if config.version.is_empty() {
+        config.version = loaded.manifest.app_version.clone();
+    }
+    if config.binaries.is_empty() {
+        config.binaries = vec![CargoPackagerBinary::new(binary_stem).main(true)];
+    }
+    if config.identifier.is_none() {
+        config.identifier = loaded
+            .manifest
+            .platform
+            .as_ref()
+            .and_then(|platform| platform.bundle_id.clone())
+            .or_else(|| Some(loaded.manifest.app_id.clone()));
+    }
+    if config.publisher.is_none() {
+        config.publisher = loaded
+            .manifest
+            .platform
+            .as_ref()
+            .and_then(|platform| platform.publisher.clone());
+    }
+    if out_dir_explicit || config.out_dir.as_os_str().is_empty() {
+        config.out_dir = out_dir.to_path_buf();
+    }
+    if config.binaries_dir.is_none() {
+        config.binaries_dir = Some(bin_dir.to_path_buf());
+    }
+    if config.icons.is_none() {
+        config.icons = icon.map(|icon| vec![icon.to_string_lossy().into_owned()]);
+    }
+    if formats_explicit || config.formats.is_none() {
+        config.formats = formats;
+    }
+}
+
+fn resolve_packager_out_dir(config: &CargoPackagerConfig, working_dir: &Path) -> PathBuf {
+    if config.out_dir.as_os_str().is_empty() {
+        working_dir.to_path_buf()
+    } else if config.out_dir.is_absolute() {
+        config.out_dir.clone()
+    } else {
+        working_dir.join(&config.out_dir)
+    }
+}
+
+fn parse_packager_formats(formats: &[String]) -> Result<Option<Vec<PackageFormat>>> {
+    if formats.is_empty() {
+        return Ok(None);
+    }
+
+    let mut parsed = Vec::new();
+    for format in formats {
+        match format.as_str() {
+            "default" => parsed.extend_from_slice(PackageFormat::platform_default()),
+            "all" => parsed.extend_from_slice(PackageFormat::platform_all()),
+            "pacman" => parsed.push(PackageFormat::Pacman),
+            other => parsed.push(PackageFormat::from_short_name(other).ok_or_else(|| {
+                Error::Other(anyhow::anyhow!("unsupported package format `{other}`"))
+            })?),
+        }
+    }
+    parsed.sort_by_key(|format| format.short_name());
+    parsed.dedup();
+    Ok(Some(parsed))
+}
+
+fn materialize_packager_icon(loaded: &LoadedPackage, work_dir: &Path) -> Result<Option<PathBuf>> {
+    let Some(icon) = loaded
+        .manifest
+        .platform
+        .as_ref()
+        .and_then(|platform| platform.icon.as_deref())
+    else {
+        return Ok(None);
+    };
+    let icon_path = clean_payload_relative_path("platform.icon", icon)?;
+    let icons_dir = work_dir.join("icons");
+    std::fs::create_dir_all(&icons_dir)
+        .with_context(|| format!("create packager icons directory `{}`", icons_dir.display()))?;
+    let icon_name = icon_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(safe_name)
+        .unwrap_or_else(|| "app-icon.png".to_string());
+    let output_path = icons_dir.join(icon_name);
+
+    let decoder = zstd::stream::read::Decoder::new(std::io::Cursor::new(&loaded.payload[..]))
+        .with_context(|| "failed to open payload archive as zstd")?;
+    let mut archive = tar::Archive::new(decoder);
+    for entry in archive
+        .entries()
+        .with_context(|| "failed to read payload archive entries")?
+    {
+        let mut entry = entry.with_context(|| "failed to read payload archive entry")?;
+        let path = entry
+            .path()
+            .with_context(|| "failed to read payload archive entry path")?;
+        let entry_path =
+            clean_payload_relative_path("payload archive entry", &path.to_string_lossy())?;
+        if entry_path == icon_path {
+            let mut output = std::fs::File::create(&output_path)
+                .with_context(|| format!("create packager icon `{}`", output_path.display()))?;
+            std::io::copy(&mut entry, &mut output)
+                .with_context(|| format!("write packager icon `{}`", output_path.display()))?;
+            return Ok(Some(output_path));
+        }
+    }
+
+    Err(Error::Other(anyhow::anyhow!(
+        "payload archive does not contain platform.icon `{icon}`"
+    )))
+}
+
+fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    struct CurrentDirGuard(PathBuf);
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.0);
+        }
+    }
+
+    let previous = std::env::current_dir().with_context(|| "resolve current directory")?;
+    std::env::set_current_dir(dir)
+        .with_context(|| format!("enter cargo-packager directory `{}`", dir.display()))?;
+    let _guard = CurrentDirGuard(previous);
+    f()
 }
 
 fn resolve_launcher_template(explicit: Option<&Path>) -> Result<PathBuf> {
@@ -1264,6 +1617,40 @@ size = 7
         let result = precheck_package(&manifest).unwrap();
 
         assert_eq!(result.plushie_rust_version, EXPECTED_PLUSHIE_RUST_VERSION);
+    }
+
+    #[test]
+    fn prepare_packager_config_uses_library_config_shape() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let loaded = load_package(&manifest).unwrap();
+        let portable = dir.path().join("portable-app");
+        std::fs::write(&portable, b"portable").unwrap();
+
+        let prepared = prepare_packager_config(
+            &loaded,
+            &portable,
+            &dir.path().join("packager"),
+            &dir.path().join("bundles"),
+            &["appimage".to_string()],
+            None,
+            true,
+        )
+        .unwrap();
+
+        let config = std::fs::read_to_string(&prepared.config_path).unwrap();
+        assert!(config.contains("productName = \"com.example.notes\""));
+        assert!(config.contains("version = \"0.1.0\""));
+        assert!(config.contains("identifier = \"com.example.notes\""));
+        assert!(config.contains("formats = [\"appimage\"]"));
+        assert_eq!(prepared.config.product_name, "com.example.notes");
+        assert_eq!(
+            prepared.config.binaries[0].path,
+            PathBuf::from("com.example.notes")
+        );
+        assert!(prepared.config.binaries[0].main);
+        assert_eq!(prepared.config.formats, Some(vec![PackageFormat::AppImage]));
+        assert!(prepared.out_dir.ends_with("bundles"));
     }
 
     #[test]

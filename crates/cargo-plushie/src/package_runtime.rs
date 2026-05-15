@@ -6,6 +6,7 @@
 //! validate the manifest, extract a content-addressed payload cache, set
 //! launcher-owned environment variables, then start the SDK host command.
 
+use crate::platform;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -217,6 +218,7 @@ struct Manifest {
     schema_version: u32,
     app_id: String,
     app_version: String,
+    target: String,
     plushie_rust_version: String,
     protocol_version: u32,
     start: Start,
@@ -359,7 +361,7 @@ fn ensure_payload(input: &PackageInput<'_>) -> Result<PayloadRoot> {
     }
 
     std::fs::create_dir_all(&root)?;
-    let _lock = acquire_extraction_lock(&root, hash, &dest)?;
+    let _lock = acquire_extraction_lock(&root, hash, &dest, input.manifest_text)?;
     if cache_entry_is_complete(&dest, input.manifest_text) {
         return Ok(PayloadRoot {
             path: dest,
@@ -409,6 +411,12 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
         manifest.schema_version == EXPECTED_SCHEMA_VERSION,
         "unsupported package manifest schema_version {}",
         manifest.schema_version
+    );
+    anyhow::ensure!(
+        manifest.target == current_package_target(),
+        "target `{}` does not match current runtime host `{}`; cross-target packages are not supported yet",
+        manifest.target,
+        current_package_target()
     );
     anyhow::ensure!(
         manifest.protocol_version == EXPECTED_PROTOCOL_VERSION,
@@ -531,14 +539,19 @@ fn extract_payload(tmp: &Path, input: &PackageInput<'_>) -> Result<()> {
     Ok(())
 }
 
-fn acquire_extraction_lock(root: &Path, hash: &str, dest: &Path) -> Result<ExtractionLock> {
+fn acquire_extraction_lock(
+    root: &Path,
+    hash: &str,
+    dest: &Path,
+    manifest_text: &str,
+) -> Result<ExtractionLock> {
     let lock = root.join(format!(".{hash}.lock"));
     let start = Instant::now();
     loop {
         match std::fs::create_dir(&lock) {
             Ok(()) => return Ok(ExtractionLock { path: lock }),
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                if cache_entry_is_complete(dest, "") {
+                if cache_entry_is_complete(dest, manifest_text) {
                     return Ok(ExtractionLock {
                         path: PathBuf::new(),
                     });
@@ -730,6 +743,10 @@ fn safe_name(value: &str) -> String {
     }
 }
 
+fn current_package_target() -> String {
+    format!("{}-{}", platform::os_name(), platform::arch_name())
+}
+
 fn app_cache_name(app_id: &str) -> String {
     let hash = Sha256::digest(app_id.as_bytes());
     format!(
@@ -868,6 +885,101 @@ size = {}
             err.to_string()
                 .contains("start.command[0] does not exist after extraction")
         );
+    }
+
+    #[test]
+    fn rejects_manifest_for_different_target() {
+        let dir = tempdir().unwrap();
+        let payload_root = dir.path().join("payload");
+        std::fs::create_dir_all(payload_root.join("bin")).unwrap();
+        std::fs::write(payload_root.join("bin/host"), "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::write(payload_root.join("bin/plushie-renderer"), "renderer").unwrap();
+
+        let archive = dir.path().join("payload.tar.zst");
+        write_archive(&payload_root, &archive);
+        let bytes = std::fs::read(&archive).unwrap();
+        let hash = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let other_target = if current_package_target() == "linux-x86_64" {
+            "darwin-x86_64"
+        } else {
+            "linux-x86_64"
+        };
+
+        let manifest = format!(
+            r#"
+schema_version = 1
+app_id = "com.example.launcher"
+app_version = "0.1.0"
+target = "{other_target}"
+host_sdk = "test"
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
+
+[start]
+working_dir = "."
+command = ["bin/host"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
+
+[payload]
+archive = "payload.tar.zst"
+hash = "{hash}"
+size = {}
+"#,
+            bytes.len()
+        );
+        let manifest_path = dir.path().join("plushie-package.toml");
+        std::fs::write(&manifest_path, manifest).unwrap();
+
+        let err = run_external_package_with_options(&manifest_path, true, None).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("cross-target packages are not supported yet")
+        );
+    }
+
+    #[test]
+    fn cache_entry_requires_matching_manifest_text() {
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("payload");
+        std::fs::create_dir_all(dest.join("bin")).unwrap();
+        std::fs::write(dest.join("bin/host"), "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::write(dest.join("bin/plushie-renderer"), "renderer").unwrap();
+        let manifest_text = format!(
+            r#"
+schema_version = 1
+app_id = "com.example.launcher"
+app_version = "0.1.0"
+target = "{}"
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
+
+[start]
+working_dir = "."
+command = ["bin/host"]
+forward_env = []
+
+[renderer]
+path = "bin/plushie-renderer"
+kind = "stock"
+
+[payload]
+archive = "payload.tar.zst"
+hash = "sha256:deadbeef"
+"#,
+            current_package_target()
+        );
+        std::fs::write(dest.join("plushie-package.toml"), &manifest_text).unwrap();
+        std::fs::write(dest.join(COMPLETE_MARKER), "ok").unwrap();
+
+        assert!(cache_entry_is_complete(&dest, &manifest_text));
+        assert!(!cache_entry_is_complete(
+            &dest,
+            &manifest_text.replace("bin/host", "bin/other-host")
+        ));
     }
 
     fn write_archive(payload_root: &Path, archive: &Path) {

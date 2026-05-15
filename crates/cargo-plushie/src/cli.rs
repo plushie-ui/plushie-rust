@@ -518,6 +518,11 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
         return Ok(());
     }
 
+    let self_identity = tool_identity::current_tool_identity("plushie");
+    if args.launcher.is_none() && self_identity.source.kind == "source" {
+        sync_source_native_tools(&manifest_dir)?;
+    }
+
     let result = package::build_launcher(&package::PackageOpts {
         manifest_path: &assembled.manifest_path,
         out_path: args.launcher_out.as_deref(),
@@ -883,6 +888,15 @@ fn check_managed_tool(
     let path = project_dir.join("bin").join(local_name);
     match tool_identity::probe_tool_identity(&path, Duration::from_secs(2)) {
         Ok(identity) => {
+            if identity.tool != label {
+                issues.push(format!(
+                    "{} at {} identifies as {}; run `bin/plushie tools sync --required-version {} --force`",
+                    label,
+                    path.display(),
+                    identity.tool,
+                    required_version
+                ));
+            }
             if identity.plushie_rust_version != required_version {
                 issues.push(format!(
                     "{} is version {} but project requires {}; run `bin/plushie tools sync --required-version {}`",
@@ -988,7 +1002,7 @@ fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
     if args.strict_tools {
-        ensure_strict_package_tools(&precheck.plushie_rust_version)?;
+        ensure_strict_package_tools(&precheck.plushie_rust_version, Some(&args.manifest))?;
     }
 
     if !args.postcheck {
@@ -1021,7 +1035,7 @@ fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
     if args.strict_tools {
-        ensure_strict_package_tools(&precheck.plushie_rust_version)?;
+        ensure_strict_package_tools(&precheck.plushie_rust_version, Some(&args.manifest))?;
     }
     let result = package::build_launcher(&package::PackageOpts {
         manifest_path: &args.manifest,
@@ -1045,7 +1059,7 @@ fn cmd_package_bundle(args: &PackageBundleArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
     if args.strict_tools {
-        ensure_strict_package_tools(&precheck.plushie_rust_version)?;
+        ensure_strict_package_tools(&precheck.plushie_rust_version, Some(&args.manifest))?;
     }
     let result = package::bundle_package(&package::PackageBundleOpts {
         manifest_path: &args.manifest,
@@ -1085,8 +1099,8 @@ fn cmd_package_bundle(args: &PackageBundleArgs) -> Result<()> {
     Ok(())
 }
 
-fn ensure_strict_package_tools(required_version: &str) -> Result<()> {
-    let project_dir = strict_tool_project_dir()?;
+fn ensure_strict_package_tools(required_version: &str, manifest_path: Option<&Path>) -> Result<()> {
+    let project_dir = strict_tool_project_dir(manifest_path)?;
     let report = check_native_tools(&project_dir, required_version, true);
     if report.ok {
         return Ok(());
@@ -1096,35 +1110,68 @@ fn ensure_strict_package_tools(required_version: &str) -> Result<()> {
     anyhow::bail!("Plushie native tool check failed")
 }
 
-fn strict_tool_project_dir() -> Result<PathBuf> {
+fn strict_tool_project_dir(manifest_path: Option<&Path>) -> Result<PathBuf> {
     let current_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
     let current_exe = std::env::current_exe().ok();
     Ok(strict_tool_project_dir_from(
         &current_dir,
         current_exe.as_deref(),
+        manifest_path,
     ))
 }
 
-fn strict_tool_project_dir_from(current_dir: &Path, current_exe: Option<&Path>) -> PathBuf {
+fn strict_tool_project_dir_from(
+    current_dir: &Path,
+    current_exe: Option<&Path>,
+    manifest_path: Option<&Path>,
+) -> PathBuf {
     let Some(current_exe) = current_exe else {
-        return current_dir.to_path_buf();
+        return strict_tool_project_dir_from_manifest(manifest_path)
+            .unwrap_or_else(|| current_dir.to_path_buf());
     };
     let Some(exe_name) = current_exe.file_name().and_then(|name| name.to_str()) else {
-        return current_dir.to_path_buf();
+        return strict_tool_project_dir_from_manifest(manifest_path)
+            .unwrap_or_else(|| current_dir.to_path_buf());
     };
     if exe_name != platform::plushie_name() {
-        return current_dir.to_path_buf();
+        return strict_tool_project_dir_from_manifest(manifest_path)
+            .unwrap_or_else(|| current_dir.to_path_buf());
     }
     let Some(bin_dir) = current_exe.parent() else {
-        return current_dir.to_path_buf();
+        return strict_tool_project_dir_from_manifest(manifest_path)
+            .unwrap_or_else(|| current_dir.to_path_buf());
     };
     if bin_dir.file_name().and_then(|name| name.to_str()) != Some("bin") {
-        return current_dir.to_path_buf();
+        return strict_tool_project_dir_from_manifest(manifest_path)
+            .unwrap_or_else(|| current_dir.to_path_buf());
     }
     bin_dir
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| current_dir.to_path_buf())
+}
+
+fn strict_tool_project_dir_from_manifest(manifest_path: Option<&Path>) -> Option<PathBuf> {
+    let manifest_dir = manifest_path.and_then(Path::parent)?;
+    for dir in manifest_dir.ancestors() {
+        if looks_like_strict_tool_project_root(dir) {
+            return Some(dir.to_path_buf());
+        }
+    }
+    if manifest_dir.file_name().and_then(|name| name.to_str()) == Some("dist") {
+        return manifest_dir.parent().map(Path::to_path_buf);
+    }
+    Some(manifest_dir.to_path_buf())
+}
+
+fn looks_like_strict_tool_project_root(dir: &Path) -> bool {
+    dir.join("bin").is_dir()
+        || dir.join("Cargo.toml").is_file()
+        || dir.join("package.json").is_file()
+        || dir.join("pyproject.toml").is_file()
+        || dir.join("mix.exs").is_file()
+        || dir.join("gleam.toml").is_file()
+        || dir.join("Gemfile").is_file()
 }
 
 fn print_package_warnings(precheck: &package::PackagePrecheckResult) {
@@ -2076,9 +2123,10 @@ mod tests {
     use super::{
         BUILTIN_TYPE_NAMES, check_native_tools, download_launcher_with_base_url,
         download_plushie_with_base_url, download_renderer_with_base_url, resolve_required_version,
-        strict_tool_project_dir_from, target_dir_from,
+        strict_tool_project_dir_from, strict_tool_project_dir_from_manifest, target_dir_from,
     };
     use crate::platform;
+    use plushie_core::tool_identity::{ToolBuildIdentity, ToolIdentity, ToolSourceIdentity};
     use sha2::{Digest, Sha256};
     use std::path::{Path, PathBuf};
 
@@ -2227,10 +2275,66 @@ mod tests {
     }
 
     #[test]
+    fn tool_check_rejects_wrong_tool_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        write_identity_script(
+            &bin.join(platform::plushie_name()),
+            ToolIdentity::new(
+                "plushie",
+                env!("CARGO_PKG_VERSION"),
+                option_env!("PLUSHIE_BUILD_TARGET").unwrap_or("unknown"),
+                ToolSourceIdentity::new(
+                    option_env!("PLUSHIE_TOOL_SOURCE_KIND").unwrap_or("unknown"),
+                    option_env!("PLUSHIE_GIT_COMMIT"),
+                    option_env!("PLUSHIE_GIT_DIRTY"),
+                ),
+                ToolBuildIdentity::new(option_env!("PLUSHIE_BUILD_PROFILE").unwrap_or("unknown")),
+            ),
+        );
+        write_identity_script(
+            &bin.join(platform::renderer_name()),
+            ToolIdentity::new(
+                "plushie-launcher",
+                env!("CARGO_PKG_VERSION"),
+                option_env!("PLUSHIE_BUILD_TARGET").unwrap_or("unknown"),
+                ToolSourceIdentity::new(
+                    option_env!("PLUSHIE_TOOL_SOURCE_KIND").unwrap_or("unknown"),
+                    option_env!("PLUSHIE_GIT_COMMIT"),
+                    option_env!("PLUSHIE_GIT_DIRTY"),
+                ),
+                ToolBuildIdentity::new(option_env!("PLUSHIE_BUILD_PROFILE").unwrap_or("unknown")),
+            ),
+        );
+        write_identity_script(
+            &bin.join(platform::launcher_name()),
+            ToolIdentity::new(
+                "plushie-launcher",
+                env!("CARGO_PKG_VERSION"),
+                option_env!("PLUSHIE_BUILD_TARGET").unwrap_or("unknown"),
+                ToolSourceIdentity::new(
+                    option_env!("PLUSHIE_TOOL_SOURCE_KIND").unwrap_or("unknown"),
+                    option_env!("PLUSHIE_GIT_COMMIT"),
+                    option_env!("PLUSHIE_GIT_DIRTY"),
+                ),
+                ToolBuildIdentity::new(option_env!("PLUSHIE_BUILD_PROFILE").unwrap_or("unknown")),
+            ),
+        );
+
+        let report = check_native_tools(dir.path(), env!("CARGO_PKG_VERSION"), true);
+        assert!(!report.ok);
+        assert!(report.issues.iter().any(|issue| {
+            issue.contains("plushie-renderer") && issue.contains("identifies as plushie-launcher")
+        }));
+    }
+
+    #[test]
     fn strict_tool_project_dir_uses_wrapped_plushie_location() {
         let project_dir = strict_tool_project_dir_from(
             Path::new("/tmp/caller"),
             Some(Path::new("/work/demo/bin/plushie")),
+            None,
         );
         assert_eq!(project_dir, Path::new("/work/demo"));
     }
@@ -2241,7 +2345,40 @@ mod tests {
         let project_dir = strict_tool_project_dir_from(
             current_dir,
             Some(Path::new("/home/devuser/.cargo/bin/cargo-plushie")),
+            None,
         );
         assert_eq!(project_dir, current_dir);
+    }
+
+    #[test]
+    fn strict_tool_project_dir_uses_manifest_ancestor_project_root() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        let manifest_path = dir.path().join("dist/plushie-package.toml");
+        std::fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+        std::fs::write(&manifest_path, "").unwrap();
+
+        let project_dir = strict_tool_project_dir_from(
+            Path::new("/tmp/caller"),
+            Some(Path::new("/home/devuser/.cargo/bin/cargo-plushie")),
+            Some(&manifest_path),
+        );
+        assert_eq!(project_dir, dir.path());
+        assert_eq!(
+            strict_tool_project_dir_from_manifest(Some(&manifest_path)).as_deref(),
+            Some(dir.path())
+        );
+    }
+
+    fn write_identity_script(path: &Path, identity: ToolIdentity) {
+        let json = serde_json::to_string(&identity).unwrap();
+        std::fs::write(path, format!("#!/bin/sh\nprintf '%s' '{}'\n", json)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(path, permissions).unwrap();
+        }
     }
 }

@@ -17,6 +17,7 @@ fn real_payload_launcher_starts_host_first() {
         manifest_path: &manifest,
         out_path: Some(&launcher),
         release: false,
+        run_signing_hooks: false,
         verbose: false,
     })
     .unwrap();
@@ -49,6 +50,37 @@ fn real_payload_launcher_starts_host_first() {
             .starts_with(&package_root)
     );
     assert_host_launch(&args_file, &renderer_path, &package_root, "A");
+
+    let relative_marker = dir.path().join("relative-marker.txt");
+    let relative_package_root = dir.path().join("relative-package-root.txt");
+    let relative_args_file = dir.path().join("relative-host-args.txt");
+    let relative_cwd_file = dir.path().join("relative-host-cwd.txt");
+    let relative_renderer_path = dir.path().join("relative-renderer-path.txt");
+    let relative_cache = Path::new("relative-launch-cache");
+    let actual = run_launcher_from(
+        &built.binary_path,
+        dir.path(),
+        relative_cache,
+        Some(RuntimeProbe {
+            marker: &relative_marker,
+            package_root: &relative_package_root,
+            args_file: &relative_args_file,
+            cwd_file: &relative_cwd_file,
+            renderer_path: &relative_renderer_path,
+        }),
+    );
+    assert_success(&actual);
+    let package_root = std::fs::read_to_string(&relative_package_root).unwrap();
+    assert!(
+        Path::new(package_root.trim()).starts_with(dir.path().join(relative_cache)),
+        "relative PLUSHIE_CACHE_DIR produced package root `{package_root}`"
+    );
+    assert_host_launch(
+        &relative_args_file,
+        &relative_renderer_path,
+        &package_root,
+        "A",
+    );
 }
 
 #[cfg(unix)]
@@ -65,6 +97,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
         manifest_path: &manifest,
         out_path: Some(&launcher_a),
         release: false,
+        run_signing_hooks: false,
         verbose: false,
     })
     .unwrap();
@@ -114,6 +147,7 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
         manifest_path: &manifest,
         out_path: Some(&launcher_b),
         release: false,
+        run_signing_hooks: false,
         verbose: false,
     })
     .unwrap();
@@ -173,8 +207,18 @@ struct LauncherOutput {
 }
 
 fn run_launcher(binary: &Path, cache: &Path, probe: Option<RuntimeProbe<'_>>) -> LauncherOutput {
+    run_launcher_from(binary, Path::new("."), cache, probe)
+}
+
+fn run_launcher_from(
+    binary: &Path,
+    cwd: &Path,
+    cache: &Path,
+    probe: Option<RuntimeProbe<'_>>,
+) -> LauncherOutput {
     let mut command = Command::new(binary);
     command
+        .current_dir(cwd)
         .env("PLUSHIE_CACHE_DIR", cache)
         .env("PLUSHIE_BINARY_PATH", "/tmp/ambient-renderer")
         .env("PLUSHIE_PACKAGE_DIR", "/tmp/ambient-package");

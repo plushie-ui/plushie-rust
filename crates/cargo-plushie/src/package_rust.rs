@@ -148,14 +148,13 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
     let payload_dir = out_dir.join(PAYLOAD_DIR);
     reset_dir(&payload_dir)?;
 
-    let host_payload_path = copy_payload_binary(
-        &app_info.host_binary_path,
-        &payload_dir,
-        start
-            .command
-            .first()
-            .expect("start config validated with host command"),
-    )?;
+    let host_command = start.command.first().ok_or_else(|| {
+        Error::Other(anyhow::anyhow!(
+            "start.command must contain a packaged host executable"
+        ))
+    })?;
+    let host_payload_path =
+        copy_payload_binary(&app_info.host_binary_path, &payload_dir, host_command)?;
     let renderer_payload_path = copy_payload_binary(
         opts.renderer_path,
         &payload_dir,
@@ -431,6 +430,12 @@ fn plushie_metadata_string(package: &Package, key: &str) -> Option<String> {
 }
 
 fn build_host(opts: &RustPackageOpts<'_>, app_info: &AppInfo) -> Result<()> {
+    if let Some(target) = std::env::var_os("CARGO_BUILD_TARGET") {
+        return Err(Error::Other(anyhow::anyhow!(
+            "package-rust does not support cross-target host builds yet; unset CARGO_BUILD_TARGET (`{}`) and build on the package target host",
+            target.to_string_lossy()
+        )));
+    }
     let manifest_dir = opts
         .manifest_path
         .parent()
@@ -488,12 +493,39 @@ fn build_host(opts: &RustPackageOpts<'_>, app_info: &AppInfo) -> Result<()> {
         return Err(Error::CargoBuildFailed(status));
     }
     if !app_info.host_binary_path.is_file() {
+        if let Some(path) = find_target_specific_host_binary(&app_info.host_binary_path) {
+            return Err(Error::Other(anyhow::anyhow!(
+                "host build produced target-specific artifact `{}`; package-rust does not support cross-target host builds yet",
+                path.display()
+            )));
+        }
         return Err(Error::Other(anyhow::anyhow!(
             "host build did not produce `{}`",
             app_info.host_binary_path.display()
         )));
     }
     Ok(())
+}
+
+fn find_target_specific_host_binary(expected: &Path) -> Option<PathBuf> {
+    let binary_name = expected.file_name()?;
+    let profile_dir = expected.parent()?;
+    let profile_name = profile_dir.file_name()?;
+    let target_dir = profile_dir.parent()?;
+    let entries = std::fs::read_dir(target_dir).ok()?;
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let candidate = entry.path().join(profile_name).join(binary_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 fn host_features(opts: &RustPackageOpts<'_>) -> Vec<String> {
@@ -904,6 +936,19 @@ wire = []
         };
 
         assert_eq!(host_features(&opts), ["demo/extra", "plushie/wire"]);
+    }
+
+    #[test]
+    fn detects_target_specific_host_artifacts() {
+        let dir = tempdir().unwrap();
+        let expected = dir.path().join("target/debug/demo");
+        let cross = dir
+            .path()
+            .join("target/x86_64-unknown-linux-gnu/debug/demo");
+        std::fs::create_dir_all(cross.parent().unwrap()).unwrap();
+        std::fs::write(&cross, b"host").unwrap();
+
+        assert_eq!(find_target_specific_host_binary(&expected), Some(cross));
     }
 
     #[test]

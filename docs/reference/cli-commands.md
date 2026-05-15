@@ -183,6 +183,7 @@ cargo plushie package --manifest plushie-package.toml --release
 | `--postcheck-timeout <SECONDS>` | integer | Maximum time for `--postcheck` to wait |
 | `--out <PATH>` | path | Final launcher path (default `target/plushie/package/<app-id>`) |
 | `--release` | bool | Build the generated launcher with Cargo's release profile |
+| `--run-signing-hooks` | bool | Run signing hooks declared in the manifest |
 | `--verbose` | bool | Print the underlying cargo command |
 
 This command is the shared wrapper step for standalone binaries. SDKs
@@ -265,13 +266,15 @@ as `PLUSHIE_BINARY_PATH` or `PLUSHIE_PACKAGE_DIR`; those are always set
 by the launcher.
 
 `target` is a normalized package target such as `linux-x86_64`,
-`darwin-aarch64`, or `windows-x86_64`. `payload.archive` is
-manifest-relative. `renderer.path`, `start.working_dir`, and
-`start.command[0]` are app-package-relative paths. Absolute paths and
-parent traversal are rejected so a standalone package cannot silently
-point at a global binary. The launcher resolves `start.command[0]` to an
-absolute path inside the extracted app package and sets the command's
-working directory to `start.working_dir`.
+`darwin-aarch64`, or `windows-x86_64`. It must match the current build
+host. Cross-target package manifests are rejected until target-aware
+staging is implemented. `payload.archive` is manifest-relative.
+`renderer.path`, `start.working_dir`, and `start.command[0]` are
+app-package-relative paths. Absolute paths and parent traversal are
+rejected so a standalone package cannot silently point at a global
+binary. The launcher resolves `start.command[0]` to an absolute path
+inside the extracted app package and sets the command's working
+directory to `start.working_dir`.
 
 Payload archives are intentionally plain files and directories. Archive
 entries must be relative paths under the payload root. Symlinks, hard
@@ -304,10 +307,11 @@ archive when it is set. If `platform.icon` is missing,
 commands should add a real app icon or stage Plushie's bundled defaults
 before archiving the payload. Update metadata is descriptive; the
 generated launcher does not download updates. Signing hooks are
-structured argv declarations that `cargo plushie package` runs after it
-copies the final launcher into place. Hooks run from the package
-manifest directory without shell wrapping, and `{launcher}` expands to
-the final launcher path. Payload hash verification, update signing, feed
+structured argv declarations that `cargo plushie package` can run after
+it copies the final launcher into place, but only when
+`--run-signing-hooks` is passed. Hooks run from the package manifest
+directory without shell wrapping, and `{launcher}` expands to the final
+launcher path. Payload hash verification, update signing, feed
 publishing, and platform signing remain separate responsibilities owned
 by their respective package or update systems.
 
@@ -320,24 +324,28 @@ Generated launcher crates are retained under
 `target/plushie-package/<package-name>/`, or under
 `$CARGO_TARGET_DIR/plushie-package/<package-name>/` when
 `CARGO_TARGET_DIR` is set. Relative `CARGO_TARGET_DIR` values are
-resolved from the `cargo plushie package` invocation directory. The
-generated Cargo build uses the shared target directory
+resolved from the `cargo plushie package` invocation directory. Package
+and renderer builds set nested Cargo target directories explicitly, so a
+relative caller target directory is not reused inside generated
+workspaces. The generated Cargo build uses the shared target directory
 `<target-root>/plushie-package/target` so repeated package builds reuse
 compiled launcher dependencies. `cargo plushie package` also writes
-generated crate files only when their contents change and stores a
-shared `launcher-Cargo.lock` next to those crates. Generated crates use
-a stable Cargo package name with an app-specific binary name so that
-lockfile can be reused across packages. When the generated launcher
-Cargo template has not changed, later package builds copy that lockfile
-into the generated crate and build with `cargo build --locked`. If the
-template changes, the next package build refreshes the shared lockfile.
+generated crate files only when their contents change. Generated crates
+use a bundled launcher lockfile and build with `cargo build --locked`,
+which keeps clean CI builds reproducible. If the launcher dependency
+template changes, cargo-plushie's bundled lockfile must be regenerated
+with the template change.
 
 After a successful launcher run, cache pruning keeps the active payload
 and the most recent previous payload for the same app ID. Older payload
-directories are removed. Failed launches do not prune cache entries.
+directories are removed. Cache and output names include a deterministic
+app ID hash so different app IDs that sanitize to the same path segment
+do not share package artifacts. Failed launches do not prune cache
+entries. A relative `PLUSHIE_CACHE_DIR` is resolved against the
+launcher's current working directory before payload paths are composed.
 The launcher writes diagnostics to stderr with the app ID, app version,
 payload hash, cache path, cache reuse status, renderer path, host path,
-and renderer exit status.
+and host exit status.
 
 Use `--precheck` to check the manifest, payload hash, and archive safety
 without building a launcher. Use `--postcheck` to build the launcher and
@@ -376,6 +384,7 @@ cargo plushie package-rust --release
 | `--write-package-config` | bool | Write a package config template and exit before building |
 | `--launcher-out <PATH>` | path | Final launcher path |
 | `--release` | bool | Build host, renderer, and launcher with release profile |
+| `--run-signing-hooks` | bool | Run signing hooks declared by the generated package manifest |
 | `--features <LIST>` | string | Additional host Cargo features |
 | `--no-default-features` | bool | Disable default features for the host build |
 | `--all-features` | bool | Enable all features for the host build |
@@ -403,6 +412,11 @@ If `--icon` is omitted, the command writes Plushie's bundled default
 icons into `assets/` before archiving and points `[platform].icon` at
 the large PNG.
 
+`package-rust` only stages packages for the current build host. Cargo
+cross-target builds, including `CARGO_BUILD_TARGET` and build-target
+configuration that places the host binary under a target-triple
+directory, are rejected until target-aware staging is implemented.
+
 `package-rust` reads `plushie-package.config.toml` next to the app
 manifest when present. Pass `--package-config` to use another path. The
 source config only owns host startup settings:
@@ -425,9 +439,9 @@ cargo plushie package-rust --write-package-config
 By default `package-rust` immediately calls the shared
 `cargo plushie package` launcher builder using the generated manifest.
 Because the generated manifest lives in `--out-dir`, the delegated
-launcher builder stores its generated crate, shared lockfile, and
-default launcher output under that directory unless `--launcher-out` or
-`CARGO_TARGET_DIR` is set.
+launcher builder stores its generated crate and default launcher output
+under that directory unless `--launcher-out` or `CARGO_TARGET_DIR` is
+set.
 Pass `--no-launcher` to stop at the SDK handoff point and inspect or
 precheck the generated files:
 
@@ -579,8 +593,8 @@ a non-zero exit from `cargo plushie build`.
 | `PLUSHIE_PACKAGE_DIR` | generated package launcher | Set for the packaged app command to the extracted app package directory |
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |
 | `PLUSHIE_SOCKET` | `doctor` | Reported in the diagnostic report; consumed by the SDK for socket-mode rendering |
-| `PLUSHIE_CACHE_DIR` | generated package launcher | Overrides the extraction cache root |
-| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package-rust` | Overrides the `target/` directory used for renderer output, discovery, generated launcher crates, and Rust package staging |
+| `PLUSHIE_CACHE_DIR` | generated package launcher | Overrides the extraction cache root. Relative values are made absolute from the launcher's current working directory |
+| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package-rust` | Overrides the `target/` directory used for renderer output, discovery, generated launcher crates, and Rust package staging. Relative values are resolved from the cargo-plushie invocation directory |
 | `CARGO` | `build`, `run`, `package`, `package-rust` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
 
 ## See also

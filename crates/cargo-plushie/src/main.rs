@@ -174,6 +174,9 @@ struct PackageArgs {
     /// Build the generated launcher with the release Cargo profile.
     #[arg(long)]
     release: bool,
+    /// Run signing hooks declared by the package manifest.
+    #[arg(long)]
+    run_signing_hooks: bool,
     /// Print the underlying cargo command.
     #[arg(long)]
     verbose: bool,
@@ -227,6 +230,9 @@ struct PackageRustArgs {
     /// Stop after writing plushie-package.toml and payload.tar.zst.
     #[arg(long)]
     no_launcher: bool,
+    /// Run signing hooks declared by the generated package manifest.
+    #[arg(long)]
+    run_signing_hooks: bool,
 }
 
 #[derive(Args, Debug)]
@@ -386,6 +392,7 @@ fn cmd_package_rust(args: &PackageRustArgs) -> Result<()> {
         manifest_path: &staged.manifest_path,
         out_path: args.launcher_out.as_deref(),
         release: args.release,
+        run_signing_hooks: args.run_signing_hooks,
         verbose: args.verbose,
     })?;
     println!(
@@ -436,6 +443,7 @@ fn cmd_package(args: &PackageArgs) -> Result<()> {
                 manifest_path: &args.manifest,
                 out_path: args.out.as_deref(),
                 release: args.release,
+                run_signing_hooks: args.run_signing_hooks,
                 verbose: args.verbose,
             },
             timeout: Duration::from_secs(args.postcheck_timeout),
@@ -456,6 +464,7 @@ fn cmd_package(args: &PackageArgs) -> Result<()> {
         manifest_path: &args.manifest,
         out_path: args.out.as_deref(),
         release: args.release,
+        run_signing_hooks: args.run_signing_hooks,
         verbose: args.verbose,
     })?;
     println!(
@@ -554,9 +563,23 @@ fn resolve_manifest_dir(manifest_path: Option<&PathBuf>) -> Result<PathBuf> {
 }
 
 fn target_dir(manifest_dir: &std::path::Path) -> PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| manifest_dir.join("target"))
+    target_dir_from(
+        std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from),
+        &std::env::current_dir().unwrap_or_else(|_| manifest_dir.to_path_buf()),
+        manifest_dir,
+    )
+}
+
+fn target_dir_from(
+    cargo_target_dir: Option<PathBuf>,
+    invocation_dir: &std::path::Path,
+    manifest_dir: &std::path::Path,
+) -> PathBuf {
+    match cargo_target_dir {
+        Some(path) if path.is_absolute() => path,
+        Some(path) => invocation_dir.join(path),
+        None => manifest_dir.join("target"),
+    }
 }
 
 /// Narrow `discovered` to the crates named in the app's explicit
@@ -718,13 +741,15 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
     let mut cmd =
         std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
     cmd.current_dir(&output_dir).arg("build");
+    cmd.env("CARGO_TARGET_DIR", output_dir.join("target"));
     if args.release {
         cmd.arg("--release");
     }
     if args.verbose {
         cmd.arg("--verbose");
         eprintln!(
-            "running: cargo build{}",
+            "running: CARGO_TARGET_DIR={} cargo build{}",
+            output_dir.join("target").display(),
             if args.release { " --release" } else { "" }
         );
     }
@@ -1197,7 +1222,8 @@ fn run_with_cargo_watch(
 
 #[cfg(test)]
 mod tests {
-    use super::BUILTIN_TYPE_NAMES;
+    use super::{BUILTIN_TYPE_NAMES, target_dir_from};
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn builtin_type_names_come_from_core() {
@@ -1205,5 +1231,21 @@ mod tests {
             BUILTIN_TYPE_NAMES.as_ptr(),
             plushie_core::BUILTIN_TYPE_NAMES.as_ptr()
         ));
+    }
+
+    #[test]
+    fn target_dir_normalizes_relative_cargo_target_dir_from_invocation_dir() {
+        assert_eq!(
+            target_dir_from(
+                Some(PathBuf::from("relative-target")),
+                Path::new("/caller"),
+                Path::new("/app")
+            ),
+            Path::new("/caller").join("relative-target")
+        );
+        assert_eq!(
+            target_dir_from(None, Path::new("/caller"), Path::new("/app")),
+            Path::new("/app/target")
+        );
     }
 }

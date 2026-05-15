@@ -4,7 +4,7 @@
 //! Plushie wrapper step: validate a package manifest, embed its payload
 //! archive in a generated Rust launcher, and build that launcher.
 
-use crate::{Error, Result, generator};
+use crate::{Error, Result, generator, platform};
 use anyhow::Context;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -17,13 +17,12 @@ const GENERATED_MANIFEST: &str = "plushie-package.toml";
 pub const SOURCE_CONFIG: &str = "plushie-package.config.toml";
 const GENERATED_PAYLOAD: &str = "payload.tar.zst";
 const GENERATED_LOCKFILE: &str = "Cargo.lock";
-const SHARED_LOCKFILE: &str = "launcher-Cargo.lock";
-const SHARED_LOCKFILE_FINGERPRINT: &str = "launcher-Cargo.lock.sha256";
 const LAUNCHER_CRATE_NAME: &str = "plushie-package-launcher";
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
 const SOURCE_CONFIG_VERSION: u32 = 1;
+const LAUNCHER_LOCKFILE: &str = include_str!("../templates/launcher-Cargo.lock");
 
 /// Options for building a standalone launcher from a package manifest.
 #[derive(Debug)]
@@ -34,6 +33,8 @@ pub struct PackageOpts<'a> {
     pub out_path: Option<&'a Path>,
     /// Build the generated launcher with Cargo's release profile.
     pub release: bool,
+    /// Run signing hooks declared in the package manifest.
+    pub run_signing_hooks: bool,
     /// Print the generated Cargo command.
     pub verbose: bool,
 }
@@ -229,8 +230,6 @@ struct PreparedLauncher {
     manifest_dir: PathBuf,
     package_name: String,
     output_path: PathBuf,
-    shared_lockfile: PathBuf,
-    lockfile_reused: bool,
     signing_hooks: Vec<SigningHookManifest>,
 }
 
@@ -401,20 +400,13 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
     let mut cmd = std::process::Command::new(cargo);
     cmd.current_dir(&prepared.crate_dir).arg("build");
     cmd.env("CARGO_TARGET_DIR", &prepared.build_target_dir);
-    if prepared.lockfile_reused {
-        cmd.arg("--locked");
-    }
+    cmd.arg("--locked");
     if opts.release {
         cmd.arg("--release");
     }
     if opts.verbose {
-        let locked = if prepared.lockfile_reused {
-            " --locked"
-        } else {
-            ""
-        };
         eprintln!(
-            "running: CARGO_TARGET_DIR={} cargo build{locked}{}",
+            "running: CARGO_TARGET_DIR={} cargo build --locked{}",
             prepared.build_target_dir.display(),
             if opts.release { " --release" } else { "" }
         );
@@ -443,8 +435,9 @@ pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
     }
     std::fs::copy(&built, &prepared.output_path)?;
     make_executable(&prepared.output_path)?;
-    run_signing_hooks(&prepared)?;
-    update_shared_launcher_lockfile(&prepared)?;
+    if opts.run_signing_hooks {
+        run_signing_hooks(&prepared)?;
+    }
 
     Ok(PackageResult {
         launcher_crate_dir: prepared.crate_dir,
@@ -573,12 +566,10 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
     let package_root = target_root.join("plushie-package");
     let crate_dir = package_root.join(&package_name);
     let build_target_dir = package_root.join("target");
-    let shared_lockfile = package_root.join(SHARED_LOCKFILE);
-    let shared_lockfile_fingerprint = package_root.join(SHARED_LOCKFILE_FINGERPRINT);
     let output_path = opts.out_path.map(Path::to_path_buf).unwrap_or_else(|| {
         target_root
             .join("plushie/package")
-            .join(executable_name(&safe_name(&loaded.manifest.app_id)))
+            .join(executable_name(&app_cache_name(&loaded.manifest.app_id)))
     });
 
     std::fs::create_dir_all(crate_dir.join("src"))?;
@@ -587,10 +578,9 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
         &launcher_cargo_toml(&package_name),
     )?;
     generator::write_if_changed(&crate_dir.join("src/main.rs"), &launcher_main_rs())?;
+    generator::write_if_changed(&crate_dir.join(GENERATED_LOCKFILE), LAUNCHER_LOCKFILE)?;
     generator::write_if_changed(&crate_dir.join(GENERATED_MANIFEST), &loaded.manifest_text)?;
     write_bytes_if_changed(&crate_dir.join(GENERATED_PAYLOAD), &loaded.payload)?;
-    let lockfile_reused =
-        reuse_shared_launcher_lockfile(&shared_lockfile, &shared_lockfile_fingerprint, &crate_dir)?;
 
     Ok(PreparedLauncher {
         crate_dir,
@@ -598,8 +588,6 @@ fn prepare_launcher_crate(opts: &PackageOpts<'_>) -> Result<PreparedLauncher> {
         manifest_dir: loaded.manifest_dir,
         package_name,
         output_path,
-        shared_lockfile,
-        lockfile_reused,
         signing_hooks: loaded
             .manifest
             .signing
@@ -640,57 +628,6 @@ fn run_signing_hooks(prepared: &PreparedLauncher) -> Result<()> {
 
 fn expand_signing_hook_arg(arg: &str, launcher_path: &Path) -> String {
     arg.replace("{launcher}", &launcher_path.display().to_string())
-}
-
-fn reuse_shared_launcher_lockfile(
-    shared_lockfile: &Path,
-    shared_lockfile_fingerprint: &Path,
-    crate_dir: &Path,
-) -> Result<bool> {
-    let lockfile = crate_dir.join(GENERATED_LOCKFILE);
-    let expected_fingerprint = launcher_lockfile_fingerprint();
-    let fingerprint = std::fs::read_to_string(shared_lockfile_fingerprint).unwrap_or_default();
-
-    if shared_lockfile.is_file() && fingerprint.trim() == expected_fingerprint {
-        let contents = std::fs::read_to_string(shared_lockfile).with_context(|| {
-            format!(
-                "failed to read shared launcher lockfile `{}`",
-                shared_lockfile.display()
-            )
-        })?;
-        generator::write_if_changed(&lockfile, &contents)?;
-        return Ok(true);
-    }
-
-    match std::fs::remove_file(&lockfile) {
-        Ok(()) => {}
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-        Err(err) => {
-            return Err(Error::Other(anyhow::anyhow!(
-                "failed to remove stale launcher lockfile `{}`: {err}",
-                lockfile.display()
-            )));
-        }
-    }
-    Ok(false)
-}
-
-fn update_shared_launcher_lockfile(prepared: &PreparedLauncher) -> Result<()> {
-    let crate_lockfile = prepared.crate_dir.join(GENERATED_LOCKFILE);
-    let contents = std::fs::read_to_string(&crate_lockfile).with_context(|| {
-        format!(
-            "failed to read generated launcher lockfile `{}`",
-            crate_lockfile.display()
-        )
-    })?;
-    generator::write_if_changed(&prepared.shared_lockfile, &contents)?;
-    generator::write_if_changed(
-        &prepared
-            .shared_lockfile
-            .with_file_name(SHARED_LOCKFILE_FINGERPRINT),
-        &(launcher_lockfile_fingerprint() + "\n"),
-    )?;
-    Ok(())
 }
 
 fn write_bytes_if_changed(path: &Path, content: &[u8]) -> Result<()> {
@@ -775,6 +712,7 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
         .ok_or_else(|| Error::Other(anyhow::anyhow!("target must be set")))?;
     require_nonempty("target", target)?;
     validate_package_target(target)?;
+    validate_current_package_target(target)?;
     require_nonempty("host_sdk", &manifest.host_sdk)?;
     if let Some(host_sdk_version) = &manifest.host_sdk_version {
         require_nonempty("host_sdk_version", host_sdk_version)?;
@@ -1008,6 +946,20 @@ fn validate_package_target(value: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_current_package_target(value: &str) -> Result<()> {
+    let current = current_package_target();
+    if value != current {
+        return Err(Error::Other(anyhow::anyhow!(
+            "target `{value}` does not match current build host `{current}`; cross-target package manifests are not supported yet"
+        )));
+    }
+    Ok(())
+}
+
+fn current_package_target() -> String {
+    format!("{}-{}", platform::os_name(), platform::arch_name())
+}
+
 fn clean_payload_relative_path(name: &str, value: &str) -> Result<PathBuf> {
     clean_relative_path(name, value, "payload-relative")
 }
@@ -1152,8 +1104,20 @@ fn safe_name(value: &str) -> String {
     }
 }
 
+fn app_cache_name(app_id: &str) -> String {
+    let hash = Sha256::digest(app_id.as_bytes());
+    format!(
+        "{}-{:016x}",
+        safe_name(app_id),
+        u64::from_be_bytes(hash[..8].try_into().expect("sha256 digest is long enough"))
+    )
+}
+
 fn package_name(app_id: &str) -> String {
-    format!("plushie-package-{}", safe_name(app_id).replace('.', "-"))
+    format!(
+        "plushie-package-{}",
+        app_cache_name(app_id).replace('.', "-")
+    )
 }
 
 fn executable_name(name: &str) -> String {
@@ -1196,11 +1160,6 @@ publish = false
 
 [workspace]"#
     )
-}
-
-fn launcher_lockfile_fingerprint() -> String {
-    let input = format!("{}\n{LAUNCHER_DEPENDENCIES}", launcher_package_toml());
-    format!("{:x}", Sha256::digest(input))
 }
 
 fn make_executable(path: &Path) -> Result<()> {
@@ -1358,7 +1317,7 @@ fn run() -> Result<u8> {
 fn ensure_payload(manifest: &Manifest) -> Result<PayloadRoot> {
     verify_payload(&manifest.payload)?;
     let hash = payload_hash(&manifest.payload)?;
-    let root = app_cache_root(manifest);
+    let root = app_cache_root(manifest)?;
     let dest = root.join(hash);
 
     if cache_entry_is_complete(&dest) {
@@ -1596,7 +1555,7 @@ fn cache_entry_is_complete(dest: &Path) -> bool {
 }
 
 fn prune_cache(manifest: &Manifest, current_hash: &str) -> Result<()> {
-    let root = app_cache_root(manifest);
+    let root = app_cache_root(manifest)?;
     let Ok(entries) = std::fs::read_dir(&root) else {
         return Ok(());
     };
@@ -1629,27 +1588,35 @@ fn prune_cache(manifest: &Manifest, current_hash: &str) -> Result<()> {
     Ok(())
 }
 
-fn app_cache_root(manifest: &Manifest) -> PathBuf {
-    cache_root().join("plushie/apps").join(safe_name(&manifest.app_id))
+fn app_cache_root(manifest: &Manifest) -> Result<PathBuf> {
+    Ok(cache_root()?.join("plushie/apps").join(app_cache_name(&manifest.app_id)))
 }
 
-fn cache_root() -> PathBuf {
+fn cache_root() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("PLUSHIE_CACHE_DIR") {
-        return PathBuf::from(path);
+        return absolutize(PathBuf::from(path));
     }
     if cfg!(windows) {
         if let Some(path) = std::env::var_os("LOCALAPPDATA")
             .or_else(|| std::env::var_os("APPDATA"))
             .or_else(|| std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join("AppData/Local").into_os_string()))
         {
-            return PathBuf::from(path);
+            return absolutize(PathBuf::from(path));
         }
     } else if let Some(path) = std::env::var_os("XDG_CACHE_HOME") {
-        return PathBuf::from(path);
+        return absolutize(PathBuf::from(path));
     } else if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home).join(".cache");
+        return absolutize(PathBuf::from(home).join(".cache"));
     }
-    std::env::temp_dir()
+    absolutize(std::env::temp_dir())
+}
+
+fn absolutize(path: PathBuf) -> Result<PathBuf> {
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Ok(std::env::current_dir()?.join(path))
+    }
 }
 
 fn absolute_payload_path(root: &Path, value: &str) -> PathBuf {
@@ -1710,6 +1677,15 @@ fn safe_name(value: &str) -> String {
     if out.is_empty() { "app".to_string() } else { out }
 }
 
+fn app_cache_name(app_id: &str) -> String {
+    let hash = Sha256::digest(app_id.as_bytes());
+    format!(
+        "{}-{:016x}",
+        safe_name(app_id),
+        u64::from_be_bytes(hash[..8].try_into().expect("sha256 digest is long enough"))
+    )
+}
+
 fn make_executable(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
@@ -1742,10 +1718,10 @@ mod tests {
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
-target = "linux-x86_64"
+target = "{}"
 host_sdk = "python"
-plushie_rust_version = "0.7.1"
-protocol_version = 1
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
 
 [start]
 working_dir = "."
@@ -1760,7 +1736,8 @@ kind = "stock"
 archive = "payload.tar.zst"
 hash = "{hash}"
 size = 7
-"#
+"#,
+            current_package_target()
         );
 
         let manifest = parse_manifest(&text).unwrap();
@@ -1770,14 +1747,15 @@ size = 7
 
     #[test]
     fn rejects_empty_start_command() {
-        let text = r#"
+        let text = format!(
+            r#"
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
-target = "linux-x86_64"
+target = "{}"
 host_sdk = "python"
-plushie_rust_version = "0.7.1"
-protocol_version = 1
+plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
+protocol_version = {EXPECTED_PROTOCOL_VERSION}
 
 [start]
 working_dir = "."
@@ -1791,9 +1769,11 @@ kind = "stock"
 [payload]
 archive = "payload.tar.zst"
 hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-"#;
+"#,
+            current_package_target()
+        );
 
-        let err = parse_manifest(text).unwrap_err();
+        let err = parse_manifest(&text).unwrap_err();
         assert!(err.to_string().contains("start.command"));
     }
 
@@ -1806,7 +1786,7 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
             "freebsd-x86_64",
         ] {
             let text = valid_manifest_text("").replace(
-                r#"target = "linux-x86_64""#,
+                &format!(r#"target = "{}""#, current_package_target()),
                 &format!(r#"target = "{target}""#),
             );
 
@@ -1817,14 +1797,27 @@ hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
     #[test]
     fn rejects_missing_package_target() {
-        let text = valid_manifest_text("").replace(
-            r#"target = "linux-x86_64"
-"#,
-            "",
-        );
+        let text = valid_manifest_text("")
+            .replace(&format!("target = \"{}\"\n", current_package_target()), "");
 
         let err = parse_manifest(&text).unwrap_err();
         assert!(err.to_string().contains("target"));
+    }
+
+    #[test]
+    fn rejects_package_target_for_a_different_host() {
+        let other_target = if current_package_target() == "linux-x86_64" {
+            "darwin-x86_64"
+        } else {
+            "linux-x86_64"
+        };
+        let text = valid_manifest_text("").replace(
+            &format!(r#"target = "{}""#, current_package_target()),
+            &format!(r#"target = "{other_target}""#),
+        );
+
+        let err = parse_manifest(&text).unwrap_err();
+        assert!(err.to_string().contains("current build host"));
     }
 
     #[test]
@@ -2204,7 +2197,7 @@ shell = true
             app_id: "com.example.notes".to_string(),
             app_name: None,
             app_version: "0.1.0".to_string(),
-            target: Some("linux-x86_64".to_string()),
+            target: Some(current_package_target()),
             host_sdk: "python".to_string(),
             host_sdk_version: None,
             plushie_rust_version: "0.7.1".to_string(),
@@ -2262,6 +2255,7 @@ shell = true
             manifest_path: &manifest,
             out_path: None,
             release: false,
+            run_signing_hooks: false,
             verbose: false,
         };
         let prepared = prepare_launcher_crate(&opts).unwrap();
@@ -2273,7 +2267,10 @@ shell = true
             prepared.build_target_dir,
             dir.path().join("target/plushie-package/target")
         );
-        assert!(!prepared.lockfile_reused);
+        assert_eq!(
+            std::fs::read_to_string(prepared.crate_dir.join(GENERATED_LOCKFILE)).unwrap(),
+            LAUNCHER_LOCKFILE
+        );
     }
 
     #[test]
@@ -2298,8 +2295,6 @@ shell = true
             manifest_dir: dir.path().to_path_buf(),
             package_name: "plushie-package-com-example-notes".to_string(),
             output_path: launcher.clone(),
-            shared_lockfile: dir.path().join(SHARED_LOCKFILE),
-            lockfile_reused: false,
             signing_hooks: vec![SigningHookManifest {
                 stage: "after-launcher-build".to_string(),
                 command: vec![
@@ -2334,8 +2329,6 @@ shell = true
             manifest_dir: dir.path().to_path_buf(),
             package_name: "plushie-package-com-example-notes".to_string(),
             output_path: dir.path().join("dist/notes"),
-            shared_lockfile: dir.path().join(SHARED_LOCKFILE),
-            lockfile_reused: false,
             signing_hooks: vec![SigningHookManifest {
                 stage: "after-launcher-build".to_string(),
                 command: vec!["sh".to_string(), "-c".to_string(), "exit 9".to_string()],
@@ -2384,6 +2377,18 @@ shell = true
     }
 
     #[test]
+    fn app_cache_names_include_hash_to_avoid_safe_name_collisions() {
+        assert_ne!(
+            app_cache_name("com.example/a"),
+            app_cache_name("com.example_a")
+        );
+        assert_eq!(
+            app_cache_name("com.example/a"),
+            app_cache_name("com.example/a")
+        );
+    }
+
+    #[test]
     fn launcher_manifest_uses_stable_crate_name_and_dynamic_binary_name() {
         let manifest = launcher_cargo_toml("plushie-package-com-example-notes");
 
@@ -2407,57 +2412,29 @@ shell = true
     }
 
     #[test]
-    fn prepares_generated_launcher_crate_with_reused_lockfile() {
+    fn prepares_generated_launcher_crate_replaces_stale_lockfile() {
         let dir = tempdir().unwrap();
         let manifest = write_sample_package(dir.path());
-        let package_root = dir.path().join("target/plushie-package");
-        std::fs::create_dir_all(&package_root).unwrap();
-        let lockfile_text = "# locked by previous package build\n";
-        std::fs::write(package_root.join(SHARED_LOCKFILE), lockfile_text).unwrap();
-        std::fs::write(
-            package_root.join(SHARED_LOCKFILE_FINGERPRINT),
-            launcher_lockfile_fingerprint() + "\n",
-        )
-        .unwrap();
-        let opts = PackageOpts {
-            manifest_path: &manifest,
-            out_path: None,
-            release: false,
-            verbose: false,
-        };
-
-        let prepared = prepare_launcher_crate(&opts).unwrap();
-
-        assert!(prepared.lockfile_reused);
-        assert_eq!(
-            std::fs::read_to_string(prepared.crate_dir.join(GENERATED_LOCKFILE)).unwrap(),
-            lockfile_text
-        );
-    }
-
-    #[test]
-    fn prepares_generated_launcher_crate_discards_stale_lockfile() {
-        let dir = tempdir().unwrap();
-        let manifest = write_sample_package(dir.path());
-        let crate_dir = dir
-            .path()
-            .join("target/plushie-package/plushie-package-com-example-notes");
+        let crate_dir = dir.path().join(format!(
+            "target/plushie-package/{}",
+            package_name("com.example.notes")
+        ));
         std::fs::create_dir_all(&crate_dir).unwrap();
         std::fs::write(crate_dir.join(GENERATED_LOCKFILE), "# stale\n").unwrap();
-        let package_root = dir.path().join("target/plushie-package");
-        std::fs::write(package_root.join(SHARED_LOCKFILE), "# stale shared\n").unwrap();
-        std::fs::write(package_root.join(SHARED_LOCKFILE_FINGERPRINT), "stale\n").unwrap();
         let opts = PackageOpts {
             manifest_path: &manifest,
             out_path: None,
             release: false,
+            run_signing_hooks: false,
             verbose: false,
         };
 
         let prepared = prepare_launcher_crate(&opts).unwrap();
 
-        assert!(!prepared.lockfile_reused);
-        assert!(!prepared.crate_dir.join(GENERATED_LOCKFILE).exists());
+        assert_eq!(
+            std::fs::read_to_string(prepared.crate_dir.join(GENERATED_LOCKFILE)).unwrap(),
+            LAUNCHER_LOCKFILE
+        );
     }
 
     #[test]
@@ -2468,7 +2445,7 @@ shell = true
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
-target = "linux-x86_64"
+target = "{}"
 host_sdk = "python"
 plushie_rust_version = "{}"
 protocol_version = {}
@@ -2486,7 +2463,9 @@ kind = "stock"
 archive = "payload.tar.zst"
 hash = "{hash}"
 "#,
-            EXPECTED_PLUSHIE_RUST_VERSION, EXPECTED_PROTOCOL_VERSION
+            current_package_target(),
+            EXPECTED_PLUSHIE_RUST_VERSION,
+            EXPECTED_PROTOCOL_VERSION
         );
 
         let err = parse_manifest(&text).unwrap_err();
@@ -2632,7 +2611,7 @@ hash = "{hash}"
 schema_version = 1
 app_id = ".."
 app_version = "0.1.0"
-target = "linux-x86_64"
+target = "{}"
 host_sdk = "python"
 plushie_rust_version = "{}"
 protocol_version = {}
@@ -2650,7 +2629,9 @@ kind = "stock"
 archive = "payload.tar.zst"
 hash = "sha256:{hash}"
 "#,
-            EXPECTED_PLUSHIE_RUST_VERSION, EXPECTED_PROTOCOL_VERSION
+            current_package_target(),
+            EXPECTED_PLUSHIE_RUST_VERSION,
+            EXPECTED_PROTOCOL_VERSION
         );
 
         let err = parse_manifest(&text).unwrap_err();
@@ -2702,7 +2683,7 @@ hash = "sha256:{hash}"
 schema_version = 1
 app_id = "com.example.notes"
 app_version = "0.1.0"
-target = "linux-x86_64"
+target = "{}"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
@@ -2719,7 +2700,8 @@ kind = "stock"
 [payload]
 archive = "payload.tar.zst"
 hash = "{hash}"
-"#
+"#,
+                current_package_target()
             ),
         )
         .unwrap();
@@ -2733,7 +2715,7 @@ hash = "{hash}"
 schema_version = {MANIFEST_SCHEMA_VERSION}
 app_id = "com.example.notes"
 app_version = "0.1.0"
-target = "linux-x86_64"
+target = "{}"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
@@ -2751,7 +2733,8 @@ kind = "stock"
 [payload]
 archive = "payload.tar.zst"
 hash = "{payload_hash}"
-"#
+"#,
+            current_package_target()
         )
     }
 
@@ -2772,7 +2755,7 @@ hash = "{payload_hash}"
 schema_version = {MANIFEST_SCHEMA_VERSION}
 app_id = "com.example.notes"
 app_version = "0.1.0"
-target = "linux-x86_64"
+target = "{}"
 host_sdk = "python"
 plushie_rust_version = "{EXPECTED_PLUSHIE_RUST_VERSION}"
 protocol_version = {EXPECTED_PROTOCOL_VERSION}
@@ -2789,7 +2772,8 @@ kind = "stock"
 [payload]
 archive = "{value}"
 hash = "{payload_hash}"
-"#
+"#,
+                    current_package_target()
                 )
             }
             _ => unreachable!("unknown path field"),
@@ -2802,7 +2786,7 @@ hash = "{payload_hash}"
             app_id: "com.example.notes".to_string(),
             app_name: None,
             app_version: "0.1.0".to_string(),
-            target: Some("linux-x86_64".to_string()),
+            target: Some(current_package_target()),
             host_sdk: "python".to_string(),
             host_sdk_version: None,
             plushie_rust_version: EXPECTED_PLUSHIE_RUST_VERSION.to_string(),

@@ -4,7 +4,7 @@
 //! Plushie wrapper step: validate a package manifest, embed its payload
 //! archive in the reusable launcher, and write the portable artifact.
 
-use crate::{Error, Result, package_runtime, platform};
+use crate::{Error, Result, package_runtime, platform, tool_identity};
 use anyhow::Context;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -391,6 +391,7 @@ fn package_warnings(manifest: &PackageManifest) -> Vec<PackageWarning> {
 /// launcher cannot be found, or the final binary cannot be written.
 pub fn build_launcher(opts: &PackageOpts<'_>) -> Result<PackageResult> {
     let prepared = prepare_portable_launcher(opts)?;
+    validate_launcher_template_identity(&prepared.launcher_template_path)?;
     if opts.verbose {
         eprintln!(
             "plushie: embedding package data into launcher template {}",
@@ -615,6 +616,48 @@ fn canonical_launcher_template(path: &Path) -> Result<PathBuf> {
         )));
     }
     Ok(path)
+}
+
+fn validate_launcher_template_identity(path: &Path) -> Result<()> {
+    if package_runtime::has_embedded_package(path)? {
+        return Err(Error::Other(anyhow::anyhow!(
+            "launcher template `{}` already contains an embedded Plushie package; use a pristine `plushie-launcher` from `bin/plushie tools sync --required-version {}` or pass --launcher PATH",
+            path.display(),
+            EXPECTED_PLUSHIE_RUST_VERSION
+        )));
+    }
+
+    let identity = tool_identity::probe_tool_identity(path, Duration::from_secs(2))
+        .with_context(|| format!("probe launcher template `{}`", path.display()))?;
+    if identity.tool != "plushie-launcher" {
+        return Err(Error::Other(anyhow::anyhow!(
+            "launcher template `{}` identifies as {}, expected plushie-launcher",
+            path.display(),
+            identity.tool
+        )));
+    }
+    if identity.plushie_rust_version != EXPECTED_PLUSHIE_RUST_VERSION {
+        return Err(Error::Other(anyhow::anyhow!(
+            "launcher template `{}` is version {} but package tool is {}; run `bin/plushie tools sync --required-version {}`",
+            path.display(),
+            identity.plushie_rust_version,
+            EXPECTED_PLUSHIE_RUST_VERSION,
+            EXPECTED_PLUSHIE_RUST_VERSION
+        )));
+    }
+
+    let current = tool_identity::current_tool_identity("plushie");
+    if identity.target != current.target {
+        return Err(Error::Other(anyhow::anyhow!(
+            "launcher template `{}` target {} does not match package tool target {}; run `bin/plushie tools sync --required-version {}`",
+            path.display(),
+            identity.target,
+            current.target,
+            EXPECTED_PLUSHIE_RUST_VERSION
+        )));
+    }
+
+    Ok(())
 }
 
 fn validate_distinct_launcher_output(template_path: &Path, output_path: &Path) -> Result<()> {
@@ -1759,6 +1802,27 @@ shell = true
             Err(err) => err,
         };
         assert!(err.to_string().contains("must not overwrite"));
+    }
+
+    #[test]
+    fn rejects_launcher_template_without_identity() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let launcher_template = write_launcher_template(dir.path());
+
+        let opts = PackageOpts {
+            manifest_path: &manifest,
+            out_path: None,
+            launcher_path: Some(&launcher_template),
+            run_signing_hooks: false,
+            verbose: false,
+        };
+
+        let err = match build_launcher(&opts) {
+            Ok(_) => panic!("expected launcher identity rejection"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("probe launcher template"));
     }
 
     #[test]

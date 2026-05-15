@@ -191,6 +191,41 @@ fn real_payload_launcher_postcheck_and_replacement_use_embedded_payload() {
     assert_eq!(std::fs::read_to_string(&marker).unwrap(), "B\n");
 }
 
+#[cfg(unix)]
+#[test]
+fn portable_launcher_rejects_packaged_launcher_as_template() {
+    let dir = tempdir().unwrap();
+    let package_dir = dir.path().join("package");
+    std::fs::create_dir_all(&package_dir).unwrap();
+
+    let manifest_a = write_package(&package_dir, "A");
+    let launcher_a = dir.path().join("bin").join("launcher-a");
+    let built_a = build_launcher(&PackageOpts {
+        manifest_path: &manifest_a,
+        out_path: Some(&launcher_a),
+        launcher_path: Some(launcher_template()),
+        run_signing_hooks: false,
+        verbose: false,
+    })
+    .unwrap();
+
+    let manifest_b = write_package(&package_dir, "B");
+    let launcher_b = dir.path().join("bin").join("launcher-b");
+    let err = build_launcher(&PackageOpts {
+        manifest_path: &manifest_b,
+        out_path: Some(&launcher_b),
+        launcher_path: Some(&built_a.binary_path),
+        run_signing_hooks: false,
+        verbose: false,
+    })
+    .unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("already contains an embedded Plushie package")
+    );
+}
+
 fn launcher_template() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_plushie-launcher"))
 }

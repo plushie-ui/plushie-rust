@@ -42,6 +42,17 @@ pub fn append_embedded_package(
     Ok(())
 }
 
+/// Return whether an executable already contains an embedded Plushie package.
+///
+/// # Errors
+///
+/// Returns an error when the executable cannot be read.
+pub fn has_embedded_package(executable_path: &Path) -> Result<bool> {
+    let bytes = std::fs::read(executable_path)
+        .with_context(|| format!("read executable `{}`", executable_path.display()))?;
+    Ok(bytes.ends_with(EMBEDDED_PACKAGE_MAGIC))
+}
+
 /// Run embedded package data from an executable.
 ///
 /// Returns `Ok(None)` when the executable has no embedded Plushie

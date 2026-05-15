@@ -1353,7 +1353,25 @@ fn download_renderer(
     force: bool,
     source_configured: bool,
 ) -> Result<()> {
-    let dl_target = download::DownloadTarget::new(project_dir, version);
+    let release_base_url = download::release_base_url()?;
+    download_renderer_with_base_url(
+        project_dir,
+        version,
+        force,
+        source_configured,
+        &release_base_url,
+    )
+}
+
+fn download_renderer_with_base_url(
+    project_dir: &Path,
+    version: &str,
+    force: bool,
+    source_configured: bool,
+    release_base_url: &str,
+) -> Result<()> {
+    let dl_target =
+        download::DownloadTarget::new_with_base_url(project_dir, version, release_base_url)?;
     println!(
         "plushie: resolved download platform as {}-{}",
         platform::os_name(),
@@ -1682,8 +1700,11 @@ fn run_with_cargo_watch(
 #[cfg(test)]
 mod tests {
     use super::{
-        BUILTIN_TYPE_NAMES, check_native_tools, resolve_required_version, target_dir_from,
+        BUILTIN_TYPE_NAMES, check_native_tools, download_renderer_with_base_url,
+        resolve_required_version, target_dir_from,
     };
+    use crate::platform;
+    use sha2::{Digest, Sha256};
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -1692,6 +1713,35 @@ mod tests {
             BUILTIN_TYPE_NAMES.as_ptr(),
             plushie_core::BUILTIN_TYPE_NAMES.as_ptr()
         ));
+    }
+
+    #[test]
+    fn download_renderer_installs_from_file_release() {
+        let release = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let version = "0.0.0-test";
+        let version_dir = release.path().join(format!("v{version}"));
+        std::fs::create_dir_all(&version_dir).unwrap();
+
+        let artifact = version_dir.join(platform::download_name());
+        let bytes = b"fake renderer";
+        std::fs::write(&artifact, bytes).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let sidecar = format!("{:x}  {}\n", hasher.finalize(), platform::download_name());
+        std::fs::write(format!("{}.sha256", artifact.display()), sidecar).unwrap();
+
+        download_renderer_with_base_url(
+            project.path(),
+            version,
+            false,
+            false,
+            &format!("file://{}", release.path().display()),
+        )
+        .unwrap();
+
+        let installed = project.path().join("bin").join(platform::renderer_name());
+        assert_eq!(std::fs::read(installed).unwrap(), bytes);
     }
 
     #[test]

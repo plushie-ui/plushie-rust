@@ -6,12 +6,15 @@
 //! `wire_discovery` can pick it up.
 
 use crate::{Error, Result, platform};
+use anyhow::Context;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Canonical base URL for Plushie renderer releases.
 pub const RELEASE_BASE_URL: &str = "https://github.com/plushie-ui/plushie-rust/releases/download";
+/// Environment variable that overrides the release base URL.
+pub const RELEASE_BASE_URL_ENV: &str = "PLUSHIE_RELEASE_BASE_URL";
 const MAX_DOWNLOAD_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Resolved paths for the download target.
@@ -33,21 +36,73 @@ impl DownloadTarget {
     /// `project_dir` is the app directory. The release artifact name
     /// follows the `{os}-{arch}` convention, while the local installed
     /// filename is stable.
-    #[must_use]
-    pub fn new(project_dir: &Path, version: &str) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Other`] when `PLUSHIE_RELEASE_BASE_URL` is not a
+    /// supported URL.
+    pub fn new(project_dir: &Path, version: &str) -> Result<Self> {
+        let base_url = release_base_url()?;
+        Self::new_with_base_url(project_dir, version, &base_url)
+    }
+
+    /// Compute paths + URLs using an explicit release base URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Other`] when `base_url` is not supported.
+    pub fn new_with_base_url(project_dir: &Path, version: &str, base_url: &str) -> Result<Self> {
+        let base_url = validate_release_base_url(base_url)?;
         let download_name = platform::download_name();
         let bin_dir = project_dir.join("bin");
         let binary_path = bin_dir.join(platform::renderer_name());
         let sha256_path = bin_dir.join(format!("{}.sha256", platform::renderer_name()));
-        let binary_url = format!("{RELEASE_BASE_URL}/v{version}/{download_name}");
+        let binary_url = format!("{base_url}/v{version}/{download_name}");
         let sha256_url = format!("{binary_url}.sha256");
-        Self {
+        Ok(Self {
             binary_path,
             sha256_path,
             binary_url,
             sha256_url,
-        }
+        })
     }
+}
+
+/// Resolve the release base URL from the environment.
+///
+/// # Errors
+///
+/// Returns [`Error::Other`] when `PLUSHIE_RELEASE_BASE_URL` is not supported.
+pub fn release_base_url() -> Result<String> {
+    let base_url = std::env::var(RELEASE_BASE_URL_ENV).unwrap_or_else(|_| RELEASE_BASE_URL.into());
+    validate_release_base_url(&base_url)
+}
+
+/// Validate a release base URL and return it without trailing slashes.
+///
+/// `https` is the production path. `file` and loopback `http` are
+/// allowed so release downloads can be tested without publishing
+/// artifacts.
+///
+/// # Errors
+///
+/// Returns [`Error::Other`] when the scheme is not supported.
+pub fn validate_release_base_url(base_url: &str) -> Result<String> {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err(Error::Other(anyhow::anyhow!(
+            "{RELEASE_BASE_URL_ENV} must not be empty"
+        )));
+    }
+    if trimmed.starts_with("https://") || trimmed.starts_with("file://") {
+        return Ok(trimmed.to_string());
+    }
+    if is_loopback_http_url(trimmed) {
+        return Ok(trimmed.to_string());
+    }
+    Err(Error::Other(anyhow::anyhow!(
+        "{RELEASE_BASE_URL_ENV} must use https://, file://, or loopback http://"
+    )))
 }
 
 /// Fetch `url` into memory, returning the raw bytes.
@@ -56,6 +111,9 @@ impl DownloadTarget {
 ///
 /// Wraps transport + HTTP errors in [`Error::Other`].
 pub fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
+    if url.starts_with("file://") {
+        return fetch_file_url(url);
+    }
     let response = ureq::get(url)
         .call()
         .map_err(|e| anyhow::anyhow!("GET {url} failed: {e}"))?;
@@ -69,6 +127,48 @@ pub fn fetch_bytes(url: &str) -> Result<Vec<u8>> {
         )));
     }
     Ok(bytes)
+}
+
+fn fetch_file_url(url: &str) -> Result<Vec<u8>> {
+    let path = file_url_path(url)?;
+    let mut file = std::fs::File::open(&path)
+        .with_context(|| format!("open file URL `{url}` at `{}`", path.display()))?;
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take(MAX_DOWNLOAD_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
+        return Err(Error::Other(anyhow::anyhow!(
+            "download from {url} exceeded {} bytes",
+            MAX_DOWNLOAD_BYTES
+        )));
+    }
+    Ok(bytes)
+}
+
+fn file_url_path(url: &str) -> Result<PathBuf> {
+    let rest = url
+        .strip_prefix("file://")
+        .ok_or_else(|| anyhow::anyhow!("file URL must start with file://"))?;
+    let path = rest.strip_prefix("localhost").unwrap_or(rest);
+    if !path.starts_with('/') {
+        return Err(Error::Other(anyhow::anyhow!(
+            "file URL must use an absolute path"
+        )));
+    }
+    Ok(PathBuf::from(path))
+}
+
+fn is_loopback_http_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let host_port = rest.split('/').next().unwrap_or_default();
+    let host = host_port
+        .strip_prefix('[')
+        .and_then(|v| v.split(']').next())
+        .unwrap_or_else(|| host_port.split(':').next().unwrap_or_default());
+    matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
 /// Verify that `binary` hashes to the SHA-256 recorded in
@@ -153,10 +253,39 @@ mod tests {
 
     #[test]
     fn target_resolves_paths_and_urls() {
-        let target = DownloadTarget::new(Path::new("/project"), "0.6.1");
+        let target =
+            DownloadTarget::new_with_base_url(Path::new("/project"), "0.6.1", RELEASE_BASE_URL)
+                .unwrap();
         assert!(target.binary_url.contains("v0.6.1"));
         assert!(target.sha256_url.ends_with(".sha256"));
         assert!(target.binary_path.starts_with("/project/bin"));
+    }
+
+    #[test]
+    fn target_accepts_file_release_base_url() {
+        let target = DownloadTarget::new_with_base_url(
+            Path::new("/project"),
+            "0.6.1",
+            "file:///tmp/mirror/",
+        )
+        .unwrap();
+        assert!(target.binary_url.starts_with("file:///tmp/mirror/v0.6.1/"));
+        assert!(!target.binary_url.contains("//v0.6.1"));
+    }
+
+    #[test]
+    fn rejects_remote_http_release_base_url() {
+        let err = validate_release_base_url("http://example.com/releases").unwrap_err();
+        assert!(err.to_string().contains("loopback"));
+    }
+
+    #[test]
+    fn fetches_file_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("asset");
+        std::fs::write(&path, b"release bytes").unwrap();
+        let bytes = fetch_bytes(&format!("file://{}", path.display())).unwrap();
+        assert_eq!(bytes, b"release bytes");
     }
 
     #[test]

@@ -1,7 +1,7 @@
-//! Rust SDK-owned standalone package staging.
+//! Rust SDK-owned standalone package assembly.
 //!
 //! This module builds the Rust app host binary with wire support,
-//! stages it with a payload-local renderer, writes the shared
+//! assembles it with a payload-local renderer, writes the shared
 //! `plushie-package.toml`, and produces the payload archive consumed
 //! by [`crate::package`].
 
@@ -20,9 +20,9 @@ const DEFAULT_ICON_NAME: &str = "plushie-checkbox-512x512.png";
 const HOST_SDK: &str = "rust";
 const RENDERER_SOURCE: &str = "local-build";
 
-/// Options for staging a Rust SDK standalone package.
+/// Options for assembling a Rust SDK standalone package.
 #[derive(Debug)]
-pub struct RustPackageOpts<'a> {
+pub struct RustPackageAssembleOpts<'a> {
     /// Path to the Rust app manifest.
     pub manifest_path: &'a Path,
     /// Path to the renderer binary to copy into the payload.
@@ -53,14 +53,14 @@ pub struct RustPackageOpts<'a> {
     pub verbose: bool,
 }
 
-/// Result of staging a Rust SDK standalone package.
+/// Result of assembling a Rust SDK standalone package.
 #[derive(Debug)]
-pub struct RustPackageResult {
+pub struct RustPackageAssembleResult {
     /// Generated package manifest path.
     pub manifest_path: PathBuf,
     /// Generated payload archive path.
     pub payload_archive_path: PathBuf,
-    /// Payload staging directory.
+    /// Payload assembly directory.
     pub payload_dir: PathBuf,
     /// Built host binary copied into the payload.
     pub host_payload_path: PathBuf,
@@ -125,14 +125,16 @@ struct PayloadManifest {
     size: u64,
 }
 
-/// Build and stage a Rust SDK standalone package payload.
+/// Build and assemble a Rust SDK standalone package payload.
 ///
 /// # Errors
 ///
 /// Returns an error when Cargo metadata fails, the host build fails,
 /// files cannot be copied, the payload cannot be archived, or the
 /// generated shared package manifest does not pass precheck.
-pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResult> {
+pub fn assemble_rust_package(
+    opts: &RustPackageAssembleOpts<'_>,
+) -> Result<RustPackageAssembleResult> {
     ensure_current_host_target()?;
     if let Some(source_path) = opts.source_path {
         write_host_cargo_config(opts.manifest_path, source_path)?;
@@ -205,7 +207,7 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
     generator::write_if_changed(&manifest_path, &manifest_text)?;
     package::precheck_package(&manifest_path)?;
 
-    Ok(RustPackageResult {
+    Ok(RustPackageAssembleResult {
         manifest_path,
         payload_archive_path,
         payload_dir,
@@ -221,7 +223,7 @@ pub fn stage_rust_package(opts: &RustPackageOpts<'_>) -> Result<RustPackageResul
 ///
 /// Returns an error when Cargo metadata fails or the template cannot be
 /// written.
-pub fn write_rust_package_config(opts: &RustPackageOpts<'_>) -> Result<PathBuf> {
+pub fn write_rust_package_config(opts: &RustPackageAssembleOpts<'_>) -> Result<PathBuf> {
     let metadata = cargo_metadata(opts)?;
     let package = package_for_manifest(&metadata, opts.manifest_path)?;
     let app_info = app_info(&metadata, package, opts)?;
@@ -242,7 +244,7 @@ fn default_package_config_path(manifest_path: &Path) -> PathBuf {
 }
 
 fn resolve_start_config(
-    opts: &RustPackageOpts<'_>,
+    opts: &RustPackageAssembleOpts<'_>,
     app_info: &AppInfo,
 ) -> Result<package::PackageStartConfig> {
     let explicit_config = opts.package_config.map(Path::to_path_buf);
@@ -303,7 +305,7 @@ fn write_host_cargo_config(manifest_path: &Path, source_path: &Path) -> Result<(
     generator::write_if_changed(&manifest_dir.join(".cargo/config.toml"), &body)
 }
 
-fn cargo_metadata(opts: &RustPackageOpts<'_>) -> Result<Metadata> {
+fn cargo_metadata(opts: &RustPackageAssembleOpts<'_>) -> Result<Metadata> {
     let manifest_dir = opts
         .manifest_path
         .parent()
@@ -338,7 +340,10 @@ fn package_for_manifest<'a>(metadata: &'a Metadata, manifest_path: &Path) -> Res
     )))
 }
 
-fn apply_feature_opts(cmd: &mut cargo_metadata::MetadataCommand, opts: &RustPackageOpts<'_>) {
+fn apply_feature_opts(
+    cmd: &mut cargo_metadata::MetadataCommand,
+    opts: &RustPackageAssembleOpts<'_>,
+) {
     let features = host_features(opts);
     if !features.is_empty() {
         cmd.features(CargoOpt::SomeFeatures(features));
@@ -351,7 +356,11 @@ fn apply_feature_opts(cmd: &mut cargo_metadata::MetadataCommand, opts: &RustPack
     }
 }
 
-fn app_info(metadata: &Metadata, package: &Package, opts: &RustPackageOpts<'_>) -> Result<AppInfo> {
+fn app_info(
+    metadata: &Metadata,
+    package: &Package,
+    opts: &RustPackageAssembleOpts<'_>,
+) -> Result<AppInfo> {
     let target = select_bin_target(package, opts.bin)?;
     let app_id = opts
         .app_id
@@ -433,7 +442,7 @@ fn plushie_metadata_string(package: &Package, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn build_host(opts: &RustPackageOpts<'_>, app_info: &AppInfo) -> Result<()> {
+fn build_host(opts: &RustPackageAssembleOpts<'_>, app_info: &AppInfo) -> Result<()> {
     let manifest_dir = opts
         .manifest_path
         .parent()
@@ -508,7 +517,7 @@ fn build_host(opts: &RustPackageOpts<'_>, app_info: &AppInfo) -> Result<()> {
     Ok(())
 }
 
-/// Reject host-target overrides until package assemble owns cross-target staging.
+/// Reject host-target overrides until package assemble owns cross-target assembly.
 ///
 /// # Errors
 ///
@@ -567,7 +576,7 @@ fn find_target_specific_host_binary(expected: &Path) -> Option<PathBuf> {
     None
 }
 
-fn host_features(opts: &RustPackageOpts<'_>) -> Vec<String> {
+fn host_features(opts: &RustPackageAssembleOpts<'_>) -> Vec<String> {
     let mut features = opts.features.to_vec();
     if !features.iter().any(|feature| feature == "plushie/wire") {
         features.push("plushie/wire".to_string());
@@ -928,7 +937,7 @@ wire = []
         let manifest_path = dir.path().join("Cargo.toml");
         let renderer_path = dir.path().join("renderer");
         let out_dir = dir.path().join("dist");
-        let opts = RustPackageOpts {
+        let opts = RustPackageAssembleOpts {
             manifest_path: &manifest_path,
             renderer_path: &renderer_path,
             source_path: None,
@@ -957,7 +966,7 @@ wire = []
         let manifest_path = dir.path().join("Cargo.toml");
         let renderer_path = dir.path().join("renderer");
         let features = vec![String::from("demo/extra")];
-        let opts = RustPackageOpts {
+        let opts = RustPackageAssembleOpts {
             manifest_path: &manifest_path,
             renderer_path: &renderer_path,
             source_path: None,
@@ -1030,7 +1039,7 @@ forward_env = ["PATH"]
 "#,
         )
         .unwrap();
-        let opts = RustPackageOpts {
+        let opts = RustPackageAssembleOpts {
             manifest_path: &manifest_path,
             renderer_path: &renderer_path,
             source_path: None,

@@ -119,7 +119,7 @@ impl PackageWarning {
                 "package manifest has no platform.icon; the launcher can still be built, \
                  but platform bundles and update metadata may have no app icon. Add an icon \
                  to the payload and set [platform].icon, or run `cargo plushie default-icons \
-                 --out <payload>/assets` while staging."
+                 --out <payload>/assets` during assembly."
             }
         }
     }
@@ -221,7 +221,7 @@ struct SigningManifest {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SigningHookManifest {
-    stage: String,
+    phase: String,
     command: Vec<String>,
 }
 
@@ -620,15 +620,15 @@ fn run_signing_hooks(prepared: &PreparedLauncher) -> Result<()> {
             .status()
             .with_context(|| {
                 format!(
-                    "failed to run signing hook `{}` for stage `{}`",
-                    program, hook.stage
+                    "failed to run signing hook `{}` for phase `{}`",
+                    program, hook.phase
                 )
             })?;
         if !status.success() {
             return Err(Error::Other(anyhow::anyhow!(
-                "signing hook `{}` for stage `{}` failed with status {}",
+                "signing hook `{}` for phase `{}` failed with status {}",
                 program,
-                hook.stage,
+                hook.phase,
                 status
             )));
         }
@@ -838,12 +838,12 @@ fn validate_signing_metadata(manifest: &PackageManifest) -> Result<()> {
     };
 
     for hook in &signing.hooks {
-        require_nonempty("signing.hooks.stage", &hook.stage)?;
-        match hook.stage.as_str() {
+        require_nonempty("signing.hooks.phase", &hook.phase)?;
+        match hook.phase.as_str() {
             "after-launcher-build" => {}
             value => {
                 return Err(Error::Other(anyhow::anyhow!(
-                    "signing hook stage must be `after-launcher-build`, got `{value}`"
+                    "signing hook phase must be `after-launcher-build`, got `{value}`"
                 )));
             }
         }
@@ -2050,7 +2050,7 @@ channel = "stable"
 feed_url = "https://example.com/notes/updates.json"
 
 [[signing.hooks]]
-stage = "after-launcher-build"
+phase = "after-launcher-build"
 command = ["codesign", "--sign", "Developer ID Application: Example Inc.", "{launcher}"]
 "#,
         );
@@ -2141,17 +2141,17 @@ feed_url = " "
         for metadata in [
             r#"
 [[signing.hooks]]
-stage = "before-launcher-build"
+phase = "before-launcher-build"
 command = ["codesign"]
 "#,
             r#"
 [[signing.hooks]]
-stage = "after-launcher-build"
+phase = "after-launcher-build"
 command = []
 "#,
             r#"
 [[signing.hooks]]
-stage = "after-launcher-build"
+phase = "after-launcher-build"
 command = ["codesign", ""]
 "#,
         ] {
@@ -2196,7 +2196,7 @@ hook = []
             (
                 r#"
 [[signing.hooks]]
-stage = "after-launcher-build"
+phase = "after-launcher-build"
 command = ["codesign"]
 shell = true
 "#,
@@ -2339,7 +2339,7 @@ shell = true
             package_name: "plushie-package-com-example-notes".to_string(),
             output_path: launcher.clone(),
             signing_hooks: vec![SigningHookManifest {
-                stage: "after-launcher-build".to_string(),
+                phase: "after-launcher-build".to_string(),
                 command: vec![
                     "sh".to_string(),
                     "-c".to_string(),
@@ -2373,7 +2373,7 @@ shell = true
             package_name: "plushie-package-com-example-notes".to_string(),
             output_path: dir.path().join("dist/notes"),
             signing_hooks: vec![SigningHookManifest {
-                stage: "after-launcher-build".to_string(),
+                phase: "after-launcher-build".to_string(),
                 command: vec!["sh".to_string(), "-c".to_string(), "exit 9".to_string()],
             }],
         };

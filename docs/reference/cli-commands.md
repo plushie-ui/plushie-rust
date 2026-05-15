@@ -288,7 +288,7 @@ channel = "stable"
 feed_url = "https://example.com/notes/updates.json"
 
 [[signing.hooks]]
-stage = "after-launcher-build"
+phase = "after-launcher-build"
 command = ["codesign", "--sign", "Developer ID Application: Example Inc.", "{launcher}"]
 
 [payload]
@@ -327,7 +327,7 @@ by the launcher.
 `target` is a normalized package target such as `linux-x86_64`,
 `darwin-aarch64`, or `windows-x86_64`. It must match the current build
 host. Cross-target package manifests are rejected until target-aware
-staging is implemented. `payload.archive` is manifest-relative.
+assembly is implemented. `payload.archive` is manifest-relative.
 `renderer.path`, `start.working_dir`, and `start.command[0]` are
 app-package-relative paths. Absolute paths and parent traversal are
 rejected so a standalone package cannot silently point at a global
@@ -363,7 +363,7 @@ one shared metadata shape for SDK packagers and later platform packaging
 layers. `platform.icon` is payload-relative and must exist in the
 archive when it is set. If `platform.icon` is missing,
 `cargo plushie package portable` prints a warning and continues. SDK package
-commands should add a real app icon or stage Plushie's bundled defaults
+commands should add a real app icon or include Plushie's bundled defaults
 before archiving the payload. Update metadata is descriptive; the
 generated launcher does not download updates. Signing hooks are
 structured argv declarations that `cargo plushie package portable` can run after
@@ -441,7 +441,7 @@ cargo plushie package check --manifest plushie-package.toml --postcheck
 
 ## cargo plushie package assemble
 
-Build a Rust SDK app as a wire-mode host payload, stage it with a
+Build a Rust SDK app as a wire-mode host payload, assemble it with a
 payload-local renderer, write `plushie-package.toml`, and build the
 shared standalone launcher.
 
@@ -489,10 +489,10 @@ If `--icon` is omitted, the command writes Plushie's bundled default
 icons into `assets/` before archiving and points `[platform].icon` at
 the large PNG.
 
-`package assemble` only stages packages for the current build host. Cargo
+`package assemble` only assembles packages for the current build host. Cargo
 cross-target builds, including `CARGO_BUILD_TARGET` and build-target
 configuration that places the host binary under a target-triple
-directory, are rejected until target-aware staging is implemented.
+directory, are rejected until target-aware assembly is implemented.
 
 `package assemble` reads `plushie-package.config.toml` next to the app
 manifest when present. Pass `--package-config` to use another path. The
@@ -672,7 +672,7 @@ a non-zero exit from `cargo plushie build`.
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |
 | `PLUSHIE_SOCKET` | `doctor` | Reported in the diagnostic report; consumed by the SDK for socket-mode rendering |
 | `PLUSHIE_CACHE_DIR` | generated package launcher | Overrides the extraction cache root. Relative values are made absolute from the launcher's current working directory |
-| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package assemble` | Overrides the `target/` directory used for renderer output, discovery, generated launcher crates, and Rust package staging. Relative values are resolved from the cargo-plushie invocation directory |
+| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package assemble` | Overrides the `target/` directory used for renderer output, discovery, generated launcher crates, and Rust package assembly. Relative values are resolved from the cargo-plushie invocation directory |
 | `CARGO` | `build`, `run`, `package`, `package assemble` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
 
 ## See also

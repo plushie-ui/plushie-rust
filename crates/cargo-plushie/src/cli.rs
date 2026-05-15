@@ -377,22 +377,23 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
             .out_dir
             .clone()
             .unwrap_or_else(|| target_dir(&manifest_dir).join("plushie/rust-package"));
-        let path = package_rust::write_rust_package_config(&package_rust::RustPackageOpts {
-            manifest_path: &manifest_path,
-            renderer_path: Path::new(""),
-            source_path: None,
-            out_dir: &out_dir,
-            package_config: args.package_config.as_deref(),
-            bin: args.bin.as_deref(),
-            app_id: args.app_id.as_deref(),
-            app_name: args.app_name.as_deref(),
-            icon: args.icon.as_deref(),
-            features: &args.features,
-            no_default_features: args.no_default_features,
-            all_features: args.all_features,
-            release: args.release,
-            verbose: args.verbose,
-        })?;
+        let path =
+            package_rust::write_rust_package_config(&package_rust::RustPackageAssembleOpts {
+                manifest_path: &manifest_path,
+                renderer_path: Path::new(""),
+                source_path: None,
+                out_dir: &out_dir,
+                package_config: args.package_config.as_deref(),
+                bin: args.bin.as_deref(),
+                app_id: args.app_id.as_deref(),
+                app_name: args.app_name.as_deref(),
+                icon: args.icon.as_deref(),
+                features: &args.features,
+                no_default_features: args.no_default_features,
+                all_features: args.all_features,
+                release: args.release,
+                verbose: args.verbose,
+            })?;
         println!(
             "plushie: wrote package config template at {}",
             path.display()
@@ -434,7 +435,7 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
         .out_dir
         .clone()
         .unwrap_or_else(|| target_dir(&manifest_dir).join("plushie/rust-package"));
-    let staged = package_rust::stage_rust_package(&package_rust::RustPackageOpts {
+    let assembled = package_rust::assemble_rust_package(&package_rust::RustPackageAssembleOpts {
         manifest_path: &manifest_path,
         renderer_path: &renderer_path,
         source_path: source_path.as_deref(),
@@ -452,40 +453,40 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
     })?;
 
     println!(
-        "plushie: staged Rust package manifest at {}",
-        staged.manifest_path.display()
+        "plushie: assembled Rust package manifest at {}",
+        assembled.manifest_path.display()
     );
     println!(
-        "plushie: staged Rust payload at {}",
-        staged.payload_archive_path.display()
+        "plushie: assembled Rust payload at {}",
+        assembled.payload_archive_path.display()
     );
     println!(
-        "plushie: staged Rust package icon at {}",
-        staged.icon_payload_path.display()
+        "plushie: assembled Rust package icon at {}",
+        assembled.icon_payload_path.display()
     );
     println!(
-        "plushie: staged Rust package host at {}",
-        staged.host_payload_path.display()
+        "plushie: assembled Rust package host at {}",
+        assembled.host_payload_path.display()
     );
     println!(
-        "plushie: staged Rust package renderer at {}",
-        staged.renderer_payload_path.display()
+        "plushie: assembled Rust package renderer at {}",
+        assembled.renderer_payload_path.display()
     );
     println!(
-        "plushie: staged Rust package payload root at {}",
-        staged.payload_dir.display()
+        "plushie: assembled Rust package payload root at {}",
+        assembled.payload_dir.display()
     );
 
     if args.no_launcher || !build_portable {
         println!(
             "plushie: hand off with `cargo plushie package portable --manifest {}`",
-            staged.manifest_path.display()
+            assembled.manifest_path.display()
         );
         return Ok(());
     }
 
     let result = package::build_launcher(&package::PackageOpts {
-        manifest_path: &staged.manifest_path,
+        manifest_path: &assembled.manifest_path,
         out_path: args.launcher_out.as_deref(),
         release: args.release,
         run_signing_hooks: args.run_signing_hooks,

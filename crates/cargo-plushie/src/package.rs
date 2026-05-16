@@ -233,6 +233,26 @@ struct PlatformManifest {
     publisher: Option<String>,
     bundle_id: Option<String>,
     icon: Option<String>,
+    copyright: Option<String>,
+    category: Option<String>,
+    description: Option<String>,
+    macos: Option<PlatformMacosManifest>,
+    windows: Option<PlatformWindowsManifest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlatformMacosManifest {
+    /// CFBundleVersion build number, separate from the app version
+    /// (CFBundleShortVersionString).
+    bundle_version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlatformWindowsManifest {
+    /// WiX/NSIS install scope: `perUser` or `perMachine`.
+    install_scope: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -889,6 +909,24 @@ fn apply_packager_defaults(
             .as_ref()
             .and_then(|platform| platform.publisher.clone());
     }
+    if config.copyright.is_none() {
+        config.copyright = loaded
+            .manifest
+            .platform
+            .as_ref()
+            .and_then(|platform| platform.copyright.clone());
+    }
+    if config.description.is_none() {
+        config.description = loaded
+            .manifest
+            .platform
+            .as_ref()
+            .and_then(|platform| platform.description.clone());
+    }
+    // TODO: map platform.category (free-form string) to cargo-packager's
+    // AppCategory enum once a mapping strategy is decided.
+    // TODO: map platform.windows.install_scope to cargo-packager's NSIS/WiX
+    // install scope config once cargo-packager exposes that field.
     if opts.out_dir_explicit || config.out_dir.as_os_str().is_empty() {
         config.out_dir = opts.out_dir.to_path_buf();
     }
@@ -1404,6 +1442,33 @@ fn validate_platform_metadata(manifest: &PackageManifest) -> Result<()> {
         require_nonempty("platform.icon", icon)?;
         validate_payload_relative_path("platform.icon", icon, false)?;
     }
+    if let Some(copyright) = &platform.copyright {
+        require_nonempty("platform.copyright", copyright)?;
+    }
+    if let Some(category) = &platform.category {
+        require_nonempty("platform.category", category)?;
+    }
+    if let Some(description) = &platform.description {
+        require_nonempty("platform.description", description)?;
+    }
+    if let Some(macos) = &platform.macos
+        && let Some(bundle_version) = &macos.bundle_version
+    {
+        require_nonempty("platform.macos.bundle_version", bundle_version)?;
+    }
+    if let Some(windows) = &platform.windows
+        && let Some(install_scope) = &windows.install_scope
+    {
+        require_nonempty("platform.windows.install_scope", install_scope)?;
+        match install_scope.as_str() {
+            "perUser" | "perMachine" => {}
+            value => {
+                return Err(Error::Other(anyhow::anyhow!(
+                    "platform.windows.install_scope must be `perUser` or `perMachine`, got `{value}`"
+                )));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1520,7 +1585,9 @@ fn validate_app_id(value: &str) -> Result<()> {
         let all_valid = segments.by_ref().all(|seg| {
             !seg.is_empty()
                 && seg.starts_with(|c: char| c.is_ascii_lowercase())
-                && seg.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                && seg
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
         });
         let segment_count = value.split('.').count();
         all_valid && segment_count >= 2
@@ -2344,6 +2411,137 @@ command = ["codesign", ""]
     }
 
     #[test]
+    fn accepts_extended_platform_metadata() {
+        let text = valid_manifest_text(
+            r#"
+[platform]
+publisher = "Example Inc."
+copyright = "Copyright 2025 Example Inc."
+category = "productivity"
+description = "A short app description."
+
+[platform.macos]
+bundle_version = "42"
+
+[platform.windows]
+install_scope = "perUser"
+"#,
+        );
+
+        let manifest = parse_manifest(&text).unwrap();
+        let platform = manifest.platform.unwrap();
+        assert_eq!(
+            platform.copyright.as_deref(),
+            Some("Copyright 2025 Example Inc.")
+        );
+        assert_eq!(platform.category.as_deref(), Some("productivity"));
+        assert_eq!(
+            platform.description.as_deref(),
+            Some("A short app description.")
+        );
+        let macos = platform.macos.unwrap();
+        assert_eq!(macos.bundle_version.as_deref(), Some("42"));
+        let windows = platform.windows.unwrap();
+        assert_eq!(windows.install_scope.as_deref(), Some("perUser"));
+    }
+
+    #[test]
+    fn accepts_partial_extended_platform_metadata() {
+        let text = valid_manifest_text(
+            r#"
+[platform]
+copyright = "Copyright 2025 Example Inc."
+
+[platform.windows]
+install_scope = "perMachine"
+"#,
+        );
+
+        let manifest = parse_manifest(&text).unwrap();
+        let platform = manifest.platform.unwrap();
+        assert_eq!(
+            platform.copyright.as_deref(),
+            Some("Copyright 2025 Example Inc.")
+        );
+        assert!(platform.category.is_none());
+        assert!(platform.macos.is_none());
+        let windows = platform.windows.unwrap();
+        assert_eq!(windows.install_scope.as_deref(), Some("perMachine"));
+    }
+
+    #[test]
+    fn accepts_platform_without_extended_fields() {
+        // [platform] with only existing fields must still parse cleanly.
+        let text = valid_manifest_text(
+            r#"
+[platform]
+publisher = "Example Inc."
+"#,
+        );
+        let manifest = parse_manifest(&text).unwrap();
+        let platform = manifest.platform.unwrap();
+        assert_eq!(platform.publisher.as_deref(), Some("Example Inc."));
+        assert!(platform.copyright.is_none());
+        assert!(platform.macos.is_none());
+        assert!(platform.windows.is_none());
+    }
+
+    #[test]
+    fn rejects_invalid_extended_platform_metadata() {
+        for (metadata, expected_fragment) in [
+            (
+                r#"
+[platform]
+copyright = ""
+"#,
+                "platform.copyright",
+            ),
+            (
+                r#"
+[platform]
+category = "  "
+"#,
+                "platform.category",
+            ),
+            (
+                r#"
+[platform]
+description = ""
+"#,
+                "platform.description",
+            ),
+            (
+                r#"
+[platform.macos]
+bundle_version = ""
+"#,
+                "platform.macos.bundle_version",
+            ),
+            (
+                r#"
+[platform.windows]
+install_scope = "system"
+"#,
+                "platform.windows.install_scope",
+            ),
+            (
+                r#"
+[platform.windows]
+install_scope = ""
+"#,
+                "platform.windows.install_scope",
+            ),
+        ] {
+            let text = valid_manifest_text(metadata);
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(
+                format!("{err:?}").contains(expected_fragment),
+                "expected `{expected_fragment}` in `{err}`"
+            );
+        }
+    }
+
+    #[test]
     fn rejects_unknown_manifest_metadata_fields() {
         for (metadata, field) in [
             (
@@ -2794,6 +2992,11 @@ hash = "{hash}"
             publisher: None,
             bundle_id: None,
             icon: Some("assets/icon.png".to_string()),
+            copyright: None,
+            category: None,
+            description: None,
+            macos: None,
+            windows: None,
         });
 
         validate_payload_archive(&manifest, &payload).unwrap();
@@ -2818,6 +3021,11 @@ hash = "{hash}"
             publisher: None,
             bundle_id: None,
             icon: Some("assets/icon.png".to_string()),
+            copyright: None,
+            category: None,
+            description: None,
+            macos: None,
+            windows: None,
         });
 
         assert_eq!(package_warnings(&manifest), Vec::new());
@@ -2831,6 +3039,11 @@ hash = "{hash}"
             publisher: None,
             bundle_id: None,
             icon: Some("assets/icon.png".to_string()),
+            copyright: None,
+            category: None,
+            description: None,
+            macos: None,
+            windows: None,
         });
 
         let err = validate_payload_archive(&manifest, &payload).unwrap_err();
@@ -2839,8 +3052,15 @@ hash = "{hash}"
 
     #[test]
     fn accepts_valid_app_ids() {
-        for app_id in ["dev.plushie.notes", "com.example.foo_bar", "io.my_app.demo123"] {
-            let text = valid_manifest_text("").replace(r#"app_id = "com.example.notes""#, &format!(r#"app_id = "{app_id}""#));
+        for app_id in [
+            "dev.plushie.notes",
+            "com.example.foo_bar",
+            "io.my_app.demo123",
+        ] {
+            let text = valid_manifest_text("").replace(
+                r#"app_id = "com.example.notes""#,
+                &format!(r#"app_id = "{app_id}""#),
+            );
             let manifest = parse_manifest(&text).unwrap();
             assert_eq!(manifest.app_id, app_id);
         }
@@ -2863,7 +3083,10 @@ hash = "{hash}"
             ".com.example",
             "",
         ] {
-            let text = valid_manifest_text("").replace(r#"app_id = "com.example.notes""#, &format!(r#"app_id = "{app_id}""#));
+            let text = valid_manifest_text("").replace(
+                r#"app_id = "com.example.notes""#,
+                &format!(r#"app_id = "{app_id}""#),
+            );
             let err = parse_manifest(&text).unwrap_err();
             assert!(
                 err.to_string().contains("app_id"),
@@ -2876,11 +3099,7 @@ hash = "{hash}"
     fn validate_manifest_file_accepts_valid_manifest_without_payload() {
         let dir = tempdir().unwrap();
         let manifest = dir.path().join("plushie-package.toml");
-        std::fs::write(
-            &manifest,
-            valid_manifest_text(""),
-        )
-        .unwrap();
+        std::fs::write(&manifest, valid_manifest_text("")).unwrap();
 
         let result = validate_manifest_file(&manifest).unwrap();
         assert_eq!(result.app_id, "com.example.notes");

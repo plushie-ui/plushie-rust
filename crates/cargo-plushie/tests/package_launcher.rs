@@ -315,7 +315,7 @@ fn write_package(dir: &Path, payload_label: &str) -> PathBuf {
         format!(
             r#"
 schema_version = 1
-app_id = "com.example.package-test"
+app_id = "com.example.package_test"
 app_version = "0.1.0"
 target = "{}"
 host_sdk = "test"

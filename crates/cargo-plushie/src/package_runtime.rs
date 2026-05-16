@@ -542,6 +542,11 @@ fn extract_payload(tmp: &Path, input: &PackageInput<'_>) -> Result<()> {
     Ok(())
 }
 
+/// Age after which a lock directory is considered abandoned and safe to
+/// reclaim. A hard-killed process cannot clean up the lock dir; waiting
+/// forever is worse than reclaiming and re-extracting.
+const STALE_LOCK_AGE: Duration = Duration::from_secs(120);
+
 fn acquire_extraction_lock(
     root: &Path,
     hash: &str,
@@ -559,6 +564,23 @@ fn acquire_extraction_lock(
                         path: PathBuf::new(),
                     });
                 }
+
+                // Reclaim a lock that outlived any plausible extraction: a
+                // SIGKILL or panic during extract_payload leaves the lock dir
+                // behind with no holder to clean it up. If the mtime is older
+                // than STALE_LOCK_AGE, delete and retry immediately.
+                if let Ok(meta) = std::fs::metadata(&lock)
+                    && let Ok(modified) = meta.modified()
+                    && modified.elapsed().unwrap_or(STALE_LOCK_AGE) >= STALE_LOCK_AGE
+                {
+                    eprintln!(
+                        "plushie launcher: reclaiming stale extraction lock `{}`",
+                        lock.display()
+                    );
+                    let _ = std::fs::remove_dir(&lock);
+                    continue;
+                }
+
                 anyhow::ensure!(
                     start.elapsed() < Duration::from_secs(60),
                     "timed out waiting for payload extraction lock `{}`",

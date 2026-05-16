@@ -228,7 +228,13 @@ pub fn write_rust_package_config(opts: &RustPackageAssembleOpts<'_>) -> Result<P
         .package_config
         .map(Path::to_path_buf)
         .unwrap_or_else(|| default_package_config_path(opts.manifest_path));
-    package::write_source_config_template(&path, &package::PackageSourceConfig { start })?;
+    package::write_source_config_template(
+        &path,
+        &package::PackageSourceConfig {
+            start,
+            assets: None,
+        },
+    )?;
     Ok(path)
 }
 

@@ -121,6 +121,17 @@ pub struct PackagePrecheckResult {
 pub struct PackageSourceConfig {
     /// Startup configuration for the host process.
     pub start: PackageStartConfig,
+    /// Optional bundled assets configuration.
+    pub assets: Option<PackageAssetsConfig>,
+}
+
+/// Bundled-assets configuration: a project-relative directory copied
+/// verbatim into the payload root during `package assemble`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageAssetsConfig {
+    /// Project-relative path to the assets directory. Resolved relative
+    /// to the package config file's directory.
+    pub dir: String,
 }
 
 /// Host startup configuration shared by generated manifests and source config.
@@ -210,6 +221,14 @@ impl From<PackageStartConfig> for StartManifest {
 struct SourceConfigDocument {
     config_version: u32,
     start: StartManifest,
+    #[serde(default)]
+    assets: Option<AssetsManifest>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AssetsManifest {
+    dir: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -581,6 +600,27 @@ pub fn render_source_config_template(config: &PackageSourceConfig) -> String {
         text.push_str(&format!("  {},\n", toml_string_literal(name)));
     }
     text.push_str("]\n");
+
+    text.push('\n');
+    text.push_str("# Optional bundled assets. The named directory is copied verbatim\n");
+    text.push_str("# into the payload root during `cargo plushie package assemble`.\n");
+    text.push_str("# Source paths are relative to this config file. Files that already\n");
+    text.push_str("# exist in the payload are overwritten by the asset copy.\n");
+    text.push_str("#\n");
+    text.push_str("# Convention default: if [assets] is omitted and a `package_assets/`\n");
+    text.push_str("# directory exists next to this config file, it is used automatically.\n");
+    text.push_str("# Set [assets].dir explicitly to opt into a different location;\n");
+    text.push_str("# explicit configuration disables the convention fallback.\n");
+    match &config.assets {
+        Some(assets) => {
+            text.push_str("[assets]\n");
+            text.push_str(&format!("dir = {}\n", toml_string_literal(&assets.dir)));
+        }
+        None => {
+            text.push_str("# [assets]\n");
+            text.push_str("# dir = \"package_assets\"\n");
+        }
+    }
     text
 }
 
@@ -607,7 +647,8 @@ fn parse_source_config(text: &str) -> Result<PackageSourceConfig> {
     }
     let start = config.start.to_start_config();
     validate_start_config(&start)?;
-    Ok(PackageSourceConfig { start })
+    let assets = config.assets.map(|a| PackageAssetsConfig { dir: a.dir });
+    Ok(PackageSourceConfig { start, assets })
 }
 
 fn package_warnings(manifest: &PackageManifest) -> Vec<PackageWarning> {
@@ -2261,6 +2302,7 @@ forward_env = ["PATH", "HOME"]
                 command: vec!["bin/notes".to_string()],
                 forward_env: default_forward_env(),
             },
+            assets: None,
         });
 
         assert!(text.contains("config_version = 1"));
@@ -2268,6 +2310,11 @@ forward_env = ["PATH", "HOME"]
         assert!(text.contains(r#"working_dir = ".""#));
         assert!(text.contains(r#"command = ["bin/notes"]"#));
         assert!(text.contains(r#""WAYLAND_DISPLAY""#));
+        assert!(
+            text.contains("# [assets]"),
+            "template includes commented [assets] section"
+        );
+        assert!(text.contains("package_assets"));
     }
 
     #[test]

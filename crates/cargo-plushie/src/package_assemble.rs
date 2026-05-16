@@ -315,10 +315,13 @@ pub fn assemble_package(opts: &AssembleOpts<'_>) -> Result<AssembleResult> {
 
     validate_partial_manifest(&partial)?;
 
-    let source_config = resolve_source_config(opts, manifest_dir)?;
+    let resolved_source_config = resolve_source_config(opts, manifest_dir)?;
+    let source_config = resolved_source_config.as_ref().map(|r| &r.config);
 
-    let start = resolve_start(partial.start.as_ref(), source_config.as_ref())?;
+    let start = resolve_start(partial.start.as_ref(), source_config)?;
     package::validate_start_config(&start)?;
+
+    copy_bundled_assets(resolved_source_config.as_ref(), manifest_dir, &payload_dir)?;
 
     let mut platform = partial.platform.clone();
     materialize_default_icon_if_needed(&mut platform, &payload_dir)?;
@@ -617,14 +620,130 @@ fn clean_relative_path(name: &str, value: &str) -> Result<PathBuf> {
 // Source config resolution
 // ---------------------------------------------------------------------------
 
+/// Resolved source config plus the directory it was loaded from.
+///
+/// The directory is the base used to resolve project-relative paths in
+/// the config (e.g. `[assets].dir`).
+struct ResolvedSourceConfig {
+    config: package::PackageSourceConfig,
+    config_dir: PathBuf,
+}
+
 fn resolve_source_config(
     opts: &AssembleOpts<'_>,
     manifest_dir: &Path,
-) -> Result<Option<package::PackageSourceConfig>> {
+) -> Result<Option<ResolvedSourceConfig>> {
     match opts.package_config {
-        Some(path) => package::load_source_config(path).map(Some),
-        None => package::load_default_source_config(manifest_dir),
+        Some(path) => {
+            let config = package::load_source_config(path)?;
+            let config_dir = path
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."));
+            // Canonicalize so relative source paths resolve consistently.
+            let config_dir = std::fs::canonicalize(&config_dir).unwrap_or(config_dir);
+            Ok(Some(ResolvedSourceConfig { config, config_dir }))
+        }
+        None => match package::load_default_source_config(manifest_dir)? {
+            Some(config) => Ok(Some(ResolvedSourceConfig {
+                config,
+                config_dir: manifest_dir.to_path_buf(),
+            })),
+            None => Ok(None),
+        },
     }
+}
+
+// ---------------------------------------------------------------------------
+// Bundled assets copy
+// ---------------------------------------------------------------------------
+
+const DEFAULT_ASSETS_DIR_NAME: &str = "package_assets";
+
+/// Copy a project-relative directory verbatim into the payload root.
+///
+/// Resolution rules:
+/// - If `[assets].dir` is set in the source config, use that path
+///   (relative to the config file's directory). The directory must
+///   exist; raise a clear error if not.
+/// - Otherwise (no `[assets]` section, or no source config), look for
+///   the convention default `package_assets/` next to the source config
+///   (or, when no config exists, next to the manifest). Use it if
+///   present; otherwise no-op.
+///
+/// Existing files in `payload_dir` are overwritten by matching asset
+/// files. Empty source directories are a no-op (not an error).
+fn copy_bundled_assets(
+    resolved_source_config: Option<&ResolvedSourceConfig>,
+    manifest_dir: &Path,
+    payload_dir: &Path,
+) -> Result<()> {
+    let (source_dir, explicit) = match resolved_source_config {
+        Some(resolved) => match resolved.config.assets.as_ref() {
+            Some(assets) => (resolved.config_dir.join(&assets.dir), true),
+            None => (resolved.config_dir.join(DEFAULT_ASSETS_DIR_NAME), false),
+        },
+        // No package config: fall back to the convention default next
+        // to the manifest dir. Same opt-in semantics: only takes effect
+        // if the directory exists.
+        None => (manifest_dir.join(DEFAULT_ASSETS_DIR_NAME), false),
+    };
+
+    if !source_dir.exists() {
+        if explicit {
+            return Err(Error::Other(anyhow::anyhow!(
+                "[assets].dir `{}` does not exist",
+                source_dir.display()
+            )));
+        }
+        return Ok(());
+    }
+
+    if !source_dir.is_dir() {
+        return Err(Error::Other(anyhow::anyhow!(
+            "assets path `{}` is not a directory",
+            source_dir.display()
+        )));
+    }
+
+    copy_dir_recursive(&source_dir, payload_dir)
+}
+
+fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(source)
+        .with_context(|| format!("read assets dir `{}`", source.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("read entry in assets dir `{}`", source.display()))?;
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("stat assets entry `{}`", entry.path().display()))?;
+        let dest_path = dest.join(entry.file_name());
+
+        if file_type.is_dir() {
+            std::fs::create_dir_all(&dest_path)
+                .with_context(|| format!("create payload dir `{}`", dest_path.display()))?;
+            copy_dir_recursive(&entry.path(), &dest_path)?;
+        } else if file_type.is_file() {
+            if let Some(parent) = dest_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("create payload dir `{}`", parent.display()))?;
+            }
+            std::fs::copy(entry.path(), &dest_path).with_context(|| {
+                format!(
+                    "copy asset `{}` to `{}`",
+                    entry.path().display(),
+                    dest_path.display()
+                )
+            })?;
+        } else {
+            return Err(Error::Other(anyhow::anyhow!(
+                "assets entry `{}` must be a plain file or directory",
+                entry.path().display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn resolve_start(
@@ -1166,5 +1285,211 @@ kind = "stock"
         {
             let _ = payload_dir;
         }
+    }
+
+    fn write_config(dir: &Path, body: &str) -> PathBuf {
+        let path = dir.join("plushie-package.config.toml");
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    fn baseline_start_section() -> &'static str {
+        "[start]\nworking_dir = \".\"\ncommand = [\"bin/host\"]\nforward_env = []\n"
+    }
+
+    #[test]
+    fn copies_convention_default_package_assets_directory() {
+        let dir = tempdir().unwrap();
+        let payload_dir = dir.path().join("payload");
+        write_minimal_payload(&payload_dir);
+        // Convention default lives next to the manifest when no explicit
+        // package config is given.
+        std::fs::create_dir_all(dir.path().join("package_assets")).unwrap();
+        std::fs::write(
+            dir.path().join("package_assets/branding.txt"),
+            b"hello assets",
+        )
+        .unwrap();
+        let manifest_path = write_partial_manifest(dir.path(), None, None);
+
+        assemble_package(&AssembleOpts {
+            manifest_path: &manifest_path,
+            payload_dir: &payload_dir,
+            package_config: None,
+        })
+        .unwrap();
+
+        let copied = payload_dir.join("branding.txt");
+        assert!(copied.is_file(), "convention asset copied into payload");
+        assert_eq!(std::fs::read(&copied).unwrap(), b"hello assets");
+    }
+
+    #[test]
+    fn copies_explicit_assets_dir_from_source_config() {
+        let dir = tempdir().unwrap();
+        let payload_dir = dir.path().join("payload");
+        write_minimal_payload(&payload_dir);
+
+        std::fs::create_dir_all(dir.path().join("branding")).unwrap();
+        std::fs::write(dir.path().join("branding/logo.svg"), b"<svg/>").unwrap();
+        let config_path = write_config(
+            dir.path(),
+            &format!(
+                "config_version = 1\n\n{}\n[assets]\ndir = \"branding\"\n",
+                baseline_start_section()
+            ),
+        );
+        let manifest_path = write_partial_manifest(dir.path(), None, None);
+
+        assemble_package(&AssembleOpts {
+            manifest_path: &manifest_path,
+            payload_dir: &payload_dir,
+            package_config: Some(&config_path),
+        })
+        .unwrap();
+
+        let copied = payload_dir.join("logo.svg");
+        assert!(copied.is_file(), "explicit asset copied into payload");
+        assert_eq!(std::fs::read(&copied).unwrap(), b"<svg/>");
+    }
+
+    #[test]
+    fn explicit_missing_assets_dir_is_clear_error() {
+        let dir = tempdir().unwrap();
+        let payload_dir = dir.path().join("payload");
+        write_minimal_payload(&payload_dir);
+
+        let config_path = write_config(
+            dir.path(),
+            &format!(
+                "config_version = 1\n\n{}\n[assets]\ndir = \"missing-dir\"\n",
+                baseline_start_section()
+            ),
+        );
+        let manifest_path = write_partial_manifest(dir.path(), None, None);
+
+        let err = assemble_package(&AssembleOpts {
+            manifest_path: &manifest_path,
+            payload_dir: &payload_dir,
+            package_config: Some(&config_path),
+        })
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("missing-dir"),
+            "error names missing dir: {msg}"
+        );
+        assert!(msg.contains("does not exist"), "error explains: {msg}");
+    }
+
+    #[test]
+    fn asset_icon_suppresses_default_icon_materialization() {
+        let dir = tempdir().unwrap();
+        let payload_dir = dir.path().join("payload");
+        write_minimal_payload(&payload_dir);
+
+        // package_assets/icon.png -> payload/icon.png, which leaves the
+        // default-icon materializer's check at assets/default-app-icon-512.png
+        // untouched (default still gets written), but the explicit case is the
+        // one this test verifies: a user-supplied icon at the default path is
+        // honored.
+        std::fs::create_dir_all(dir.path().join("package_assets/assets")).unwrap();
+        let user_icon = b"\x89PNG\r\n\x1a\nuser-supplied";
+        std::fs::write(
+            dir.path()
+                .join("package_assets/assets/default-app-icon-512.png"),
+            user_icon,
+        )
+        .unwrap();
+        let manifest_path = write_partial_manifest(dir.path(), None, None);
+
+        let result = assemble_package(&AssembleOpts {
+            manifest_path: &manifest_path,
+            payload_dir: &payload_dir,
+            package_config: None,
+        })
+        .unwrap();
+
+        let dest = payload_dir.join("assets/default-app-icon-512.png");
+        let bytes = std::fs::read(&dest).unwrap();
+        assert_eq!(
+            bytes, user_icon,
+            "user-supplied icon at default path is not overwritten by the materializer"
+        );
+        let text = std::fs::read_to_string(&result.manifest_path).unwrap();
+        assert!(
+            text.contains("icon = \"assets/default-app-icon-512.png\""),
+            "manifest still records the icon path"
+        );
+    }
+
+    #[test]
+    fn preserves_nested_asset_directories() {
+        let dir = tempdir().unwrap();
+        let payload_dir = dir.path().join("payload");
+        write_minimal_payload(&payload_dir);
+
+        std::fs::create_dir_all(dir.path().join("package_assets/fonts")).unwrap();
+        std::fs::write(
+            dir.path().join("package_assets/fonts/inter.ttf"),
+            b"ttf-bytes",
+        )
+        .unwrap();
+        let manifest_path = write_partial_manifest(dir.path(), None, None);
+
+        assemble_package(&AssembleOpts {
+            manifest_path: &manifest_path,
+            payload_dir: &payload_dir,
+            package_config: None,
+        })
+        .unwrap();
+
+        let copied = payload_dir.join("fonts/inter.ttf");
+        assert!(copied.is_file(), "nested asset preserved");
+        assert_eq!(std::fs::read(&copied).unwrap(), b"ttf-bytes");
+    }
+
+    #[test]
+    fn empty_package_assets_directory_is_noop() {
+        let dir = tempdir().unwrap();
+        let payload_dir = dir.path().join("payload");
+        write_minimal_payload(&payload_dir);
+        std::fs::create_dir_all(dir.path().join("package_assets")).unwrap();
+        let manifest_path = write_partial_manifest(dir.path(), None, None);
+
+        assemble_package(&AssembleOpts {
+            manifest_path: &manifest_path,
+            payload_dir: &payload_dir,
+            package_config: None,
+        })
+        .unwrap();
+        // No assertion needed beyond not erroring; ensure payload still has
+        // the baseline host binary.
+        assert!(payload_dir.join("bin/host").is_file());
+    }
+
+    #[test]
+    fn asset_overwrites_existing_payload_file() {
+        let dir = tempdir().unwrap();
+        let payload_dir = dir.path().join("payload");
+        write_minimal_payload(&payload_dir);
+        std::fs::write(payload_dir.join("note.txt"), b"original").unwrap();
+
+        std::fs::create_dir_all(dir.path().join("package_assets")).unwrap();
+        std::fs::write(dir.path().join("package_assets/note.txt"), b"replaced").unwrap();
+        let manifest_path = write_partial_manifest(dir.path(), None, None);
+
+        assemble_package(&AssembleOpts {
+            manifest_path: &manifest_path,
+            payload_dir: &payload_dir,
+            package_config: None,
+        })
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read(payload_dir.join("note.txt")).unwrap(),
+            b"replaced",
+            "asset overwrites existing payload file"
+        );
     }
 }

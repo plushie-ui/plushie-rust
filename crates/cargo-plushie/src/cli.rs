@@ -1474,6 +1474,10 @@ fn install_built_renderer(manifest_dir: &Path, args: &BuildArgs) -> Result<PathB
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    if std::fs::symlink_metadata(&dest).is_ok() {
+        std::fs::remove_file(&dest)
+            .with_context(|| format!("remove existing renderer `{}`", dest.display()))?;
+    }
     std::fs::copy(&built, &dest).with_context(|| {
         format!(
             "copy built renderer `{}` to `{}`",
@@ -2112,13 +2116,16 @@ fn run_with_cargo_watch(
 #[cfg(test)]
 mod tests {
     use super::{
-        BUILTIN_TYPE_NAMES, check_native_tools, download_launcher_with_base_url,
-        download_plushie_with_base_url, download_renderer_with_base_url, resolve_required_version,
-        strict_tool_project_dir_from, strict_tool_project_dir_from_manifest, target_dir_from,
+        BUILTIN_TYPE_NAMES, BuildArgs, check_native_tools, download_launcher_with_base_url,
+        download_plushie_with_base_url, download_renderer_with_base_url, install_built_renderer,
+        resolve_required_version, strict_tool_project_dir_from,
+        strict_tool_project_dir_from_manifest, target_dir_from,
     };
     use crate::platform;
     use plushie_core::tool_identity::{ToolBuildIdentity, ToolIdentity, ToolSourceIdentity};
     use sha2::{Digest, Sha256};
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -2359,6 +2366,57 @@ mod tests {
             strict_tool_project_dir_from_manifest(Some(&manifest_path)).as_deref(),
             Some(dir.path())
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn install_built_renderer_replaces_broken_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest_dir = dir.path().join("app");
+        let built_dir = manifest_dir.join("target/plushie-renderer/target/debug");
+        std::fs::create_dir_all(&built_dir).unwrap();
+        std::fs::create_dir_all(manifest_dir.join("src")).unwrap();
+        std::fs::write(
+            manifest_dir.join("Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        std::fs::write(manifest_dir.join("src/lib.rs"), "").unwrap();
+        std::fs::write(built_dir.join("demo-renderer"), b"renderer").unwrap();
+
+        let bin_dir = manifest_dir.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        symlink(
+            manifest_dir
+                .join("_build/plushie/bin")
+                .join(platform::renderer_name()),
+            bin_dir.join(platform::renderer_name()),
+        )
+        .unwrap();
+
+        let current = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&manifest_dir).unwrap();
+        let installed = install_built_renderer(
+            &manifest_dir,
+            &BuildArgs {
+                release: false,
+                verbose: false,
+                manifest_path: None,
+                wasm: false,
+                wasm_dir: None,
+                features: Vec::new(),
+                no_default_features: false,
+                all_features: false,
+            },
+        )
+        .unwrap();
+        std::env::set_current_dir(current).unwrap();
+
+        assert_eq!(
+            installed,
+            manifest_dir.join("bin").join(platform::renderer_name())
+        );
+        assert_eq!(std::fs::read(installed).unwrap(), b"renderer");
     }
 
     fn write_identity_script(path: &Path, identity: ToolIdentity) {

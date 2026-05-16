@@ -1901,6 +1901,67 @@ size = 7
     }
 
     #[test]
+    fn prepare_packager_config_uses_bundle_id_as_identifier_when_set() {
+        let dir = tempdir().unwrap();
+        let payload = sample_payload_archive();
+        let manifest = write_package_for_payload(
+            dir.path(),
+            &payload,
+            "\n[platform]\nbundle_id = \"com.example.override\"\n",
+        );
+        let loaded = load_package(&manifest).unwrap();
+        let portable = dir.path().join("portable-app");
+        std::fs::write(&portable, b"portable").unwrap();
+
+        let prepared = prepare_packager_config(
+            &loaded,
+            &portable,
+            &dir.path().join("packager"),
+            &dir.path().join("bundles"),
+            &["deb".to_string()],
+            None,
+            true,
+        )
+        .unwrap();
+
+        let config = std::fs::read_to_string(&prepared.config_path).unwrap();
+        assert!(
+            config.contains("identifier = \"com.example.override\""),
+            "bundle_id should be used as the packager identifier when set"
+        );
+        assert!(
+            !config.contains("identifier = \"com.example.notes\""),
+            "app_id must not be used as identifier when bundle_id is set"
+        );
+    }
+
+    #[test]
+    fn prepare_packager_config_falls_back_to_app_id_when_bundle_id_absent() {
+        let dir = tempdir().unwrap();
+        let manifest = write_sample_package(dir.path());
+        let loaded = load_package(&manifest).unwrap();
+        let portable = dir.path().join("portable-app");
+        std::fs::write(&portable, b"portable").unwrap();
+
+        let prepared = prepare_packager_config(
+            &loaded,
+            &portable,
+            &dir.path().join("packager"),
+            &dir.path().join("bundles"),
+            &["deb".to_string()],
+            None,
+            true,
+        )
+        .unwrap();
+
+        let config = std::fs::read_to_string(&prepared.config_path).unwrap();
+        assert!(
+            config.contains("identifier = \"com.example.notes\""),
+            "app_id should be used as identifier when bundle_id is absent"
+        );
+    }
+
+    #[test]
     fn prepare_packager_config_writes_effective_config_for_custom_input() {
         let dir = tempdir().unwrap();
         let manifest = write_sample_package(dir.path());

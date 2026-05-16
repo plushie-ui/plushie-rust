@@ -16,7 +16,7 @@ use std::path::{Component, Path, PathBuf};
 const PACKAGE_MANIFEST: &str = "plushie-package.toml";
 const PAYLOAD_ARCHIVE: &str = "payload.tar.zst";
 const PAYLOAD_DIR: &str = "payload-root";
-const DEFAULT_ICON_NAME: &str = "plushie-checkbox-512x512.png";
+const DEFAULT_ICON_NAME: &str = "default-app-icon-512.png";
 const HOST_SDK: &str = "rust";
 
 /// Options for assembling a Rust SDK standalone package.
@@ -94,7 +94,8 @@ struct PackageManifest {
     protocol_version: u32,
     start: StartManifest,
     renderer: RendererManifest,
-    platform: PlatformManifest,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    platform: Option<PlatformManifest>,
     payload: PayloadManifest,
 }
 
@@ -113,7 +114,8 @@ struct RendererManifest {
 
 #[derive(Serialize)]
 struct PlatformManifest {
-    icon: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -185,9 +187,9 @@ pub fn assemble_rust_package(
             path: payload_relative_string(&payload_dir, &renderer_payload_path)?,
             kind: "custom".to_string(),
         },
-        platform: PlatformManifest {
-            icon: payload_relative_string(&payload_dir, &icon_payload_path)?,
-        },
+        platform: Some(PlatformManifest {
+            icon: Some(payload_relative_string(&payload_dir, &icon_payload_path)?),
+        }),
         payload: PayloadManifest {
             archive: PAYLOAD_ARCHIVE.to_string(),
             hash,
@@ -854,9 +856,9 @@ mod tests {
                 path: "bin/plushie-renderer".to_string(),
                 kind: "custom".to_string(),
             },
-            platform: PlatformManifest {
-                icon: "assets/app.png".to_string(),
-            },
+            platform: Some(PlatformManifest {
+                icon: Some("assets/app.png".to_string()),
+            }),
             payload: PayloadManifest {
                 archive: PAYLOAD_ARCHIVE.to_string(),
                 hash: format!("sha256:{:x}", Sha256::digest(&bytes)),
@@ -1089,5 +1091,39 @@ forward_env = ["PATH"]
         assert_eq!(start.working_dir, "app");
         assert_eq!(start.command, ["app/bin/demo", "--profile", "release"]);
         assert_eq!(start.forward_env, ["PATH"]);
+    }
+
+    #[test]
+    fn platform_section_omitted_when_none() {
+        let manifest = PackageManifest {
+            schema_version: 1,
+            app_id: "com.example.demo".to_string(),
+            app_name: None,
+            app_version: "0.1.0".to_string(),
+            target: package_target(),
+            host_sdk: HOST_SDK.to_string(),
+            host_sdk_version: env!("CARGO_PKG_VERSION").to_string(),
+            plushie_rust_version: env!("CARGO_PKG_VERSION").to_string(),
+            protocol_version: plushie_core::protocol::PROTOCOL_VERSION,
+            start: StartManifest {
+                working_dir: ".".to_string(),
+                command: vec!["bin/app".to_string()],
+                forward_env: Vec::new(),
+            },
+            renderer: RendererManifest {
+                path: "bin/plushie-renderer".to_string(),
+                kind: "custom".to_string(),
+            },
+            platform: None,
+            payload: PayloadManifest {
+                archive: PAYLOAD_ARCHIVE.to_string(),
+                hash: "sha256:abc".to_string(),
+                size: 0,
+            },
+        };
+
+        let text = toml::to_string_pretty(&manifest).unwrap();
+
+        assert!(!text.contains("[platform]"));
     }
 }

@@ -2847,13 +2847,13 @@ hash = "sha256:{hash}"
     fn write_sample_package_with_icon(dir: &Path) -> PathBuf {
         let icon = crate::default_icons::default_icons()
             .iter()
-            .find(|icon| icon.name == "plushie-checkbox-512x512.png")
+            .find(|icon| icon.name == "default-app-icon-512.png")
             .expect("default app icon is bundled");
         let payload = payload_archive_with_dirs(
             &[
                 ("bin/plushie-renderer", b"renderer".as_slice()),
                 ("bin/notes", b"host".as_slice()),
-                ("assets/plushie-checkbox-512x512.png", icon.bytes),
+                ("assets/default-app-icon-512.png", icon.bytes),
             ],
             &[],
         );
@@ -2862,7 +2862,7 @@ hash = "sha256:{hash}"
             &payload,
             r#"
 [platform]
-icon = "assets/plushie-checkbox-512x512.png"
+icon = "assets/default-app-icon-512.png"
 "#,
         )
     }

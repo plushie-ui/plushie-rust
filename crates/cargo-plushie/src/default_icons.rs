@@ -13,24 +13,24 @@ pub struct DefaultIcon {
 
 const DEFAULT_ICONS: &[DefaultIcon] = &[
     DefaultIcon {
-        name: "plushie-checkbox-16x16.png",
-        bytes: include_bytes!("../assets/default-icons/plushie-checkbox-16x16.png"),
+        name: "default-app-icon-16.png",
+        bytes: include_bytes!("../assets/default-icons/default-app-icon-16.png"),
     },
     DefaultIcon {
-        name: "plushie-checkbox-32x32.png",
-        bytes: include_bytes!("../assets/default-icons/plushie-checkbox-32x32.png"),
+        name: "default-app-icon-32.png",
+        bytes: include_bytes!("../assets/default-icons/default-app-icon-32.png"),
     },
     DefaultIcon {
-        name: "plushie-checkbox-180x180.png",
-        bytes: include_bytes!("../assets/default-icons/plushie-checkbox-180x180.png"),
+        name: "default-app-icon-180.png",
+        bytes: include_bytes!("../assets/default-icons/default-app-icon-180.png"),
     },
     DefaultIcon {
-        name: "plushie-checkbox-192x192.png",
-        bytes: include_bytes!("../assets/default-icons/plushie-checkbox-192x192.png"),
+        name: "default-app-icon-192.png",
+        bytes: include_bytes!("../assets/default-icons/default-app-icon-192.png"),
     },
     DefaultIcon {
-        name: "plushie-checkbox-512x512.png",
-        bytes: include_bytes!("../assets/default-icons/plushie-checkbox-512x512.png"),
+        name: "default-app-icon-512.png",
+        bytes: include_bytes!("../assets/default-icons/default-app-icon-512.png"),
     },
 ];
 

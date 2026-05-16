@@ -4,7 +4,8 @@
 //! Plushie wrapper step: validate a package manifest, embed its payload
 //! archive in the reusable launcher, and write the portable artifact.
 
-use crate::{Error, Result, package_runtime, platform, tool_identity};
+use crate::package_runtime::{self, PACKAGE_READY_FILE_ENV};
+use crate::{Error, Result, platform, tool_identity};
 use anyhow::Context;
 use cargo_packager::{
     Config as CargoPackagerConfig, PackageFormat, config::Binary as CargoPackagerBinary,
@@ -22,7 +23,6 @@ const MANIFEST_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
 const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
 const SOURCE_CONFIG_VERSION: u32 = 1;
-const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
 
 /// Options for building a standalone launcher from a package manifest.
 #[derive(Debug)]

@@ -20,7 +20,10 @@ const EMBEDDED_PACKAGE_MAGIC: &[u8] = b"\nPLUSHIE_EMBEDDED_PACKAGE_V1\n";
 const EXPECTED_SCHEMA_VERSION: u32 = 1;
 const EXPECTED_PROTOCOL_VERSION: u32 = plushie_core::protocol::PROTOCOL_VERSION;
 const EXPECTED_PLUSHIE_RUST_VERSION: &str = env!("CARGO_PKG_VERSION");
-const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
+/// Environment variable set by the launcher to pass a readiness-file
+/// path to the SDK host. Defined here (the launcher consumer) and
+/// re-exported for use by the packaging build side.
+pub const PACKAGE_READY_FILE_ENV: &str = "PLUSHIE_PACKAGE_READY_FILE";
 
 /// Append package data to a reusable `plushie-launcher` binary.
 ///

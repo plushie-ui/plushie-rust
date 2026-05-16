@@ -720,7 +720,10 @@ fn cmd_tools_sync(args: &ToolsSyncArgs) -> Result<()> {
     }
 
     let project_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
-    gitignore_hint::warn_if_not_gitignored(&project_dir.join("bin"));
+    // Note: the SDK download commands (mix plushie.download, rake plushie:download,
+    // python -m plushie download, npx plushie download, gleam run -m plushie/download)
+    // warn about bin/ gitignore coverage themselves. `tools sync` is almost always
+    // invoked as a subprocess by those flows, so warning here would double-fire.
     if let Some(manifest_path) = &args.manifest_path {
         check_native_tool_manifest(manifest_path)?;
     }

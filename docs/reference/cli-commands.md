@@ -227,6 +227,10 @@ Package command group for assembling Rust wire-mode payloads, building
 portable launchers, running Plushie-specific checks, and delegating
 platform bundles to `cargo-packager`.
 
+See [Packaging and distribution](packaging-and-distribution.md) for
+the end-to-end flow, manifest schema, and SDK-packager metadata
+conventions.
+
 ```bash
 cargo plushie package assemble
 cargo plushie package portable --manifest plushie-package.toml

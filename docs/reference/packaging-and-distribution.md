@@ -110,7 +110,7 @@ committing release artifacts.
 | `Cargo.toml` | Crate manifest. May carry `[package.metadata.plushie]` keys (`app_id`, `app_name`). | Already committed. |
 | `plushie-package.config.toml` | Optional developer-owned package config: start command, forward_env, assets. | Commit. |
 | `package_assets/` | Optional project-owned files copied verbatim into the payload root. | Commit. |
-| `bin/plushie-renderer` etc. | Cached stock renderer from `cargo plushie download`. Platform-specific. | Gitignore. |
+| `bin/plushie-renderer` etc. | Managed tools synced by `cargo plushie tools sync` (renderer, launcher, plushie CLI). Platform-specific. | Gitignore. |
 | `target/` | Standard Cargo build output; includes `target/plushie/rust-package/` and `target/plushie/package/`. | Already gitignored by default. |
 
 A minimum `.gitignore` for a packaging-enabled project looks like:
@@ -259,17 +259,18 @@ and per-platform `.icns`/`.ico` overrides are not yet supported.
 
 ## The managed tool set
 
-The shared portable and bundle steps need three tools installed
-locally:
+The shared portable and bundle steps rely on a small set of managed
+tools installed locally:
 
 | File | Role |
 |---|---|
-| `cargo-plushie` (on `PATH`) | Orchestration. Owns `build`, `download`, `package-rust assemble`, and the shared `package` subcommands. |
+| `cargo-plushie` (on `PATH`) | The cargo subcommand. Orchestration entry point: owns `build`, `download`, `package-rust assemble`, and the shared `package` subcommands. Installed with `cargo install cargo-plushie`. |
+| `bin/plushie` | The standalone Plushie CLI binary. Installed under the project's `bin/` by `cargo plushie tools sync`. |
 | `bin/plushie-renderer` | The stock renderer cache. `package-rust assemble` ignores this in favor of the custom build, but `cargo plushie tools` still tracks it for parity with other SDKs. |
 | `bin/plushie-launcher` | The shared launcher template that `package portable` embeds the payload into. |
 
-For Rust projects working from a plushie-rust checkout, all three can
-be built straight from source with `cargo run -p cargo-plushie --
+For Rust projects working from a plushie-rust checkout, every entry
+can be built straight from source with `cargo run -p cargo-plushie --
 <sub>`. For projects depending on the published crates, install
 cargo-plushie matching the SDK version:
 
@@ -278,8 +279,9 @@ cargo install cargo-plushie --version <X.Y.Z> --locked
 cargo plushie tools sync
 ```
 
-`cargo plushie tools sync` resolves the matching renderer and launcher
-versions from `cargo metadata` and installs them under `bin/`. See
+`cargo plushie tools sync` resolves the matching renderer, launcher,
+and standalone `plushie` CLI versions from `cargo metadata` and
+installs them under `bin/`. See
 [`cargo plushie tools`](cli-commands.md#cargo-plushie-tools) for the
 full flow.
 
@@ -323,15 +325,16 @@ size = 12345678
 ```
 
 The schema is shared across every Plushie SDK. The Rust SDK fills
-`host_sdk = "rust"`, sets `host_sdk_version` to the depended-on
-`plushie` crate version, and records `kind = "custom"` because the
-renderer is built from the same workspace as the app's native widgets.
+`host_sdk = "rust"`, sets both `host_sdk_version` and
+`plushie_rust_version` to the depended-on `plushie` crate version,
+and records `kind = "custom"` because the renderer is built from the
+same workspace as the app's native widgets.
 
 When the depended-on `plushie` version is not visible to `cargo
 metadata` (for example a standalone app with no `plushie` dep yet),
-`host_sdk_version` falls back to the cargo-plushie crate version. The
-two crates release together, so the fallback still reflects the SDK
-the artifact was built against.
+both `host_sdk_version` and `plushie_rust_version` fall back to the
+cargo-plushie crate version. The crates release together, so the
+fallback still reflects the SDK the artifact was built against.
 
 ## Package config
 
@@ -392,8 +395,9 @@ It builds the host process environment from two closed sources:
 
 - Launcher-owned variables: `PLUSHIE_BINARY_PATH` points at the
   payload-local renderer, `PLUSHIE_PACKAGE_DIR` points at the
-  extracted payload root, plus the small set of internal coordination
-  variables the launcher sets itself.
+  extracted payload root, `PLUSHIE_PACKAGE_READY_FILE` is used by the
+  launcher to coordinate startup readiness, plus the small set of
+  other internal coordination variables the launcher sets itself.
 - The names listed in `[start].forward_env`.
 
 Variables outside both sets are dropped. This matches the renderer
@@ -437,9 +441,11 @@ cargo plushie package bundle --manifest <path> --format nsis
 ```
 
 Delegates to [cargo-packager](https://github.com/crabnebula-dev/cargo-packager)
-for AppImage (Linux), `.app` and `.dmg` (macOS), and `.nsis` and
-`.wix` (Windows). Format availability depends on the runner: Apple
-formats need a macOS runner, Windows formats need a Windows runner.
+for AppImage (Linux), `.app` and `.dmg` (macOS), and `nsis` and
+`wix` (Windows; these are cargo-packager format names, producing
+`.exe` and `.msi` installers respectively). Format availability
+depends on the runner: Apple formats need a macOS runner, Windows
+formats need a Windows runner.
 
 ## Distribution
 
@@ -639,11 +645,18 @@ the host command with `PLUSHIE_SOCKET` pointing at it:
 
 ```bash
 plushie-renderer --listen \
-  --exec-bin target/release/my-app \
-  --exec-arg --plushie-socket
+  --exec-bin target/release/my-app
 ```
 
-`plushie::run` detects `PLUSHIE_SOCKET` (or `--plushie-socket`) and
+The renderer sets `PLUSHIE_SOCKET` (and `PLUSHIE_TOKEN`) in the
+spawned child's environment, pointing at the bound socket. Extra
+literal arguments can be appended with repeated `--exec-arg <value>`
+pairs, but no placeholder substitution is performed: the renderer
+does not expand a `{socket}` token, so the socket path is only
+available via the env var, not as a CLI value.
+
+`plushie::run` detects `PLUSHIE_SOCKET` (or an explicit
+`--plushie-socket <path>`) and
 connects to the existing renderer instead of spawning one. The same
 entry point is what the packaged host binary calls when started by
 the launcher, so driving a packaged app from an external renderer is

@@ -226,7 +226,7 @@ portable launchers, running Plushie-specific checks, and delegating
 platform bundles to `cargo-packager`.
 
 ```bash
-cargo plushie package assemble --release
+cargo plushie package assemble
 cargo plushie package portable --manifest plushie-package.toml
 cargo plushie package check --manifest plushie-package.toml --postcheck
 cargo plushie package bundle --manifest plushie-package.toml --format appimage
@@ -496,11 +496,13 @@ portable artifact.
 ## cargo plushie package assemble
 
 Build a Rust SDK app as a wire-mode host payload, assemble it with a
-payload-local renderer, and write `plushie-package.toml`. Use
-`package portable` or `package bundle` for the final artifact.
+payload-local renderer, and write `plushie-package.toml`. Always builds
+with the release profile. Prints a `cargo plushie package portable`
+handoff line on success; use that command or `package bundle` for the
+final artifact.
 
 ```bash
-cargo plushie package assemble --release
+cargo plushie package assemble
 ```
 
 | Flag | Type | Description |
@@ -513,13 +515,9 @@ cargo plushie package assemble --release
 | `--out-dir <DIR>` | path | Directory for generated manifest and archive |
 | `--package-config <PATH>` | path | Developer-owned source package config. Defaults to `plushie-package.config.toml` next to the app manifest when present |
 | `--write-package-config` | bool | Write a package config template and exit before building |
-| `--launcher-out <PATH>` | path | Final launcher path |
-| `--release` | bool | Build host, renderer, and launcher with release profile |
-| `--run-signing-hooks` | bool | Run signing hooks declared by the generated package manifest |
 | `--features <LIST>` | string | Additional host Cargo features |
 | `--no-default-features` | bool | Disable default features for the host build |
 | `--all-features` | bool | Enable all features for the host build |
-| `--no-launcher` | bool | Stop after writing manifest and payload |
 | `--verbose` | bool | Print underlying cargo commands |
 
 The command is the Rust SDK-owned preparation step for the shared
@@ -567,16 +565,16 @@ The command can write a template with real default values:
 cargo plushie package assemble --write-package-config
 ```
 
-By default `package assemble` immediately calls the shared
-`cargo plushie package portable` launcher builder using the generated manifest.
-Because the generated manifest lives in `--out-dir`, the delegated
-launcher builder stores its default portable output under that directory
-unless `--launcher-out` or `CARGO_TARGET_DIR` is set.
-Pass `--no-launcher` to stop at the SDK handoff point and inspect or
-precheck the generated files:
+On success the command prints the next step:
+
+```
+Build launcher with:
+  cargo plushie package portable --manifest target/plushie/rust-package/plushie-package.toml
+```
+
+Inspect or precheck the generated files before building the launcher:
 
 ```bash
-cargo plushie package assemble --release --no-launcher
 cargo plushie package check --manifest target/plushie/rust-package/plushie-package.toml
 ```
 
@@ -725,7 +723,7 @@ a non-zero exit from `cargo plushie build`.
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |
 | `PLUSHIE_SOCKET` | `doctor` | Reported in the diagnostic report; consumed by the SDK for socket-mode rendering |
 | `PLUSHIE_CACHE_DIR` | package launcher | Overrides the extraction cache root. Relative values are made absolute from the launcher's current working directory |
-| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package assemble` | Overrides the `target/` directory used for renderer output, discovery, portable launcher output, and Rust package assembly. Relative values are resolved from the cargo-plushie invocation directory |
+| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package assemble` | Overrides the `target/` directory used for renderer output, discovery, and Rust package assembly. Relative values are resolved from the cargo-plushie invocation directory |
 | `CARGO` | `build`, `run`, `package`, `package assemble` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
 
 ## See also

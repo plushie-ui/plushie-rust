@@ -323,12 +323,6 @@ struct PackageRustArgs {
     /// Write a package config template and exit before building.
     #[arg(long)]
     write_package_config: bool,
-    /// Final launcher output path. Defaults under target/plushie/package/.
-    #[arg(long)]
-    launcher_out: Option<PathBuf>,
-    /// Build host, renderer, and launcher with Cargo's release profile.
-    #[arg(long)]
-    release: bool,
     /// Print underlying cargo commands.
     #[arg(long)]
     verbose: bool,
@@ -341,15 +335,6 @@ struct PackageRustArgs {
     /// Enable all features for the host build.
     #[arg(long)]
     all_features: bool,
-    /// Stop after writing plushie-package.toml and payload.tar.zst.
-    #[arg(long)]
-    no_launcher: bool,
-    /// Run signing hooks declared by the generated package manifest.
-    #[arg(long)]
-    run_signing_hooks: bool,
-    /// Reusable plushie-launcher binary to use for the portable artifact.
-    #[arg(long)]
-    launcher: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -399,7 +384,7 @@ pub fn run() -> Result<()> {
     }
 }
 
-fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> {
+fn cmd_package_rust(args: &PackageRustArgs) -> Result<()> {
     let manifest_path = args
         .manifest_path
         .clone()
@@ -429,7 +414,7 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
                 features: &args.features,
                 no_default_features: args.no_default_features,
                 all_features: args.all_features,
-                release: args.release,
+                release: true,
                 verbose: args.verbose,
             })?;
         println!(
@@ -440,7 +425,7 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
     }
 
     let build = BuildArgs {
-        release: args.release,
+        release: true,
         verbose: args.verbose,
         manifest_path: Some(manifest_path.clone()),
         wasm: false,
@@ -457,7 +442,7 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
         &manifest_dir,
         &RunArgs {
             watch: false,
-            release: args.release,
+            release: true,
             verbose: args.verbose,
             manifest_path: Some(manifest_path.clone()),
         },
@@ -486,7 +471,7 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
         features: &args.features,
         no_default_features: args.no_default_features,
         all_features: args.all_features,
-        release: args.release,
+        release: true,
         verbose: args.verbose,
     })?;
 
@@ -515,33 +500,10 @@ fn cmd_package_rust(args: &PackageRustArgs, build_portable: bool) -> Result<()> 
         assembled.payload_dir.display()
     );
 
-    if args.no_launcher || !build_portable {
-        println!(
-            "plushie: hand off with `cargo plushie package portable --manifest {}`",
-            assembled.manifest_path.display()
-        );
-        return Ok(());
-    }
-
-    let self_identity = tool_identity::current_tool_identity("plushie");
-    if args.launcher.is_none() && self_identity.source.kind == "source" {
-        sync_source_native_tools(&manifest_dir)?;
-    }
-
-    let result = package::build_launcher(&package::PackageOpts {
-        manifest_path: &assembled.manifest_path,
-        out_path: args.launcher_out.as_deref(),
-        launcher_path: args.launcher.as_deref(),
-        run_signing_hooks: args.run_signing_hooks,
-        verbose: args.verbose,
-    })?;
+    println!("Build launcher with:");
     println!(
-        "plushie: wrote portable launcher at {}",
-        result.binary_path.display()
-    );
-    println!(
-        "plushie: used launcher template {}",
-        result.launcher_template_path.display()
+        "  cargo plushie package portable --manifest {}",
+        assembled.manifest_path.display()
     );
     Ok(())
 }
@@ -564,7 +526,7 @@ fn cmd_default_icons(args: &DefaultIconsArgs) -> Result<()> {
 
 fn cmd_package(args: &PackageArgs) -> Result<()> {
     match &args.command {
-        PackageSubcommand::Assemble(a) => cmd_package_rust(a, true),
+        PackageSubcommand::Assemble(a) => cmd_package_rust(a),
         PackageSubcommand::Portable(p) => cmd_package_portable(p),
         PackageSubcommand::Check(c) => cmd_package_check(c),
         PackageSubcommand::Bundle(b) => cmd_package_bundle(b),

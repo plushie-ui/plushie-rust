@@ -25,6 +25,9 @@ pub struct DoctorOpts<'a> {
     pub manifest_dir: &'a Path,
     /// Minimum supported Rust toolchain version.
     pub min_rustc_version: &'a str,
+    /// When true, show full values of environment variables in the report.
+    /// By default only `set` / `unset` is shown to avoid leaking paths.
+    pub show_env_values: bool,
 }
 
 /// Diagnostic outcome. The `critical` field is the gate on exit code:
@@ -71,6 +74,49 @@ impl Severity {
     }
 }
 
+/// Build the environment-variable rows for the doctor report.
+///
+/// Each tracked variable contributes one row. When `show_values` is
+/// false, set variables are reported as `"set"` rather than revealing
+/// their contents (which may include home paths or socket paths).
+fn env_rows(show_values: bool) -> Vec<Row> {
+    env_rows_with_lookup(show_values, |var| std::env::var(var).ok())
+}
+
+/// Inner implementation of [`env_rows`] with an injectable lookup, for
+/// unit testing without touching the process environment.
+fn env_rows_with_lookup<F>(show_values: bool, lookup: F) -> Vec<Row>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    const TRACKED: &[&str] = &[
+        "PLUSHIE_BINARY_PATH",
+        "PLUSHIE_RUST_SOURCE_PATH",
+        "PLUSHIE_MODE",
+        "PLUSHIE_SOCKET",
+    ];
+    TRACKED
+        .iter()
+        .map(|&var| {
+            let value = match lookup(var) {
+                Some(v) => {
+                    if show_values {
+                        v
+                    } else {
+                        "set".to_string()
+                    }
+                }
+                None => "unset".to_string(),
+            };
+            Row {
+                label: var.to_string(),
+                value,
+                severity: Severity::Ok,
+            }
+        })
+        .collect()
+}
+
 /// Gather the diagnostic rows and return a populated [`DoctorReport`].
 ///
 /// # Errors
@@ -97,22 +143,7 @@ pub fn run_doctor(opts: &DoctorOpts<'_>) -> Result<DoctorReport> {
     });
 
     // -- Environment --
-    for var in [
-        "PLUSHIE_BINARY_PATH",
-        "PLUSHIE_RUST_SOURCE_PATH",
-        "PLUSHIE_MODE",
-        "PLUSHIE_SOCKET",
-    ] {
-        let (value, severity) = match std::env::var(var) {
-            Ok(v) => (v, Severity::Ok),
-            Err(_) => ("(unset)".to_string(), Severity::Ok),
-        };
-        report.rows.push(Row {
-            label: var.to_string(),
-            value,
-            severity,
-        });
-    }
+    report.rows.extend(env_rows(opts.show_env_values));
 
     // -- Renderer discovery --
     let discovered = discover_renderer(opts.manifest_dir);
@@ -592,5 +623,60 @@ mod tests {
 
         assert!(version.is_none());
         assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    fn lookup_with_binary_path(value: &str) -> impl Fn(&str) -> Option<String> + '_ {
+        move |var| {
+            if var == "PLUSHIE_BINARY_PATH" {
+                Some(value.to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    #[test]
+    fn env_rows_redacts_values_by_default() {
+        let sentinel = "/home/testuser/plushie/bin/renderer-abc123";
+        let rows = env_rows_with_lookup(false, lookup_with_binary_path(sentinel));
+        let binary_row = rows
+            .iter()
+            .find(|r| r.label == "PLUSHIE_BINARY_PATH")
+            .expect("PLUSHIE_BINARY_PATH row must be present");
+
+        assert_eq!(
+            binary_row.value, "set",
+            "default mode must not expose the value"
+        );
+        assert!(
+            !binary_row.value.contains("testuser"),
+            "path must not leak into default output"
+        );
+    }
+
+    #[test]
+    fn env_rows_shows_values_in_verbose_mode() {
+        let sentinel = "/home/testuser/plushie/bin/renderer-verbose456";
+        let rows = env_rows_with_lookup(true, lookup_with_binary_path(sentinel));
+        let binary_row = rows
+            .iter()
+            .find(|r| r.label == "PLUSHIE_BINARY_PATH")
+            .expect("PLUSHIE_BINARY_PATH row must be present");
+
+        assert_eq!(
+            binary_row.value, sentinel,
+            "verbose mode must show the full value"
+        );
+    }
+
+    #[test]
+    fn env_rows_reports_unset_for_missing_vars() {
+        let rows = env_rows_with_lookup(false, |_var| None);
+        let binary_row = rows
+            .iter()
+            .find(|r| r.label == "PLUSHIE_BINARY_PATH")
+            .expect("PLUSHIE_BINARY_PATH row must be present");
+
+        assert_eq!(binary_row.value, "unset");
     }
 }

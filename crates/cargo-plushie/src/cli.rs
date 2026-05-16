@@ -166,6 +166,10 @@ struct DoctorArgs {
     /// Path to the app crate manifest (defaults to `./Cargo.toml`).
     #[arg(long)]
     manifest_path: Option<PathBuf>,
+    /// Show full values of inspected environment variables (may contain
+    /// paths or sensitive data).
+    #[arg(long, short = 'v')]
+    verbose: bool,
 }
 
 #[derive(Args, Debug)]
@@ -1190,6 +1194,7 @@ fn cmd_doctor(args: &DoctorArgs) -> Result<()> {
     let opts = doctor::DoctorOpts {
         manifest_dir: &manifest_dir,
         min_rustc_version: "1.92",
+        show_env_values: args.verbose,
     };
     let report = doctor::run_doctor(&opts)?;
     let mut stdout = std::io::stdout().lock();

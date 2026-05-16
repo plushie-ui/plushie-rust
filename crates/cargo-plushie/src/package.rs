@@ -751,7 +751,8 @@ fn prepare_portable_launcher(opts: &PackageOpts<'_>) -> Result<PreparedPortableL
                 .join(executable_name(&app_cache_name(&loaded.manifest.app_id)))
         }))?;
 
-    let launcher_template_path = resolve_launcher_template(opts.launcher_path)?;
+    let launcher_template_path =
+        resolve_launcher_template(opts.launcher_path, &loaded.manifest_dir)?;
     validate_distinct_launcher_output(&launcher_template_path, &output_path)?;
 
     Ok(PreparedPortableLauncher {
@@ -1054,7 +1055,7 @@ fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
     f()
 }
 
-fn resolve_launcher_template(explicit: Option<&Path>) -> Result<PathBuf> {
+fn resolve_launcher_template(explicit: Option<&Path>, manifest_dir: &Path) -> Result<PathBuf> {
     if let Some(path) = explicit {
         return canonical_launcher_template(path);
     }
@@ -1063,7 +1064,23 @@ fn resolve_launcher_template(explicit: Option<&Path>) -> Result<PathBuf> {
     }
 
     let name = platform::launcher_name();
-    let mut candidates = vec![std::env::current_dir()?.join("bin").join(&name)];
+
+    // Resolve a project root from the manifest directory using the same
+    // heuristic the strict-tool commands use. This ensures that invoking
+    // `cargo plushie package portable --manifest /work/app/dist/plushie-package.toml`
+    // from an unrelated directory still finds `bin/plushie-launcher` alongside
+    // the manifest's project root, not just under the cwd.
+    //
+    // strict_tool_project_dir_from_manifest expects a file path and calls
+    // `.parent()` internally. We pass a sentinel file inside manifest_dir so
+    // the directory walk starts from manifest_dir itself.
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(project_dir) = crate::cli::strict_tool_project_dir_from_manifest(Some(
+        &manifest_dir.join("plushie-package.toml"),
+    )) {
+        candidates.push(project_dir.join("bin").join(&name));
+    }
+    candidates.push(std::env::current_dir()?.join("bin").join(&name));
     if let Ok(current_exe) = std::env::current_exe()
         && let Some(parent) = current_exe.parent()
     {
@@ -2436,6 +2453,42 @@ shell = true
             std::fs::read_to_string(&manifest).unwrap()
         );
         assert!(!prepared.payload.is_empty());
+    }
+
+    #[test]
+    fn finds_launcher_relative_to_manifest_dir_when_cwd_differs() {
+        // Manifest lives at <project>/dist/plushie-package.toml.
+        // Launcher lives at <project>/bin/plushie-launcher.
+        // Invocation is from an unrelated directory (simulated by passing
+        // no explicit launcher_path). Resolution must walk from the manifest
+        // dir up to the project root and find bin/plushie-launcher there.
+        let project = tempdir().unwrap();
+        let dist = project.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+
+        // Write manifest into the dist subdir.
+        let manifest = write_sample_package(&dist);
+
+        // Write launcher at <project>/bin/plushie-launcher (not under dist).
+        let launcher_path = project.path().join("bin").join(platform::launcher_name());
+        std::fs::create_dir_all(launcher_path.parent().unwrap()).unwrap();
+        std::fs::write(&launcher_path, b"launcher").unwrap();
+
+        // resolve_launcher_template is called internally from
+        // prepare_portable_launcher. No launcher_path is passed; the function
+        // must find the launcher via the manifest_dir heuristic.
+        let opts = PackageOpts {
+            manifest_path: &manifest,
+            out_path: None,
+            launcher_path: None,
+            run_signing_hooks: false,
+            verbose: false,
+        };
+        let prepared = prepare_portable_launcher(&opts).unwrap();
+        assert_eq!(
+            prepared.launcher_template_path,
+            std::fs::canonicalize(&launcher_path).unwrap()
+        );
     }
 
     #[test]

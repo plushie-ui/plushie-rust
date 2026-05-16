@@ -1142,7 +1142,9 @@ fn strict_tool_project_dir_from(
         .unwrap_or_else(|| current_dir.to_path_buf())
 }
 
-fn strict_tool_project_dir_from_manifest(manifest_path: Option<&Path>) -> Option<PathBuf> {
+pub(crate) fn strict_tool_project_dir_from_manifest(
+    manifest_path: Option<&Path>,
+) -> Option<PathBuf> {
     let manifest_dir = manifest_path.and_then(Path::parent)?;
     for dir in manifest_dir.ancestors() {
         if looks_like_strict_tool_project_root(dir) {

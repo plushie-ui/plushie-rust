@@ -41,6 +41,7 @@ Lookup material organized by topic. Each page is self-contained.
 - [Dev Mode](reference/dev.md) - `watch_renderer`, restart policy, in-tree rebuild overlay
 - [Direct vs Wire](reference/direct-vs-wire.md) - in-process iced vs subprocess renderer, feature flags, WASM renderer
 - [Events](reference/events.md) - event types, `widget_match`, scoped ID routing
+- [Packaging and Distribution](reference/packaging-and-distribution.md) - `cargo plushie package-rust assemble`, portable artifacts, OS-native bundles, CI
 - [Scoped IDs](reference/scoped-ids.md) - `#[track_caller]` auto-IDs, explicit IDs, scope paths
 - [Subscriptions](reference/subscriptions.md) - timer, keyboard, pointer, window, theme, animation frame
 - [Testing](reference/testing.md) - `TestSession`, selectors, interactions, assertions, async
@@ -78,6 +79,7 @@ When you know what you want to do but not which page to start on:
 
 **Deployment**: [Direct vs Wire](reference/direct-vs-wire.md),
 [Configuration](reference/configuration.md),
+[Packaging and Distribution](reference/packaging-and-distribution.md),
 [WASM Transport](reference/wasm-transport.md),
 [Versioning](reference/versioning.md),
 [Wire Protocol](reference/wire-protocol.md).

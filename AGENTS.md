@@ -197,6 +197,7 @@ just build-release                 # optimized release build (workspace)
 # `cargo run --release` and `cargo test --release` stay fast.
 just format                        # auto-format
 just fmt                           # check formatting (CI mode)
+just clean                         # remove gitignored build artifacts
 just watch-check                   # cargo watch: check on save
 just watch-test                    # cargo watch: test on save
 just docs                          # build and open rustdocs

@@ -3,6 +3,8 @@
 # Run `just` to see available recipes.
 # Run `just preflight` before pushing to catch CI failures locally.
 
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
 export RUSTFLAGS := "-D warnings"
 
 default:
@@ -93,7 +95,7 @@ test-crate crate:
     cargo nextest run -p {{crate}}
 
 clean:
-    cargo clean
+    git clean -fdX
 
 docs:
     cargo doc --workspace --open

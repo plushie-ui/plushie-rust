@@ -13,8 +13,10 @@
 //!   from GitHub releases and place it under `bin/`.
 //! - `cargo plushie package portable` - build a standalone launcher from a
 //!   Plushie package manifest and payload archive.
-//! - `cargo plushie package assemble` - build a wire-mode Rust app payload
-//!   and hand it to the shared package launcher.
+//! - `cargo plushie package assemble` - complete a partial SDK manifest,
+//!   archive the payload dir, and hand off to `package portable`.
+//! - `cargo plushie package-rust assemble` - build a wire-mode Rust app
+//!   payload and hand it to the shared package launcher.
 
 #![deny(missing_docs)]
 
@@ -130,6 +132,7 @@ pub mod doctor;
 pub mod download;
 pub mod generator;
 pub mod package;
+pub mod package_assemble;
 pub mod package_runtime;
 pub mod package_rust;
 pub mod patch_config;

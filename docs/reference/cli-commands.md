@@ -16,7 +16,8 @@ too: the binary normalises both argv shapes before parsing.
 | [`cargo plushie package portable`](#cargo-plushie-package-portable) | Build a portable launcher from a package manifest |
 | [`cargo plushie package check`](#cargo-plushie-package-check) | Check a package manifest or portable launcher |
 | [`cargo plushie package manifest validate`](#cargo-plushie-package-manifest-validate) | Validate a manifest file without a payload archive |
-| [`cargo plushie package assemble`](#cargo-plushie-package-assemble) | Build a wire-mode Rust app payload and manifest |
+| [`cargo plushie package assemble`](#cargo-plushie-package-assemble) | Complete a partial SDK manifest and archive the payload dir |
+| [`cargo plushie package-rust assemble`](#cargo-plushie-package-rust-assemble) | Build a wire-mode Rust app payload and manifest |
 | [`cargo plushie default-icons`](#cargo-plushie-default-icons) | Write bundled default app icons |
 | [`cargo plushie new-widget`](#cargo-plushie-new-widget) | Scaffold a native widget crate |
 | [`cargo plushie init`](#cargo-plushie-init) | Scaffold a plushie app crate |
@@ -517,14 +518,64 @@ portable artifact.
 
 ## cargo plushie package assemble
 
-Build a Rust SDK app as a wire-mode host payload, assemble it with a
-payload-local renderer, and write `plushie-package.toml`. Always builds
-with the release profile. Prints a `cargo plushie package portable`
-handoff line on success; use that command or `package bundle` for the
-final artifact.
+Cross-SDK generic assembly step. The SDK writes a partial
+`plushie-package.toml` containing everything it knows (identity, target,
+`host_sdk`, renderer info, optional `[platform]` fields, optional
+`[[licenses]]` / `[[sbom]]`) and assembles a ready-to-run payload directory.
+This command completes the manifest: reads `[start]` from the source config
+or the partial manifest, materializes a default icon if none is declared,
+creates the deterministic `payload.tar.zst` archive, computes its SHA-256,
+and overwrites the partial manifest with a complete one containing `[start]`
+and `[payload]`.
 
 ```bash
-cargo plushie package assemble
+cargo plushie package assemble \
+  --manifest <path-to-partial-plushie-package.toml> \
+  --payload-dir <path-to-assembled-payload-tree>
+```
+
+| Flag | Type | Description |
+|---|---|---|
+| `--manifest <PATH>` | path | Partial `plushie-package.toml` written by the SDK |
+| `--payload-dir <PATH>` | path | Assembled payload directory tree |
+| `--package-config <PATH>` | path | Developer-owned source config. Defaults to `plushie-package.config.toml` next to the manifest when present |
+
+The partial manifest must include `schema_version`, `app_id`,
+`app_version`, `target`, `host_sdk`, `plushie_rust_version`,
+`protocol_version`, `[renderer]`, and any optional `[platform]`,
+`[[licenses]]`, or `[[sbom]]` sections. `[start]` and `[payload]` may be
+absent.
+
+If `[start]` is absent from the partial manifest, a `plushie-package.config.toml`
+in the same directory (or the `--package-config` path) must supply it.
+The source config takes precedence over a `[start]` already present in the
+partial manifest.
+
+Default icon behavior: if `[platform].icon` is not set in the partial manifest
+and no file exists at `assets/default-app-icon-512.png` inside the payload dir,
+the bundled 512px icon is written there and `[platform].icon` is set to
+`"assets/default-app-icon-512.png"`.
+
+The payload directory is validated before archiving: no symlinks, no hard
+links, no special files.
+
+On success the command prints the next step:
+
+```
+Build launcher with:
+  bin/plushie package portable --manifest <path>
+```
+
+## cargo plushie package-rust assemble
+
+Rust SDK-owned preparation step for the shared launcher. Builds the
+Rust app as a wire-mode host binary, assembles it with a payload-local
+renderer, and writes `plushie-package.toml`. Always builds with the
+release profile. Prints a `cargo plushie package portable` handoff line
+on success; use that command or `package bundle` for the final artifact.
+
+```bash
+cargo plushie package-rust assemble
 ```
 
 | Flag | Type | Description |
@@ -542,12 +593,11 @@ cargo plushie package assemble
 | `--all-features` | bool | Enable all features for the host build |
 | `--verbose` | bool | Print underlying cargo commands |
 
-The command is the Rust SDK-owned preparation step for the shared
-launcher. It first reuses `cargo plushie build` with the same feature
-selection to produce a renderer binary, then builds the selected Rust
-app binary with `plushie/wire` enabled. Pass a package `Cargo.toml`;
-virtual workspace manifests are rejected until `package assemble` grows an
-explicit package selector. The payload uses conventional paths:
+The command reuses `cargo plushie build` with the same feature selection
+to produce a renderer binary, then builds the selected Rust app binary with
+`plushie/wire` enabled. Pass a package `Cargo.toml`; virtual workspace
+manifests are rejected until `package-rust assemble` grows an explicit
+package selector. The payload uses conventional paths:
 
 ```text
 bin/<host>
@@ -555,20 +605,19 @@ bin/plushie-renderer
 assets/<icon>
 ```
 
-The generated manifest writes `host_sdk = "rust"`, the app version
-from Cargo metadata, the local platform target, `protocol_version`,
+The generated manifest writes `host_sdk = "rust"`, the app version from
+Cargo metadata, the local platform target, `protocol_version`,
 `host_sdk_version`, `plushie_rust_version`, `[platform].icon`, and a
-`[renderer]` table with `kind = "custom"` and `source = "local-build"`.
-If `--icon` is omitted, the command writes Plushie's bundled default
-icons into `assets/` before archiving and points `[platform].icon` at
-the large PNG.
+`[renderer]` table with `kind = "custom"`. If `--icon` is omitted, the
+command writes Plushie's bundled default icons into `assets/` before
+archiving and points `[platform].icon` at the large PNG.
 
-`package assemble` only assembles packages for the current build host. Cargo
-cross-target builds, including `CARGO_BUILD_TARGET` and build-target
-configuration that places the host binary under a target-triple
-directory, are rejected until target-aware assembly is implemented.
+`package-rust assemble` only assembles packages for the current build host.
+Cargo cross-target builds, including `CARGO_BUILD_TARGET` and build-target
+configuration that places the host binary under a target-triple directory,
+are rejected until target-aware assembly is implemented.
 
-`package assemble` reads `plushie-package.config.toml` next to the app
+`package-rust assemble` reads `plushie-package.config.toml` next to the app
 manifest when present. Pass `--package-config` to use another path. The
 source config only owns host startup settings:
 
@@ -584,7 +633,7 @@ forward_env = ["PATH", "HOME", "LANG", "LC_ALL", "XDG_RUNTIME_DIR", "WAYLAND_DIS
 The command can write a template with real default values:
 
 ```bash
-cargo plushie package assemble --write-package-config
+cargo plushie package-rust assemble --write-package-config
 ```
 
 On success the command prints the next step:
@@ -603,8 +652,8 @@ cargo plushie package check --manifest target/plushie/rust-package/plushie-packa
 Direct-mode Rust apps do not need this launcher path when the app is a
 single native executable. Build them with Cargo's release or dist
 profile and hand that native binary to the platform package manager.
-Use `package assemble` when the app uses wire/connect mode or needs the
-shared payload lifecycle.
+Use `package-rust assemble` when the app uses wire/connect mode or needs
+the shared payload lifecycle.
 
 ## cargo plushie default-icons
 
@@ -738,15 +787,15 @@ a non-zero exit from `cargo plushie build`.
 
 | Variable | Read by | Description |
 |---|---|---|
-| `PLUSHIE_RUST_SOURCE_PATH` | `build`, `package assemble`, `init`, `new-widget`, `doctor` | Absolute path to a local plushie-rust checkout. Enables `[patch.crates-io]` redirects and wasm source resolution |
+| `PLUSHIE_RUST_SOURCE_PATH` | `build`, `package-rust assemble`, `init`, `new-widget`, `doctor` | Absolute path to a local plushie-rust checkout. Enables `[patch.crates-io]` redirects and wasm source resolution |
 | `PLUSHIE_RELEASE_BASE_URL` | `download`, `tools sync` | Override release asset base URL for mirrored release verification. Remote mirrors must use HTTPS. `file://` and loopback HTTP are for local checks |
 | `PLUSHIE_BINARY_PATH` | `run`, package launcher, `doctor` | Explicit renderer binary path; set by `run` for the child `cargo run` process, set by package launchers for the packaged app command, reported by `doctor` |
 | `PLUSHIE_PACKAGE_DIR` | package launcher | Set for the packaged app command to the extracted app package directory |
 | `PLUSHIE_MODE` | `doctor` | Reported in the diagnostic report; consumed by the SDK to force wire mode |
 | `PLUSHIE_SOCKET` | `doctor` | Reported in the diagnostic report; consumed by the SDK for socket-mode rendering |
 | `PLUSHIE_CACHE_DIR` | package launcher | Overrides the extraction cache root. Relative values are made absolute from the launcher's current working directory |
-| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package assemble` | Overrides the `target/` directory used for renderer output, discovery, and Rust package assembly. Relative values are resolved from the cargo-plushie invocation directory |
-| `CARGO` | `build`, `run`, `package`, `package assemble` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
+| `CARGO_TARGET_DIR` | `build`, `run`, `download`, `doctor`, `package`, `package-rust assemble` | Overrides the `target/` directory used for renderer output, discovery, and Rust package assembly. Relative values are resolved from the cargo-plushie invocation directory |
+| `CARGO` | `build`, `run`, `package`, `package-rust assemble` | Overrides the `cargo` binary invoked for sub-builds (honours the rustup proxy) |
 
 ## See also
 

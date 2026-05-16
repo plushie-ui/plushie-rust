@@ -6,8 +6,8 @@
 //! through the same clap parser below.
 
 use crate::{
-    default_icons, discover, doctor, download, generator, package, package_rust, platform,
-    scaffold, tool_identity,
+    default_icons, discover, doctor, download, generator, package, package_assemble, package_rust,
+    platform, scaffold, tool_identity,
 };
 use anyhow::{Context, Result};
 use cargo_metadata::CargoOpt;
@@ -209,8 +209,11 @@ struct PackageArgs {
 
 #[derive(Subcommand, Debug)]
 enum PackageSubcommand {
-    /// Build a wire-mode Rust app payload directory and manifest.
-    Assemble(PackageRustArgs),
+    /// Complete a partial SDK-written manifest, archive the payload dir,
+    /// and produce a ready-to-use plushie-package.toml alongside
+    /// payload.tar.zst. The SDK writes identity, target, renderer, and
+    /// optional platform fields; this command fills in [start] and [payload].
+    Assemble(PackageAssembleArgs),
     /// Build a self-extracting portable launcher from a package manifest.
     Portable(PackagePortableArgs),
     /// Check a package manifest, payload, or portable launcher.
@@ -219,6 +222,9 @@ enum PackageSubcommand {
     Bundle(PackageBundleArgs),
     /// Manifest workflow commands.
     Manifest(ManifestArgs),
+    /// Rust SDK-owned package assembly: build the wire-mode Rust host,
+    /// assemble the payload, and hand off to `package portable`.
+    PackageRust(PackageRustSubArgs),
 }
 
 #[derive(Args, Debug)]
@@ -326,6 +332,33 @@ struct PackageBundleArgs {
     /// Print launcher template resolution.
     #[arg(long)]
     verbose: bool,
+}
+
+#[derive(Args, Debug)]
+struct PackageAssembleArgs {
+    /// Path to the partial plushie-package.toml written by the SDK.
+    #[arg(long)]
+    manifest: PathBuf,
+    /// Path to the assembled payload directory tree.
+    #[arg(long)]
+    payload_dir: PathBuf,
+    /// Developer-owned package config. Defaults to plushie-package.config.toml
+    /// next to the manifest when present.
+    #[arg(long)]
+    package_config: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+struct PackageRustSubArgs {
+    /// Rust SDK package subcommand.
+    #[command(subcommand)]
+    command: PackageRustSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum PackageRustSubcommand {
+    /// Build a wire-mode Rust app payload directory and manifest.
+    Assemble(PackageRustArgs),
 }
 
 #[derive(Args, Debug)]
@@ -558,11 +591,41 @@ fn cmd_default_icons(args: &DefaultIconsArgs) -> Result<()> {
 
 fn cmd_package(args: &PackageArgs) -> Result<()> {
     match &args.command {
-        PackageSubcommand::Assemble(a) => cmd_package_rust(a),
+        PackageSubcommand::Assemble(a) => cmd_package_assemble(a),
         PackageSubcommand::Portable(p) => cmd_package_portable(p),
         PackageSubcommand::Check(c) => cmd_package_check(c),
         PackageSubcommand::Bundle(b) => cmd_package_bundle(b),
         PackageSubcommand::Manifest(m) => cmd_package_manifest(m),
+        PackageSubcommand::PackageRust(r) => cmd_package_rust_sub(r),
+    }
+}
+
+fn cmd_package_assemble(args: &PackageAssembleArgs) -> Result<()> {
+    let result = package_assemble::assemble_package(&package_assemble::AssembleOpts {
+        manifest_path: &args.manifest,
+        payload_dir: &args.payload_dir,
+        package_config: args.package_config.as_deref(),
+    })?;
+
+    println!(
+        "plushie: assembled manifest at {}",
+        result.manifest_path.display()
+    );
+    println!(
+        "plushie: assembled payload archive at {}",
+        result.payload_archive_path.display()
+    );
+    println!("Build launcher with:");
+    println!(
+        "  bin/plushie package portable --manifest {}",
+        result.manifest_path.display()
+    );
+    Ok(())
+}
+
+fn cmd_package_rust_sub(args: &PackageRustSubArgs) -> Result<()> {
+    match &args.command {
+        PackageRustSubcommand::Assemble(a) => cmd_package_rust(a),
     }
 }
 

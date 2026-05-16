@@ -15,6 +15,7 @@ too: the binary normalises both argv shapes before parsing.
 | [`cargo plushie package`](#cargo-plushie-package) | Package command group |
 | [`cargo plushie package portable`](#cargo-plushie-package-portable) | Build a portable launcher from a package manifest |
 | [`cargo plushie package check`](#cargo-plushie-package-check) | Check a package manifest or portable launcher |
+| [`cargo plushie package manifest validate`](#cargo-plushie-package-manifest-validate) | Validate a manifest file without a payload archive |
 | [`cargo plushie package assemble`](#cargo-plushie-package-assemble) | Build a wire-mode Rust app payload and manifest |
 | [`cargo plushie default-icons`](#cargo-plushie-default-icons) | Write bundled default app icons |
 | [`cargo plushie new-widget`](#cargo-plushie-new-widget) | Scaffold a native widget crate |
@@ -465,6 +466,27 @@ cargo plushie package check --manifest plushie-package.toml --postcheck
 | `--postcheck-timeout <SECONDS>` | integer | Maximum time for `--postcheck` to wait |
 | `--launcher <PATH>` | path | Reusable `plushie-launcher` binary to use during `--postcheck` |
 | `--verbose` | bool | Print launcher template resolution |
+
+## cargo plushie package manifest validate
+
+Validate a package manifest TOML file without requiring a payload archive.
+
+```bash
+cargo plushie package manifest validate plushie-package.toml
+cargo plushie package manifest validate dist/plushie-package.toml
+```
+
+Parses and validates schema, required fields, `app_id` format, path safety,
+target, protocol version, and all optional section rules (`[platform]`,
+`[updates]`, `[signing]`). The payload archive does not need to exist.
+
+Exits 0 when valid. Exits non-zero on any validation error; the error is
+printed to stderr. Non-fatal issues (such as a missing platform icon) are
+printed as warnings.
+
+Useful for CI lint steps, IDE integration, and SDK packagers that want to
+confirm the generated manifest is well-formed before assembling the payload
+archive.
 
 ## plushie-launcher
 

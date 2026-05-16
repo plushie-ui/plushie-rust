@@ -213,6 +213,31 @@ enum PackageSubcommand {
     Check(PackageCheckArgs),
     /// Create a platform bundle through cargo-packager.
     Bundle(PackageBundleArgs),
+    /// Manifest workflow commands.
+    Manifest(ManifestArgs),
+}
+
+#[derive(Args, Debug)]
+struct ManifestArgs {
+    /// Manifest workflow command.
+    #[command(subcommand)]
+    command: ManifestSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum ManifestSubcommand {
+    /// Validate a package manifest TOML file.
+    ///
+    /// Parses and validates schema, required fields, app_id format, paths,
+    /// target, and optional section rules. Does not require a payload
+    /// archive. Exits 0 on valid, non-zero on invalid.
+    Validate(ManifestValidateArgs),
+}
+
+#[derive(Args, Debug)]
+struct ManifestValidateArgs {
+    /// Path to the Plushie package manifest to validate.
+    manifest: PathBuf,
 }
 
 #[derive(Args, Debug)]
@@ -533,7 +558,29 @@ fn cmd_package(args: &PackageArgs) -> Result<()> {
         PackageSubcommand::Portable(p) => cmd_package_portable(p),
         PackageSubcommand::Check(c) => cmd_package_check(c),
         PackageSubcommand::Bundle(b) => cmd_package_bundle(b),
+        PackageSubcommand::Manifest(m) => cmd_package_manifest(m),
     }
+}
+
+fn cmd_package_manifest(args: &ManifestArgs) -> Result<()> {
+    match &args.command {
+        ManifestSubcommand::Validate(v) => cmd_manifest_validate(v),
+    }
+}
+
+fn cmd_manifest_validate(args: &ManifestValidateArgs) -> Result<()> {
+    let result = package::validate_manifest_file(&args.manifest).map_err(|err| {
+        eprintln!("error: {err}");
+        err
+    })?;
+    for warning in &result.warnings {
+        eprintln!("warning: {}", warning.message());
+    }
+    println!(
+        "plushie: manifest ok ({} {})",
+        result.app_id, result.app_version
+    );
+    Ok(())
 }
 
 fn cmd_tools(args: &ToolsArgs) -> Result<()> {

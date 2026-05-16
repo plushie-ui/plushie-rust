@@ -291,6 +291,37 @@ pub fn precheck_package(manifest_path: &Path) -> Result<PackagePrecheckResult> {
     })
 }
 
+/// Validate a package manifest TOML file without requiring a payload archive.
+///
+/// Parses the manifest, runs the full schema and field validation (including
+/// `app_id` format, path safety, protocol version, target, and optional
+/// section fields), and returns precheck metadata on success. Payload hash
+/// verification and archive content checks are skipped because no archive is
+/// loaded.
+///
+/// Useful for CI lint, IDE integration, and manifest producers that want to
+/// verify the manifest is well-formed before assembling a payload archive.
+///
+/// # Errors
+///
+/// Returns an error when the manifest file cannot be read, is invalid TOML,
+/// or fails any schema or field validation check.
+pub fn validate_manifest_file(manifest_path: &Path) -> Result<PackagePrecheckResult> {
+    let manifest_path = std::fs::canonicalize(manifest_path)
+        .with_context(|| format!("manifest `{}` not found", manifest_path.display()))?;
+    let manifest_text = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("failed to read `{}`", manifest_path.display()))?;
+    let manifest = parse_manifest(&manifest_text)?;
+    let warnings = package_warnings(&manifest);
+    Ok(PackagePrecheckResult {
+        app_id: manifest.app_id,
+        app_version: manifest.app_version,
+        plushie_rust_version: manifest.plushie_rust_version,
+        payload_hash: manifest.payload.hash,
+        warnings,
+    })
+}
+
 /// Create a platform bundle by delegating to cargo-packager.
 ///
 /// # Errors
@@ -2839,6 +2870,52 @@ hash = "{hash}"
                 "expected app_id error for '{app_id}', got: {err}"
             );
         }
+    }
+
+    #[test]
+    fn validate_manifest_file_accepts_valid_manifest_without_payload() {
+        let dir = tempdir().unwrap();
+        let manifest = dir.path().join("plushie-package.toml");
+        std::fs::write(
+            &manifest,
+            valid_manifest_text(""),
+        )
+        .unwrap();
+
+        let result = validate_manifest_file(&manifest).unwrap();
+        assert_eq!(result.app_id, "com.example.notes");
+        assert_eq!(result.app_version, "0.1.0");
+    }
+
+    #[test]
+    fn validate_manifest_file_rejects_invalid_app_id() {
+        let dir = tempdir().unwrap();
+        let manifest = dir.path().join("plushie-package.toml");
+        let text = valid_manifest_text("")
+            .replace(r#"app_id = "com.example.notes""#, r#"app_id = "BadApp""#);
+        std::fs::write(&manifest, text).unwrap();
+
+        let err = validate_manifest_file(&manifest).unwrap_err();
+        assert!(err.to_string().contains("app_id"));
+    }
+
+    #[test]
+    fn validate_manifest_file_errors_when_file_is_missing() {
+        let dir = tempdir().unwrap();
+        let err = validate_manifest_file(&dir.path().join("nonexistent.toml")).unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn validate_manifest_file_does_not_require_payload_archive() {
+        // The payload archive file does not exist alongside the manifest;
+        // validate_manifest_file must succeed without it.
+        let dir = tempdir().unwrap();
+        let manifest = dir.path().join("plushie-package.toml");
+        std::fs::write(&manifest, valid_manifest_text("")).unwrap();
+        assert!(!dir.path().join("payload.tar.zst").exists());
+
+        validate_manifest_file(&manifest).unwrap();
     }
 
     fn sample_payload_archive() -> Vec<u8> {

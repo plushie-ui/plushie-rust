@@ -194,14 +194,27 @@ impl Drop for StderrCapture {
 /// into a guard that dumps on test panic. Replaces the prior
 /// `Stdio::null()` usage so renderer diagnostics are visible when
 /// subprocess-driven tests fail.
+///
+/// Panics with a diagnostic hint if the binary is missing or cannot be
+/// executed (e.g. wrong architecture). An "exec format error" typically
+/// means the binary at `target/debug/plushie-renderer` was built for a
+/// different architecture; run `cargo build -p plushie-renderer` on the
+/// current host to rebuild it.
 fn spawn_renderer(args: &[&str]) -> (Child, StderrCapture) {
-    let mut child = Command::new(plushie_binary())
+    let binary = plushie_binary();
+    let mut child = Command::new(&binary)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn plushie");
+        .unwrap_or_else(|err| {
+            panic!(
+                "failed to spawn plushie-renderer at `{binary}`: {err}\n\
+                 Hint: if this is an exec format error, the binary may be built for \
+                 a different architecture. Rebuild with `cargo build -p plushie-renderer`."
+            )
+        });
     let stderr = child
         .stderr
         .take()

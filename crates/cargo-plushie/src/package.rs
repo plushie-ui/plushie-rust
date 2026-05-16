@@ -1481,10 +1481,22 @@ fn validate_manifest_relative_path(name: &str, value: &str, allow_dot: bool) -> 
 }
 
 fn validate_app_id(value: &str) -> Result<()> {
-    let safe = safe_name(value);
-    if safe == "." || safe == ".." {
+    // Require reverse-DNS format: lowercase segments separated by dots.
+    // Each segment starts with a letter and contains only [a-z0-9_].
+    // At least two segments are required so single-word names are rejected.
+    let is_valid = {
+        let mut segments = value.split('.');
+        let all_valid = segments.by_ref().all(|seg| {
+            !seg.is_empty()
+                && seg.starts_with(|c: char| c.is_ascii_lowercase())
+                && seg.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        });
+        let segment_count = value.split('.').count();
+        all_valid && segment_count >= 2
+    };
+    if !is_valid {
         return Err(Error::Other(anyhow::anyhow!(
-            "app_id must not map to a path-control component"
+            "app_id must be lowercase reverse-DNS like 'com.example.appname', got: '{value}'"
         )));
     }
     Ok(())
@@ -2795,38 +2807,38 @@ hash = "{hash}"
     }
 
     #[test]
-    fn rejects_path_control_app_ids() {
-        let hash = format!("{:x}", Sha256::digest(b"payload"));
-        let text = format!(
-            r#"
-schema_version = 1
-app_id = ".."
-app_version = "0.1.0"
-target = "{}"
-host_sdk = "python"
-plushie_rust_version = "{}"
-protocol_version = {}
+    fn accepts_valid_app_ids() {
+        for app_id in ["dev.plushie.notes", "com.example.foo_bar", "io.my_app.demo123"] {
+            let text = valid_manifest_text("").replace(r#"app_id = "com.example.notes""#, &format!(r#"app_id = "{app_id}""#));
+            let manifest = parse_manifest(&text).unwrap();
+            assert_eq!(manifest.app_id, app_id);
+        }
+    }
 
-[start]
-working_dir = "."
-command = ["bin/notes"]
-forward_env = []
-
-[renderer]
-path = "bin/plushie-renderer"
-kind = "stock"
-
-[payload]
-archive = "payload.tar.zst"
-hash = "sha256:{hash}"
-"#,
-            current_package_target(),
-            EXPECTED_PLUSHIE_RUST_VERSION,
-            EXPECTED_PROTOCOL_VERSION
-        );
-
-        let err = parse_manifest(&text).unwrap_err();
-        assert!(err.to_string().contains("app_id"));
+    #[test]
+    fn rejects_invalid_app_ids() {
+        for app_id in [
+            "..",
+            ".",
+            "Notes",
+            "COM.EXAMPLE.APP",
+            "com.Example.app",
+            "1com.example.app",
+            "com.1example.app",
+            "demo",
+            "com example app",
+            "com.example.app!",
+            "com.example.",
+            ".com.example",
+            "",
+        ] {
+            let text = valid_manifest_text("").replace(r#"app_id = "com.example.notes""#, &format!(r#"app_id = "{app_id}""#));
+            let err = parse_manifest(&text).unwrap_err();
+            assert!(
+                err.to_string().contains("app_id"),
+                "expected app_id error for '{app_id}', got: {err}"
+            );
+        }
     }
 
     fn sample_payload_archive() -> Vec<u8> {

@@ -240,7 +240,6 @@ struct Start {
 struct Renderer {
     path: String,
     kind: String,
-    source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -448,12 +447,6 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
         "renderer.kind must be `stock` or `custom`, got `{}`",
         manifest.renderer.kind
     );
-    if let Some(source) = &manifest.renderer.source {
-        anyhow::ensure!(
-            !source.trim().is_empty(),
-            "renderer.source must not be empty"
-        );
-    }
     if manifest
         .start
         .forward_env

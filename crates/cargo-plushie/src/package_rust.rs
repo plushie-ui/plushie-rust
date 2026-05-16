@@ -18,7 +18,6 @@ const PAYLOAD_ARCHIVE: &str = "payload.tar.zst";
 const PAYLOAD_DIR: &str = "payload-root";
 const DEFAULT_ICON_NAME: &str = "plushie-checkbox-512x512.png";
 const HOST_SDK: &str = "rust";
-const RENDERER_SOURCE: &str = "local-build";
 
 /// Options for assembling a Rust SDK standalone package.
 #[derive(Debug)]
@@ -110,7 +109,6 @@ struct StartManifest {
 struct RendererManifest {
     path: String,
     kind: String,
-    source: String,
 }
 
 #[derive(Serialize)]
@@ -186,7 +184,6 @@ pub fn assemble_rust_package(
         renderer: RendererManifest {
             path: payload_relative_string(&payload_dir, &renderer_payload_path)?,
             kind: "custom".to_string(),
-            source: RENDERER_SOURCE.to_string(),
         },
         platform: PlatformManifest {
             icon: payload_relative_string(&payload_dir, &icon_payload_path)?,
@@ -856,7 +853,6 @@ mod tests {
             renderer: RendererManifest {
                 path: "bin/plushie-renderer".to_string(),
                 kind: "custom".to_string(),
-                source: RENDERER_SOURCE.to_string(),
             },
             platform: PlatformManifest {
                 icon: "assets/app.png".to_string(),
@@ -877,7 +873,6 @@ mod tests {
         assert!(text.contains("host_sdk = \"rust\""));
         assert!(text.contains("app_name = \"Demo\""));
         assert!(text.contains("icon = \"assets/app.png\""));
-        assert!(text.contains("source = \"local-build\""));
     }
 
     #[test]

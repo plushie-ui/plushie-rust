@@ -217,7 +217,6 @@ struct SourceConfigDocument {
 struct RendererManifest {
     path: String,
     kind: String,
-    source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1307,9 +1306,6 @@ fn validate_manifest(manifest: &PackageManifest) -> Result<()> {
             )));
         }
     }
-    if let Some(source) = &manifest.renderer.source {
-        require_nonempty("renderer.source", source)?;
-    }
     require_nonempty("payload.archive", &manifest.payload.archive)?;
     validate_manifest_relative_path("payload.archive", &manifest.payload.archive, false)?;
     validate_platform_metadata(manifest)?;
@@ -2152,21 +2148,7 @@ forward_env = ["PLUSHIE_PACKAGE_READY_FILE"]
     }
 
     #[test]
-    fn accepts_renderer_provenance_metadata() {
-        let text = valid_manifest_text("").replace(
-            r#"kind = "stock""#,
-            r#"kind = "custom"
-source = "local-build""#,
-        );
-
-        let manifest = parse_manifest(&text).unwrap();
-        let renderer = manifest.renderer;
-        assert_eq!(renderer.kind, "custom");
-        assert_eq!(renderer.source.as_deref(), Some("local-build"));
-    }
-
-    #[test]
-    fn rejects_invalid_renderer_provenance_metadata() {
+    fn rejects_invalid_renderer_kind() {
         for renderer_section in [
             r#"
 [renderer]
@@ -2177,12 +2159,6 @@ kind = ""
 [renderer]
 path = "bin/plushie-renderer"
 kind = "downloaded"
-"#,
-            r#"
-[renderer]
-path = "bin/plushie-renderer"
-kind = "stock"
-source = " "
 "#,
         ] {
             let text = valid_manifest_text("").replace(
@@ -2397,7 +2373,6 @@ shell = true
             renderer: RendererManifest {
                 path: "bin/plushie-renderer".to_string(),
                 kind: "stock".to_string(),
-                source: None,
             },
             platform: None,
             updates: None,
@@ -2986,7 +2961,6 @@ hash = "{payload_hash}"
             renderer: RendererManifest {
                 path: "bin/plushie-renderer".to_string(),
                 kind: "stock".to_string(),
-                source: None,
             },
             platform: None,
             updates: None,

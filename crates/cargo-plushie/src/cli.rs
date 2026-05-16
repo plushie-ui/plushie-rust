@@ -6,8 +6,8 @@
 //! through the same clap parser below.
 
 use crate::{
-    default_icons, discover, doctor, download, generator, package, package_assemble, package_rust,
-    platform, scaffold, tool_identity,
+    default_icons, discover, doctor, download, generator, gitignore_hint, package,
+    package_assemble, package_rust, platform, scaffold, tool_identity,
 };
 use anyhow::{Context, Result};
 use cargo_metadata::CargoOpt;
@@ -720,6 +720,7 @@ fn cmd_tools_sync(args: &ToolsSyncArgs) -> Result<()> {
     }
 
     let project_dir = std::env::current_dir().with_context(|| "resolve current directory")?;
+    gitignore_hint::warn_if_not_gitignored(&project_dir.join("bin"));
     if let Some(manifest_path) = &args.manifest_path {
         check_native_tool_manifest(manifest_path)?;
     }
@@ -1101,7 +1102,14 @@ fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
     Ok(())
 }
 
+fn warn_target_plushie_gitignore() {
+    if let Ok(cwd) = std::env::current_dir() {
+        gitignore_hint::warn_if_not_gitignored(&cwd.join("target/plushie"));
+    }
+}
+
 fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
+    warn_target_plushie_gitignore();
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
     if !args.lax_tools {
@@ -1126,6 +1134,7 @@ fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
 }
 
 fn cmd_package_bundle(args: &PackageBundleArgs) -> Result<()> {
+    warn_target_plushie_gitignore();
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
     if !args.lax_tools {

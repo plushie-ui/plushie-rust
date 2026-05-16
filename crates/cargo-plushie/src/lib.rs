@@ -131,6 +131,7 @@ pub mod discover;
 pub mod doctor;
 pub mod download;
 pub mod generator;
+pub mod gitignore_hint;
 pub mod package;
 pub mod package_assemble;
 pub mod package_runtime;

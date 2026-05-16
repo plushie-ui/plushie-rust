@@ -1,5 +1,3 @@
 target/
 .cargo/
-CLAUDE.md
-bin/plushie-renderer
-bin/plushie-renderer.exe
+bin/

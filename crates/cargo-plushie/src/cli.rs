@@ -220,9 +220,10 @@ struct PackagePortableArgs {
     /// Path to the Plushie package manifest.
     #[arg(long)]
     manifest: PathBuf,
-    /// Fail when managed native tools are missing, dirty, mixed, or version-mismatched.
+    /// Skip the strict managed-tool check (missing, dirty, mixed, or version-mismatched tools
+    /// are allowed). Strict checking is on by default.
     #[arg(long)]
-    strict_tools: bool,
+    lax_tools: bool,
     /// Final launcher output path. Defaults under target/plushie/package/.
     #[arg(long)]
     out: Option<PathBuf>,
@@ -242,9 +243,10 @@ struct PackageCheckArgs {
     /// Path to the Plushie package manifest.
     #[arg(long)]
     manifest: PathBuf,
-    /// Fail when managed native tools are missing, dirty, mixed, or version-mismatched.
+    /// Skip the strict managed-tool check (missing, dirty, mixed, or version-mismatched tools
+    /// are allowed). Strict checking is on by default.
     #[arg(long)]
-    strict_tools: bool,
+    lax_tools: bool,
     /// Also build the portable launcher and run its extraction/cache check.
     #[arg(long)]
     postcheck: bool,
@@ -282,9 +284,10 @@ struct PackageBundleArgs {
     /// Custom cargo-packager config. When absent, Plushie writes a generated config.
     #[arg(long)]
     config: Option<PathBuf>,
-    /// Fail when managed native tools are missing, dirty, mixed, or version-mismatched.
+    /// Skip the strict managed-tool check (missing, dirty, mixed, or version-mismatched tools
+    /// are allowed). Strict checking is on by default.
     #[arg(long)]
-    strict_tools: bool,
+    lax_tools: bool,
     /// Reusable plushie-launcher binary to use when building a portable artifact.
     #[arg(long)]
     launcher: Option<PathBuf>,
@@ -954,7 +957,7 @@ fn print_tool_check_report(report: &ToolCheckReport) {
 fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
-    if args.strict_tools {
+    if !args.lax_tools {
         ensure_strict_package_tools(&precheck.plushie_rust_version, Some(&args.manifest))?;
     }
 
@@ -987,7 +990,7 @@ fn cmd_package_check(args: &PackageCheckArgs) -> Result<()> {
 fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
-    if args.strict_tools {
+    if !args.lax_tools {
         ensure_strict_package_tools(&precheck.plushie_rust_version, Some(&args.manifest))?;
     }
     let result = package::build_launcher(&package::PackageOpts {
@@ -1011,7 +1014,7 @@ fn cmd_package_portable(args: &PackagePortableArgs) -> Result<()> {
 fn cmd_package_bundle(args: &PackageBundleArgs) -> Result<()> {
     let precheck = package::precheck_package(&args.manifest)?;
     print_package_warnings(&precheck);
-    if args.strict_tools {
+    if !args.lax_tools {
         ensure_strict_package_tools(&precheck.plushie_rust_version, Some(&args.manifest))?;
     }
     let result = package::bundle_package(&package::PackageBundleOpts {
@@ -2391,5 +2394,90 @@ mod tests {
             permissions.set_mode(0o755);
             std::fs::set_permissions(path, permissions).unwrap();
         }
+    }
+
+    #[test]
+    fn package_portable_strict_by_default() {
+        use super::{Cli, PackageSubcommand, PlushieSubcommand};
+        use clap::Parser;
+        let cli = Cli::try_parse_from([
+            "plushie",
+            "package",
+            "portable",
+            "--manifest",
+            "plushie-package.toml",
+        ])
+        .unwrap();
+        let PlushieSubcommand::Package(pkg) = cli.command else {
+            panic!("expected Package subcommand");
+        };
+        let PackageSubcommand::Portable(args) = pkg.command else {
+            panic!("expected Portable subcommand");
+        };
+        assert!(!args.lax_tools, "strict checking should be on by default");
+    }
+
+    #[test]
+    fn package_portable_lax_tools_disables_strict() {
+        use super::{Cli, PackageSubcommand, PlushieSubcommand};
+        use clap::Parser;
+        let cli = Cli::try_parse_from([
+            "plushie",
+            "package",
+            "portable",
+            "--manifest",
+            "plushie-package.toml",
+            "--lax-tools",
+        ])
+        .unwrap();
+        let PlushieSubcommand::Package(pkg) = cli.command else {
+            panic!("expected Package subcommand");
+        };
+        let PackageSubcommand::Portable(args) = pkg.command else {
+            panic!("expected Portable subcommand");
+        };
+        assert!(args.lax_tools, "--lax-tools should disable strict checking");
+    }
+
+    #[test]
+    fn package_check_strict_by_default() {
+        use super::{Cli, PackageSubcommand, PlushieSubcommand};
+        use clap::Parser;
+        let cli = Cli::try_parse_from([
+            "plushie",
+            "package",
+            "check",
+            "--manifest",
+            "plushie-package.toml",
+        ])
+        .unwrap();
+        let PlushieSubcommand::Package(pkg) = cli.command else {
+            panic!("expected Package subcommand");
+        };
+        let PackageSubcommand::Check(args) = pkg.command else {
+            panic!("expected Check subcommand");
+        };
+        assert!(!args.lax_tools, "strict checking should be on by default");
+    }
+
+    #[test]
+    fn package_bundle_strict_by_default() {
+        use super::{Cli, PackageSubcommand, PlushieSubcommand};
+        use clap::Parser;
+        let cli = Cli::try_parse_from([
+            "plushie",
+            "package",
+            "bundle",
+            "--manifest",
+            "plushie-package.toml",
+        ])
+        .unwrap();
+        let PlushieSubcommand::Package(pkg) = cli.command else {
+            panic!("expected Package subcommand");
+        };
+        let PackageSubcommand::Bundle(args) = pkg.command else {
+            panic!("expected Bundle subcommand");
+        };
+        assert!(!args.lax_tools, "strict checking should be on by default");
     }
 }

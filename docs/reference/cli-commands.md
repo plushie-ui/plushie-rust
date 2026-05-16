@@ -244,7 +244,7 @@ cargo plushie package portable --manifest plushie-package.toml
 | Flag | Type | Description |
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
-| `--strict-tools` | bool | Require managed native tools to match the manifest version and strict provenance rules before writing the portable artifact |
+| `--lax-tools` | bool | Skip the strict managed-tool check; tools that are missing, dirty, mixed, or version-mismatched are allowed. Strict checking is on by default |
 | `--out <PATH>` | path | Final launcher path (default `target/plushie/package/<app-id>`) |
 | `--launcher <PATH>` | path | Reusable `plushie-launcher` binary to embed package data into |
 | `--run-signing-hooks` | bool | Run signing hooks declared in the manifest |
@@ -422,7 +422,7 @@ bin/plushie package bundle --manifest dist/plushie-package.toml --config Package
 | `--out-dir <PATH>` | path | Output directory for cargo-packager artifacts |
 | `--format <FORMAT>` | string | cargo-packager format. Repeatable. Defaults to cargo-packager's platform default |
 | `--config <PATH>` | path | Custom cargo-packager config. Plushie generates one when omitted |
-| `--strict-tools` | bool | Require managed native tools to match the manifest version and strict provenance rules before bundling |
+| `--lax-tools` | bool | Skip the strict managed-tool check; tools that are missing, dirty, mixed, or version-mismatched are allowed. Strict checking is on by default |
 | `--launcher <PATH>` | path | Reusable launcher template used when building the portable executable |
 | `--run-signing-hooks` | bool | Run manifest signing hooks when building the portable executable |
 | `--verbose` | bool | Print launcher template resolution |
@@ -460,7 +460,7 @@ cargo plushie package check --manifest plushie-package.toml --postcheck
 | Flag | Type | Description |
 |---|---|---|
 | `--manifest <PATH>` | path | Plushie package manifest |
-| `--strict-tools` | bool | Require managed native tools to match the manifest version and strict provenance rules before checking or postchecking |
+| `--lax-tools` | bool | Skip the strict managed-tool check; tools that are missing, dirty, mixed, or version-mismatched are allowed. Strict checking is on by default |
 | `--postcheck` | bool | Build the portable launcher and run the extraction/cache postcheck path |
 | `--postcheck-timeout <SECONDS>` | integer | Maximum time for `--postcheck` to wait |
 | `--launcher <PATH>` | path | Reusable `plushie-launcher` binary to use during `--postcheck` |

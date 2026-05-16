@@ -22,6 +22,10 @@ pub struct DiscoverOpts<'a> {
     pub no_default_features: bool,
     /// Enable all features for metadata resolution.
     pub all_features: bool,
+    /// Raw `--config` arguments passed to `cargo metadata` to inject
+    /// `[patch.crates-io]` overrides without writing scratch files.
+    /// Each entry is forwarded verbatim as `--config <entry>`.
+    pub cargo_config_args: &'a [String],
 }
 
 /// Walk the cargo metadata dep graph and return every package that
@@ -63,6 +67,14 @@ pub fn discover_widgets_with_options(
     cmd.manifest_path(manifest_dir.join("Cargo.toml"))
         .current_dir(manifest_dir);
     apply_feature_opts(&mut cmd, opts);
+    if !opts.cargo_config_args.is_empty() {
+        let raw: Vec<String> = opts
+            .cargo_config_args
+            .iter()
+            .flat_map(|arg| ["--config".to_string(), arg.clone()])
+            .collect();
+        cmd.other_options(raw);
+    }
     let metadata = cmd
         .exec()
         .map_err(|e| Error::CargoMetadata(e.to_string()))?;
@@ -309,6 +321,7 @@ constructor = "demo_widget::new()"
                 features: &[String::from("with-widget")],
                 no_default_features: false,
                 all_features: false,
+                cargo_config_args: &[],
             },
         )
         .unwrap();

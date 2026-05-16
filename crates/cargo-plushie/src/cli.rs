@@ -1383,16 +1383,13 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
 
     let source_path = resolve_source_path(&manifest_dir, &app_pkg)?;
 
-    // When the caller points at a local plushie-rust checkout, drop a
-    // `.cargo/config.toml` alongside the manifest so subsequent cargo
-    // invocations (starting with `discover_widgets` below) can resolve
-    // unpublished workspace deps via `[patch.crates-io]` redirects.
-    // Cargo's config walk starts from the current working directory,
-    // so `discover_widgets` runs `cargo metadata` with
-    // `current_dir(manifest_dir)` to pick this file up.
-    if let Some(source) = &source_path {
-        crate::patch_config::write_scratch_cargo_config(&manifest_dir, source)?;
-    }
+    // Build `--config patch.crates-io.*=<path>` args from the source checkout
+    // so cargo metadata can resolve unpublished workspace deps without writing
+    // scratch files into the app source tree.
+    let config_args: Vec<String> = source_path
+        .as_deref()
+        .map(crate::patch_config::cargo_config_args)
+        .unwrap_or_default();
 
     let discovered = discover::discover_widgets_with_options(
         &manifest_dir,
@@ -1400,6 +1397,7 @@ fn cmd_build(args: &BuildArgs) -> Result<()> {
             features: &args.features,
             no_default_features: args.no_default_features,
             all_features: args.all_features,
+            cargo_config_args: &config_args,
         },
     )?;
     let widgets = if native_widgets_override.is_empty() {

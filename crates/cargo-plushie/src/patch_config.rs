@@ -7,27 +7,22 @@
 //!    `target/plushie-renderer/Cargo.toml`: it pulls `plushie-widget-sdk`
 //!    and `plushie-renderer` in as path deps and needs the transitive
 //!    internal crates patched too so `cargo build` resolves against the
-//!    local checkout instead of crates.io.
+//!    local checkout instead of crates.io. Patches are written directly
+//!    into the generated workspace `Cargo.toml` by `generator`.
 //!
-//! 2. The host-SDK "spec" manifest sitting in a scratch directory
-//!    (e.g. `_build/plushie-renderer-spec/Cargo.toml`). Host SDKs
-//!    point at widget crates as path deps; those widget crates declare
-//!    `plushie-widget-sdk = "0.6"` and friends as registry deps.
-//!    `cargo metadata` on the spec manifest walks the full dep graph
-//!    and fails on unpublished workspace versions unless a
-//!    `.cargo/config.toml` alongside the manifest redirects every
-//!    plushie-rust crate to the local checkout. `cargo plushie build`
-//!    writes that file before invoking discovery and runs cargo with
-//!    CWD set to the manifest directory so cargo's config walk picks
-//!    it up.
+//! 2. `cargo plushie build` widget discovery: `cargo metadata` on the
+//!    app manifest must resolve unpublished workspace deps. Rather than
+//!    writing a scratch `.cargo/config.toml` into the app source tree,
+//!    `cmd_build` now passes `--config patch.crates-io.*=<path>` args
+//!    via `cargo_config_args` and forwards them through `DiscoverOpts`.
 //!
-//! Both consumers also forward any additional `[patch.crates-io]`
-//! entries already declared at the plushie-rust workspace root (the
-//! committed `Cargo.toml` plus any gitignored `.cargo/config.toml`
-//! overrides, typically redirecting `plushie-iced-*` crates to a
-//! sibling checkout). Keeping forwarding here means the rule "the
-//! patches the host workspace uses are the patches the generated
-//! workspace and spec manifest use" lives in one place.
+//! Both consumers forward any additional `[patch.crates-io]` entries
+//! declared at the plushie-rust workspace root (committed `Cargo.toml`
+//! plus any gitignored `.cargo/config.toml` overrides, typically
+//! redirecting `plushie-iced-*` crates to a sibling checkout). Keeping
+//! forwarding here means the rule "the patches the host workspace uses
+//! are the patches the generated workspace and discovery use" lives in
+//! one place.
 
 use crate::Result;
 use crate::generator::write_if_changed;
@@ -127,6 +122,23 @@ pub fn all_patches(source_path: &Path) -> Vec<(String, PathBuf)> {
     out
 }
 
+/// Build raw `--config` argument strings for every `[patch.crates-io]`
+/// override that redirects plushie-rust crates to `source_path`.
+///
+/// Each returned string is suitable for `cargo --config <arg>` and avoids
+/// writing any scratch files into the caller's source tree.
+pub fn cargo_config_args(source_path: &Path) -> Vec<String> {
+    all_patches(source_path)
+        .into_iter()
+        .map(|(name, path)| {
+            format!(
+                "patch.crates-io.{name}.path={:?}",
+                path.display().to_string()
+            )
+        })
+        .collect()
+}
+
 /// Render a `[patch.crates-io]` block given pre-resolved
 /// `(name, absolute_path)` pairs. The caller controls ordering; this
 /// helper just emits stable TOML without re-sorting.
@@ -146,16 +158,12 @@ pub(crate) fn render_patch_block(entries: &[(String, PathBuf)]) -> String {
 /// to `source_path` and forwards any additional patches declared at
 /// the source workspace root.
 ///
-/// Cargo's config file walk starts from the current working directory
-/// (not the manifest directory), so a caller that wants this file
-/// picked up must invoke cargo with `current_dir(spec_manifest_dir)`.
-/// `cargo plushie build` does exactly that in `discover::discover_widgets`
-/// so the host-SDK spec manifest can keep its widget deps as plain
-/// `plushie-widget-sdk = "0.6"` version pins without leaking the
-/// plushie-rust checkout path into every widget crate.
+/// Used by `cargo plushie download` and other commands that still rely
+/// on a config file on disk. `cargo plushie build` no longer calls this;
+/// it passes `--config` args via `cargo_config_args` instead.
 ///
 /// The write is idempotent via [`write_if_changed`]: a no-op
-/// re-invocation of `cargo plushie build` does not bump the mtime.
+/// re-invocation does not bump the mtime.
 ///
 /// # Errors
 ///

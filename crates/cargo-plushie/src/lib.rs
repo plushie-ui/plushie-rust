@@ -117,6 +117,10 @@ pub mod cli;
 ///
 /// Used by thin binary wrappers that are built and uploaded as release
 /// assets alongside the renderer.
+///
+/// # Errors
+///
+/// Returns an error when the version payload cannot be serialized.
 pub fn print_tool_version(tool: &str, json: bool) -> anyhow::Result<()> {
     tool_identity::print_current_version(tool, json)
 }

@@ -360,6 +360,11 @@ struct DefaultIconsArgs {
 }
 
 /// Parse CLI arguments and dispatch the selected Plushie command.
+///
+/// # Errors
+///
+/// Returns an error when argument parsing, command execution, or any
+/// underlying file, network, or process operation fails.
 pub fn run() -> Result<()> {
     // Cargo invokes subcommands as `cargo-plushie plushie <sub>`.
     // Drop the extra word so the standalone `plushie` binary and the
@@ -588,6 +593,16 @@ struct ToolCheckEntry {
     path: Option<String>,
     identity: Option<ToolIdentity>,
     status: String,
+}
+
+struct ManagedToolCheck<'a> {
+    project_dir: &'a Path,
+    required_version: &'a str,
+    strict: bool,
+    self_identity: &'a ToolIdentity,
+    tools: &'a mut Vec<ToolCheckEntry>,
+    issues: &'a mut Vec<String>,
+    warnings: &'a mut Vec<String>,
 }
 
 fn cmd_tools_check(args: &ToolsCheckArgs) -> Result<()> {
@@ -830,39 +845,19 @@ fn check_native_tools(project_dir: &Path, required_version: &str, strict: bool) 
         status: "present".to_string(),
     });
 
-    check_managed_tool(
+    let mut state = ManagedToolCheck {
         project_dir,
-        "plushie",
-        &platform::plushie_name(),
         required_version,
         strict,
-        &self_identity,
-        &mut tools,
-        &mut issues,
-        &mut warnings,
-    );
-    check_managed_tool(
-        project_dir,
-        "plushie-renderer",
-        &platform::renderer_name(),
-        required_version,
-        strict,
-        &self_identity,
-        &mut tools,
-        &mut issues,
-        &mut warnings,
-    );
-    check_managed_tool(
-        project_dir,
-        "plushie-launcher",
-        &platform::launcher_name(),
-        required_version,
-        strict,
-        &self_identity,
-        &mut tools,
-        &mut issues,
-        &mut warnings,
-    );
+        self_identity: &self_identity,
+        tools: &mut tools,
+        issues: &mut issues,
+        warnings: &mut warnings,
+    };
+
+    check_managed_tool(&mut state, "plushie", &platform::plushie_name());
+    check_managed_tool(&mut state, "plushie-renderer", &platform::renderer_name());
+    check_managed_tool(&mut state, "plushie-launcher", &platform::launcher_name());
 
     let ok = issues.is_empty();
     ToolCheckReport {
@@ -874,54 +869,50 @@ fn check_native_tools(project_dir: &Path, required_version: &str, strict: bool) 
     }
 }
 
-fn check_managed_tool(
-    project_dir: &Path,
-    label: &str,
-    local_name: &str,
-    required_version: &str,
-    strict: bool,
-    self_identity: &ToolIdentity,
-    tools: &mut Vec<ToolCheckEntry>,
-    issues: &mut Vec<String>,
-    warnings: &mut Vec<String>,
-) {
-    let path = project_dir.join("bin").join(local_name);
+fn check_managed_tool(state: &mut ManagedToolCheck<'_>, label: &str, local_name: &str) {
+    let path = state.project_dir.join("bin").join(local_name);
     match tool_identity::probe_tool_identity(&path, Duration::from_secs(2)) {
         Ok(identity) => {
             if identity.tool != label {
-                issues.push(format!(
+                state.issues.push(format!(
                     "{} at {} identifies as {}; run `bin/plushie tools sync --required-version {} --force`",
                     label,
                     path.display(),
                     identity.tool,
-                    required_version
+                    state.required_version
                 ));
             }
-            if identity.plushie_rust_version != required_version {
-                issues.push(format!(
+            if identity.plushie_rust_version != state.required_version {
+                state.issues.push(format!(
                     "{} is version {} but project requires {}; run `bin/plushie tools sync --required-version {}`",
-                    label, identity.plushie_rust_version, required_version, required_version
+                    label,
+                    identity.plushie_rust_version,
+                    state.required_version,
+                    state.required_version
                 ));
             }
-            if identity.target != self_identity.target {
-                issues.push(format!(
+            if identity.target != state.self_identity.target {
+                state.issues.push(format!(
                     "{} target {} does not match plushie target {}; run `bin/plushie tools sync --required-version {}`",
-                    label, identity.target, self_identity.target, required_version
+                    label,
+                    identity.target,
+                    state.self_identity.target,
+                    state.required_version
                 ));
             }
-            if identity.source.kind != self_identity.source.kind {
+            if identity.source.kind != state.self_identity.source.kind {
                 let message = format!(
                     "plushie source kind {} does not match {} source kind {}",
-                    self_identity.source.kind, label, identity.source.kind
+                    state.self_identity.source.kind, label, identity.source.kind
                 );
-                if strict {
-                    issues.push(message);
+                if state.strict {
+                    state.issues.push(message);
                 } else {
-                    warnings.push(message);
+                    state.warnings.push(message);
                 }
             }
-            collect_identity_warnings(&identity, label, strict, issues, warnings);
-            tools.push(ToolCheckEntry {
+            collect_identity_warnings(&identity, label, state.strict, state.issues, state.warnings);
+            state.tools.push(ToolCheckEntry {
                 tool: label.to_string(),
                 path: Some(path.display().to_string()),
                 identity: Some(identity),
@@ -929,13 +920,13 @@ fn check_managed_tool(
             });
         }
         Err(error) if path.exists() => {
-            issues.push(format!(
+            state.issues.push(format!(
                 "{} at {} did not report Plushie identity ({error}); run `bin/plushie tools sync --required-version {} --force`",
                 label,
                 path.display(),
-                required_version
+                state.required_version
             ));
-            tools.push(ToolCheckEntry {
+            state.tools.push(ToolCheckEntry {
                 tool: label.to_string(),
                 path: Some(path.display().to_string()),
                 identity: None,
@@ -943,13 +934,13 @@ fn check_managed_tool(
             });
         }
         Err(_) => {
-            issues.push(format!(
+            state.issues.push(format!(
                 "{} is missing at {}; run `bin/plushie tools sync --required-version {}`",
                 label,
                 path.display(),
-                required_version
+                state.required_version
             ));
-            tools.push(ToolCheckEntry {
+            state.tools.push(ToolCheckEntry {
                 tool: label.to_string(),
                 path: Some(path.display().to_string()),
                 identity: None,
@@ -1863,7 +1854,7 @@ fn download_tool_with_base_url(
     let sidecar_str =
         std::str::from_utf8(&sidecar_bytes).context("sha256 sidecar was not UTF-8")?;
     download::verify_sha256(&bytes, sidecar_str)?;
-    download::install_binary(&dl_target, &bytes, sidecar_str)?;
+    download::install_binary(dl_target, &bytes, sidecar_str)?;
     println!(
         "plushie: installed {label} at {}",
         dl_target.binary_path.display()

@@ -358,6 +358,16 @@ struct PreparedPackagerConfig {
     working_dir: PathBuf,
 }
 
+struct PackagerDefaultOpts<'a> {
+    binary_stem: &'a str,
+    bin_dir: &'a Path,
+    out_dir: &'a Path,
+    icon: Option<PathBuf>,
+    formats: Option<Vec<PackageFormat>>,
+    formats_explicit: bool,
+    out_dir_explicit: bool,
+}
+
 fn prepare_packager_config(
     loaded: &LoadedPackage,
     portable_path: &Path,
@@ -379,13 +389,15 @@ fn prepare_packager_config(
         apply_packager_defaults(
             &mut config,
             loaded,
-            &binary_stem,
-            &bin_dir,
-            out_dir,
-            icon,
-            parsed_formats,
-            !formats.is_empty(),
-            out_dir_explicit,
+            PackagerDefaultOpts {
+                binary_stem: &binary_stem,
+                bin_dir: &bin_dir,
+                out_dir,
+                icon,
+                formats: parsed_formats,
+                formats_explicit: !formats.is_empty(),
+                out_dir_explicit,
+            },
         );
         validate_packager_config(&config)?;
         let effective_config_path = work_dir.join("Packager.effective.toml");
@@ -407,13 +419,15 @@ fn prepare_packager_config(
         apply_packager_defaults(
             &mut config,
             loaded,
-            &binary_stem,
-            &bin_dir,
-            out_dir,
-            icon,
-            parsed_formats,
-            false,
-            true,
+            PackagerDefaultOpts {
+                binary_stem: &binary_stem,
+                bin_dir: &bin_dir,
+                out_dir,
+                icon,
+                formats: parsed_formats,
+                formats_explicit: false,
+                out_dir_explicit: true,
+            },
         );
         validate_packager_config(&config)?;
         let config_path = work_dir.join("Packager.toml");
@@ -814,13 +828,7 @@ fn validate_packager_config(config: &CargoPackagerConfig) -> Result<()> {
 fn apply_packager_defaults(
     config: &mut CargoPackagerConfig,
     loaded: &LoadedPackage,
-    binary_stem: &str,
-    bin_dir: &Path,
-    out_dir: &Path,
-    icon: Option<PathBuf>,
-    formats: Option<Vec<PackageFormat>>,
-    formats_explicit: bool,
-    out_dir_explicit: bool,
+    opts: PackagerDefaultOpts<'_>,
 ) {
     if config.product_name.is_empty() {
         config.product_name = loaded
@@ -833,7 +841,7 @@ fn apply_packager_defaults(
         config.version = loaded.manifest.app_version.clone();
     }
     if config.binaries.is_empty() {
-        config.binaries = vec![CargoPackagerBinary::new(binary_stem).main(true)];
+        config.binaries = vec![CargoPackagerBinary::new(opts.binary_stem).main(true)];
     }
     if config.identifier.is_none() {
         config.identifier = loaded
@@ -850,17 +858,19 @@ fn apply_packager_defaults(
             .as_ref()
             .and_then(|platform| platform.publisher.clone());
     }
-    if out_dir_explicit || config.out_dir.as_os_str().is_empty() {
-        config.out_dir = out_dir.to_path_buf();
+    if opts.out_dir_explicit || config.out_dir.as_os_str().is_empty() {
+        config.out_dir = opts.out_dir.to_path_buf();
     }
     if config.binaries_dir.is_none() {
-        config.binaries_dir = Some(bin_dir.to_path_buf());
+        config.binaries_dir = Some(opts.bin_dir.to_path_buf());
     }
     if config.icons.is_none() {
-        config.icons = icon.map(|icon| vec![icon.to_string_lossy().into_owned()]);
+        config.icons = opts
+            .icon
+            .map(|icon| vec![icon.to_string_lossy().into_owned()]);
     }
-    if formats_explicit || config.formats.is_none() {
-        config.formats = formats;
+    if opts.formats_explicit || config.formats.is_none() {
+        config.formats = opts.formats;
     }
 }
 

@@ -10,15 +10,15 @@
 //! [`renderer_env`] returns only the variables the renderer actually
 //! needs. The list is the canonical whitelist shared across every host
 //! SDK (Elixir, Gleam, Python, Ruby, TypeScript): Elixir's exact names
-//! and prefix classes, plus a dedicated `PLUSHIE_*` prefix for
-//! plushie-reserved renderer controls. Anything not on the list is
+//! and prefix classes, plus a closed set of `PLUSHIE_*` names the
+//! renderer subprocess actually reads. Anything not on the list is
 //! stripped.
 //!
-//! The `PLUSHIE_*` prefix covers renderer controls the renderer reads
-//! (currently `PLUSHIE_TOKEN`, `PLUSHIE_SOCKET`,
-//! `PLUSHIE_UPDATE_SNAPSHOTS`). Adding new controls no longer requires
-//! teaching every SDK about the individual name; the prefix is reserved
-//! for plushie internals, so there is no plausible secret stored under it.
+//! The renderer subprocess in spawn (host-parent) mode reads at most
+//! `PLUSHIE_NO_CATCH_UNWIND` from its inherited env. Other `PLUSHIE_*`
+//! names are host-side, launcher-set, or secrets (e.g. `PLUSHIE_TOKEN`)
+//! that must not leak across the process boundary. Adding a new
+//! `PLUSHIE_*` var to the list below is a deliberate review decision.
 
 /// Variables passed through to the renderer subprocess unchanged when
 /// they are set in the host's environment. Matches the canonical list
@@ -63,8 +63,7 @@ const EXACT: &[&str] = &[
 /// Prefix patterns. Any variable whose name starts with one of these
 /// prefixes passes through. The prefixes cover locale (LC_*), the
 /// Mesa / GLX / Vulkan / Gallium graphics stack, accessibility bridge
-/// settings, fontconfig, and the plushie-reserved PLUSHIE_* namespace
-/// for renderer controls.
+/// settings, and fontconfig.
 const PREFIXES: &[&str] = &[
     "LC_",
     "MESA_",
@@ -74,8 +73,16 @@ const PREFIXES: &[&str] = &[
     "GALLIUM_",
     "AT_SPI_",
     "FONTCONFIG_",
-    "PLUSHIE_",
 ];
+
+/// The closed set of `PLUSHIE_*` names forwarded to the renderer subprocess.
+///
+/// The renderer in spawn mode reads only `PLUSHIE_NO_CATCH_UNWIND` from
+/// inherited env. `PLUSHIE_FORMAT` and `PLUSHIE_TRANSPORT` are host-side.
+/// All other `PLUSHIE_*` names are either host-only, launcher-set, or
+/// secrets (e.g. `PLUSHIE_TOKEN`) that the renderer subprocess must not
+/// receive.
+const PLUSHIE_EXACT: &[&str] = &["PLUSHIE_NO_CATCH_UNWIND"];
 
 /// Build the filtered env for a renderer child process.
 ///
@@ -88,7 +95,9 @@ pub(crate) fn renderer_env() -> Vec<(String, String)> {
 
 /// Return true if `name` is allowed through to the renderer.
 pub(crate) fn is_allowed(name: &str) -> bool {
-    EXACT.contains(&name) || PREFIXES.iter().any(|p| name.starts_with(p))
+    EXACT.contains(&name)
+        || PLUSHIE_EXACT.contains(&name)
+        || PREFIXES.iter().any(|p| name.starts_with(p))
 }
 
 #[cfg(test)]
@@ -130,12 +139,38 @@ mod tests {
     }
 
     #[test]
-    fn plushie_prefix_allowed() {
-        assert!(is_allowed("PLUSHIE_UPDATE_SNAPSHOTS"));
-        assert!(is_allowed("PLUSHIE_TOKEN"));
-        assert!(is_allowed("PLUSHIE_SOCKET"));
-        // Future toggles join without a whitelist edit.
-        assert!(is_allowed("PLUSHIE_FUTURE_DEBUG_KNOB"));
+    fn plushie_no_catch_unwind_allowed() {
+        assert!(is_allowed("PLUSHIE_NO_CATCH_UNWIND"));
+    }
+
+    #[test]
+    fn plushie_closed_list_rejects_all_others() {
+        // Every known PLUSHIE_* name except PLUSHIE_NO_CATCH_UNWIND must be
+        // blocked. These are host-side, launcher-set, or secrets that the
+        // renderer subprocess must not receive. If you need to add a name,
+        // extend PLUSHIE_EXACT deliberately after review.
+        let blocked = [
+            "PLUSHIE_BINARY_PATH",
+            "PLUSHIE_PACKAGE_DIR",
+            "PLUSHIE_PACKAGE_READY_FILE",
+            "PLUSHIE_SOCKET",
+            "PLUSHIE_TOKEN",
+            "PLUSHIE_TRANSPORT",
+            "PLUSHIE_FORMAT",
+            "PLUSHIE_RUST_SOURCE_PATH",
+            "PLUSHIE_RELEASE_BASE_URL",
+            "PLUSHIE_CACHE_DIR",
+            "PLUSHIE_LAUNCHER_PATH",
+            "PLUSHIE_TOOL_SOURCE_KIND",
+            "PLUSHIE_LAUNCHER_QUIET",
+            "PLUSHIE_UPDATE_SNAPSHOTS",
+        ];
+        for name in blocked {
+            assert!(
+                !is_allowed(name),
+                "PLUSHIE_* var {name} must not forward to the renderer subprocess"
+            );
+        }
     }
 
     #[test]

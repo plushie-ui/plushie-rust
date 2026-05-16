@@ -2,9 +2,17 @@
 //!
 //! `plushie-renderer --exec-bin` starts a host command from inside
 //! the renderer process. Without filtering, that child inherits the
-//! full renderer environment. This mirrors the Rust SDK renderer
-//! subprocess whitelist so exec children get display, locale, graphics,
-//! and plushie control variables without inheriting unrelated secrets.
+//! full renderer environment. The renderer always sets `PLUSHIE_SOCKET`,
+//! `PLUSHIE_TOKEN`, and `PLUSHIE_TOKEN_SHA256` explicitly on the child
+//! after `env_clear`. No `PLUSHIE_*` prefix forwarding is needed: what
+//! the host needs is set deliberately, not inherited from ambient env.
+//! The user can forward additional names via `--exec-env NAME[,NAME]`.
+//!
+//! The renderer subprocess in spawn (host-parent) mode reads at most
+//! `PLUSHIE_NO_CATCH_UNWIND` from its inherited env. Other `PLUSHIE_*`
+//! names are host-side, launcher-set, or secrets that must not leak
+//! across the process boundary. Adding a new `PLUSHIE_*` var to the
+//! list below is a deliberate review decision.
 
 /// Variables passed through to exec children unchanged when set in
 /// the renderer environment.
@@ -55,7 +63,6 @@ const PREFIXES: &[&str] = &[
     "GALLIUM_",
     "AT_SPI_",
     "FONTCONFIG_",
-    "PLUSHIE_",
 ];
 
 /// Build the filtered env for a renderer-spawned child process.
@@ -101,10 +108,36 @@ mod tests {
     }
 
     #[test]
-    fn preserves_plushie_listen_env() {
-        assert!(is_allowed("PLUSHIE_SOCKET"));
-        assert!(is_allowed("PLUSHIE_TOKEN"));
-        assert!(is_allowed("PLUSHIE_UPDATE_SNAPSHOTS"));
+    fn rejects_plushie_prefix_from_ambient_env() {
+        // PLUSHIE_SOCKET, PLUSHIE_TOKEN, and PLUSHIE_TOKEN_SHA256 are set
+        // explicitly on the child command after env_clear; they must not
+        // pass through from ambient renderer env, which would allow
+        // unintended PLUSHIE_* names to leak. Adding a name here is a
+        // deliberate review decision.
+        let blocked = [
+            "PLUSHIE_SOCKET",
+            "PLUSHIE_TOKEN",
+            "PLUSHIE_TOKEN_SHA256",
+            "PLUSHIE_UPDATE_SNAPSHOTS",
+            "PLUSHIE_BINARY_PATH",
+            "PLUSHIE_PACKAGE_DIR",
+            "PLUSHIE_PACKAGE_READY_FILE",
+            "PLUSHIE_TRANSPORT",
+            "PLUSHIE_FORMAT",
+            "PLUSHIE_RUST_SOURCE_PATH",
+            "PLUSHIE_RELEASE_BASE_URL",
+            "PLUSHIE_CACHE_DIR",
+            "PLUSHIE_LAUNCHER_PATH",
+            "PLUSHIE_TOOL_SOURCE_KIND",
+            "PLUSHIE_LAUNCHER_QUIET",
+            "PLUSHIE_NO_CATCH_UNWIND",
+        ];
+        for name in blocked {
+            assert!(
+                !is_allowed(name),
+                "PLUSHIE_* var {name} must not forward from ambient renderer env to exec child"
+            );
+        }
     }
 
     #[test]
@@ -130,6 +163,8 @@ mod tests {
 
     #[test]
     fn filters_env_without_touching_process_state() {
+        // PLUSHIE_SOCKET and PLUSHIE_TOKEN are set explicitly on the child
+        // command by the caller; they must not pass through from ambient env.
         let env = child_env_from(
             [
                 ("PATH", "/bin"),
@@ -141,17 +176,7 @@ mod tests {
             &[],
         );
 
-        assert_eq!(
-            env,
-            vec![
-                ("PATH".to_string(), "/bin".to_string()),
-                (
-                    "PLUSHIE_SOCKET".to_string(),
-                    "/tmp/plushie.sock".to_string()
-                ),
-                ("PLUSHIE_TOKEN".to_string(), "token".to_string()),
-            ]
-        );
+        assert_eq!(env, vec![("PATH".to_string(), "/bin".to_string()),]);
     }
 
     #[test]
